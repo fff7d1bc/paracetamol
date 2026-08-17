@@ -758,6 +758,13 @@ display its on state as `high` or `thinking`, but the request is translated to
 the native on/off toggle rather than treating `high` as a Qwen3.6 effort.
 Muse has no native off mode.
 
+Pi sends Qwen3.6's toggle through llama.cpp's
+`chat_template_kwargs.enable_thinking` and sends Qwen3.8's graduated control
+through the OpenAI-compatible `reasoning_effort` field. In particular,
+Qwen3.8 off is `reasoning_effort: none`. Pi's separately named `qwen`
+transport is for DashScope-style top-level `enable_thinking`; do not use it
+for the managed llama.cpp provider.
+
 OpenCode uses `ctrl+t` or `/variants`, Pi uses `Shift+Tab`, `/settings`, or
 `--thinking`, OMP accepts `--thinking`, and Maki uses `/thinking`. Pi and
 OpenCode hide unsupported choices. OMP exposes all real levels but its schema

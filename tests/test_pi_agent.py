@@ -144,10 +144,21 @@ class PiLauncherTests(unittest.TestCase):
         self.assertEqual(
             qwen38["compat"],
             {
-                "thinkingFormat": "qwen",
+                "thinkingFormat": "openai",
                 "supportsReasoningEffort": True,
             },
         )
+        for identifier, model in models.items():
+            if identifier.startswith("qwen3.6-"):
+                self.assertEqual(
+                    model["compat"]["thinkingFormat"],
+                    "qwen-chat-template",
+                )
+            if identifier.startswith("qwen3.8-"):
+                self.assertEqual(
+                    model["compat"]["thinkingFormat"], "openai"
+                )
+                self.assertEqual(model["thinkingLevelMap"]["off"], "none")
         self.assertFalse(models["kat-coder-v2.5-dev-q8-0"]["reasoning"])
         for identifier, model in models.items():
             expected_sampling = agent_client_sampling_parameters(

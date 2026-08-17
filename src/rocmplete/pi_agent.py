@@ -148,8 +148,12 @@ def render_config(
                     "supportsReasoningEffort": False,
                 }
             elif preset.reasoning_control == "effort":
+                # Pi's `qwen` transport is the DashScope-style top-level
+                # enable_thinking field, which llama.cpp does not consume.
+                # Its OpenAI transport sends reasoning_effort for both named
+                # levels and the mapped `none` value used by off.
                 model["compat"] = {
-                    "thinkingFormat": "qwen",
+                    "thinkingFormat": "openai",
                     "supportsReasoningEffort": True,
                 }
             else:

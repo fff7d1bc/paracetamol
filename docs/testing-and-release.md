@@ -250,6 +250,14 @@ and Maki cannot hide every generic choice; confirm Muse off clamps to low and
 Maki's standard numeric values recover the documented native label. Keep these
 protocol checks separate from cross-model quality benchmarking.
 
+After a Pi update, also verify the transport rather than trusting the selector
+label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every
+Qwen3.8 preset must use Pi's `openai` thinking format with off mapped to
+`none`. Run one live representative of each distinct template path. Thinking
+off must produce no reasoning block and must select the server's non-thinking
+sampling defaults; a TUI status line saying `thinking off` is not evidence of
+either behavior.
+
 For coding-agent evaluation changes, validate the frozen inputs before using
 GPU time:
 
