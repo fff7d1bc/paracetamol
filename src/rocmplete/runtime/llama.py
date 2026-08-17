@@ -29,6 +29,7 @@ class LlamaOptions:
     mode: str
     data_dir: Path
     backend: str = "rocm"
+    source_revision: str = ""
     model: Optional[Path] = None
     managed_model: str = ""
     managed_draft: str = ""
@@ -119,6 +120,9 @@ def llama_command(options: LlamaOptions, volume_suffix: str) -> List[str]:
         ),
         "--env", "ROCMLETE_PROFILE={}".format(options.profile),
         "--env", "ROCMLETE_LLAMA_BACKEND={}".format(options.backend),
+        "--env", "ROCMLETE_SOURCE_REVISION={}".format(
+            options.source_revision
+        ),
         "--env", "ROCMLETE_LLAMA_MODE={}".format(options.mode),
         "--env", "ROCMLETE_LLAMA_MODEL={}".format(container_model),
         "--env", "ROCMLETE_LLAMA_DRAFT_MODEL={}".format(
@@ -158,6 +162,9 @@ def llama_command(options: LlamaOptions, volume_suffix: str) -> List[str]:
         "--env", "ROCMLETE_HOST_LISTEN={}".format(options.listen),
         "--env", "ROCMLETE_PORT={}".format(options.port),
         "--env", "ROCMLETE_GPU_COUNT={}".format(len(options.render_nodes)),
+        "--env", "ROCMLETE_RENDER_NODES={}".format(
+            ",".join(options.render_nodes)
+        ),
     ])
     for profile in GPU_PROFILES:
         command.extend(

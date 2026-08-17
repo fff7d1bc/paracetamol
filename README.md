@@ -244,6 +244,19 @@ hardware profile:
 ./rocmplete run comfyui
 ```
 
+A running llama.cpp server also exposes a pasteable configuration report:
+
+```bash
+./rocmplete status llama-cpp
+./rocmplete status llama-cpp \
+  --model qwen3.8-27b-mtp-ud-q8-k-xl
+```
+
+The model selector identifies a managed direct preset or chooses one configured
+router preset. The report includes the immutable image and source identities,
+resolved hardware, model policy, sampling defaults, and exact running llama.cpp
+command without printing API-key values or host secret paths.
+
 Override the profile only when testing or diagnosing:
 
 ```bash

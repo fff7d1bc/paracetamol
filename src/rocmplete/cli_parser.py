@@ -276,6 +276,19 @@ Try one of these:
   ./rocmplete logs dwarfstar --follow
   ./rocmplete logs comfyui --all
 """
+STATUS_EXAMPLES = """\
+Show the normal local dashboard:
+
+  ./rocmplete status
+
+Print a shareable report for a running direct llama.cpp server:
+
+  ./rocmplete status llama-cpp
+
+Select one model from a running router:
+
+  ./rocmplete status llama-cpp --model qwen3.8-27b-mtp-ud-q8-k-xl
+"""
 STOP_EXAMPLES = """\
 Try one of these:
 
@@ -1106,8 +1119,20 @@ def _parser() -> argparse.ArgumentParser:
         "status",
         help="show images, containers, devices, and persistent data",
         allow_abbrev=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=STATUS_EXAMPLES,
+    )
+    status.add_argument(
+        "application",
+        choices=("llama-cpp",),
+        nargs="?",
+        help="show a shareable live application report",
     )
     status.add_argument("--data-dir", help="persistent data directory")
+    status.add_argument(
+        "--model",
+        help="managed preset to select for model-specific details",
+    )
 
     run = subparsers.add_parser(
         "run",

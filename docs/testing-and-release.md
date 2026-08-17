@@ -288,6 +288,15 @@ partition, and no speculative arguments appear for ordinary presets. CPU
 startup validates argument shape only; it is not a correctness or performance
 result for speculative decoding.
 
+Changes to the llama.cpp share report require direct and router tests. Confirm
+that `status llama-cpp` reports the running image ID, source labels, resolved
+profile, exact PID 1 command, and redacted authentication state. In router
+mode, confirm that no model selection lists the mounted preset identifiers and
+that `--model PRESET` reports its context, reasoning and sampling policy,
+profile-specific cache and Flash Attention choices, and backend-specific draft
+depth. Start with `auto` on target hardware so the report proves it shows the
+resolved profile rather than merely echoing the request.
+
 A context-metadata override additionally requires single-model and router
 inspection for the exact `override-kv` values and disabled fitting. Hardware
 acceptance must exercise prompts beyond the GGUF-declared window and compare

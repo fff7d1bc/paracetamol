@@ -30,6 +30,7 @@ listen="${ROCMLETE_LISTEN:-0.0.0.0}"
 host_listen="${ROCMLETE_HOST_LISTEN:-unknown}"
 port="${ROCMLETE_PORT:-8080}"
 gpu_count="${ROCMLETE_GPU_COUNT:-0}"
+runtime_report=/tmp/rocmplete-llama-runtime
 
 case "$profile" in
     auto|rdna4|strix-halo|strix-point|cpu) ;;
@@ -133,6 +134,8 @@ profile_args=()
 bench_profile_args=()
 speculative_args=()
 model_policy_args=()
+unified_memory=0
+vulkan_f16_kv_contiguize=0
 if [[ "$router" == 0 && -n "$context_override" ]]; then
     model_policy_args+=(--fit off --override-kv "$context_override")
 fi
@@ -237,6 +240,7 @@ else
     fi
     if [[ "$profile" == strix-halo || "$profile" == strix-point ]]; then
         export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
+        unified_memory=1
         profile_args+=(--load-mode none)
         bench_profile_args+=(--load-mode none)
     fi
@@ -245,6 +249,7 @@ else
             # The patched path is opt-in so other architectures and Vulkan
             # implementations retain pinned-upstream behavior.
             export GGML_VK_FA_KV_CONTIG=1
+            vulkan_f16_kv_contiguize=1
         fi
         if [[ "$router" == 0 && -n "$flash_attn_strix_halo" ]]; then
             model_policy_args+=(--flash-attn "$flash_attn_strix_halo")
@@ -267,6 +272,47 @@ fi
 mkdir -p /data/cache /data/home
 export HOME=/data/home
 export LLAMA_CACHE=/data/cache
+
+runtime_context=""
+runtime_api_key=0
+runtime_arguments=("$@")
+for ((index = 0; index < ${#runtime_arguments[@]}; index += 1)); do
+    case "${runtime_arguments[$index]}" in
+        --ctx-size)
+            if ((index + 1 < ${#runtime_arguments[@]})); then
+                runtime_context="${runtime_arguments[$((index + 1))]}"
+            fi
+            ;;
+        --api-key-file)
+            runtime_api_key=1
+            ;;
+    esac
+done
+
+# The report lives only in this container's private tmpfs. The host status
+# command reads it through a bounded `podman exec cat`, so it reflects the
+# profile and backend device names resolved here without persisting stale
+# state or scraping unbounded application logs.
+{
+    printf 'schema=1\n'
+    printf 'mode=%s\n' "$mode"
+    printf 'profile=%s\n' "$profile"
+    printf 'backend=%s\n' "$backend"
+    printf 'device=%s\n' "$device"
+    printf 'backend_devices=%s\n' "${backend_devices:-none}"
+    printf 'architecture=%s\n' "$architecture"
+    printf 'gpu_count=%s\n' "$gpu_count"
+    printf 'router=%s\n' "$router"
+    printf 'models_max=%s\n' "$models_max"
+    printf 'context=%s\n' "$runtime_context"
+    printf 'listen=%s\n' "$listen"
+    printf 'host_listen=%s\n' "$host_listen"
+    printf 'port=%s\n' "$port"
+    printf 'api_key=%s\n' "$runtime_api_key"
+    printf 'unified_memory=%s\n' "$unified_memory"
+    printf 'vulkan_f16_kv_contiguize=%s\n' "$vulkan_f16_kv_contiguize"
+} > "$runtime_report"
+chmod 0444 "$runtime_report"
 
 printf '\nROCmplete: llama.cpp %s\n' "$mode"
 printf '  profile:       %s\n' "$profile"

@@ -132,6 +132,21 @@ For the common managed default:
   --preset qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
+Startup prints the matching inspection command. While the server is running,
+use it to produce one block suitable for a bug report or a discussion of the
+exact model configuration:
+
+```bash
+./rocmplete status llama-cpp \
+  --model qwen3.8-27b-mtp-ud-q8-k-xl
+```
+
+This reports the live image, resolved GPU profile, GGUF provenance, context,
+template, reasoning and sampling policies, MTP or DFlash depth, cache and
+Flash Attention choices, and the exact running llama.cpp command. Explicit
+request sampling values remain authoritative over the reported server
+defaults.
+
 For the Muse Glimmer comparison:
 
 ```bash
@@ -1048,6 +1063,13 @@ Expose every completely installed preset through the multi-model router:
 ```bash
 ./rocmplete run llama-cpp server \
   --router --models-max 2
+```
+
+Inspect the router itself, or select one configured child policy:
+
+```bash
+./rocmplete status llama-cpp
+./rocmplete status llama-cpp --model qwen3.6-27b-mtp-q8-0
 ```
 
 Select a preset using the OpenAI API `model` field. Missing models are skipped;

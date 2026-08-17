@@ -2063,9 +2063,642 @@ def _container_environment(name: str) -> Mapping[str, str]:
     return values
 
 
-def command_status(arguments: argparse.Namespace) -> int:
+_LLAMA_RUNTIME_REPORT = "/tmp/rocmplete-llama-runtime"
+_LLAMA_RUNTIME_REPORT_KEYS = frozenset(
+    (
+        "schema",
+        "mode",
+        "profile",
+        "backend",
+        "device",
+        "backend_devices",
+        "architecture",
+        "gpu_count",
+        "router",
+        "models_max",
+        "context",
+        "listen",
+        "host_listen",
+        "port",
+        "api_key",
+        "unified_memory",
+        "vulkan_f16_kv_contiguize",
+    )
+)
+
+
+def _project_revision() -> str:
+    try:
+        revision = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        changes = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(PROJECT_ROOT),
+                "status",
+                "--porcelain",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return "unavailable"
+    value = revision.stdout.strip()
+    if revision.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", value):
+        return "unavailable"
+    if changes.returncode == 0 and changes.stdout.strip():
+        return "{} (dirty)".format(value)
+    return value
+
+
+def _parse_llama_runtime_report(contents: str) -> Mapping[str, str]:
+    values = {}
+    for line in contents.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or not key or key in values:
+            raise LauncherError("invalid llama.cpp runtime report")
+        values[key] = value
+    unknown = sorted(set(values) - _LLAMA_RUNTIME_REPORT_KEYS)
+    missing = sorted(_LLAMA_RUNTIME_REPORT_KEYS - set(values))
+    if unknown or missing or values.get("schema") != "1":
+        raise LauncherError("unsupported llama.cpp runtime report")
+    if values["mode"] != "server":
+        raise LauncherError("the managed llama.cpp container is not a server")
+    if values["backend"] not in ("rocm", "vulkan"):
+        raise LauncherError("invalid backend in llama.cpp runtime report")
+    if values["profile"] not in ("cpu",) + GPU_PROFILES:
+        raise LauncherError("invalid profile in llama.cpp runtime report")
+    for key in ("router", "api_key", "unified_memory", "vulkan_f16_kv_contiguize"):
+        if values[key] not in ("0", "1"):
+            raise LauncherError("invalid {} in llama.cpp runtime report".format(key))
+    for key in ("gpu_count", "models_max"):
+        if not values[key].isdigit():
+            raise LauncherError("invalid {} in llama.cpp runtime report".format(key))
+    if int(values["models_max"]) < 1:
+        raise LauncherError("invalid models_max in llama.cpp runtime report")
+    if values["context"] and not re.fullmatch(r"[1-9][0-9]*", values["context"]):
+        raise LauncherError("invalid context in llama.cpp runtime report")
+    validate_listen_address(values["listen"])
+    validate_listen_address(values["host_listen"])
+    validate_port(values["port"])
+    return values
+
+
+def _llama_runtime_report(name: str) -> Mapping[str, str]:
+    contents = podman.capture(
+        ["podman", "exec", name, "cat", _LLAMA_RUNTIME_REPORT],
+        "cannot read the live llama.cpp runtime report; retry after startup",
+    )
+    return _parse_llama_runtime_report(contents)
+
+
+def _container_image_name(name: str) -> str:
+    value = podman.capture(
+        ["podman", "inspect", "--format", "{{.Config.Image}}", name],
+        "cannot inspect container {!r}".format(name),
+    )
+    if not value or any(character in value for character in "\r\n"):
+        raise LauncherError("Podman returned an invalid container image name")
+    return value
+
+
+def _container_image_identity(name: str) -> str:
+    value = podman.capture(
+        ["podman", "inspect", "--format", "{{.Image}}", name],
+        "cannot inspect container {!r}".format(name),
+    )
+    if not value or any(character in value for character in "\r\n"):
+        raise LauncherError("Podman returned an invalid container image ID")
+    return value
+
+
+def _image_labels(image: str) -> Mapping[str, str]:
+    output = podman.capture(
+        ["podman", "image", "inspect", "--format", "{{json .Labels}}", image],
+        "cannot inspect image {}".format(image),
+    )
+    try:
+        document = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise LauncherError("Podman returned invalid image labels") from error
+    if document is None:
+        return {}
+    if not isinstance(document, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in document.items()
+    ):
+        raise LauncherError("Podman returned invalid image labels")
+    return document
+
+
+def _parse_llama_router_snapshot(contents: str) -> Mapping[str, Mapping[str, str]]:
+    lines = contents.splitlines()
+    if not lines or lines[0] != "version = 1":
+        raise LauncherError("running llama.cpp router has an unsupported preset")
+    sections = {}
+    current = None
+    for line in lines[1:]:
+        if not line:
+            continue
+        section = re.fullmatch(r"\[([a-z0-9][a-z0-9._-]*)\]", line)
+        if section:
+            identifier = section.group(1)
+            if identifier in sections:
+                raise LauncherError(
+                    "running llama.cpp router preset has duplicate models"
+                )
+            current = {}
+            sections[identifier] = current
+            continue
+        key, separator, value = line.partition(" = ")
+        if current is None or not separator or not key or key in current:
+            raise LauncherError("running llama.cpp router preset is invalid")
+        current[key] = value
+    if not sections:
+        raise LauncherError("running llama.cpp router has no models")
+    return sections
+
+
+def _llama_router_snapshot(name: str) -> Mapping[str, Mapping[str, str]]:
+    contents = podman.capture(
+        ["podman", "exec", name, "cat", "/run/rocmplete/models.ini"],
+        "cannot read the running llama.cpp router preset",
+    )
+    return _parse_llama_router_snapshot(contents)
+
+
+def _llama_direct_preset(
+    catalog: Catalog,
+    environment: Mapping[str, str],
+    backend: str,
+    requested: Optional[str],
+) -> Optional[LlamaPreset]:
+    model = environment.get("ROCMLETE_LLAMA_MODEL", "")
+    draft_model = environment.get("ROCMLETE_LLAMA_DRAFT_MODEL", "")
+    speculation = environment.get("ROCMLETE_LLAMA_SPECULATIVE_TYPE", "")
+    draft_tokens = environment.get("ROCMLETE_LLAMA_DRAFT_TOKENS", "0")
+    candidates = []
+    for preset in catalog.llama_presets.values():
+        artifact = catalog.artifact(preset.artifact)
+        expected_model = "/content/models/{}".format(artifact.destination)
+        expected_draft = ""
+        if preset.draft_artifact:
+            expected_draft = "/content/models/{}".format(
+                catalog.artifact(preset.draft_artifact).destination
+            )
+        if (
+            model == expected_model
+            and draft_model == expected_draft
+            and speculation == preset.speculative_type
+            and draft_tokens == str(preset.draft_tokens_for_backend(backend))
+        ):
+            candidates.append(preset)
+    if requested is not None:
+        selected = catalog.llama_preset(requested)
+        if selected not in candidates:
+            raise LauncherError(
+                "running llama.cpp server is not using preset {!r}".format(requested)
+            )
+        return selected
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise LauncherError(
+            "running model matches multiple presets; select one with --model"
+        )
+    return None
+
+
+def _llama_sampling_rows(
+    catalog: Catalog, preset: Optional[LlamaPreset], raw: str
+) -> Tuple[Tuple[str, str], ...]:
+    if raw:
+        try:
+            document = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise LauncherError(
+                "running llama.cpp sampling policy is invalid"
+            ) from error
+    elif preset is not None and preset.sampling_policy:
+        document = catalog.llama_sampling_policy(
+            preset.sampling_policy
+        ).modes()
+    else:
+        return (("Sampling", "request values or llama.cpp defaults"),)
+    if not isinstance(document, dict):
+        raise LauncherError("running llama.cpp sampling policy is invalid")
+    rows = []
+    fields = (
+        ("temperature", "temp"),
+        ("top_p", "top-p"),
+        ("top_k", "top-k"),
+        ("min_p", "min-p"),
+        ("presence_penalty", "presence"),
+        ("repeat_penalty", "repeat"),
+    )
+    for mode, label in (
+        ("thinking", "Thinking sampling"),
+        ("non_thinking", "Off sampling"),
+    ):
+        values = document.get(mode)
+        if not isinstance(values, dict) or any(
+            key not in values for key, _ in fields
+        ):
+            raise LauncherError(
+                "running llama.cpp sampling policy is invalid"
+            )
+        rendered = ", ".join(
+            "{} {}".format(display, values[key])
+            for key, display in fields
+        )
+        rows.append((label, rendered))
+    rows.append(("Precedence", "explicit request values override these defaults"))
+    return tuple(rows)
+
+
+def _llama_profile_setting(
+    environment: Mapping[str, str], prefix: str, profile: str
+) -> str:
+    key = "ROCMLETE_LLAMA_{}_{}".format(
+        prefix, profile.upper().replace("-", "_")
+    )
+    return environment.get(key, "")
+
+
+def _llama_process_command(name: str) -> Tuple[str, ...]:
+    raw = podman.capture_bytes(
+        ["podman", "exec", name, "cat", "/proc/1/cmdline"],
+        "cannot inspect the running llama.cpp command",
+    )
+    try:
+        command = tuple(
+            part.decode("utf-8") for part in raw.rstrip(b"\0").split(b"\0")
+        )
+    except UnicodeDecodeError as error:
+        raise LauncherError("running llama.cpp command is not UTF-8") from error
+    if not command or Path(command[0]).name != "llama-server":
+        raise LauncherError("running container PID 1 is not llama-server")
+    redacted = list(command)
+    if "--api-key-file" in redacted:
+        index = redacted.index("--api-key-file")
+        if index + 1 < len(redacted):
+            redacted[index + 1] = "API_KEY_FILE"
+    return tuple(redacted)
+
+
+def _llama_reproduction_command(
+    environment: Mapping[str, str],
+    runtime: Mapping[str, str],
+    preset: Optional[LlamaPreset],
+) -> List[str]:
+    command = ["./rocmplete", "run", "llama-cpp", "server"]
+    if runtime["router"] == "1":
+        command.extend(("--router", "--models-max", runtime["models_max"]))
+    elif preset is not None:
+        command.extend(("--preset", preset.identifier))
+    else:
+        command.extend(("--model", "GGUF_PATH"))
+    command.extend(("--backend", runtime["backend"], "--profile", runtime["profile"]))
+    render_nodes = tuple(
+        node
+        for node in environment.get("ROCMLETE_RENDER_NODES", "").split(",")
+        if node
+    )
+    for node in render_nodes:
+        command.extend(("--render-node", node))
+    command.extend(("--listen", runtime["host_listen"], "--port", runtime["port"]))
+    if runtime["context"]:
+        command.extend(("--context", runtime["context"]))
+    elif preset is not None and runtime["router"] == "0":
+        command.extend(("--context", str(preset.default_context)))
+    if runtime["api_key"] == "1":
+        command.extend(("--api-key-file", "API_KEY_FILE"))
+    return command
+
+
+def _print_llama_status_section(
+    title: str, rows: Sequence[Tuple[object, object]]
+) -> None:
+    print()
+    print(style(title, "heading"))
+    print_columns(
+        rows,
+        columns=(ColumnSpec(role="label"), ColumnSpec()),
+        indent="  ",
+    )
+
+
+def _command_llama_status(arguments: argparse.Namespace, catalog: Catalog) -> int:
+    name = APPLICATIONS["llama-cpp"].container_name
+    if not podman.container_exists(name):
+        raise LauncherError("container {!r} does not exist".format(name))
+    state = podman.capture(
+        ["podman", "inspect", "--format", "{{.State.Status}}", name],
+        "cannot inspect container {!r}".format(name),
+    )
+    if state != "running":
+        raise LauncherError("container {!r} is {}".format(name, state))
+    runtime = _llama_runtime_report(name)
+    environment = _container_environment(name)
+    image = _container_image_name(name)
+    image_identity = _container_image_identity(name)
+    labels = _image_labels(image_identity)
+    process_command = _llama_process_command(name)
+
+    router_sections = None
+    preset = None
+    selected_section = None
+    model_names = ()
+    if runtime["router"] == "1":
+        router_sections = _llama_router_snapshot(name)
+        model_names = tuple(router_sections)
+        if arguments.model:
+            if arguments.model not in router_sections:
+                raise LauncherError(
+                    "running router does not expose model {!r}".format(
+                        arguments.model
+                    )
+                )
+            preset = catalog.llama_preset(arguments.model)
+            selected_section = router_sections[arguments.model]
+    else:
+        preset = _llama_direct_preset(
+            catalog, environment, runtime["backend"], arguments.model
+        )
+
+    print(style("ROCmplete llama.cpp runtime", "heading"))
+    print_columns(
+        (
+            ("State", state),
+            (
+                "ROCmplete",
+                environment.get("ROCMLETE_SOURCE_REVISION", "")
+                or _project_revision(),
+            ),
+            ("Image", image),
+            ("Image ID", image_identity),
+            (
+                "llama.cpp",
+                labels.get("org.opencontainers.image.revision", "unknown"),
+            ),
+            (
+                "ROCm",
+                labels.get(
+                    "io.github.fff7d1bc.rocmplete.rocm.version", "unknown"
+                ),
+            ),
+        ),
+        columns=(ColumnSpec(role="label"), ColumnSpec()),
+        indent="  ",
+    )
+    hardware_rows = [
+        ("Backend", runtime["backend"]),
+        (
+            "Profile",
+            "{} (requested {})".format(
+                runtime["profile"], environment["ROCMLETE_PROFILE"]
+            )
+            if environment.get("ROCMLETE_PROFILE")
+            and environment["ROCMLETE_PROFILE"] != runtime["profile"]
+            else runtime["profile"],
+        ),
+        ("Architecture", runtime["architecture"]),
+        ("Device", runtime["device"]),
+        (
+            "Render nodes",
+            environment.get("ROCMLETE_RENDER_NODES", "") or "none",
+        ),
+    ]
+    if int(runtime["gpu_count"]) > 1:
+        hardware_rows.append(
+            (
+                "GPU split",
+                "layer across {} devices".format(runtime["gpu_count"]),
+            )
+        )
+    _print_llama_status_section("Hardware", hardware_rows)
+
+    server_rows = [
+        (
+            "Mode",
+            "router"
+            if runtime["router"] == "1"
+            else "direct preset" if preset is not None else "direct model",
+        ),
+        ("Container bind", "{}:{}".format(runtime["listen"], runtime["port"])),
+        ("Host publish", "{}:{}".format(runtime["host_listen"], runtime["port"])),
+        (
+            "Authentication",
+            "configured (value redacted)"
+            if runtime["api_key"] == "1"
+            else "none",
+        ),
+        ("Unified memory", "on" if runtime["unified_memory"] == "1" else "off"),
+        (
+            "Vulkan F16 KV fix",
+            "on" if runtime["vulkan_f16_kv_contiguize"] == "1" else "off",
+        ),
+    ]
+    if runtime["router"] == "1":
+        server_rows.extend(
+            (
+                ("Loaded-model limit", runtime["models_max"]),
+                ("Configured models", len(model_names)),
+            )
+        )
+    _print_llama_status_section("Server", server_rows)
+
+    if runtime["router"] == "1" and preset is None:
+        print()
+        print(style("Router models", "heading"))
+        for identifier in model_names:
+            print("  {}".format(style(identifier, "command")))
+        print(
+            "\n{} Select one with {}".format(
+                style("Details:", "label"),
+                style(
+                    "./rocmplete status llama-cpp --model MODEL",
+                    "command",
+                ),
+            )
+        )
+    else:
+        model_rows = []
+        if selected_section is not None:
+            model_path = selected_section.get("model", "unknown")
+            context = runtime["context"] or selected_section.get(
+                "c", "model metadata"
+            )
+            template_path = selected_section.get(
+                "chat-template-file", ""
+            )
+            template = (
+                "managed {}".format(Path(template_path).stem)
+                if template_path
+                else "model metadata"
+            )
+            reasoning_output = (
+                "preserved in the API response"
+                if selected_section.get("reasoning-preserve") == "true"
+                else "llama.cpp default"
+            )
+            speculative_type = selected_section.get("spec-type", "")
+            draft_tokens = selected_section.get("spec-draft-n-max", "0")
+            flash_attention = selected_section.get(
+                "rocmplete-flash-attn-{}".format(runtime["profile"]),
+                "llama.cpp default",
+            )
+            kv_cache = selected_section.get(
+                "rocmplete-kv-cache-{}".format(runtime["profile"]),
+                "llama.cpp default",
+            )
+            sampling = selected_section.get(
+                "sampling-defaults-by-reasoning", ""
+            )
+        else:
+            model_path = environment.get(
+                "ROCMLETE_LLAMA_MODEL", "unknown"
+            )
+            context = runtime["context"] or "model metadata"
+            template_name = environment.get(
+                "ROCMLETE_LLAMA_CHAT_TEMPLATE", ""
+            )
+            template = (
+                "managed {}".format(template_name)
+                if template_name
+                else "model metadata"
+            )
+            reasoning_output = (
+                "preserved in the API response"
+                if environment.get("ROCMLETE_LLAMA_REASONING_PRESERVE")
+                == "1"
+                else "llama.cpp default"
+            )
+            speculative_type = environment.get(
+                "ROCMLETE_LLAMA_SPECULATIVE_TYPE", ""
+            )
+            draft_tokens = environment.get(
+                "ROCMLETE_LLAMA_DRAFT_TOKENS", "0"
+            )
+            flash_attention = _llama_profile_setting(
+                environment, "FLASH_ATTN", runtime["profile"]
+            ) or "llama.cpp default"
+            kv_cache = _llama_profile_setting(
+                environment, "KV_CACHE", runtime["profile"]
+            ) or "llama.cpp default"
+            sampling = environment.get(
+                "ROCMLETE_LLAMA_SAMPLING_DEFAULTS", ""
+            )
+        if speculative_type:
+            strategy = {
+                "draft-mtp": "MTP",
+                "draft-dflash": "DFlash",
+            }.get(speculative_type, speculative_type)
+            speculation = "{}, {} draft tokens".format(
+                strategy, draft_tokens
+            )
+        else:
+            speculation = "off"
+
+        if preset is None:
+            model_rows.extend(
+                (
+                    ("Preset", "local GGUF"),
+                    ("GGUF", model_path),
+                )
+            )
+            context_policy = "model metadata"
+            reasoning = "not catalog-managed"
+        else:
+            artifact = catalog.artifact(preset.artifact)
+            context_policy = _llama_context_policy(preset)
+            reasoning = _llama_reasoning_policy(preset)
+            model_rows.extend(
+                (
+                    ("Preset", preset.identifier),
+                    ("Description", artifact.description),
+                    ("GGUF", model_path),
+                    (
+                        "Source",
+                        "{} @ {} / {}".format(
+                            artifact.source.repository,
+                            artifact.source.revision,
+                            artifact.source.path,
+                        ),
+                    ),
+                    ("SHA-256", artifact.sha256),
+                )
+            )
+        model_rows.extend(
+            (
+                (
+                    "Context",
+                    "{} tokens".format(context)
+                    if context != "model metadata"
+                    else context,
+                ),
+                ("Context policy", context_policy),
+                ("Template", template),
+                ("Reasoning", reasoning),
+                ("Reasoning output", reasoning_output),
+                ("Speculation", speculation),
+                ("Flash Attention", flash_attention),
+                ("K/V cache", kv_cache),
+            )
+        )
+        model_rows.extend(_llama_sampling_rows(catalog, preset, sampling))
+        _print_llama_status_section("Model policy", model_rows)
+
+    _print_llama_status_section(
+        "ROCmplete behavior",
+        (
+            (
+                "Downstream patches",
+                labels.get(
+                    "io.github.fff7d1bc.rocmplete.llama-cpp.patches",
+                    "unknown",
+                ),
+            ),
+            (
+                "Policy boundary",
+                "catalog defaults are selected after reasoning mode resolution",
+            ),
+            (
+                "Secrets",
+                "API-key values and host secret paths are never printed",
+            ),
+        ),
+    )
+
+    reproduction = _llama_reproduction_command(environment, runtime, preset)
+    print()
+    print(style("Reproduce effective ROCmplete launch", "heading"))
+    print("  {}".format(style(shlex.join(reproduction), "command")))
+    print()
+    print(style("Exact running llama.cpp command", "heading"))
+    print("  {}".format(style(shlex.join(process_command), "command")))
+    return 0
+
+
+def command_status(
+    arguments: argparse.Namespace, catalog: Optional[Catalog] = None
+) -> int:
     """Show operational state without creating data or starting containers."""
     podman.require_rootless()
+    if arguments.application == "llama-cpp":
+        if arguments.data_dir:
+            raise LauncherError("--data-dir is only valid for the normal status view")
+        return _command_llama_status(arguments, catalog or load_catalog())
+    if arguments.model:
+        raise LauncherError("--model requires 'status llama-cpp'")
     requested = selected_data_dir(arguments.data_dir).expanduser()
     try:
         data_path = requested.resolve(strict=False)
@@ -6473,6 +7106,7 @@ def command_llama(arguments: argparse.Namespace, catalog: Catalog) -> int:
         mode=arguments.mode,
         data_dir=data_dir,
         backend=arguments.backend,
+        source_revision=_project_revision(),
         model=model,
         managed_model=managed_model,
         managed_draft=managed_draft,
@@ -6518,6 +7152,16 @@ def command_llama(arguments: argparse.Namespace, catalog: Catalog) -> int:
     )
     print("{} {}".format(style("Backend:", "label"), arguments.backend))
     print("{} {}".format(style("Model:", "label"), display_model))
+    if arguments.mode == "server" and not arguments.dry_run:
+        status_command = ["./rocmplete", "status", "llama-cpp"]
+        if arguments.preset:
+            status_command.extend(("--model", arguments.preset))
+        print(
+            "{} {}".format(
+                style("Configuration:", "label"),
+                style(shlex.join(status_command), "command"),
+            )
+        )
     if arguments.dry_run:
         print(
             "{}\n  {}".format(

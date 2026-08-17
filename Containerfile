@@ -355,6 +355,7 @@ LABEL org.opencontainers.image.title="ROCmplete llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.rocmplete.rocm.version="${ROCM_VERSION}" \
+      io.github.fff7d1bc.rocmplete.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize" \
       io.github.fff7d1bc.rocmplete.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

@@ -321,6 +321,26 @@ host user. ROCmplete passes the launcher's umask into managed containers.
 ./rocmplete status
 ```
 
+For a running llama.cpp server, select the application scope to print a
+shareable runtime report instead of the general dashboard:
+
+```bash
+./rocmplete status llama-cpp
+
+# Required for model-specific details when the router serves many presets:
+./rocmplete status llama-cpp \
+  --model qwen3.8-27b-mtp-ud-q8-k-xl
+```
+
+The report reads the live container's private runtime snapshot, image labels,
+exact PID 1 command, and generated router selection. It identifies the
+resolved profile and GPU rather than repeating a requested `auto`, then joins
+that state to the managed model's source, template, reasoning, sampling,
+context, cache, Flash Attention, and speculative-decoding policy. It also
+prints a copyable ROCmplete command reproducing the effective launch. API-key
+values and host secret paths are redacted. A router report without `--model`
+lists its configured preset identifiers and shows how to select one.
+
 Detached application containers have independent names:
 
 ```bash

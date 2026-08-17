@@ -749,6 +749,11 @@ class RuntimeCommandTests(unittest.TestCase):
         )
         self.assertEqual(command.count("--device"), 3)
         self.assertIn("ROCMLETE_GPU_COUNT=2", command)
+        self.assertIn("ROCMLETE_SOURCE_REVISION=", command)
+        self.assertIn(
+            "ROCMLETE_RENDER_NODES=/dev/dri/renderD128,/dev/dri/renderD129",
+            command,
+        )
         self.assertIn("/dev/dri/renderD128", command)
         self.assertIn("/dev/dri/renderD129", command)
 
@@ -847,6 +852,10 @@ class RuntimeCommandTests(unittest.TestCase):
         )
         self.assertIn("--sampling-defaults-by-reasoning", entrypoint)
         self.assertIn('"$sampling_defaults"', entrypoint)
+        self.assertIn("/tmp/rocmplete-llama-runtime", entrypoint)
+        self.assertIn("printf 'profile=%s\\n'", entrypoint)
+        self.assertIn("printf 'architecture=%s\\n'", entrypoint)
+        self.assertIn("printf 'api_key=%s\\n'", entrypoint)
         self.assertIn(
             '""|kat-coder-v2.5|muse-glimmer-atem|qwen3-0.6b|qwen3.6|qwen3.8|'
             'translategemma-manual',

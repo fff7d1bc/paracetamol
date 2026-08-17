@@ -78,6 +78,17 @@ attached container status becomes a `LauncherError` that retains the exact
 child status for the human diagnostic. Detached runs deliberately retain the
 ordinary Podman lifecycle.
 
+The llama.cpp entrypoint writes a closed, versioned runtime snapshot below the
+container's private `/tmp` after resolving the hardware profile and backend
+device names. `status llama-cpp` reads that bounded file and PID 1's
+NUL-delimited command through exact `podman exec ... cat` calls. It combines
+those live data with structured container environment and image inspection.
+The snapshot is never persisted below `/data`, so a stopped container cannot
+leave a stale runtime claim. Router model membership comes from the exact
+read-only generated INI mounted into the running container. The report prints
+authentication presence
+but never reads or exposes API-key values or host secret paths.
+
 Every ROCmplete-created runtime container carries Podman metadata labels for
 ownership, role, and application where applicable. Scoped cleanup discovers
 these labels instead of assuming that all owned containers are the

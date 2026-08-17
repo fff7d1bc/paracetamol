@@ -1528,6 +1528,270 @@ class CliTests(unittest.TestCase):
             self.assertFalse(data_dir.exists())
         self.assertIn(str(data_dir), output.getvalue())
 
+    def test_status_llama_cpp_prints_shareable_direct_runtime_report(self):
+        image = APPLICATIONS["llama-cpp"].image
+        runtime_report = "\n".join(
+            (
+                "schema=1",
+                "mode=server",
+                "profile=strix-halo",
+                "backend=rocm",
+                "device=ROCm0: AMD Radeon 8060S Graphics",
+                "backend_devices=ROCm0",
+                "architecture=gfx1151",
+                "gpu_count=1",
+                "router=0",
+                "models_max=2",
+                "context=262144",
+                "listen=0.0.0.0",
+                "host_listen=127.0.0.1",
+                "port=8080",
+                "api_key=1",
+                "unified_memory=1",
+                "vulkan_f16_kv_contiguize=0",
+            )
+        )
+        environment = "\n".join(
+            (
+                "ROCMLETE_LLAMA_MODEL=/content/models/qwen3.6-27b-mtp/"
+                "Qwen3.6-27B-Q8_0.gguf",
+                "ROCMLETE_SOURCE_REVISION={}".format("c" * 40),
+                "ROCMLETE_PROFILE=auto",
+                "ROCMLETE_LLAMA_DRAFT_MODEL=",
+                "ROCMLETE_LLAMA_SPECULATIVE_TYPE=draft-mtp",
+                "ROCMLETE_LLAMA_DRAFT_TOKENS=3",
+                "ROCMLETE_LLAMA_CONTEXT_OVERRIDE=",
+                "ROCMLETE_LLAMA_JINJA=0",
+                "ROCMLETE_LLAMA_REASONING_PRESERVE=0",
+                "ROCMLETE_LLAMA_CHAT_TEMPLATE=qwen3.6",
+                "ROCMLETE_LLAMA_SAMPLING_DEFAULTS={}".format(
+                    _qwen_sampling_defaults()
+                ),
+                "ROCMLETE_LLAMA_FLASH_ATTN_STRIX_HALO=on",
+                "ROCMLETE_LLAMA_KV_CACHE_STRIX_HALO=q8_0",
+                "ROCMLETE_RENDER_NODES=/dev/dri/renderD128",
+            )
+        )
+
+        def capture(command, error):
+            if command == [
+                "podman", "inspect", "--format", "{{.State.Status}}",
+                "rocmplete-llama-cpp",
+            ]:
+                return "running"
+            if command == [
+                "podman", "exec", "rocmplete-llama-cpp", "cat",
+                "/tmp/rocmplete-llama-runtime",
+            ]:
+                return runtime_report
+            if command == [
+                "podman", "inspect", "--format",
+                "{{range .Config.Env}}{{println .}}{{end}}",
+                "rocmplete-llama-cpp",
+            ]:
+                return environment
+            if command == [
+                "podman", "inspect", "--format", "{{.Config.Image}}",
+                "rocmplete-llama-cpp",
+            ]:
+                return image
+            if command == [
+                "podman", "inspect", "--format", "{{.Image}}",
+                "rocmplete-llama-cpp",
+            ]:
+                return "sha256:" + "b" * 64
+            if command == [
+                "podman", "image", "inspect", "--format",
+                "{{json .Labels}}", "sha256:" + "b" * 64,
+            ]:
+                return json.dumps(
+                    {
+                        "org.opencontainers.image.revision": "a" * 40,
+                        "io.github.fff7d1bc.rocmplete.rocm.version": "7.14.0",
+                        "io.github.fff7d1bc.rocmplete.llama-cpp.patches": (
+                            "hip-apu-host-buffer,reasoning-controls"
+                        ),
+                    }
+                )
+            self.fail("unexpected capture command: {!r}".format(command))
+
+        _, arguments = parse_arguments(
+            [
+                "status",
+                "llama-cpp",
+                "--model",
+                "qwen3.6-27b-mtp-q8-0",
+            ]
+        )
+        with patch("rocmplete.cli.podman.require_rootless"), patch(
+            "rocmplete.cli.podman.container_exists", return_value=True
+        ), patch("rocmplete.cli.podman.capture", side_effect=capture), patch(
+            "rocmplete.cli.podman.capture_bytes",
+            return_value=(
+                b"llama-server\0--sampling-defaults-by-reasoning\0{}\0"
+                b"--api-key-file\0/run/secrets/llama-api-key\0"
+            ),
+        ), patch(
+            "rocmplete.cli._project_revision", return_value="c" * 40
+        ), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(command_status(arguments, load_catalog()), 0)
+
+        text = output.getvalue()
+        self.assertIn("ROCmplete llama.cpp runtime", text)
+        self.assertIn("sha256:" + "b" * 64, text)
+        self.assertIn("qwen3.6-27b-mtp-q8-0", text)
+        self.assertIn("AMD Radeon 8060S Graphics", text)
+        self.assertIn("toggle; off, on; default on", text)
+        self.assertIn("temp 1.0, top-p 0.95", text)
+        self.assertIn("temp 0.7, top-p 0.8", text)
+        self.assertIn("explicit request values override", text)
+        self.assertIn("q8_0", text)
+        self.assertIn("API_KEY_FILE", text)
+        self.assertIn("configured (value redacted)", text)
+        self.assertIn("--sampling-defaults-by-reasoning", text)
+        self.assertIn("hip-apu-host-buffer,reasoning-controls", text)
+        self.assertNotIn("/run/secrets", text)
+
+    def test_status_llama_cpp_selects_one_running_router_model(self):
+        image = APPLICATIONS["llama-cpp"].image
+        runtime_report = "\n".join(
+            (
+                "schema=1",
+                "mode=server",
+                "profile=strix-halo",
+                "backend=rocm",
+                "device=ROCm0: AMD Radeon 8060S Graphics",
+                "backend_devices=ROCm0",
+                "architecture=gfx1151",
+                "gpu_count=1",
+                "router=1",
+                "models_max=2",
+                "context=",
+                "listen=0.0.0.0",
+                "host_listen=192.0.2.10",
+                "port=8080",
+                "api_key=0",
+                "unified_memory=1",
+                "vulkan_f16_kv_contiguize=0",
+            )
+        )
+        router = "\n".join(
+            (
+                "version = 1",
+                "",
+                "[qwen3.8-27b-mtp-ud-q8-k-xl]",
+                "model = /content/models/qwen3.8-27b/Qwen3.8-27B-UD-Q8_K_XL.gguf",
+                "c = 262144",
+                "jinja = true",
+                "reasoning-preserve = true",
+                "chat-template-file = /usr/local/share/rocmplete/"
+                "llama-chat-templates/qwen3.8.jinja",
+                "sampling-defaults-by-reasoning = {}".format(
+                    _qwen_sampling_defaults()
+                ),
+                "spec-type = draft-mtp",
+                "spec-draft-n-max = 3",
+                "rocmplete-flash-attn-strix-halo = on",
+                "rocmplete-kv-cache-strix-halo = q8_0",
+                "load-on-startup = false",
+                "",
+            )
+        )
+        environment = "\n".join(
+            (
+                "ROCMLETE_LLAMA_ROUTER=1",
+                "ROCMLETE_SOURCE_REVISION={}".format("c" * 40),
+                "ROCMLETE_PROFILE=auto",
+                "ROCMLETE_RENDER_NODES=/dev/dri/renderD128",
+            )
+        )
+
+        def capture(command, error):
+            if command[0:4] == [
+                "podman", "inspect", "--format", "{{.State.Status}}",
+            ]:
+                return "running"
+            if command[-1:] == ["/tmp/rocmplete-llama-runtime"]:
+                return runtime_report
+            if command[0:4] == [
+                "podman", "inspect", "--format",
+                "{{range .Config.Env}}{{println .}}{{end}}",
+            ]:
+                return environment
+            if command[0:4] == [
+                "podman", "inspect", "--format", "{{.Config.Image}}",
+            ]:
+                return image
+            if command[0:4] == [
+                "podman", "inspect", "--format", "{{.Image}}",
+            ]:
+                return "sha256:" + "b" * 64
+            if command[0:4] == [
+                "podman", "image", "inspect", "--format",
+            ]:
+                return json.dumps(
+                    {
+                        "org.opencontainers.image.revision": "a" * 40,
+                        "io.github.fff7d1bc.rocmplete.rocm.version": "7.14.0",
+                        "io.github.fff7d1bc.rocmplete.llama-cpp.patches": (
+                            "hip-apu-host-buffer,reasoning-controls"
+                        ),
+                    }
+                )
+            if command[-1:] == ["/run/rocmplete/models.ini"]:
+                return router
+            self.fail("unexpected capture command: {!r}".format(command))
+
+        def run_status(parameters):
+            _, arguments = parse_arguments(parameters)
+            with patch("rocmplete.cli.podman.require_rootless"), patch(
+                "rocmplete.cli.podman.container_exists", return_value=True
+            ), patch(
+                "rocmplete.cli.podman.capture", side_effect=capture
+            ), patch(
+                "rocmplete.cli.podman.capture_bytes",
+                return_value=(
+                    b"llama-server\0--models-preset\0"
+                    b"/tmp/rocmplete-models.ini\0--models-max\0"
+                    b"2\0"
+                ),
+            ), patch(
+                "rocmplete.cli._project_revision", return_value="c" * 40
+            ), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(command_status(arguments, load_catalog()), 0)
+            return output.getvalue()
+
+        text = run_status(
+            [
+                "status",
+                "llama-cpp",
+                "--model",
+                "qwen3.8-27b-mtp-ud-q8-k-xl",
+            ]
+        )
+        self.assertIn("Mode", text)
+        self.assertIn("router", text)
+        self.assertIn("qwen3.8-27b-mtp-ud-q8-k-xl", text)
+        self.assertIn("effort; off, low, medium, xhigh; default medium", text)
+        self.assertIn("Flash Attention", text)
+        self.assertIn("q8_0", text)
+        self.assertIn("Exact running llama.cpp command", text)
+        self.assertIn("--models-preset /tmp/rocmplete-models.ini", text)
+        self.assertIn("192.0.2.10:8080", text)
+
+        overview = run_status(["status", "llama-cpp"])
+        self.assertIn("Router models", overview)
+        self.assertIn("qwen3.8-27b-mtp-ud-q8-k-xl", overview)
+        self.assertIn("--model MODEL", overview)
+
+    @patch("rocmplete.cli.podman.require_rootless")
+    def test_status_model_requires_llama_cpp_scope(self, require_rootless):
+        _, arguments = parse_arguments(["status", "--model", "qwen"])
+        with self.assertRaisesRegex(
+            LauncherError, "--model requires 'status llama-cpp'"
+        ):
+            command_status(arguments)
+
     @patch("rocmplete.cli.podman.image_exists", return_value=False)
     @patch(
         "rocmplete.cli.podman.capture",
@@ -2647,6 +2911,48 @@ class CliTests(unittest.TestCase):
             self.assertIn(
                 "ROCMLETE_LLAMA_CHAT_TEMPLATE=qwen3-0.6b", command
             )
+
+    def test_llama_server_start_prints_matching_status_command(self):
+        preset = load_catalog().llama_preset(
+            "qwen3.8-27b-mtp-ud-q8-k-xl"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            _, arguments = parse_arguments(
+                [
+                    "run",
+                    "llama-cpp",
+                    "server",
+                    "--preset",
+                    preset.identifier,
+                    "--profile",
+                    "cpu",
+                    "--data-dir",
+                    directory,
+                    "--detach",
+                ]
+            )
+            with patch(
+                "rocmplete.cli._llama_preset_status",
+                return_value=(
+                    "qwen3.8-27b/Qwen3.8-27B-UD-Q8_K_XL.gguf",
+                    Path(directory) / "model.gguf",
+                ),
+            ), patch(
+                "rocmplete.cli.podman.require_rootless"
+            ), patch(
+                "rocmplete.cli.podman.image_exists", return_value=True
+            ), patch(
+                "rocmplete.cli.podman.container_exists", return_value=False
+            ), patch(
+                "rocmplete.cli.podman.run", return_value=0
+            ), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(command_run(arguments), 0)
+
+        self.assertIn(
+            "Configuration: ./rocmplete status llama-cpp --model "
+            "qwen3.8-27b-mtp-ud-q8-k-xl",
+            output.getvalue(),
+        )
 
     def test_llama_qwen35_mtp_dry_run_uses_current_template_policy(self):
         catalog = load_catalog()
