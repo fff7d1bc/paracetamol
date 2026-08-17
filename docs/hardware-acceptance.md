@@ -26,6 +26,30 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Pi Qwen reasoning transports (2026-08-17)
+
+ROCmplete commit `84ada22` was exercised with Pi 0.84.2 on the Fedora 44
+Strix Halo host with kernel `7.1.7-200.fc44.x86_64`, ROCm 7.14, and
+`/dev/dri/renderD128`. The router used the existing
+`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` image (image
+ID `24e307ca7006bc093d20111e18e71d41256c4e8fda0a74c5df2729d417ecd1a3`);
+the correction changed generated Pi metadata and required no image rebuild.
+
+The generated Pi configuration assigned all four exposed Qwen3.6 presets to
+`qwen-chat-template` and all four exposed Qwen3.8 presets to `openai`, with
+off mapped to `none` throughout. A structured Pi request through
+`qwen3.8-27b-mtp-ud-q8-k-xl` at off returned only a text block containing
+`true`; medium returned a separate thinking block followed by `true`. The
+same paired check through `qwen3.6-27b-mtp-q8-0` returned text-only `true` at
+off and a thinking block plus `true` at its generic high/on setting.
+
+This accepts one live representative for each distinct managed Qwen template
+and Pi transport. The family-wide configuration test covers the MTP,
+non-MTP, Q8, Q4, dense, and sparse preset variants that reuse those two
+paths. The managed container stopped cleanly, and the kernel journal for the
+test window contained no matching AMDGPU fault, SVM mapping failure,
+general-protection fault, or OOM event.
+
 ### Fedora 44 Strix Halo llama.cpp runtime report (2026-08-17)
 
 ROCmplete commit `492bafb` was built and exercised on the Fedora 44 Strix Halo
