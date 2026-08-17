@@ -26,6 +26,35 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp runtime report (2026-08-17)
+
+ROCmplete commit `492bafb` was built and exercised on the Fedora 44 Strix Halo
+host with kernel `7.1.7-200.fc44.x86_64`, ROCm 7.14, and
+`/dev/dri/renderD128`. The resulting image was
+`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`24e307ca7006bc093d20111e18e71d41256c4e8fda0a74c5df2729d417ecd1a3`).
+The image passed `pip check`, and its labels identified the pinned llama.cpp
+revision and all four applied downstream patches.
+
+Direct startup of `qwen3.8-27b-mtp-ud-q8-k-xl` with profile `auto` printed the
+matching status command. The live report resolved `strix-halo` and `gfx1151`,
+identified the exact image and launcher revisions, and reproduced the 262144
+context, managed Qwen3.8 template, medium reasoning default, thinking/off
+sampling tuples, reasoning preservation, and ROCm MTP draft depth three. Its
+exact PID 1 command agreed with the direct launch. A bounded medium-effort
+request returned exact content `OK` with reasoning preserved and 29 of 33
+draft proposals accepted.
+
+Router startup exposed 16 mounted managed presets with a two-model loaded
+limit. The overview listed those exact identifiers, while selecting the same
+Qwen3.8 preset reproduced its model policy and the router's exact PID 1
+command. An on-demand medium-effort request again returned exact content `OK`
+with 29 of 33 draft proposals accepted. Both containers stopped cleanly; the
+kernel journal for the test window contained no matching AMDGPU fault, SVM
+mapping failure, general-protection fault, or OOM event. This accepts the live
+report and its direct/router inference wiring, not model quality or sustained
+performance.
+
 ### Fedora 44 Strix Halo catalog-driven reasoning sampling (2026-08-17)
 
 ROCmplete commit `b90eded` was built and exercised on the Fedora 44 Strix Halo
