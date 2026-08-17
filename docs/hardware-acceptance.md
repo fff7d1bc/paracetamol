@@ -26,6 +26,35 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo model-scoped reasoning fallback (2026-08-17)
+
+ROCmplete commit `0355a73` was built and exercised on the Fedora 44 Strix Halo
+host with kernel `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
+`/dev/dri/renderD128`. The resulting image was
+`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
+The complete managed patch set applied to pinned llama.cpp commit `3cb7ffb`,
+the image passed `pip check`, and the three direct-preset containers stopped
+cleanly.
+
+Qwen3.8 direct startup rendered native off, medium, and xhigh correctly;
+numeric budgets zero and 3276 retained the managed medium template default
+instead of being decoded as native choices. A bounded native-off ROCm request
+returned exact content `true` without reasoning. Qwen3.6 rendered both its
+native toggle and OpenAI-compatible off correctly, did not decode a numeric
+zero, and returned exact text-only `true` through live off-mode inference.
+These two templates cover their MTP, non-MTP, precision, and dense/sparse
+siblings; those variants retain separate performance and capacity acceptance.
+
+Muse rendered low, medium, high, and xhigh strengths correctly. Its generic
+off request resolved to model-owned low, while a numeric zero retained the
+managed high default. A bounded ROCm request returned exact content `true`
+with low-strength reasoning preserved. This acceptance supersedes the Maki
+numeric-budget interpretation described in earlier same-day records: numeric
+budgets remain sampler ceilings and are no longer evidence of a native model
+mode. It accepts template selection, server-side sampling-mode selection, and
+live GPU inference wiring, not comparative model quality.
+
 ### Fedora 44 Strix Halo Pi Qwen reasoning transports (2026-08-17)
 
 ROCmplete commit `84ada22` was exercised with Pi 0.84.2 on the Fedora 44
