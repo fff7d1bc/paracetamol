@@ -115,10 +115,9 @@ def _default_model(
 
 def _render_init(provider: str, model: str, thinking: str) -> bytes:
     model_spec = json.dumps("{}/{}".format(provider, model))
-    # Keep the named selector so Maki computes the same deterministic local
-    # wire value for startup and later /thinking choices. The managed server
-    # recognizes those values and also forwards the corresponding native
-    # effort or strength to the selected template.
+    # Maki persists a named selector but its llama.cpp transport serializes it
+    # as a numeric token budget. Keep startup and later /thinking choices
+    # consistent without pretending that number is a model-native level.
     thinking_value = json.dumps(thinking)
     content = """maki.setup({{
   always_thinking = {thinking},

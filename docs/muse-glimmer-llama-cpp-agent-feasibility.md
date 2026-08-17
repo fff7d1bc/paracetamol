@@ -512,6 +512,23 @@ outputs. The accepted change is therefore deliberately narrow: the dynamic XL
 forced-256K preset uses depth 12 on ROCm, while its 128K preset retains depth
 15, Vulkan retains depth 4, and both 17 GB presets remain unchanged.
 
+## 2026-08-17 scoped off fallback
+
+ROCmplete stopped decoding Maki's output-window-dependent numeric budgets as
+native model levels. Removing that server-wide compatibility block also
+removed its unsafe generic off-to-low rule, which had changed Qwen off into
+low. Muse still cannot disable reasoning, and OMP cannot hide its generic off
+choice, so this policy moved to the model-owned template: when
+`enable_thinking=false` and no native strength was supplied, Muse renders low;
+otherwise its unchanged fallback remains high.
+
+The derivative adds that one condition and an explanatory source comment to
+Meta's 9,992-byte template. The resulting 10,219-byte managed file has
+SHA-256
+`4849b801303b351a82dab37107a665410070cd58315fadccd8f5fde02084bd34`.
+Its immutable source revision and hash remain recorded above so later updates
+can separate Meta changes from ROCmplete's narrow policy.
+
 ## Retest triggers
 
 Repeat the comparison when any of these changes materially:

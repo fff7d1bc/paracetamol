@@ -1,5 +1,7 @@
 {#
   Template: Muse Glimmer ATEM Chat Template
+  Derived from Meta's template with ROCmplete's explicit-off fallback: because
+  Muse has no non-reasoning mode, enable_thinking=false selects native low.
   Renders the ATEM tool-calling protocol: reasoning channel (to=self), tool
   channels (to=<tool>), and the user channel, plus tool definitions and the
   valid-recipient list in the system block.
@@ -81,7 +83,7 @@
     {{- '</atem:invoke>\n</atem:function_calls>' -}}
 {%- endmacro -%}
 {%- macro render_reasoning() -%}
-    {%- set rs = reasoning_strength if reasoning_strength is defined and reasoning_strength else 'high' -%}
+    {%- set rs = reasoning_strength if reasoning_strength is defined and reasoning_strength else ('low' if enable_thinking is defined and enable_thinking is false else 'high') -%}
     {{- 'Reasoning strength: ' + rs + '.' -}}
 {%- endmacro -%}
 {%- macro render_system_meta(tools) -%}

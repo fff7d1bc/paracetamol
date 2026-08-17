@@ -647,11 +647,10 @@ the exact UI contract. Qwen3.6 declares a toggle, Qwen3.8 declares native
 effort, and Muse declares native strength. llama.cpp forwards recognized
 OpenAI-compatible labels through its template capability layer as both
 `reasoning_effort` and `reasoning_strength`; each template consumes only its
-own variable. The fail-closed server bridge adds label recovery for Maki
-0.4.8's deterministic numeric values while retaining the client-requested
-sampler ceiling. Muse declares no off choice because its
-official template always reasons; clients that cannot hide their generic off
-choice are conservatively clamped to Muse low.
+own variable. ROCmplete does not infer a native label from a client's numeric
+reasoning budget. Muse declares no off choice because its model always
+reasons; the reviewed template maps clients' unavoidable generic off value to
+Muse low without changing other model families.
 
 `bin/rocmplete` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
@@ -705,9 +704,12 @@ non-thinking policies and each applicable preset references one. Direct
 startup and router rendering pass the resolved data through a dedicated
 llama.cpp option that remains separate from Jinja. The patched server resolves
 thinking and fills only omitted or null sampling fields. OpenCode, Pi, OMP,
-Maki, and direct Chat Completions therefore share one mode-aware policy without
-separate model processes or duplicated client configuration. Evaluation
-metadata reads the same catalog policy when recording the resolved tuple.
+and direct Chat Completions therefore share one mode-aware policy without
+separate model processes or duplicated client configuration. Maki receives
+the thinking policy while its numeric budget leaves the template enabled, but
+cannot select the native non-thinking policy until its transport carries that
+control. Evaluation metadata reads the same catalog policy when recording the
+resolved tuple.
 
 Pi recognizes package and configuration commands only when the command is its
 first argument. The launcher classifies `install`, `remove`, `uninstall`,
@@ -767,15 +769,14 @@ requiring an installed model.
 The tested Maki 0.4.8 dynamic-provider model schema cannot express per-model
 request sampling parameters, and its llama.cpp adapter does not provide a
 request-body hook. The generated provider therefore does not publish fields
-Maki would ignore. The adapter sends numeric `thinking_budget_tokens`; the
-managed llama.cpp bridge recognizes Maki 0.4.8's standard values, derives the
-corresponding native label, and forwards it while retaining Maki's sampler
-ceiling. For Qwen3.6 and Qwen3.8 that resolved mode also selects the
-server-side official sampler; other families retain their normal server
-defaults unless their client can carry a reviewed static policy. Maki still
-exposes generic choices
-that some models do not support, so reasoning-sensitive quality comparisons
-use Pi and an explicit model-native condition.
+Maki would ignore. The adapter sends numeric `thinking_budget_tokens`, which
+llama.cpp treats as a sampler ceiling rather than a native effort, strength,
+or toggle. ROCmplete deliberately leaves those meanings separate instead of
+recovering a label from Maki's output-window-dependent percentages. Positive
+budgets retain each template's managed default, while Maki's off selector is
+not accepted as evidence of a native non-thinking mode or its sampling policy.
+Reasoning-sensitive quality comparisons therefore use a client that sends the
+explicit model-native condition.
 
 DwarfStar is a separate provider at its own loopback endpoint, with the one
 reviewed `deepseek-v4-flash-0731-q2-imatrix` model advertising the same

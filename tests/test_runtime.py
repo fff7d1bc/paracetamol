@@ -201,21 +201,9 @@ class RuntimeCommandTests(unittest.TestCase):
             / "reasoning-controls.patch"
         ).read_text()
         self.assertIn("tools/server/server-common.cpp", reasoning_patch)
-        self.assertIn("rocmplete_maki_reasoning_level", reasoning_patch)
-        self.assertIn(
-            'inputs.chat_template_kwargs["reasoning_effort"]',
-            reasoning_patch,
-        )
-        self.assertIn("has_native_reasoning_level", reasoning_patch)
-        self.assertIn(
-            'find("reasoning_strength")', reasoning_patch
-        )
-        self.assertNotIn(
-            'inputs.chat_template_kwargs["reasoning_strength"] =',
-            reasoning_patch,
-        )
-        self.assertIn("thinking_budget == 0", reasoning_patch)
-        self.assertIn("!inputs.enable_thinking", reasoning_patch)
+        self.assertNotIn("rocmplete_maki", reasoning_patch)
+        self.assertNotIn("thinking_budget_tokens", reasoning_patch)
+        self.assertNotIn("reasoning_effort", reasoning_patch)
         self.assertIn("common/arg.cpp", reasoning_patch)
         self.assertIn("common/common.h", reasoning_patch)
         self.assertIn("tools/server/server-common.h", reasoning_patch)
@@ -238,16 +226,6 @@ class RuntimeCommandTests(unittest.TestCase):
         self.assertNotIn('"qwen3.6-27b"', reasoning_patch)
         self.assertNotIn('"qwen3.8-27b"', reasoning_patch)
         self.assertIn("it->is_null()", reasoning_patch)
-        for budget, level in (
-            (1638, "low"),
-            (3276, "low"),
-            (6553, "medium"),
-            (9830, "high"),
-            (13107, "xhigh"),
-            (16384, "xhigh"),
-        ):
-            self.assertIn("budget == {}".format(budget), reasoning_patch)
-            self.assertIn('return "{}";'.format(level), reasoning_patch)
         self.assertIn(
             "/opt/rocmplete/container_profile.py", comfy_stage
         )

@@ -232,7 +232,7 @@ protected behavior is fixed.
 | Patch | Protected behavior and scope | Removal gate |
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
-| `reasoning-controls.patch` | Recovers native labels from Maki 0.4.8's deterministic numeric budgets while retaining its sampler ceiling, clamps a generic Muse off request to native low, and adds validated model-preset sampling defaults selected after thinking mode is resolved. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names. | Both endpoints carry the exact model-native controls without the patch, including Maki's numeric transport and clients that cannot hide Muse off, and expose an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. Related upstream request parsing is tracked in [PR 20479](https://github.com/ggml-org/llama.cpp/pull/20479). |
+| `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
 | `quantized-kv-flash-attention.patch` | Provides reviewed Vulkan q8_0 and HIP q8_0/q4_0 dequantize-on-load paths. It combines commits `4edaca09`, `4355d03e`, and `2a24abc6` from the `strix-halo-fa-fixes` branch. | Matching upstream code passes the same f16 and q8_0 cache, backend, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. ROCmplete enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 
@@ -251,21 +251,26 @@ rather than carrying this classification forward to a later pin by assumption.
 
 The 2026-08-17 update from release `b10430`, commit `4c1a0af`, to release
 `b10453`, commit `3cb7ffb`, classified the host-buffer, quantized-KV, and f16
-contiguization patches as **unchanged** and the reasoning bridge as
-**rebased and reduced**. Upstream now parses top-level `reasoning_effort` and
-its template-capability layer aliases both native effort and strength names.
-The local bridge therefore retains only Maki 0.4.8's numeric-budget recovery,
-zero-budget disable behavior, explicit-native-kwarg precedence, and Muse's
-off-to-low compatibility rule. The 23-commit range also includes a quadratic
-Jinja rendering fix and a server queue redesign; exercise structured tools,
-reasoning variants, router concurrency, and latency rather than treating a
-successful build as acceptance.
+contiguization patches as **unchanged** and the reasoning patch as **rebased
+and reduced**. Upstream now parses top-level `reasoning_effort` and its
+template-capability layer aliases both native effort and strength names. A
+follow-up removed the remaining Maki numeric-budget decoder rather than
+guessing native labels from output-window-dependent percentages. The patch
+now owns only data-driven sampling defaults; Muse's unsupported off-to-low
+fallback is scoped to its reviewed template. The 23-commit range also includes
+a quadratic Jinja rendering fix and a server queue redesign; exercise
+structured tools, reasoning variants, router concurrency, and latency rather
+than treating a successful build as acceptance.
 
-The bundled `muse-glimmer-atem.jinja` is byte-for-byte Meta's template from
-base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
+The bundled `muse-glimmer-atem.jinja` derives from Meta's 9,992-byte template
+at base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
 `cfc67e5f349f37690dfd31ed1f18bc4442a9dd32fe39a648f993cb4eb3cae678`.
-It corrects duplicate reasoning directives in the older template embedded in
-ROCmplete's pinned official GGUF. Meta later repacked the official GGUFs at
+ROCmplete's 10,219-byte reviewed derivative has SHA-256
+`4849b801303b351a82dab37107a665410070cd58315fadccd8f5fde02084bd34`.
+It retains Meta's duplicate-directive correction and adds one scoped policy:
+because Muse cannot disable reasoning, `enable_thinking=false` renders native
+low instead of changing another model through a server-wide fallback. Meta
+later repacked the official GGUFs at
 revision `43c7eadd41352a299ea8e0a36b3157978dd63596` with this fixed template and
 canonical Q4_K filenames. The dynamic target and DFlash candidate at that
 revision retained their tensor inventories and byte-identical tensor payloads;

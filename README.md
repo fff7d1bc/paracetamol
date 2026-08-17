@@ -287,10 +287,10 @@ opencode
 ```
 
 Qwen3.8 starts at native medium effort. Pi, OpenCode, and OMP expose its off,
-low, medium, and xhigh choices without inventing a `high` level. Maki exposes a
-generic selector through its numeric llama.cpp transport; the managed server
-recovers `medium` for Maki 0.4.8's standard value. Use Pi for comparisons that
-must avoid Maki's additional numeric budget policy.
+low, medium, and xhigh choices without inventing a `high` level. Maki 0.4.8's
+llama.cpp transport exposes only an independent numeric reasoning budget; the
+managed server does not infer native effort from that number. Use Pi, OpenCode,
+or OMP when the model-native level matters.
 
 OpenCode starts new sessions in read-only Investigate mode. All four launchers
 keep the current directory and private client state writable while hiding the

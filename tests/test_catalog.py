@@ -360,8 +360,13 @@ class CatalogTests(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(muse_template.read_bytes()).hexdigest(),
-            "cfc67e5f349f37690dfd31ed1f18bc44"
-            "42a9dd32fe39a648f993cb4eb3cae678",
+            "4849b801303b351a82dab37107a665410"
+            "070cd58315fadccd8f5fde02084bd34",
+        )
+        self.assertIn(
+            "'low' if enable_thinking is defined and "
+            "enable_thinking is false else 'high'",
+            muse_template.read_text(),
         )
         managed_template_hashes = {
             "kat-coder-v2.5.jinja": (

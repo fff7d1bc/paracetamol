@@ -85,33 +85,13 @@ index d8a1689..02ae426 100644
      // CLI params
      std::string server_base; // if set, connect to this server instead of starting a new one
 diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
-index 7ed4865..839704e 100644
+index 7ed4865..3429f93 100644
 --- a/tools/server/server-common.cpp
 +++ b/tools/server/server-common.cpp
-@@ -16,6 +16,47 @@
+@@ -16,6 +16,27 @@
  #include <cstring>
  #include <type_traits>
  
-+// Maki 0.4.8's llama.cpp transport converts its named selectors to these
-+// exact budgets for ROCmplete's advertised 16384-token output window. Recover
-+// the name for templates with native effort/strength controls while retaining
-+// the numeric sampler ceiling Maki requested.
-+static std::string rocmplete_maki_reasoning_level(int budget) {
-+    if (budget == 1638 || budget == 3276) {
-+        return "low";
-+    }
-+    if (budget == 6553) {
-+        return "medium";
-+    }
-+    if (budget == 9830) {
-+        return "high";
-+    }
-+    if (budget == 13107 || budget == 16384) {
-+        return "xhigh";
-+    }
-+    return "";
-+}
-+
 +// Apply data supplied by the model preset only as defaults. This keeps the
 +// template responsible for resolving thinking mode without giving Jinja a
 +// side channel into sampler state, and explicit request fields remain final.
@@ -136,43 +116,7 @@ index 7ed4865..839704e 100644
  json format_error_response(const std::string & message, const enum error_type type) {
      std::string type_str;
      int code = 500;
-@@ -1303,6 +1344,35 @@ json oaicompat_chat_params_parse(
-         }
-     }
- 
-+    // Maki transports its named selectors as numeric budgets. Preserve that
-+    // sampler ceiling while supplying one native label for the template caps
-+    // layer to alias to either Qwen effort or Muse strength. Explicit native
-+    // template kwargs win over this compatibility recovery.
-+    const auto has_native_reasoning_level = [&inputs]() {
-+        return inputs.chat_template_kwargs.find("reasoning_effort") !=
-+                   inputs.chat_template_kwargs.end() ||
-+               inputs.chat_template_kwargs.find("reasoning_strength") !=
-+                   inputs.chat_template_kwargs.end();
-+    };
-+    if (!body.contains("reasoning_effort") &&
-+        body.contains("thinking_budget_tokens")) {
-+        const int thinking_budget = json_value(body, "thinking_budget_tokens", -1);
-+        if (thinking_budget == 0) {
-+            inputs.enable_thinking = false;
-+        } else if (thinking_budget > 0 && !has_native_reasoning_level()) {
-+            const auto reasoning_level = rocmplete_maki_reasoning_level(thinking_budget);
-+            if (!reasoning_level.empty()) {
-+                inputs.chat_template_kwargs["reasoning_effort"] = json(reasoning_level).dump();
-+            }
-+        }
-+    }
-+
-+    if (!inputs.enable_thinking && !has_native_reasoning_level()) {
-+        // Muse has no off mode. The caps layer aliases effort to strength, so
-+        // clients that cannot hide their generic off choice get native low.
-+        inputs.chat_template_kwargs["reasoning_effort"] = json("low").dump();
-+    }
-+
-     inputs.force_pure_content = opt.force_pure_content;
- 
-     // Apply chat template to the list of messages
-@@ -1370,6 +1440,10 @@ json oaicompat_chat_params_parse(
+@@ -1370,6 +1391,10 @@ json oaicompat_chat_params_parse(
          }
      }
  

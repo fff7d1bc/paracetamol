@@ -541,9 +541,11 @@ thinking use zero presence penalty, sparse Qwen3.6 thinking uses 1.5, and all
 three use the shared non-thinking tuple when off. Qwen3.6's separate
 temperature-0.6 precise-coding recommendation remains an explicit task
 override rather than a default inferred from the client name. Maki cannot
-express per-model sampling fields, but receives the same defaults because its
-numeric thinking selector is normalized before the server selects the
-profile. Explicit sampling remains higher precedence field by field.
+express per-model sampling fields or native reasoning labels. Its positive
+numeric budget leaves the template at its managed default and therefore uses
+the thinking policy, but `/thinking off` is not a reliable native-mode or
+sampling-policy selector until Maki can send the model's actual control.
+Explicit sampling remains higher precedence field by field.
 
 `bin/opencode` delegates to `./rocmplete agent opencode`, injects the
 generated main configuration directly into the child process, and points it
@@ -768,14 +770,12 @@ for the managed llama.cpp provider.
 OpenCode uses `ctrl+t` or `/variants`, Pi uses `Shift+Tab`, `/settings`, or
 `--thinking`, OMP accepts `--thinking`, and Maki uses `/thinking`. Pi and
 OpenCode hide unsupported choices. OMP exposes all real levels but its schema
-cannot suppress the generic off choice for Muse; the server conservatively
-maps that choice to Muse low. Maki exposes a generic selector and converts it
-to numeric `thinking_budget_tokens`. The managed server recognizes Maki
-0.4.8's standard numeric values and recovers the matching native effort or
-strength while retaining the numeric sampler ceiling. Unsupported generic
-Maki choices are not model-native controls, and Muse off likewise becomes
-low. Use Pi for reasoning-sensitive model comparisons because it carries the
-native selector without Maki's additional budget policy.
+cannot suppress the generic off choice for Muse; the Muse template interprets
+that unsupported choice as native low. Maki exposes a generic selector and
+converts it to numeric `thinking_budget_tokens`. ROCmplete deliberately does
+not reverse-engineer those numbers into native effort, strength, or toggle
+values. Use Pi, OpenCode, or OMP for reasoning-sensitive comparisons until
+Maki can carry the model-native control itself.
 
 All four clients use `/v1/chat/completions` and expose their file and shell
 tools as ordinary function calls. That matches llama.cpp's current tool
@@ -1052,9 +1052,8 @@ All three presets enable llama.cpp reasoning preservation so parsed reasoning
 remains available to multi-turn history. Muse does not have a native off mode.
 It exposes low, medium, high, and xhigh `Reasoning strength`, defaulting to
 high. Pi, OpenCode, and OMP expose the named levels. Maki converts its generic
-selector to a numeric ceiling; the managed llama.cpp compatibility bridge
-recovers and forwards the corresponding native strength for Maki 0.4.8's
-standard values.
+selector to a numeric ceiling but does not carry native strength; absent an
+explicit native field, Muse retains its template default.
 
 ROCmplete previously installed
 `Muse-Glimmer-30B-UD-Q8_K_XL.gguf` for this recipe. Upgrading the catalog does
