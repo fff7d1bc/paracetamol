@@ -110,8 +110,8 @@ class OpenCodeLauncherTests(unittest.TestCase):
         )
         investigate = config["agent"]["investigate"]
         self.assertEqual(investigate["mode"], "primary")
-        self.assertEqual(investigate["temperature"], 0.0)
-        self.assertEqual(investigate["options"], {"temperature": 0.0})
+        self.assertNotIn("temperature", investigate)
+        self.assertNotIn("options", investigate)
         self.assertEqual(
             investigate["permission"],
             {
@@ -140,14 +140,14 @@ class OpenCodeLauncherTests(unittest.TestCase):
         local = config["agent"]["investigate-local"]
         self.assertEqual(local["mode"], "subagent")
         self.assertTrue(local["hidden"])
-        self.assertEqual(local["temperature"], 0.0)
-        self.assertEqual(local["options"], {"temperature": 0.0})
+        self.assertNotIn("temperature", local)
+        self.assertNotIn("options", local)
         self.assertNotIn("task", local["permission"])
         web = config["agent"]["investigate-web"]
         self.assertEqual(web["mode"], "subagent")
         self.assertTrue(web["hidden"])
-        self.assertEqual(web["temperature"], 0.0)
-        self.assertEqual(web["options"], {"temperature": 0.0})
+        self.assertNotIn("temperature", web)
+        self.assertNotIn("options", web)
         self.assertEqual(
             web["permission"],
             {"*": "deny", "webfetch": "allow", "websearch": "allow"},
@@ -188,6 +188,10 @@ class OpenCodeLauncherTests(unittest.TestCase):
             expected_options = dict(
                 agent_client_sampling_parameters(self.catalog, identifier)
             )
+            if preset.sampling_policy:
+                expected_options.update(
+                    {"temperature": None, "top_p": None}
+                )
             if preset.reasoning_control:
                 self.assertTrue(model["reasoning"])
                 expected_options["reasoningEffort"] = (

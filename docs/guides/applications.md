@@ -543,20 +543,23 @@ These are defaults, not locks. OpenCode model options or an agent's provider
 options, Pi per-request sampling parameters, explicit OMP request
 configuration, and raw API fields can override them. OMP receives static
 policies as per-model `extraBody`, after its global sampling settings.
-OpenCode's managed Investigate agents still force temperature zero.
 
 Qwen3.6 and Qwen3.8 are mode-dependent rather than static. OpenCode, Pi, and
-OMP omit their sampling tuples; the managed llama.cpp server supplies the
-official family policy after resolving thinking. Dense Qwen3.6 and Qwen3.8
-thinking use zero presence penalty, sparse Qwen3.6 thinking uses 1.5, and all
-three use the shared non-thinking tuple when off. Qwen3.6's separate
-temperature-0.6 precise-coding recommendation remains an explicit task
-override rather than a default inferred from the client name. Maki cannot
-express per-model sampling fields or native reasoning labels. Its positive
-numeric budget leaves the template at its managed default and therefore uses
-the thinking policy, but `/thinking off` is not a reliable native-mode or
-sampling-policy selector until Maki can send the model's actual control.
-Explicit sampling remains higher precedence field by field.
+OMP omit their sampling tuples. OpenCode itself injects Qwen-family sampling
+values, so ROCmplete's generated raw model options replace `temperature` and
+`top_p` with JSON `null`; the managed llama.cpp server interprets those nulls
+as a request for its catalog fallback. The server can then supply the official
+family policy after resolving thinking, including for title generation and
+the Investigate, Plan, and Build agents. Project or request configuration can
+still replace the nulls with explicit numeric values.
+
+Dense Qwen3.6 and Qwen3.8 thinking use zero presence penalty, sparse Qwen3.6
+thinking uses 1.5, and all three use the shared non-thinking tuple when off.
+Qwen3.6's separate temperature-0.6 precise-coding recommendation remains an
+explicit task override rather than a default inferred from the client name.
+Maki's native named selector carries the model's reasoning control but no
+sampling tuple, so the server also supplies its mode-aware policy. Explicit
+sampling remains higher precedence field by field in every client.
 
 `bin/opencode` delegates to `./rocmplete agent opencode`, injects the
 generated main configuration directly into the child process, and points it
@@ -727,14 +730,14 @@ todos, and further delegation. Each receives a separate child-session context
 and is instructed to return at most 500 words, so raw files and fetched pages
 do not consume the main session unless the worker ignores its output bound.
 
-Investigate's temperature is zero and it has no artificial step limit because
-OpenCode's limit injects a forced summary, remaining-tasks list, and next-step
-recommendations when reached. Its prompt instead requires focused searches,
-evidence, explicit inference, and a stop after answering the original
-question. These are containment and focus controls, not a guarantee that
-every factual conclusion from a local model is correct. A delegated report is
-evidence for the primary agent to reconcile, not automatically a reliable
-fact.
+Investigate inherits the selected model's reviewed sampling policy and has no
+artificial step limit because OpenCode's limit injects a forced summary,
+remaining-tasks list, and next-step recommendations when reached. Its prompt
+instead requires focused searches, evidence, explicit inference, and a stop
+after answering the original question. These are containment and focus
+controls, not a guarantee that every factual conclusion from a local model is
+correct. A delegated report is evidence for the primary agent to reconcile,
+not automatically a reliable fact.
 
 Pi uses its standard coding-agent tool loop rather than ROCmplete's OpenCode
 agent modes. Project `.pi` resources are declined by default so a checkout

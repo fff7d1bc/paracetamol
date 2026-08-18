@@ -255,6 +255,15 @@ Maki commit `a9495e1` does not apply `always_thinking` in `--print` mode, so
 that path cannot validate the generated default or named selector. Keep these
 protocol checks separate from cross-model quality benchmarking.
 
+For every generated OpenCode Qwen3.6 and Qwen3.8 model, confirm the raw model
+options contain JSON `null` for `temperature` and `top_p`. Capture installed
+OpenCode requests for representative thinking and off variants, including a
+title or background request and Investigate, and confirm those nulls survive
+provider serialization. Against the managed server, confirm the request then
+resolves to the catalog's thinking or non-thinking tuple. A variant label or
+generated-config inspection alone does not prove that OpenCode stopped
+injecting its own Qwen sampler values.
+
 After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every
 Qwen3.8 preset must use Pi's `openai` thinking format with off mapped to

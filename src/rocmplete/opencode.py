@@ -85,15 +85,9 @@ _PERMISSIONS = {
     "bash": "ask",
     "task": "ask",
 }
-# The OpenAI-compatible provider applies raw model options after OpenCode's
-# standard generation fields. Repeat this managed agent override in provider
-# options so a model's reviewed coding default cannot replace it.
-_DETERMINISTIC_AGENT_OPTIONS = {"temperature": 0.0}
 _INVESTIGATE_AGENT = {
     "description": "Read-only evidence-based investigation",
     "mode": "primary",
-    "temperature": 0.0,
-    "options": _DETERMINISTIC_AGENT_OPTIONS,
     "permission": {
         "*": "deny",
         "read": _READ_PERMISSION,
@@ -135,8 +129,6 @@ _INVESTIGATE_LOCAL_AGENT = {
     ),
     "mode": "subagent",
     "hidden": True,
-    "temperature": 0.0,
-    "options": _DETERMINISTIC_AGENT_OPTIONS,
     "permission": {
         "*": "deny",
         "read": _READ_PERMISSION,
@@ -159,8 +151,6 @@ _INVESTIGATE_WEB_AGENT = {
     ),
     "mode": "subagent",
     "hidden": True,
-    "temperature": 0.0,
-    "options": _DETERMINISTIC_AGENT_OPTIONS,
     "permission": {
         "*": "deny",
         "webfetch": "allow",
@@ -215,6 +205,12 @@ def render_config(
         options = dict(
             agent_client_sampling_parameters(catalog, identifier)
         )
+        if preset.sampling_policy:
+            # OpenCode injects model-family sampling values before its
+            # OpenAI-compatible provider applies raw model options. Explicit
+            # nulls survive serialization and ask the managed server to use
+            # its mode-aware catalog fallback instead of that client value.
+            options.update({"temperature": None, "top_p": None})
         if preset.reasoning_control:
             model["reasoning"] = True
             # OpenCode merges an explicitly selected variant over these model

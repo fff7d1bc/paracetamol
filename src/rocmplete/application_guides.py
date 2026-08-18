@@ -381,7 +381,8 @@ def _llama_guide() -> ApplicationGuide:
                     "delegate bounded work only to hidden read-only local and "
                     "web workers. Their source material stays in separate "
                     "child sessions. Investigate also avoids OpenCode's "
-                    "synthetic maximum-step continuation prompt.",
+                    "synthetic maximum-step continuation prompt and inherits "
+                    "the selected model's reviewed sampling policy.",
                     "Qwen3.6 exposes instant and thinking. Qwen3.8 exposes "
                     "instant, low, medium, and xhigh and starts at medium. "
                     "Muse reasons unconditionally and exposes native low, "
@@ -394,6 +395,10 @@ def _llama_guide() -> ApplicationGuide:
                     "ROCmplete maps Maki's selector to each model's native "
                     "toggle, effort, or strength field; unsupported named "
                     "levels snap downward to a declared native choice.",
+                    "For mode-dependent Qwen sampling, generated OpenCode "
+                    "options neutralize the client's built-in sampler values "
+                    "so the managed server selects the reviewed tuple after "
+                    "reasoning mode is resolved.",
                 ),
                 (
                     _action(

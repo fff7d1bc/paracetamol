@@ -666,8 +666,14 @@ Presets with `reasoning_control` advertise only their catalog-owned OpenCode
 variants. Qwen3.6 has instant and thinking, Qwen3.8 has instant, low, medium,
 and xhigh, and Muse has low, medium, high, and xhigh. Unsupported inherited
 variants are explicitly disabled. OpenCode merges a selected variant later,
-so persisted per-model choices continue to take precedence. The launcher
-prefers Muse Dynamic DFlash 256K and otherwise uses
+so persisted per-model choices continue to take precedence. For a preset with
+a mode-dependent sampling policy, the raw provider options carry JSON `null`
+for `temperature` and `top_p`. Raw options override OpenCode's injected
+Qwen-family values, while the managed llama.cpp server treats null as a
+catalog fallback after resolving reasoning. This keeps the server policy in
+force for ordinary, title, background, and agent-variant requests without
+duplicating the tuple in client configuration. The launcher prefers Qwen3.8
+27B MTP Q8 at native medium effort and otherwise uses
 the first installed agent-capable preset. It refuses to start when none are
 installed. The wrapper resolves and executes the real OpenCode binary while
 excluding itself from the executable search, forwards all OpenCode arguments,
@@ -858,12 +864,13 @@ start while the legacy directory exists and directs the user to upstream
 private-state contract.
 
 Investigate is an additional primary agent selected through OpenCode's normal
-agent switcher. It inherits the selected managed model but fixes temperature
-at zero and denies edit, bash, and todo tools. Its task policy first denies all
-subagents, then allows only `investigate-local` and `investigate-web`. Both are
-hidden subagents with their own temperature-zero prompts, independent mutation
-and recursion denials, and a 500-word return bound. The local worker is confined
-to read-only repository tools with web and external-directory access denied.
+agent switcher. It inherits the selected managed model and its reviewed
+sampling policy while denying edit, bash, and todo tools. Its task policy
+first denies all subagents, then allows only `investigate-local` and
+`investigate-web`. Both are hidden subagents with the same inherited sampling,
+independent mutation and recursion denials, and a 500-word return bound. The
+local worker is confined to read-only repository tools with web and external-
+directory access denied.
 The web worker has web access but denies local reads, searches, LSP, external
 directories, commands, and mutation. Their child-session source material is
 not copied into the primary history; only the returned report is.
