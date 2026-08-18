@@ -1051,7 +1051,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("OPENCODE_TUI_CONFIG", text)
         self.assertIn("TranslateGemma has one preset", normalized)
         self.assertIn("--compare-backends", text)
-        self.assertIn("guide/applications.md#llamacpp", text)
+        self.assertIn("docs/guides/applications.md#llamacpp", text)
 
     def test_dwarfstar_guide_explains_source_build_and_memory_starting_point(
         self,
@@ -1065,7 +1065,7 @@ class CliTests(unittest.TestCase):
         self.assertIn("run dwarfstar server --context 32768", text)
         self.assertIn("DSpark is an optional, exact managed pair", text)
         self.assertIn("run dwarfstar server --dspark", text)
-        self.assertIn("guide/applications.md#dwarfstar", text)
+        self.assertIn("docs/guides/applications.md#dwarfstar", text)
 
     @patch("builtins.input", return_value="2")
     @patch("rocmplete.cli.sys.stdin")

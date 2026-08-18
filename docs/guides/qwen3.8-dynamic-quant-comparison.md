@@ -1,5 +1,7 @@
 # Qwen3.8 27B Unsloth Dynamic Q4 versus Q8
 
+[Documentation index](../README.md)
+
 This page compares ROCmplete's two managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind
 the quantization names: is the smaller Q4 useful, is Q8 clearly smarter, and

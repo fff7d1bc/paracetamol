@@ -454,7 +454,7 @@ source state from which users build locally.
 - [ ] No stale version or old command remains in docs or tests.
 - [ ] `THIRD_PARTY_NOTICES.md` matches built and downloaded components.
 - [ ] `catalog/README.md` describes new content/license classes.
-- [ ] User README quick-start and focused `guide/` examples are current.
+- [ ] User README quick-start and focused `docs/guides/` examples are current.
 - [ ] Maintainer docs still point to real files and commands.
 - [ ] Local Markdown links and section anchors pass the unit-test check.
 
@@ -462,7 +462,7 @@ Useful searches:
 
 ```bash
 rg -n 'TODO|FIXME|WIP|latest|main' \
-  Containerfile applications catalog src/rocmplete docs guide README.md
+  Containerfile applications catalog src/rocmplete docs README.md
 rg -n 'localhost/rocmplete:|_COMMIT|_VERSION' .
 ```
 
@@ -553,8 +553,8 @@ acceptance require maintainer judgment.
 
 ## Backup and recovery
 
-The [persistent-data](../guide/operations.md#persistent-data) and
-[scoped-cleanup](../guide/operations.md#scoped-cleanup) sections define what is
+The [persistent-data](guides/operations.md#persistent-data) and
+[scoped-cleanup](guides/operations.md#scoped-cleanup) sections define what is
 irreplaceable and what each cleanup scope owns. Review those paths and back up
 user input, output, state, custom models, workflows, and benchmark results
 before any destructive release housekeeping. Catalog content and generated

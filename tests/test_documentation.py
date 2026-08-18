@@ -12,7 +12,7 @@ URI_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
 def _documentation_files():
     files = list(PROJECT_ROOT.glob("*.md"))
-    for directory in ("catalog", "docs", "guide"):
+    for directory in ("catalog", "docs"):
         files.extend((PROJECT_ROOT / directory).rglob("*.md"))
     return sorted(files)
 

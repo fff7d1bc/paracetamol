@@ -1,12 +1,14 @@
 # Applications
 
+[Documentation index](../README.md)
+
 Every application follows the same basic path:
 
 ```text
 build  ->  content install  ->  run
 ```
 
-Use the [README quick start](../README.md#quick-start) when you just want one
+Use the [README quick start](../../README.md#quick-start) when you just want one
 working setup. This page is for choosing between the applications and
 understanding the bits that differ once they are running.
 
@@ -1044,7 +1046,7 @@ BF16 conversion measured 483.19 and 4.11 tokens/s. The K-quant also started a
 fresh 128K DFlash server in 14.0 seconds at about 30.64 GB of container memory,
 versus 37.5 seconds and 66.77 GB for BF16. These are one-host observations,
 not cross-hardware promises. The complete immutable inputs and caveats are in
-the [maintainer feasibility record](../docs/muse-glimmer-llama-cpp-agent-feasibility.md).
+the [maintainer feasibility record](../muse-glimmer-llama-cpp-agent-feasibility.md).
 
 The target's base, 128K DFlash, and forced-256K DFlash presets are advertised
 to the managed OpenCode, Pi, OMP, and Maki clients. OpenCode, Pi, and OMP use

@@ -161,7 +161,7 @@ def _comfyui_guide() -> ApplicationGuide:
                 ),
             ),
         ),
-        reference="guide/applications.md#comfyui",
+        reference="docs/guides/applications.md#comfyui",
     )
 
 
@@ -507,7 +507,7 @@ def _llama_guide() -> ApplicationGuide:
                 ),
             ),
         ),
-        reference="guide/applications.md#llamacpp",
+        reference="docs/guides/applications.md#llamacpp",
     )
 
 
@@ -702,7 +702,7 @@ def _dwarfstar_guide() -> ApplicationGuide:
                 ),
             ),
         ),
-        reference="guide/applications.md#dwarfstar",
+        reference="docs/guides/applications.md#dwarfstar",
     )
 
 

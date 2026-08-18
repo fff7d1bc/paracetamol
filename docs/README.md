@@ -1,12 +1,44 @@
-# ROCmplete maintainer documentation
+# ROCmplete documentation
 
-Coming back to ROCmplete after some time away? Start here. The root `README.md`
-and `guide/` show how to use the tool. These documents explain how it fits
-together, how to change it safely, and how to know when an upgrade is really
-finished. The public contribution path and baseline checks are summarized in
-[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+This is the complete documentation index. Start with the root
+[`README.md`](../README.md) for installation and the shortest working path,
+then choose a user guide or maintainer reference below.
 
-## Start here after time away
+## User guides
+
+- [Applications](guides/applications.md) covers ComfyUI, llama.cpp,
+  DwarfStar, managed models, APIs, coding-agent clients, and multi-GPU runs.
+- [Content](guides/content.md) covers recipes, exact bundles, licensing,
+  verification, resumable downloads, mirrors, imports, and workflows.
+- [Operations](guides/operations.md) covers hardware acceptance, builds,
+  caches, image transfer, persistent data, logs, and scoped cleanup.
+- [Tuning and benchmarks](guides/tuning.md) covers host GPU access, runtime
+  policies, memory configuration, and repeatable performance comparisons.
+- [Qwen3.8 Dynamic Q4 versus Q8](guides/qwen3.8-dynamic-quant-comparison.md)
+  reports the hidden-graded medium and `xhigh` coding-agent comparison,
+  context results, exact Unsloth artifacts, and limitations.
+
+For a shorter application walkthrough made of copyable commands, use the
+built-in guide:
+
+```bash
+./rocmplete guide
+./rocmplete guide comfyui
+./rocmplete guide llama-cpp
+./rocmplete guide dwarfstar
+```
+
+Command-specific `--help` output remains the authoritative interface
+reference.
+
+## Maintainer documentation
+
+Coming back to ROCmplete after some time away? Start here. These references
+explain how the project fits together, how to change it safely, and how to
+know when an upgrade is genuinely finished. The public contribution path and
+baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+### Start here after time away
 
 1. Read the [architecture and invariants](architecture.md).
 2. Inspect the current pins rather than trusting remembered version numbers:
@@ -46,7 +78,7 @@ finished. The public contribution path and baseline checks are summarized in
    git diff --check
    ```
 
-5. Use the guide or dated research record matching the task:
+5. Use the maintainer guide or dated research record matching the task:
 
    - [Routine upgrade scan and execution checklist](routine-upgrade-runbook.md)
    - [Upgrading dependencies and upstream applications](upgrading.md)
@@ -66,7 +98,7 @@ finished. The public contribution path and baseline checks are summarized in
    - [Qwen3.8 Strix Halo platform power-policy feasibility
      snapshot](qwen3.8-strix-halo-platform-power-policy-feasibility.md)
 
-## Sources of truth
+### Sources of truth
 
 | Concern | Authoritative files |
 | --- | --- |
@@ -109,7 +141,7 @@ Commands in these guides use obvious uppercase placeholders such as
 `CURRENT_IMAGE`, `WORKFLOW_ID`, and `REVISION`. Replace them with values from
 the current source tree; they are not shell variables.
 
-## Non-negotiable project properties
+### Non-negotiable project properties
 
 Preserve these unless deliberately redesigning the project:
 
@@ -141,7 +173,7 @@ Preserve these unless deliberately redesigning the project:
 
 Changing one of these is an architectural decision, not routine maintenance.
 
-## The meaning of “mode”
+### The meaning of “mode”
 
 Use precise language in changes and commit messages:
 

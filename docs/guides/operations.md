@@ -1,5 +1,7 @@
 # Operations
 
+[Documentation index](../README.md)
+
 This is the guide for everything around a normal run: checking a new machine,
 moving built images, finding persistent data, stopping services, and cleaning
 up. ROCmplete only touches resources it owns and never performs a general

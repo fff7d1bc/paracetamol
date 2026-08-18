@@ -1,5 +1,7 @@
 # Content
 
+[Documentation index](../README.md)
+
 ROCmplete treats application images and model content as two different things.
 Images are replaceable software builds. Content is the much larger collection
 of models and workflows that should survive an image rebuild.
@@ -312,7 +314,7 @@ Existing identifiers and destinations cannot be overridden. They use the same
 revision, hash, path, license, staging, and verification checks as built-in
 content. Tokens do not belong in JSON.
 
-See [Local content packs](../docs/content-catalog.md#local-content-packs) for
+See [Local content packs](../content-catalog.md#local-content-packs) for
 the schema and maintainer detail.
 
 ## Import one remote file

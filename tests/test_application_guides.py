@@ -3,6 +3,7 @@ import os
 import shlex
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
 from rocmplete.application_guides import (
@@ -13,6 +14,9 @@ from rocmplete.application_guides import (
 from rocmplete.cli_parser import parse_arguments
 from rocmplete.config import APPLICATIONS, APPLICATION_NAMES
 from rocmplete.recipes import application_recipes
+
+
+PROJECT_ROOT = Path(__file__).parents[1]
 
 
 class _TerminalBuffer(io.StringIO):
@@ -28,7 +32,9 @@ class ApplicationGuideTests(unittest.TestCase):
                 self.assertEqual(guide.application, identifier)
                 self.assertTrue(guide.title)
                 self.assertTrue(guide.summary)
-                self.assertTrue(guide.reference.startswith("guide/"))
+                self.assertTrue(guide.reference.startswith("docs/guides/"))
+                reference_path = guide.reference.partition("#")[0]
+                self.assertTrue((PROJECT_ROOT / reference_path).is_file())
 
     def test_guides_include_every_application_recipe(self):
         for application, guide in APPLICATION_GUIDES.items():

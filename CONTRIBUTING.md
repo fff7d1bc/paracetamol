@@ -12,9 +12,10 @@ scope can be agreed before substantial work begins.
 
 ## Finding your way around
 
-The root `README.md` and `guide/` are user-facing. Maintainer documentation
-starts at [`docs/README.md`](docs/README.md), which maps the important source
-boundaries and routes upgrade, catalog, extension, testing, and hardware work.
+The root `README.md` provides the quick start. The unified documentation index
+at [`docs/README.md`](docs/README.md) routes users into `docs/guides/` and
+maintainers into the source, upgrade, catalog, testing, and hardware
+references.
 
 Keep application, hardware profile, command mode, bundle variant, and workflow
 renderer changes in their documented extension points. Do not treat a

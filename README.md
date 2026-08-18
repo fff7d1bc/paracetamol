@@ -69,8 +69,9 @@ Ubuntu 26.04. A minimal installation may not include Podman yet.
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
 settings. It reports the problem and the host-specific action when one is
-needed. The [host GPU access guide](guide/tuning.md#host-gpu-access) explains
-the SELinux, group, and udev choices.
+needed. The
+[host GPU access guide](docs/guides/tuning.md#host-gpu-access) explains the
+SELinux, group, and udev choices.
 
 The optional sandboxed agent launchers also need bubblewrap (`bwrap`). Use the
 distribution `bubblewrap` package from `apt`, `dnf`, or `pacman` when possible.
@@ -129,7 +130,7 @@ workflow:
 
 Open `http://127.0.0.1:8188`. Image editing, T2V, I2V, imported content,
 Manager, and multi-GPU graphs are covered in the
-[application guide](guide/applications.md#comfyui).
+[application guide](docs/guides/applications.md#comfyui).
 
 ### llama.cpp
 
@@ -167,7 +168,7 @@ wins by context, so there is no model-specific backend override. Dedicated
 32 GiB RDNA 4 capacity still needs acceptance on that hardware.
 
 The [Qwen3.8 Dynamic Q4 versus Q8 coding-agent
-comparison](guide/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
+comparison](docs/guides/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
 medium and `xhigh` quality results, per-task outcomes, targeted retries, and
 the limits of applying those Unsloth-specific findings to other GGUF releases.
 
@@ -194,7 +195,7 @@ For an API serving several installed presets, use the managed router:
 ./rocmplete run llama-cpp server --router --models-max 1
 ```
 
-The [llama.cpp guide](guide/applications.md#llamacpp) explains presets,
+The [llama.cpp guide](docs/guides/applications.md#llamacpp) explains presets,
 contexts, MTP, DFlash, translations, the terminal CLI, tool calling, and
 choosing between the managed Qwen variants. High-memory hosts can also install
 the KAT-Coder Q8 coding-agent candidate independently without changing the
@@ -236,9 +237,9 @@ path; it does not replace the default model or improve its quality:
 ./rocmplete run dwarfstar server --dspark
 ```
 
-The [DwarfStar guide](guide/applications.md#dwarfstar) covers its 128K managed
-context, memory setup, optional DSpark path, API, agent-client providers, and
-bounded acceptance run.
+The [DwarfStar guide](docs/guides/applications.md#dwarfstar) covers its 128K
+managed context, memory setup, optional DSpark path, API, agent-client
+providers, and bounded acceptance run.
 
 ## Everyday use
 
@@ -301,7 +302,7 @@ or OMP when the model-native level matters.
 OpenCode starts new sessions in read-only Investigate mode. All four launchers
 keep the current directory and private client state writable while hiding the
 real home directory, credentials, Podman state, and GPU devices. The
-[tool-using client guide](guide/applications.md#tool-using-clients) documents
+[tool-using client guide](docs/guides/applications.md#tool-using-clients) documents
 models, reasoning variants, agent modes, sandbox limits, and escape hatches.
 
 On a multi-GPU host, repeat `--render-node` for every card intended for one
@@ -317,8 +318,8 @@ architectures:
 
 llama.cpp uses layer splitting automatically. ComfyUI needs graph nodes that
 place components or work on the selected cards. See the
-[application guide](guide/applications.md) and
-[runtime tuning guide](guide/tuning.md#runtime-policies).
+[application guide](docs/guides/applications.md) and
+[runtime tuning guide](docs/guides/tuning.md#runtime-policies).
 
 Foreground runs own the container lifecycle. Ctrl-C stops and removes the
 container. Detached runs are managed explicitly:
@@ -347,8 +348,9 @@ image      models/workflows     application
 
 Normal builds reuse Podman layers and a local Python package cache. Use
 `--no-layer-cache` to rerun one application image or `--no-cache` for a fully
-cold build. The [operations guide](guide/operations.md#builds-and-local-caches)
-explains prerequisite images, cache boundaries, cleanup, and image transfer.
+cold build. The
+[operations guide](docs/guides/operations.md#builds-and-local-caches) explains
+prerequisite images, cache boundaries, cleanup, and image transfer.
 
 Content discovery starts with practical recipes and expands only when asked:
 
@@ -364,7 +366,7 @@ Set `HF_TOKEN` before a large Hugging Face installation when you have one.
 `CIVITAI_TOKEN` is needed only for authenticated Civitai imports and
 user-owned packs. ROCmplete passes supplied tokens only to its download tools
 and does not store them in images or persistent state. The
-[content guide](guide/content.md) covers recipes, exact bundles, terms,
+[content guide](docs/guides/content.md) covers recipes, exact bundles, terms,
 verification, resumable downloads, mirrors, imports, and workflows.
 
 Persistent data defaults to
@@ -377,7 +379,7 @@ data_dir = "/mnt/ai/rocmplete"
 ```
 
 The configuration is optional and ROCmplete never creates or migrates it.
-See [persistent data](guide/operations.md#persistent-data) before moving or
+See [persistent data](docs/guides/operations.md#persistent-data) before moving or
 cleaning application state, models, inputs, or outputs.
 
 ## Acceptance and benchmarks
@@ -391,7 +393,8 @@ smoke suite:
 ```
 
 Automated workloads finish before the visual review pass, so the run can be
-left unattended. The [operations guide](guide/operations.md#target-hardware-smoke-acceptance)
+left unattended. The
+[operations guide](docs/guides/operations.md#target-hardware-smoke-acceptance)
 explains resume behavior, result files, and what `PASS`, `FAIL`, and `BLOCKED`
 mean.
 
@@ -405,7 +408,7 @@ Compare llama.cpp's ROCm and Vulkan backends on the exact model you use:
 
 Sparse and dense models, and even different quantizations from one family,
 can prefer different backends on the same GPU. The
-[tuning guide](guide/tuning.md#benchmarks) covers repeatable comparisons.
+[tuning guide](docs/guides/tuning.md#benchmarks) covers repeatable comparisons.
 
 Sweep the server-side MTP or DFlash draft depth separately. This path uses the
 managed chat template, reasoning, sampling, cache, and speculative policy that
@@ -443,18 +446,22 @@ This is separate from smoke acceptance and native token-speed benchmarking.
 It runs Pi against disposable single-commit fixtures, applies hidden tests
 after each implementation attempt, and preserves raw transcripts, patches,
 server logs, and a Markdown summary below managed application data. The
-[operations guide](guide/operations.md#coding-agent-evaluation) explains the
+[operations guide](docs/guides/operations.md#coding-agent-evaluation) explains the
 fixed-harness policy, review tasks, grading, repetitions, and result scope.
 
 ## User guides
 
-- [Applications](guide/applications.md) covers ComfyUI, llama.cpp, DwarfStar,
-  managed models, APIs, OpenCode, Pi, Oh My Pi, Maki, and multi-GPU workloads.
-- [Content](guide/content.md) covers recipes, exact bundles, licenses,
+The complete [documentation index](docs/README.md) includes user guides,
+maintainer references, research snapshots, and source-of-truth pointers.
+
+- [Applications](docs/guides/applications.md) covers ComfyUI, llama.cpp,
+  DwarfStar, managed models, APIs, OpenCode, Pi, Oh My Pi, Maki, and multi-GPU
+  workloads.
+- [Content](docs/guides/content.md) covers recipes, exact bundles, licenses,
   verification, resumable downloads, mirrors, imports, and workflows.
-- [Operations](guide/operations.md) covers acceptance, builds, caches, image
+- [Operations](docs/guides/operations.md) covers acceptance, builds, caches, image
   archives, persistent state, logs, stop, and scoped cleanup.
-- [Tuning and benchmarks](guide/tuning.md) covers host GPU access, runtime
+- [Tuning and benchmarks](docs/guides/tuning.md) covers host GPU access, runtime
   policies, RDNA 3.5 shared memory, RDNA 4, and repeatable measurements.
 
 Command-specific help remains the authoritative interface reference:
@@ -473,8 +480,7 @@ plain, and `NO_COLOR=1` disables styling.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [catalog/README.md](catalog/README.md) for provenance and catalog policy.
-Maintainers should start with [docs/README.md](docs/README.md). The bounded
-smoke command complements, but does not replace, the complete
+The bounded smoke command complements, but does not replace, the complete
 [maintainer acceptance matrix](docs/hardware-acceptance.md).
 
 ## Contributing and security

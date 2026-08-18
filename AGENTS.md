@@ -73,8 +73,10 @@ in the same change. Important ownership boundaries are:
   entrypoints, and strict, reviewable deviations from pinned upstream sources.
 - `tests/`: enforced behavior and expected command shapes.
 
-Keep `README.md` and `guide/` user-facing and `docs/` maintainer-facing. Do not
-make temporary analysis or project history into a durable source of truth.
+Keep `README.md` and `docs/guides/` user-facing. `docs/README.md` is the shared
+documentation index, while the other pages directly below `docs/` are
+maintainer-facing. Do not make temporary analysis or project history into a
+durable source of truth.
 
 ## Behavior to preserve
 

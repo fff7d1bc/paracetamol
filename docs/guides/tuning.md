@@ -1,5 +1,7 @@
 # Tuning and benchmarks
 
+[Documentation index](../README.md)
+
 Start with the defaults. They are intentionally boring and are more useful
 than a bag of copied environment variables. Change one thing only when a real
 workload gives you a reason, then measure the same workload again.
