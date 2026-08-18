@@ -237,8 +237,8 @@ server, select `dwarfstar/deepseek-v4-flash-0731-q2-imatrix` in OpenCode and
 the matching provider/model in Pi and Maki. Select
 `rocmplete-dwarfstar/deepseek-v4-flash-0731-q2-imatrix` in OMP, then complete
 one read plus function-tool round trip in each. Confirm disabled reasoning and
-normal thinking through OpenCode and Pi, OMP's high thinking path, and normal
-server-side thinking through Maki. Confirm the generated providers follow
+normal thinking through OpenCode and Pi, OMP's high thinking path, and Maki's
+off and high paths. Confirm the generated providers follow
 `--dwarfstar-port`. Do not claim agent
 compatibility from `/v1/models` or a plain text response alone.
 
@@ -247,10 +247,11 @@ through Pi, OpenCode, and OMP: Qwen3.6 off/on; Qwen3.8 off, low, medium, and
 xhigh; and Muse low, medium, high, and xhigh. Confirm the generated picker
 omits or disables unsupported values where the client schema permits it, and
 confirm OMP's unsupported Muse off choice resolves to native low. For Maki
-0.4.8, verify only that its generic selector remains an explicit numeric
-budget; do not count it as native-level acceptance until its llama.cpp
-transport carries the catalog control directly. Keep these protocol checks
-separate from cross-model quality benchmarking.
+0.4.8 at or after commit `a9495e1`, capture the actual request fields for the
+same matrix. Confirm Qwen3.6 maps every enabled name to its on toggle,
+Qwen3.8 `high` snaps to medium, Muse off clamps to low, and adaptive follows
+the selected family's managed default. Keep these protocol checks separate
+from cross-model quality benchmarking.
 
 After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every

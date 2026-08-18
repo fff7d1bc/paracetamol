@@ -119,11 +119,55 @@ class MakiLauncherTests(unittest.TestCase):
             self.assertTrue(
                 by_id[self.default_model]["supports_thinking"]
             )
+            qwen38_fields = {
+                "off": {"reasoning_effort": "none"},
+                "adaptive": {"reasoning_effort": "medium"},
+                "low": {"reasoning_effort": "low"},
+                "medium": {"reasoning_effort": "medium"},
+                "xhigh": {"reasoning_effort": "xhigh"},
+            }
+            for identifier in (
+                "qwen3.8-27b-ud-q8-k-xl",
+                "qwen3.8-27b-mtp-ud-q8-k-xl",
+                "qwen3.8-27b-ud-q4-k-xl",
+                "qwen3.8-27b-mtp-ud-q4-k-xl",
+            ):
+                self.assertEqual(
+                    by_id[identifier]["thinking_fields"], qwen38_fields
+                )
+            qwen36_fields = {
+                "off": {
+                    "chat_template_kwargs": {"enable_thinking": False}
+                },
+                "adaptive": {
+                    "chat_template_kwargs": {"enable_thinking": True}
+                },
+            }
+            for identifier in (
+                "qwen3.6-27b-q8-0",
+                "qwen3.6-27b-mtp-q8-0",
+                "qwen3.6-35b-a3b-ud-q8-k-xl",
+                "qwen3.6-35b-a3b-mtp-ud-q8-k-xl",
+            ):
+                self.assertEqual(
+                    by_id[identifier]["thinking_fields"], qwen36_fields
+                )
             muse = by_id[
                 "muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k"
             ]
             self.assertEqual(muse["context_window"], 262144)
             self.assertTrue(muse["supports_thinking"])
+            self.assertTrue(muse["requires_thinking"])
+            self.assertEqual(
+                muse["thinking_fields"],
+                {
+                    "adaptive": {"reasoning_strength": "high"},
+                    "low": {"reasoning_strength": "low"},
+                    "medium": {"reasoning_strength": "medium"},
+                    "high": {"reasoning_strength": "high"},
+                    "xhigh": {"reasoning_strength": "xhigh"},
+                },
+            )
             self.assertTrue(
                 by_id["qwen3.8-27b-mtp-ud-q8-k-xl"]["supports_thinking"]
             )
@@ -149,7 +193,15 @@ class MakiLauncherTests(unittest.TestCase):
                 model["max_output_tokens"],
                 DWARFSTAR_DEFAULT_OUTPUT_TOKENS,
             )
-            self.assertFalse(model["supports_thinking"])
+            self.assertTrue(model["supports_thinking"])
+            self.assertEqual(
+                model["thinking_fields"],
+                {
+                    "off": {"reasoning_effort": "none"},
+                    "adaptive": {"reasoning_effort": "high"},
+                    "high": {"reasoning_effort": "high"},
+                },
+            )
 
     def test_launch_preserves_maki_arguments_and_selects_installed_default(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,7 +223,7 @@ class MakiLauncherTests(unittest.TestCase):
                 plan.init_content.decode(),
             )
             self.assertIn(
-                'always_thinking = "medium"', plan.init_content.decode()
+                'always_thinking = "adaptive"', plan.init_content.decode()
             )
             self.assertIn(
                 "max_concurrent = 1", plan.init_content.decode()
@@ -256,7 +308,7 @@ class MakiLauncherTests(unittest.TestCase):
                         plan.init_content.decode(),
                     )
                     self.assertIn(
-                        'always_thinking = "medium"',
+                        'always_thinking = "adaptive"',
                         plan.init_content.decode(),
                     )
 

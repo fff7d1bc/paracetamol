@@ -756,27 +756,27 @@ or `--alias` arguments are rejected.
 executable dynamic providers below Maki's private XDG configuration. Both use
 Maki's native `llama-cpp` provider as their protocol base, so the exact
 loopback `/v1` URL comes from the generated provider while Chat Completions,
-tool calls, and local thinking budgets remain owned by Maki. A generated
-`init.lua` selects the recommended installed model, its catalog thinking
-default by name, and one
-concurrent task subagent. The initial tier file assigns that model to every
+tool calls, and session reasoning state remain owned by Maki. Each model entry
+maps Maki's generic selector onto direct native JSON request fragments. A
+generated `init.lua` selects the recommended installed model, adaptive
+reasoning, and one concurrent task subagent. Adaptive mode resolves through
+the selected model entry, so switching families also switches to that
+family's reviewed default. The initial tier file assigns that model to every
 subagent tier. An unchanged seed follows a later default change, while any
 user-edited tier assignment is preserved. Managed configuration and provider
 scripts are refreshed atomically and reject links or multiply linked files.
 Maki update, rollback, migration, and informational commands pass through to
 the real executable. Other management commands use the private state without
 requiring an installed model.
-The tested Maki 0.4.8 dynamic-provider model schema cannot express per-model
-request sampling parameters, and its llama.cpp adapter does not provide a
-request-body hook. The generated provider therefore does not publish fields
-Maki would ignore. The adapter sends numeric `thinking_budget_tokens`, which
-llama.cpp treats as a sampler ceiling rather than a native effort, strength,
-or toggle. ROCmplete deliberately leaves those meanings separate instead of
-recovering a label from Maki's output-window-dependent percentages. Positive
-budgets retain each template's managed default, while Maki's off selector is
-not accepted as evidence of a native non-thinking mode or its sampling policy.
-Reasoning-sensitive quality comparisons therefore use a client that sends the
-explicit model-native condition.
+Maki 0.4.8 at commit `a9495e1` added this dynamic-provider `thinking_fields`
+contract. Named modes send only the selected fragment: Qwen3.6 uses nested
+`chat_template_kwargs.enable_thinking`, Qwen3.8 sends `reasoning_effort`, and
+Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
+to a declared level; models marked `requires_thinking` clamp off upward before
+the fragment is selected. Explicit numeric budgets remain separate sampler
+ceilings and are not decoded into model-native labels. The schema does not
+carry per-model sampling parameters; those retain ROCmplete's server-side
+mode-aware defaults and normal per-request override precedence.
 
 DwarfStar is a separate provider at its own loopback endpoint, with the one
 reviewed `deepseek-v4-flash-0731-q2-imatrix` model advertising the same
@@ -793,11 +793,9 @@ context and is not advertised. Disabled custom entries remove OpenCode's
 inherited low, medium, high, and max variants from the picker without hiding
 reasoning output. Pi maps the same behavior to `off` and `high` while hiding
 unsupported intermediate levels. OMP advertises only its supported `high`
-effort. Maki's llama.cpp base sends
-`thinking_budget_tokens`, which DwarfStar does not consume, so its generated
-entry leaves the model at normal server-side thinking and advertises no false
-selector. A generated provider does not imply that the DwarfStar server or
-model is installed or running.
+effort. Maki maps `/thinking off` and `/thinking high` directly to the same
+`reasoning_effort` values, with adaptive selecting high. A generated provider
+does not imply that the DwarfStar server or model is installed or running.
 
 `src/rocmplete/agent_sandbox.py` owns the common client boundary. All four
 launchers use bubblewrap by default and refuse to fall back silently when

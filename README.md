@@ -294,10 +294,11 @@ opencode
 ```
 
 Qwen3.8 starts at native medium effort. Pi, OpenCode, and OMP expose its off,
-low, medium, and xhigh choices without inventing a `high` level. Maki 0.4.8's
-llama.cpp transport exposes only an independent numeric reasoning budget; the
-managed server does not infer native effort from that number. Use Pi, OpenCode,
-or OMP when the model-native level matters.
+low, medium, and xhigh choices without inventing a `high` level. Maki builds
+containing commit `a9495e1` expose the same native model controls through
+`/thinking`; unsupported names snap downward, so `high` selects Qwen3.8
+medium. ROCmplete maps Qwen3.6 to its on/off toggle and prevents Muse from
+falling below its native low strength.
 
 OpenCode starts new sessions in read-only Investigate mode. All four launchers
 keep the current directory and private client state writable while hiding the

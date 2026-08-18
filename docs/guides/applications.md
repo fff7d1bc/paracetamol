@@ -634,7 +634,8 @@ executable provider descriptions and a small generated `init.lua` inside
 Maki's ROCmplete-owned XDG directories. The providers inherit Maki's native
 llama.cpp Chat Completions adapter and publish the exact context, output, and
 thinking capabilities of the reviewed presets. Maki's normal global config,
-sessions, and model choices are not read or modified.
+sessions, and model choices are not read or modified. Native named reasoning
+requires a Maki 0.4.8 build containing commit `a9495e1` or a later release.
 
 The recommended Qwen3.8 model starts at native medium effort. Maki
 remembers an explicit `/model` or `/thinking` choice in its private state. On
@@ -782,11 +783,13 @@ OpenCode uses `ctrl+t` or `/variants`, Pi uses `Shift+Tab`, `/settings`, or
 `--thinking`, OMP accepts `--thinking`, and Maki uses `/thinking`. Pi and
 OpenCode hide unsupported choices. OMP exposes all real levels but its schema
 cannot suppress the generic off choice for Muse; the Muse template interprets
-that unsupported choice as native low. Maki exposes a generic selector and
-converts it to numeric `thinking_budget_tokens`. ROCmplete deliberately does
-not reverse-engineer those numbers into native effort, strength, or toggle
-values. Use Pi, OpenCode, or OMP for reasoning-sensitive comparisons until
-Maki can carry the model-native control itself.
+that unsupported choice as native low. Maki exposes a generic selector, while
+ROCmplete's generated model entries map it to each model's native request
+fields. Unsupported named levels snap downward to a declared level: Qwen3.6
+maps every enabled level to its on toggle, Qwen3.8 maps `high` to `medium`, and
+Muse clamps off to its native `low`. Adaptive mode follows the managed default
+for the currently selected family rather than retaining the previous model's
+named level.
 
 All four clients use `/v1/chat/completions` and expose their file and shell
 tools as ordinary function calls. That matches llama.cpp's current tool
@@ -1282,10 +1285,9 @@ Think Max mode. If the DwarfStar server uses another port, pass
 and `high`; pass `./rocmplete agent pi --dwarfstar-port PORT --` or set
 `ROCMLETE_PI_DWARFSTAR_PORT` for its provider. OMP exposes the reviewed `high`
 thinking behavior and uses
-`ROCMLETE_OMP_DWARFSTAR_PORT`. Maki runs DwarfStar in its normal server-side
-thinking mode and does not advertise a selector because Maki's llama.cpp
-adapter sends a different budget field. Use the raw API when a direct-answer
-DwarfStar request is required. Set `ROCMLETE_MAKI_DWARFSTAR_PORT` when its
+`ROCMLETE_OMP_DWARFSTAR_PORT`. Maki exposes the same off and high behaviors
+through `/thinking`; adaptive selects high. Set
+`ROCMLETE_MAKI_DWARFSTAR_PORT` when its
 server uses a different port.
 
 Run the hardware-bound smoke separately after initial setup. Outside Strix

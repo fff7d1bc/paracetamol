@@ -28,7 +28,7 @@ from .agent_sandbox import (
     prepare_sandbox_paths as prepare_agent_sandbox_paths,
     sandbox_paths as agent_sandbox_paths,
 )
-from .catalog import Catalog
+from .catalog import Catalog, LlamaPreset
 from .config import (
     DWARFSTAR_DEFAULT_CONTEXT,
     DWARFSTAR_DEFAULT_OUTPUT_TOKENS,
@@ -58,6 +58,38 @@ class MakiLaunchPlan:
     mode: str
 
 
+def _native_thinking_fields(preset: LlamaPreset) -> Mapping[str, object]:
+    reasoning_control = preset.reasoning_control
+    if not reasoning_control:
+        return {}
+    if reasoning_control == "toggle":
+        return {
+            "thinking_fields": {
+                "off": {
+                    "chat_template_kwargs": {"enable_thinking": False}
+                },
+                "adaptive": {
+                    "chat_template_kwargs": {"enable_thinking": True}
+                },
+            }
+        }
+
+    field = "reasoning_{}".format(reasoning_control)
+    modes = {
+        "adaptive": {field: preset.reasoning_default},
+        **{
+            level: {field: level}
+            for level in preset.reasoning_levels
+        },
+    }
+    if preset.reasoning_off:
+        modes["off"] = {field: "none"}
+    return {
+        "thinking_fields": modes,
+        **({"requires_thinking": True} if not preset.reasoning_off else {}),
+    }
+
+
 def _models(catalog: Catalog) -> Tuple[Mapping[str, object], ...]:
     return tuple(
         {
@@ -68,6 +100,7 @@ def _models(catalog: Catalog) -> Tuple[Mapping[str, object], ...]:
                 preset.default_context
             ),
             "supports_thinking": bool(preset.reasoning_control),
+            **_native_thinking_fields(preset),
         }
         for identifier, preset in catalog.llama_presets.items()
         if is_agent_capable(preset)
@@ -113,18 +146,16 @@ def _default_model(
     return default_agent_model(catalog, data_dir, "Maki")
 
 
-def _render_init(provider: str, model: str, thinking: str) -> bytes:
+def _render_init(provider: str, model: str) -> bytes:
     model_spec = json.dumps("{}/{}".format(provider, model))
-    # Maki persists a named selector but its llama.cpp transport serializes it
-    # as a numeric token budget. Keep startup and later /thinking choices
-    # consistent without pretending that number is a model-native level.
-    thinking_value = json.dumps(thinking)
+    # Each generated model maps adaptive onto its native default. A single
+    # provider-wide named level would be wrong after switching families.
     content = """maki.setup({{
-  always_thinking = {thinking},
+  always_thinking = "adaptive",
   provider = {{ default_model = {model} }},
   plugins = {{ task = {{ max_concurrent = 1 }} }},
 }})
-""".format(thinking=thinking_value, model=model_spec)
+""".format(model=model_spec)
     return content.encode("utf-8")
 
 
@@ -175,11 +206,12 @@ def create_launch_plan(
             "tier": "medium",
             "context_window": DWARFSTAR_DEFAULT_CONTEXT,
             "max_output_tokens": DWARFSTAR_DEFAULT_OUTPUT_TOKENS,
-            # Maki's llama.cpp adapter sends thinking_budget_tokens, while
-            # DwarfStar accepts reasoning_effort/think. Leave DwarfStar at
-            # its normal server-side thinking default rather than exposing a
-            # selector whose requests would be ignored.
-            "supports_thinking": False,
+            "supports_thinking": True,
+            "thinking_fields": {
+                "off": {"reasoning_effort": "none"},
+                "adaptive": {"reasoning_effort": "high"},
+                "high": {"reasoning_effort": "high"},
+            },
         },
     )
     return MakiLaunchPlan(
@@ -189,7 +221,7 @@ def create_launch_plan(
         default_thinking=defaults[2],
         endpoint=endpoint,
         dwarfstar_endpoint=dwarfstar_endpoint,
-        init_content=_render_init(provider, model, thinking),
+        init_content=_render_init(provider, model),
         provider_contents={
             PROVIDER_ID: _provider_script(
                 "ROCmplete llama.cpp", endpoint, _models(catalog)

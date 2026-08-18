@@ -391,9 +391,9 @@ def _llama_guide() -> ApplicationGuide:
                     "OpenCode uses ctrl+t or /variants. Pi uses Shift+Tab "
                     "or /settings. OMP accepts --thinking. Maki uses "
                     "/thinking and Tab toggles its Plan and Build modes. "
-                    "Maki's llama.cpp transport controls numeric budgets; "
-                    "use Pi for comparisons that must also carry Qwen "
-                    "effort or Muse strength into the chat template.",
+                    "ROCmplete maps Maki's selector to each model's native "
+                    "toggle, effort, or strength field; unsupported named "
+                    "levels snap downward to a declared native choice.",
                 ),
                 (
                     _action(
