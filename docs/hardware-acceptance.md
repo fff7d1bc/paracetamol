@@ -22,7 +22,7 @@ this document.
 | Host | Architecture | Observed workload scope |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets; DwarfStar generation was about 3.9 tokens/s |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol, OMP probe, and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol, Qwen3.8 Dynamic Q4_K_XL at 128K, OMP probe, and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
@@ -620,9 +620,8 @@ Tests used source commit `9fb84ba89d34f6065af815d6700bdb51637c8889`
 and the stock r23 image
 `sha256:bf8a00950a0ea1611cb95486eb8517c17e0d8d3261a3bfa643c28c56ee9d2fb1`.
 The artifact loaded with working embedded MTP initialization on both ROCm and
-Vulkan. Its managed presets retain a conservative 65536-token context,
-depth-three MTP, and native medium effort. Dynamic Q8_K_XL remains the
-managed-client default.
+Vulkan. Its managed presets use depth-three MTP and native medium effort.
+Dynamic Q8_K_XL remains the managed-client default.
 
 The previous 17,106,773,984-byte Q4_K_M artifact was retained as a controlled
 comparison and then retired from the catalog. A fixed native control at 4K
@@ -673,6 +672,33 @@ All transient containers were removed. The kernel journal for the complete
 download, ROCm/Vulkan benchmark, router, and test interval had no
 matching GPU reset, page fault, ring timeout, device loss, SVM mapping failure,
 general-protection fault, or OOM event.
+
+#### Qwen3.8 Dynamic Q4_K_XL 128K context follow-up (2026-08-18)
+
+The Fedora Strix Halo host then compared the same pinned Dynamic Q4_K_XL
+artifact at 64K, 128K, and 256K with ROCm, embedded MTP depth three, native
+medium effort, Pi 0.84.2, and the balanced platform profile. Tests used
+ROCmplete commit `80f2e2f3d6bf6406c0f2ef3f9d195e8bb93cad6c` and image
+`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
+
+Each context received two fresh attempts at the same hidden-graded synthetic
+Go storage-planning task. The 64K pair solved zero attempts: one produced an
+incorrect candidate, while the other exhausted its 16,384-token response
+allowance, compacted at 58,764 total tokens, and settled without an edit. The
+256K pair produced two candidates without compaction and solved one. Both
+128K attempts produced clean candidates without compaction and passed the
+ordinary tests, independent hidden tests, and build. They ended at 58,807 and
+65,522 total tokens, took 1,438.906 and 2,327.271 seconds, and generated
+20,526 and 37,055 tokens at 16.254 and 17.555 tokens/s respectively.
+
+Fresh idle servers used 25.98 GB at 64K, 30.83 GB at 128K, and 40.52 GB at
+256K according to `podman stats`. Observations during the active 128K attempts
+were 31.73-31.82 GB (up to about 29.63 GiB). This provides a reasonable
+capacity basis for adopting 128K as the Q4 preset default while retaining
+substantially more headroom than 256K on Strix Halo. It suggests, but does not
+prove, that a headless 32 GiB discrete GPU can contain the preset; gfx1201
+acceptance remains pending on that hardware.
 
 #### Retired coding-agent comparisons (2026-08-17)
 
@@ -757,7 +783,7 @@ local source image.
 | llama.cpp offload smoke | `llama-qwen3-0.6b-q8-0` | pending | pending | pending | pending |
 | llama.cpp Qwen3.6 tool protocol | `qwen3.6-27b-mtp-q8-0`, complete nested tool round trip at 256K with thinking on (Pi `high`) and off | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
 | llama.cpp Qwen3.8 tool protocol | `qwen3.8-27b-mtp-ud-q8-k-xl`, complete nested tool round trip at 256K with off, low, medium, and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
-| llama.cpp Qwen3.8 Q4 optional path | `qwen3.8-27b-mtp-ud-q4-k-xl`, 64K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-16 on Vulkan | pending |
+| llama.cpp Qwen3.8 Q4 optional path | `qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
 | llama.cpp Muse DFlash | `muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |
 | DwarfStar direct-answer smoke | DeepSeek V4 Flash 0731 Q2 imatrix (routed IQ2_XXS/Q2_K, Q8 attention/shared/output), 4K context, 64-token ceiling | N/P unless host memory offload is deliberately provisioned | pending | pending | pending |
 

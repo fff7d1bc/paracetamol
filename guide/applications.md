@@ -231,7 +231,7 @@ speculative decoding:
 | `qwen3.6-35b-a3b-ud-q8-k-xl` | Sparse 35B-A3B Dynamic Q8_K_XL | Non-MTP control for the sparse model |
 | `qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
 | `qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
-| `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic Q4_K_XL at 64K | Optional smaller non-speculative control |
+| `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
 
 Keep whichever model succeeds on representative tasks rather than choosing
@@ -259,9 +259,11 @@ tokens/s) but slower prefill made its whole request 3.5% slower (170.29 versus
 Against the retired Q4_K_M path, Dynamic Q4_K_XL stayed within 12.4% on these
 whole requests. Against the default Dynamic Q8_K_XL on matched ROCm requests,
 it generated 25% faster at 4K and 30% faster at 32K. A medium-effort Pi run at
-64K and a nested-tool router probe both passed. This is useful single-host
-evidence, not an equivalent-quality claim against Dynamic Q8_K_XL.
-or proof that the model fits a dedicated 32 GB card.
+64K and a nested-tool router probe both passed. Two later hidden-graded
+medium-effort Pi runs at the reviewed 128K default also passed without
+compaction. This is useful single-host evidence, not an equivalent-quality
+claim against Dynamic Q8_K_XL or proof that the model fits a dedicated 32 GiB
+card.
 
 Qwen3.8 uses ROCmplete's reviewed copy of the pinned official base-model Jinja
 template instead of the template embedded in the Unsloth GGUF. It keeps Qwen's

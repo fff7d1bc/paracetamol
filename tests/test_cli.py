@@ -3301,6 +3301,7 @@ class CliTests(unittest.TestCase):
                 "qwen3.8-27b-mtp-ud-q4-k-xl",
             ),
         )
+        self.assertEqual(contents.count("c = 131072"), 2)
         self.assertEqual(contents.count("jinja = true"), 2)
         self.assertEqual(contents.count("reasoning-preserve = true"), 2)
         self.assertEqual(

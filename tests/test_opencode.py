@@ -170,7 +170,7 @@ class OpenCodeLauncherTests(unittest.TestCase):
         self.assertIn("qwen3.8-27b-mtp-ud-q4-k-xl", provider["models"])
         self.assertEqual(
             provider["models"]["qwen3.8-27b-mtp-ud-q4-k-xl"]["limit"],
-            {"context": 65536, "output": 16384},
+            {"context": 131072, "output": 16384},
         )
         self.assertIn("kat-coder-v2.5-dev-q8-0", provider["models"])
         self.assertEqual(

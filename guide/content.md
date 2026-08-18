@@ -71,9 +71,9 @@ does not also download a second quantization:
 ./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl
 ```
 
-Its base and embedded-MTP presets start at 64K context for more constrained
-hardware. The smaller quantization is optional and never displaces Dynamic
-Q8_K_XL as the managed-client default.
+Its base and embedded-MTP presets start at a reviewed 128K context for more
+constrained hardware. The smaller quantization is optional and never
+displaces Dynamic Q8_K_XL as the managed-client default.
 
 The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
 matching DFlash draft. The next-step command starts the forced-256K DFlash

@@ -2640,7 +2640,7 @@
     "qwen3.8-27b-ud-q4-k-xl": {
       "bundle": "llama-qwen3.8-27b-ud-q4-k-xl",
       "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
-      "default_context": 65536,
+      "default_context": 131072,
       "chat_template": "qwen3.8",
       "sampling_policy": "qwen3.8-27b",
       "agent_tools": true,
@@ -2657,7 +2657,7 @@
     "qwen3.8-27b-mtp-ud-q4-k-xl": {
       "bundle": "llama-qwen3.8-27b-ud-q4-k-xl",
       "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
-      "default_context": 65536,
+      "default_context": 131072,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
       "chat_template": "qwen3.8",

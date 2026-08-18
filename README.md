@@ -34,7 +34,7 @@ passed.
 | Host | GPU target | Workloads exercised |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair; managed Qwen3.6 and Qwen3.8 llama.cpp MTP/tool paths, including the optional Qwen3.8 Dynamic Q4_K_XL path at 64K; OMP and ROCm/Vulkan paths; Muse Glimmer dynamic and 256K runtime probes; historical Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair; managed Qwen3.6 and Qwen3.8 llama.cpp MTP/tool paths, including the optional Qwen3.8 Dynamic Q4_K_XL path at 128K; OMP and ROCm/Vulkan paths; Muse Glimmer dynamic and 256K runtime probes; historical Laguna XS and Ling feasibility controls |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
@@ -156,14 +156,15 @@ managed-client default:
 ./rocmplete run llama-cpp server --preset qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
-The Dynamic Q4_K_XL presets start at a conservative 64K context. Treat the
+The Dynamic Q4_K_XL presets start at a reviewed 128K context. Treat the
 smaller quantization as a capacity and throughput tradeoff, not an
 equivalent-quality replacement for the Dynamic Q8_K_XL default. On the
 accepted Strix Halo host it was within 12.4% of the retired Q4_K_M path across
 matched whole requests and generated 25-30% faster than Dynamic Q8_K_XL on
-matched ROCm MTP requests. ROCm and Vulkan traded wins by context, so there is
-no model-specific backend override. Dedicated 32 GB RDNA 4 capacity still
-needs acceptance on that hardware.
+matched ROCm MTP requests. Its 128K server used 30.83 GB while idle and was
+observed at 31.73-31.82 GB during controlled agent runs. ROCm and Vulkan traded
+wins by context, so there is no model-specific backend override. Dedicated
+32 GiB RDNA 4 capacity still needs acceptance on that hardware.
 
 Qwen3.6 and Muse Glimmer remain separate comparison families. Their recipes
 install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic

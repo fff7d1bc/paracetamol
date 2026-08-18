@@ -108,7 +108,7 @@ class MakiLauncherTests(unittest.TestCase):
             self.assertIn("qwen3.8-27b-mtp-ud-q4-k-xl", by_id)
             self.assertEqual(
                 by_id["qwen3.8-27b-mtp-ud-q4-k-xl"]["context_window"],
-                65536,
+                131072,
             )
             self.assertEqual(
                 by_id[self.default_model]["context_window"], 262144

@@ -85,7 +85,7 @@ class OmpLauncherTests(unittest.TestCase):
         self.assertIn("qwen3.8-27b-mtp-ud-q8-k-xl", models)
         self.assertIn("qwen3.8-27b-mtp-ud-q4-k-xl", models)
         self.assertEqual(
-            models["qwen3.8-27b-mtp-ud-q4-k-xl"]["contextWindow"], 65536
+            models["qwen3.8-27b-mtp-ud-q4-k-xl"]["contextWindow"], 131072
         )
         qwen = models["qwen3.6-27b-mtp-q8-0"]
         self.assertEqual(qwen["contextWindow"], 262144)
