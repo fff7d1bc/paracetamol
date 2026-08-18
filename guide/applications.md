@@ -265,6 +265,13 @@ compaction. This is useful single-host evidence, not an equivalent-quality
 claim against Dynamic Q8_K_XL or proof that the model fits a dedicated 32 GiB
 card.
 
+For the quality side of that choice, see the dedicated
+[Qwen3.8 Dynamic Q4 versus Q8 coding-agent
+comparison](qwen3.8-dynamic-quant-comparison.md). It reports hidden-graded
+medium and `xhigh` results task by task, separates strict completion from a
+correct patch that timed out, and explains why the findings apply to these
+exact Unsloth Dynamic files rather than every model carrying a Q4 or Q8 label.
+
 Qwen3.8 uses ROCmplete's reviewed copy of the pinned official base-model Jinja
 template instead of the template embedded in the Unsloth GGUF. It keeps Qwen's
 official message and tool format, but the Unsloth copy silently aliases generic

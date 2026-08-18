@@ -166,6 +166,11 @@ observed at 31.73-31.82 GB during controlled agent runs. ROCm and Vulkan traded
 wins by context, so there is no model-specific backend override. Dedicated
 32 GiB RDNA 4 capacity still needs acceptance on that hardware.
 
+The [Qwen3.8 Dynamic Q4 versus Q8 coding-agent
+comparison](guide/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
+medium and `xhigh` quality results, per-task outcomes, targeted retries, and
+the limits of applying those Unsloth-specific findings to other GGUF releases.
+
 Qwen3.6 and Muse Glimmer remain separate comparison families. Their recipes
 install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic
 target/DFlash pair:
