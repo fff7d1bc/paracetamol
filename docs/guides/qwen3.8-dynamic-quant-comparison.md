@@ -15,6 +15,16 @@ is `xhigh` reasoning worth its cost?
 > Another publisher, conversion, quantization recipe, importance matrix,
 > runtime, template, or sampling policy can change both quality and speed.
 
+> **Why the `xhigh` pass compares Q4 at 128K with Q8 at 256K:** the split was
+> deliberate, not an attempt to handicap Q4. It approximates the memory and
+> model-choice side of a real deployment dilemma: run Q4 at 128K on one fast
+> 32 GiB Radeon AI PRO R9700-class discrete GPU, or keep Q8 at 256K on a
+> 128 GB Strix Halo system whose larger memory can hold the full configuration.
+> Both models were actually measured on the same Strix Halo host, so this
+> comparison does **not** measure R9700-versus-Strix-Halo hardware speed. It
+> tests the usefulness of the two configurations intended for those hardware
+> envelopes; dedicated R9700 acceptance remains pending.
+
 - **The Unsloth Dynamic Q4_K_XL was good enough to be a serious coding-agent
   model in this test.** In the original matched-64K medium pass, Q4 and Q8 each
   strictly solved three of five first attempts and left code that passed every
@@ -95,9 +105,10 @@ The direct quant comparisons are clear within each effort pass:
 The effort comparison needs more care. Medium used a forced 64K ceiling for
 both quants because it began before Q4's 128K default was accepted. The later
 `xhigh` pass used each preset's current default: 128K for Q4 and 256K for Q8.
-The increased wall time and output strongly show the practical cost of the
-tested `xhigh` configuration, but they cannot isolate reasoning effort from
-context and run-to-run randomness.
+That deliberate split represented the R9700-class and high-capacity Strix
+Halo deployment envelopes described above. The increased wall time and output
+strongly show the practical cost of the tested `xhigh` configurations, but
+they cannot isolate reasoning effort from context and run-to-run randomness.
 
 ## What happened on each task?
 
