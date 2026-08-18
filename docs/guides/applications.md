@@ -636,6 +636,9 @@ llama.cpp Chat Completions adapter and publish the exact context, output, and
 thinking capabilities of the reviewed presets. Maki's normal global config,
 sessions, and model choices are not read or modified. Native named reasoning
 requires a Maki 0.4.8 build containing commit `a9495e1` or a later release.
+That commit applies `always_thinking` to interactive sessions but not Maki's
+non-interactive `--print` path. Use the TUI `/thinking` selector when the
+native reasoning condition matters.
 
 The recommended Qwen3.8 model starts at native medium effort. Maki
 remembers an explicit `/model` or `/thinking` choice in its private state. On

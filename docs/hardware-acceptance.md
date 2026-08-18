@@ -26,6 +26,38 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Maki native reasoning transport (2026-08-18)
+
+ROCmplete commit `cf7e75e` was exercised with a Maki 0.4.8 build containing
+commit `a9495e1` on the Fedora 44 Strix Halo host with kernel
+`7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
+`/dev/dri/renderD128`. The existing llama.cpp image was
+`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
+
+Fresh Maki TUI sessions and a loopback request capture confirmed the exact
+generated fields. Qwen3.8 off, low, high, and xhigh sent effort none, low,
+medium, and xhigh respectively; Qwen3.6 off and high sent nested
+`enable_thinking` false and true; Muse off and high sent strength low and
+high; and DwarfStar off and high sent effort none and high to the generated
+`--dwarfstar-port`. None of these named requests also carried a numeric
+thinking budget. Family-wide configuration tests cover all four Qwen3.6 and
+all four Qwen3.8 MTP, non-MTP, and precision presets that share those paths.
+
+Live router inference then returned exact text `TRUE` for Qwen3.8 Q8 MTP at
+off and xhigh, Qwen3.6 27B MTP at off and enabled, and Muse Glimmer DFlash
+256K at its forced-low and high paths. The off Qwen sessions contained no
+reasoning, while their enabled counterparts and both Muse requests retained a
+separate reasoning block. DwarfStar's request mapping was captured but its
+model was not started for this acceptance. The kernel journal for the live
+test window contained no matching AMDGPU, SVM mapping, protection-fault, or
+OOM event, and the temporary router stopped cleanly.
+
+Maki's `--print` path at this commit does not apply `always_thinking`; these
+mode results therefore use fresh interactive sessions with automatic exit.
+This accepts generated model metadata, Maki's native request transport, and
+representative GPU inference wiring, not agent-task quality or performance.
+
 ### Fedora 44 Strix Halo model-scoped reasoning fallback (2026-08-17)
 
 ROCmplete commit `0355a73` was built and exercised on the Fedora 44 Strix Halo

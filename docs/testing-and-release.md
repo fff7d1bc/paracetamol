@@ -250,8 +250,10 @@ confirm OMP's unsupported Muse off choice resolves to native low. For Maki
 0.4.8 at or after commit `a9495e1`, capture the actual request fields for the
 same matrix. Confirm Qwen3.6 maps every enabled name to its on toggle,
 Qwen3.8 `high` snaps to medium, Muse off clamps to low, and adaptive follows
-the selected family's managed default. Keep these protocol checks separate
-from cross-model quality benchmarking.
+the selected family's managed default. Exercise new interactive sessions:
+Maki commit `a9495e1` does not apply `always_thinking` in `--print` mode, so
+that path cannot validate the generated default or named selector. Keep these
+protocol checks separate from cross-model quality benchmarking.
 
 After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every
