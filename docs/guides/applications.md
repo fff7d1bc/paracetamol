@@ -508,6 +508,18 @@ PRESET`, with `--provider rocmplete` available when the provider would
 otherwise be ambiguous. Maki accepts `-m rocmplete/PRESET` and exposes the
 same entries through `/model`.
 
+Managed Pi sessions replace the stock interactive picker with a
+ROCmplete-owned view. The configured model-selection shortcut (`Ctrl+L` by
+default), bare `/model`, and `/select-model` open models in stable family
+groups such as Qwen 3.8, Qwen 3.6, and Muse Glimmer. The current model remains
+in its natural group and is marked there rather than being promoted to the
+top. Search matches family, provider, ID, and display name. After selection,
+Pi immediately asks for one of that model's supported reasoning levels. An
+exact `/model PROVIDER/MODEL` command uses Pi's normal selector and then opens
+the same reasoning prompt. Model cycling and session restoration do not add a
+prompt; `Shift+Tab`, `/settings`, and `--thinking` remain available for direct
+reasoning changes.
+
 Pi can run on a client host while the managed llama.cpp router runs on a
 different Linux GPU host. Publish the router only on a trusted LAN address and
 limit its port with the host firewall, because llama.cpp provides no
@@ -586,12 +598,13 @@ installed by `./rocmplete agent install pi`; it never searches `PATH` for
 another Pi. The repository's package manifest and lockfile pin the complete
 npm dependency tree, while system Node.js remains the only runtime. The
 installed tree is mounted read-only and kept separate from the generated
-`models.json` and Pi's ROCmplete-owned private state. The file uses Pi's
-`openai-completions` provider, lists the same reviewed llama.cpp presets and
-DwarfStar model, and is refreshed atomically on every launch. Pi's normal
-`~/.pi/agent` state is not read or modified. The launcher disables Pi's update
-checks and telemetry during managed sessions. It declines project `.pi`
-resources by default, while ordinary `AGENTS.md` context still loads.
+`models.json`, ROCmplete's model-picker extension, and Pi's private managed
+state. The model file uses Pi's `openai-completions` provider and lists the same
+reviewed llama.cpp presets and DwarfStar model. Both managed resources are
+refreshed atomically on every launch. Pi's normal `~/.pi/agent` state is not
+read or modified. The launcher disables Pi's update checks and telemetry
+during managed sessions. It declines project `.pi` resources by default,
+while ordinary `AGENTS.md` context still loads.
 
 Pi's package commands keep their upstream shape through the PATH launcher.
 For example, `pi install npm:pi-code-indexer`, `pi list`, and `pi update

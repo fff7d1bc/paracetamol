@@ -20,6 +20,7 @@ from rocmplete.config import (
 from rocmplete.content_verification import VerificationStore
 from rocmplete.errors import LauncherError
 from rocmplete.pi_agent import (
+    MODEL_PICKER_EXTENSION_SOURCE,
     RECOMMENDED_MODEL,
     SANDBOX_AGENT_DIR,
     WRAPPER_PATH,
@@ -27,6 +28,7 @@ from rocmplete.pi_agent import (
     create_sandbox_plan,
     discover_remote_models,
     launch_environment,
+    load_model_picker_extension,
     normalize_llama_url,
     prepare_state,
     render_config,
@@ -287,6 +289,22 @@ class PiLauncherTests(unittest.TestCase):
             },
         )
 
+    def test_model_picker_extension_groups_models_and_chains_reasoning(self):
+        extension = load_model_picker_extension().decode("utf-8")
+        self.assertTrue(MODEL_PICKER_EXTENSION_SOURCE.is_file())
+        for family in (
+            "Qwen 3.8",
+            "Qwen 3.6",
+            "Muse Glimmer",
+            "KAT-Coder",
+            "Gemma 4",
+            "DeepSeek V4 Flash",
+        ):
+            self.assertIn('"{}"'.format(family), extension)
+        self.assertIn('pi.on("model_select"', extension)
+        self.assertIn('ctx.ui.getEditorText().trim() === "/model"', extension)
+        self.assertIn("ThinkingSelectorComponent", extension)
+
     def test_launch_selects_installed_model_and_forwards_overrides_last(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -534,14 +552,25 @@ class PiLauncherTests(unittest.TestCase):
             paths = sandbox_paths(data_dir)
             agent_dir = prepare_state(plan, paths, data_dir)
             models = agent_dir / "models.json"
+            model_picker = (
+                agent_dir / "extensions" / "rocmplete-model-picker.ts"
+            )
             self.assertEqual(models.read_bytes(), plan.config_content)
+            self.assertEqual(
+                model_picker.read_bytes(), plan.model_picker_extension
+            )
             self.assertEqual(stat.S_IMODE(models.stat().st_mode), 0o600)
+            self.assertEqual(
+                stat.S_IMODE(model_picker.stat().st_mode), 0o600
+            )
             self.assertEqual(stat.S_IMODE(agent_dir.stat().st_mode), 0o700)
-            self.assertEqual(list(agent_dir.glob(".models.*.tmp")), [])
+            self.assertEqual(list(agent_dir.rglob("*.tmp")), [])
 
             first_inode = models.stat().st_ino
+            first_picker_inode = model_picker.stat().st_ino
             self.assertEqual(prepare_state(plan, paths, data_dir), agent_dir)
             self.assertEqual(models.stat().st_ino, first_inode)
+            self.assertEqual(model_picker.stat().st_ino, first_picker_inode)
 
     def test_prepare_state_refuses_a_symlinked_model_config(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -571,6 +600,39 @@ class PiLauncherTests(unittest.TestCase):
             ):
                 prepare_state(plan, paths, data_dir)
             self.assertEqual(target.read_bytes(), plan.config_content)
+
+    def test_prepare_state_refuses_a_symlinked_model_picker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data_dir = root / "data"
+            binary_dir = root / "bin"
+            binary_dir.mkdir()
+            self._fake_pi(binary_dir)
+            self._mark_installed(data_dir, self.default_model)
+            plan = create_launch_plan(
+                self.catalog,
+                data_dir,
+                8080,
+                (),
+                {"PATH": str(binary_dir)},
+            )
+            paths = sandbox_paths(data_dir)
+            agent_dir = prepare_state(plan, paths, data_dir)
+            model_picker = (
+                agent_dir / "extensions" / "rocmplete-model-picker.ts"
+            )
+            model_picker.unlink()
+            target = root / "outside.ts"
+            target.write_bytes(plan.model_picker_extension)
+            model_picker.symlink_to(target)
+
+            with self.assertRaisesRegex(
+                LauncherError, "not a private regular file"
+            ):
+                prepare_state(plan, paths, data_dir)
+            self.assertEqual(
+                target.read_bytes(), plan.model_picker_extension
+            )
 
     def test_sandbox_keeps_pi_state_private_and_hides_host_environment(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -764,6 +826,12 @@ class PiLauncherTests(unittest.TestCase):
             self.assertEqual(child["PI_OFFLINE"], "1")
             self.assertEqual(child["PI_TELEMETRY"], "0")
             models = Path(child["PI_CODING_AGENT_DIR"]) / "models.json"
+            model_picker = (
+                models.parent / "extensions" / "rocmplete-model-picker.ts"
+            )
+            self.assertEqual(
+                model_picker.read_bytes(), load_model_picker_extension()
+            )
             config = json.loads(models.read_text())
             self.assertEqual(
                 config["providers"]["rocmplete"]["baseUrl"],

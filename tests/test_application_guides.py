@@ -161,7 +161,11 @@ class ApplicationGuideTests(unittest.TestCase):
             "Qwen3.8 exposes instant, low, medium, and xhigh", normalized
         )
         self.assertIn("native low, medium, high, and xhigh strength", normalized)
-        self.assertIn("Pi uses Shift+Tab, /settings", normalized)
+        self.assertIn(
+            "Pi's model shortcut and bare /model group presets by family",
+            normalized,
+        )
+        self.assertIn("Shift+Tab, /settings", normalized)
         self.assertIn("Maki uses /thinking", normalized)
         self.assertNotIn("agent opencode", text)
         self.assertNotIn("agent omp", text)

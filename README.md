@@ -312,6 +312,13 @@ containing commit `a9495e1` expose the same native model controls through
 medium. ROCmplete maps Qwen3.6 to its on/off toggle and prevents Muse from
 falling below its native low strength.
 
+In managed Pi sessions, the configured model-selection shortcut (`Ctrl+L` by
+default) and bare `/model` open ROCmplete's family-grouped picker. Models stay
+under stable headings such as Qwen 3.8 and Qwen 3.6 instead of moving the
+current model into a recent section. Selecting a model immediately opens its
+valid reasoning choices. An exact `/model PROVIDER/MODEL` command also opens
+the reasoning picker after changing models.
+
 Both launchers keep the current directory and private client state writable
 while hiding the
 real home directory, credentials, Podman state, and GPU devices. The

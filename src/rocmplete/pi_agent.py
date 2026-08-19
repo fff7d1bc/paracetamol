@@ -44,6 +44,13 @@ from .project import PROJECT_ROOT
 
 
 WRAPPER_PATH = PROJECT_ROOT / "bin" / "pi"
+MODEL_PICKER_EXTENSION_SOURCE = (
+    PROJECT_ROOT
+    / "agent-clients"
+    / "pi"
+    / "extensions"
+    / "rocmplete-model-picker.ts"
+)
 SANDBOX_AGENT_DIR = SANDBOX_HOME / ".local" / "share" / "pi" / "agent"
 _THINKING_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
 _DWARFSTAR_REASONING_LEVELS = {
@@ -91,8 +98,33 @@ class PiLaunchPlan:
     endpoint: str
     dwarfstar_endpoint: str
     config_content: bytes
+    model_picker_extension: bytes
     mode: str
     remote_llama: bool
+
+
+def load_model_picker_extension(
+    path: Path = MODEL_PICKER_EXTENSION_SOURCE,
+) -> bytes:
+    """Read the repository-owned Pi model-picker extension."""
+
+    try:
+        status = path.lstat()
+        if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
+            raise LauncherError(
+                "Pi model-picker extension is not a regular file: {}".format(
+                    path
+                )
+            )
+        return path.read_bytes()
+    except FileNotFoundError:
+        raise LauncherError(
+            "Pi model-picker extension is missing: {}".format(path)
+        )
+    except OSError as error:
+        raise LauncherError(
+            "cannot read Pi model-picker extension {}: {}".format(path, error)
+        )
 
 
 def normalize_llama_url(value: str) -> str:
@@ -345,6 +377,7 @@ def create_launch_plan(
     if forwarded[:1] == ("--",):
         forwarded = forwarded[1:]
     managed_runtime = runtime or resolve_pi_runtime(data_dir, env)
+    model_picker_extension = load_model_picker_extension()
     command_prefix = (
         str(managed_runtime.node),
         str(managed_runtime.entrypoint),
@@ -375,6 +408,7 @@ def create_launch_plan(
             config_content=render_config(
                 catalog, endpoint, dwarfstar_endpoint
             ),
+            model_picker_extension=model_picker_extension,
             mode="passthrough",
             remote_llama=remote_llama,
         )
@@ -390,6 +424,7 @@ def create_launch_plan(
             config_content=render_config(
                 catalog, endpoint, dwarfstar_endpoint
             ),
+            model_picker_extension=model_picker_extension,
             mode="management",
             remote_llama=remote_llama,
         )
@@ -420,6 +455,7 @@ def create_launch_plan(
         endpoint=endpoint,
         dwarfstar_endpoint=dwarfstar_endpoint,
         config_content=render_config(catalog, endpoint, dwarfstar_endpoint),
+        model_picker_extension=model_picker_extension,
         mode="session",
         remote_llama=remote_llama,
     )
@@ -433,18 +469,88 @@ def _agent_dir(paths: PiSandboxPaths) -> Path:
     return paths.data / "pi" / "agent"
 
 
+def _refresh_private_file(
+    path: Path,
+    contents: bytes,
+    description: str,
+) -> None:
+    """Atomically refresh one ROCmplete-owned file below Pi's private state."""
+
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        current = None
+    except OSError as error:
+        raise LauncherError(
+            "cannot inspect {} {}: {}".format(description, path, error)
+        )
+    if current is not None:
+        if not stat.S_ISREG(current.st_mode) or current.st_nlink != 1:
+            raise LauncherError(
+                "{} is not a private regular file: {}".format(
+                    description, path
+                )
+            )
+        try:
+            unchanged = path.read_bytes() == contents
+        except OSError as error:
+            raise LauncherError(
+                "cannot read {} {}: {}".format(description, path, error)
+            )
+        if unchanged:
+            try:
+                path.chmod(0o600)
+            except OSError as error:
+                raise LauncherError(
+                    "cannot secure {} {}: {}".format(
+                        description, path, error
+                    )
+                )
+            return
+
+    temporary = None
+    try:
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=".{}-".format(path.name),
+            suffix=".tmp",
+            dir=str(path.parent),
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+        temporary = None
+    except OSError as error:
+        raise LauncherError(
+            "cannot write {} {}: {}".format(description, path, error)
+        )
+    finally:
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
 def prepare_state(
     plan: PiLaunchPlan,
     paths: PiSandboxPaths,
     data_dir: Path,
 ) -> Path:
-    """Prepare Pi's private state and atomically refresh models.json."""
+    """Prepare Pi's private state and atomically refresh managed resources."""
 
     prepare_agent_sandbox_paths(paths, data_dir, "Pi")
     agent_dir = _agent_dir(paths)
     models = agent_dir / "models.json"
+    extensions = agent_dir / "extensions"
+    model_picker = extensions / "rocmplete-model-picker.ts"
     validate_managed_parent(models, paths.root, data_dir, "Pi model config")
-    for path in (agent_dir.parent, agent_dir):
+    validate_managed_parent(
+        model_picker, paths.root, data_dir, "Pi model-picker extension"
+    )
+    for path in (agent_dir.parent, agent_dir, extensions):
         try:
             status = path.lstat()
         except FileNotFoundError:
@@ -473,58 +579,14 @@ def prepare_state(
             raise LauncherError(
                 "cannot secure Pi state directory {}: {}".format(path, error)
             )
-    try:
-        model_status = models.lstat()
-    except FileNotFoundError:
-        model_status = None
-    except OSError as error:
-        raise LauncherError(
-            "cannot inspect Pi model configuration {}: {}".format(
-                models, error
-            )
-        )
-    if model_status is not None:
-        if (
-            not stat.S_ISREG(model_status.st_mode)
-            or model_status.st_nlink != 1
-        ):
-            raise LauncherError(
-                "Pi model configuration is not a private regular file: "
-                "{}".format(models)
-            )
-        try:
-            if models.read_bytes() == plan.config_content:
-                models.chmod(0o600)
-                return agent_dir
-        except OSError as error:
-            raise LauncherError(
-                "cannot read Pi model configuration {}: {}".format(
-                    models, error
-                )
-            )
-
-    temporary = None
-    try:
-        descriptor, temporary = tempfile.mkstemp(
-            prefix=".models.", suffix=".tmp", dir=str(agent_dir)
-        )
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(plan.config_content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, models)
-        temporary = None
-    except OSError as error:
-        raise LauncherError(
-            "cannot write Pi model configuration {}: {}".format(models, error)
-        )
-    finally:
-        if temporary is not None:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:
-                pass
+    _refresh_private_file(
+        models, plan.config_content, "Pi model configuration"
+    )
+    _refresh_private_file(
+        model_picker,
+        plan.model_picker_extension,
+        "Pi model-picker extension",
+    )
     return agent_dir
 
 

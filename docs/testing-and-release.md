@@ -104,6 +104,13 @@ sandbox, especially when `/etc/resolv.conf` points into `/run`. Repeat with
 Linuxbrew client installations because their prefix lives below `/home`, which
 the sandbox otherwise hides. Confirm `AGENTS.md` loads in both clients while
 unapproved project `.pi` resources do not affect Pi.
+
+For managed Pi picker changes, also open the configured model-selection
+shortcut and bare `/model`, confirm models remain in stable family groups,
+and select a reasoning-capable model. Its supported reasoning selector must
+open immediately. Confirm exact `/model PROVIDER/MODEL` does the same while
+model cycling and session restoration remain prompt-free.
+
 On Fedora-family hosts where `/home` links to `/var/home`, confirm that both
 absolute spellings resolve to the mounted project while sibling home content
 remains absent.

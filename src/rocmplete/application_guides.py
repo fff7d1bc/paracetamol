@@ -371,8 +371,11 @@ def _llama_guide() -> ApplicationGuide:
                     "medium, high, and xhigh strength; high is its default. "
                     "Each named level also has a bounded llama.cpp "
                     "thinking-token ceiling. "
-                    "Pi uses Shift+Tab, /settings, or --thinking. Maki uses "
-                    "/thinking and Tab toggles its Plan and Build modes. "
+                    "Pi's model shortcut and bare /model group presets by "
+                    "family, then immediately ask for a supported reasoning "
+                    "level. Shift+Tab, /settings, and --thinking remain "
+                    "available for direct changes. Maki uses /thinking and "
+                    "Tab toggles its Plan and Build modes. "
                     "ROCmplete maps Maki's selector to each model's native "
                     "toggle, effort, or strength field; unsupported named "
                     "levels snap downward to a declared native choice.",
