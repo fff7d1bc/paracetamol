@@ -25,7 +25,9 @@ from rocmplete.pi_agent import (
     WRAPPER_PATH,
     create_launch_plan,
     create_sandbox_plan,
+    discover_remote_models,
     launch_environment,
+    normalize_llama_url,
     prepare_state,
     render_config,
     sandbox_paths,
@@ -87,6 +89,68 @@ class PiLauncherTests(unittest.TestCase):
             lock_sha256="0" * 64,
         )
         return executable
+
+    def test_remote_llama_url_requires_an_http_v1_base(self):
+        self.assertEqual(
+            normalize_llama_url("http://gateway.test:8080/v1/"),
+            "http://gateway.test:8080/v1",
+        )
+        self.assertEqual(
+            normalize_llama_url("https://models.example/llama/v1"),
+            "https://models.example/llama/v1",
+        )
+        for value in (
+            "",
+            "gateway.test:8080/v1",
+            "ftp://gateway.test/v1",
+            "http://user:secret@gateway.test/v1",
+            "http://gateway.test/models",
+            "http://gateway.test/v1?token=secret",
+            "http://gateway.test/v1#fragment",
+            "http://gateway.test/v1 bad",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(LauncherError):
+                    normalize_llama_url(value)
+
+    @patch("rocmplete.pi_agent.urllib.request.urlopen")
+    def test_remote_model_discovery_uses_bounded_standard_inventory(
+        self, urlopen
+    ):
+        urlopen.return_value = io.BytesIO(
+            json.dumps(
+                {
+                    "object": "list",
+                    "data": [
+                        {"id": self.default_model, "object": "model"},
+                        {"id": "other"},
+                        {"id": self.default_model},
+                    ],
+                }
+            ).encode("utf-8")
+        )
+
+        self.assertEqual(
+            discover_remote_models("http://gateway.test:8080/v1"),
+            (self.default_model, "other"),
+        )
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "http://gateway.test:8080/v1/models")
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 5)
+
+    @patch("rocmplete.pi_agent.urllib.request.urlopen")
+    def test_remote_model_discovery_rejects_invalid_inventory(self, urlopen):
+        for payload in (
+            b"not-json",
+            b"[]",
+            b'{"data": {}}',
+            b'{"data": [{"name": "missing-id"}]}',
+        ):
+            with self.subTest(payload=payload):
+                urlopen.return_value = io.BytesIO(payload)
+                with self.assertRaisesRegex(LauncherError, "invalid"):
+                    discover_remote_models("http://gateway.test:8080/v1")
 
     def test_config_uses_chat_completions_and_exact_model_limits(self):
         config = json.loads(
@@ -263,6 +327,79 @@ class PiLauncherTests(unittest.TestCase):
                 plan.command[-4:],
                 ("--model", "other", "--thinking", "high"),
             )
+
+    @patch(
+        "rocmplete.pi_agent.discover_remote_models",
+        return_value=("unmaintained", RECOMMENDED_MODEL),
+    )
+    def test_remote_launch_selects_advertised_model_without_local_content(
+        self, discover
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary_dir = root / "bin"
+            binary_dir.mkdir()
+            self._fake_pi(binary_dir)
+
+            plan = create_launch_plan(
+                self.catalog,
+                root / "empty-data",
+                8080,
+                (),
+                {"PATH": str(binary_dir)},
+                llama_url="http://gateway.test:8080/v1/",
+            )
+
+        self.assertTrue(plan.remote_llama)
+        self.assertEqual(plan.endpoint, "http://gateway.test:8080/v1")
+        self.assertEqual(plan.default_provider, "rocmplete")
+        self.assertEqual(plan.default_model, RECOMMENDED_MODEL)
+        self.assertEqual(plan.default_thinking, "medium")
+        discover.assert_called_once_with("http://gateway.test:8080/v1")
+
+    @patch(
+        "rocmplete.pi_agent.discover_remote_models",
+        return_value=("unmaintained",),
+    )
+    def test_remote_launch_requires_a_maintained_advertised_model(
+        self, discover
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary_dir = root / "bin"
+            binary_dir.mkdir()
+            self._fake_pi(binary_dir)
+            with self.assertRaisesRegex(
+                LauncherError, "advertises no model maintained for Pi"
+            ):
+                create_launch_plan(
+                    self.catalog,
+                    root / "empty-data",
+                    8080,
+                    (),
+                    {"PATH": str(binary_dir)},
+                    llama_url="http://gateway.test:8080/v1",
+                )
+        discover.assert_called_once()
+
+    @patch("rocmplete.pi_agent.discover_remote_models")
+    def test_remote_management_command_does_not_probe_server(self, discover):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary_dir = root / "bin"
+            binary_dir.mkdir()
+            self._fake_pi(binary_dir)
+            plan = create_launch_plan(
+                self.catalog,
+                root / "empty-data",
+                8080,
+                ("list",),
+                {"PATH": str(binary_dir)},
+                llama_url="http://offline.example/v1",
+            )
+        self.assertEqual(plan.mode, "management")
+        self.assertTrue(plan.remote_llama)
+        discover.assert_not_called()
 
     def test_launch_falls_back_to_dwarfstar(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -458,9 +595,13 @@ class PiLauncherTests(unittest.TestCase):
             paths = sandbox_paths(data_dir)
             prepare_state(plan, paths, data_dir)
             resolver = Path("/run/systemd/resolve/stub-resolv.conf")
+            mdns_socket = Path("/run/avahi-daemon/socket")
             with patch(
                 "rocmplete.agent_sandbox._runtime_resolver_target",
                 return_value=resolver,
+            ), patch(
+                "rocmplete.agent_sandbox._runtime_mdns_socket",
+                return_value=mdns_socket,
             ):
                 sandbox = create_sandbox_plan(
                     plan,
@@ -487,6 +628,9 @@ class PiLauncherTests(unittest.TestCase):
             ]
             self.assertIn(
                 ["--ro-bind", str(resolver), str(resolver)], triples
+            )
+            self.assertIn(
+                ["--ro-bind", str(mdns_socket), str(mdns_socket)], triples
             )
             self.assertEqual(
                 command[-4:],
@@ -595,6 +739,8 @@ class PiLauncherTests(unittest.TestCase):
                     "pi",
                     "--data-dir",
                     str(data_dir),
+                    "--port",
+                    "9090",
                     "--no-sandbox",
                     "--",
                     "--list-models",
@@ -604,7 +750,7 @@ class PiLauncherTests(unittest.TestCase):
                 os.environ,
                 {
                     "PATH": str(binary_dir),
-                    "ROCMLETE_PI_PORT": "9090",
+                    "ROCMLETE_PI_LLAMA_URL": "http://remote.invalid/v1",
                     "ROCMLETE_PI_DWARFSTAR_PORT": "8001",
                 },
                 clear=True,
@@ -627,6 +773,57 @@ class PiLauncherTests(unittest.TestCase):
                 config["providers"]["dwarfstar"]["baseUrl"],
                 "http://127.0.0.1:8001/v1",
             )
+
+    @patch(
+        "rocmplete.pi_agent.discover_remote_models",
+        return_value=(RECOMMENDED_MODEL,),
+    )
+    @patch("rocmplete.cli.os.execvpe")
+    def test_cli_uses_remote_url_without_local_content_and_warns(
+        self, execute, discover
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data_dir = root / "data"
+            binary_dir = root / "bin"
+            binary_dir.mkdir()
+            executable = self._fake_pi(binary_dir)
+            _, arguments = parse_arguments(
+                [
+                    "agent",
+                    "pi",
+                    "--data-dir",
+                    str(data_dir),
+                    "--no-sandbox",
+                    "--",
+                    "--print",
+                    "ping",
+                ]
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "PATH": str(binary_dir),
+                    "ROCMLETE_PI_LLAMA_URL": "http://gateway.test:8080/v1",
+                },
+                clear=True,
+            ), redirect_stderr(io.StringIO()) as error:
+                self.assertEqual(command_pi(arguments, self.catalog), 0)
+
+            command, argv, child = execute.call_args.args
+            self.assertEqual(command, str(self.runtime.node))
+            self.assertEqual(argv[1], str(executable))
+            self.assertIn(RECOMMENDED_MODEL, argv)
+            self.assertEqual(child["PI_OFFLINE"], "1")
+            models = Path(child["PI_CODING_AGENT_DIR"]) / "models.json"
+            config = json.loads(models.read_text())
+            self.assertEqual(
+                config["providers"]["rocmplete"]["baseUrl"],
+                "http://gateway.test:8080/v1",
+            )
+            self.assertIn("Pi remote model server", error.getvalue())
+            self.assertIn("unencrypted connection", error.getvalue())
+        discover.assert_called_once_with("http://gateway.test:8080/v1")
 
     @patch("rocmplete.cli.os.execvpe")
     def test_cli_executes_management_command_in_private_online_state(
@@ -705,9 +902,34 @@ class PiLauncherTests(unittest.TestCase):
             ]
         )
         self.assertEqual(arguments.port, "9090")
+        self.assertIsNone(arguments.llama_url)
         self.assertEqual(arguments.dwarfstar_port, "8001")
         self.assertTrue(arguments.sandbox)
         self.assertEqual(arguments.pi_arguments, ["--", "--model", "other"])
+        _, remote_arguments = parse_arguments(
+            [
+                "agent",
+                "pi",
+                "--llama-url",
+                "http://gateway.test:8080/v1",
+                "--",
+            ]
+        )
+        self.assertEqual(
+            remote_arguments.llama_url, "http://gateway.test:8080/v1"
+        )
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(SystemExit, "2"):
+                parse_arguments(
+                    [
+                        "agent",
+                        "pi",
+                        "--port",
+                        "8080",
+                        "--llama-url",
+                        "http://gateway.test:8080/v1",
+                    ]
+                )
         with redirect_stdout(io.StringIO()) as output:
             with self.assertRaisesRegex(SystemExit, "0"):
                 main(["--help"])

@@ -1,8 +1,12 @@
+import socket
 import tempfile
 import unittest
 from pathlib import Path
 
-from rocmplete.agent_sandbox import _runtime_resolver_target
+from rocmplete.agent_sandbox import (
+    _runtime_mdns_socket,
+    _runtime_resolver_target,
+)
 from rocmplete.errors import LauncherError
 
 
@@ -72,6 +76,26 @@ class AgentSandboxResolverTests(unittest.TestCase):
                 LauncherError, "not a regular file"
             ):
                 _runtime_resolver_target(resolver, runtime)
+
+    def test_missing_mdns_socket_needs_no_runtime_bind(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing"
+            self.assertIsNone(_runtime_mdns_socket(path))
+
+    def test_exact_mdns_socket_is_available_for_runtime_bind(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "avahi.socket"
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.addCleanup(server.close)
+            server.bind(str(path))
+            self.assertEqual(_runtime_mdns_socket(path), path)
+
+    def test_mdns_runtime_path_must_be_a_unix_socket(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "avahi.socket"
+            path.write_text("unexpected")
+            with self.assertRaisesRegex(LauncherError, "not a Unix socket"):
+                _runtime_mdns_socket(path)
 
 
 if __name__ == "__main__":

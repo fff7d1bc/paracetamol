@@ -519,6 +519,33 @@ available when the provider would otherwise be ambiguous. OMP accepts
 `--model rocmplete-llama-cpp/PRESET`. Maki accepts `-m rocmplete/PRESET` and
 exposes the same entries through `/model`.
 
+Pi can run on a client host while the managed llama.cpp router runs on a
+different Linux GPU host. Publish the router only on a trusted LAN address and
+limit its port with the host firewall, because llama.cpp provides no
+application authentication:
+
+```bash
+# GPU host
+./rocmplete run llama-cpp server --router --models-max 1 \
+  --listen 192.168.1.50
+
+# Pi client host
+ROCMLETE_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
+```
+
+The equivalent direct form is
+`./rocmplete agent pi --llama-url URL --`. Remote mode performs a bounded
+`GET /v1/models` probe before starting Pi, intersects the advertised IDs with
+the reviewed ROCmplete agent catalog, and applies the normal recommended-model
+order. It therefore needs no local GGUF installation or verification receipt
+on the client host. The generated reasoning, context, and sampling metadata
+still comes from the client's ROCmplete checkout, so keep the two hosts on the
+same revision. An explicit `--port` selects a local router even when
+`ROCMLETE_PI_LLAMA_URL` is inherited. Pi prints the selected remote endpoint
+and a transport warning before the session begins. HTTPS protects transport
+when supplied by a trusted reverse proxy; ROCmplete does not attach remote API
+credentials.
+
 Managed Qwen servers and the remaining generated clients use these llama.cpp
 request defaults:
 
@@ -704,6 +731,8 @@ launch directory. It is a practical damage boundary, not a VM or network
 policy. `/etc` remains read-only; when its `resolv.conf` symlink points into
 the otherwise private `/run`, the launcher restores only that exact resolver
 target as a read-only bind so DNS continues to follow the host configuration.
+When Avahi is active, the launcher also binds only its exact Unix socket so
+NSS can resolve LAN `.local` names without exposing the rest of host `/run`.
 
 The launcher refuses `/`, the host home directory, or another ancestor of the
 home as the writable scope. Start it from the repository you intend to expose.

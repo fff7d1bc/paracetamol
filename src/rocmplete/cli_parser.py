@@ -204,6 +204,10 @@ Forward normal Pi arguments through the launcher:
 
   pi --model qwen3.8-27b-mtp-ud-q8-k-xl --thinking medium
 
+Use a managed llama.cpp router on another host:
+
+  ROCMLETE_PI_LLAMA_URL=http://gateway.test:8080/v1 pi
+
 Use a separately running DwarfStar server:
 
   ./rocmplete run dwarfstar server
@@ -877,11 +881,19 @@ def _parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=PI_EXAMPLES,
     )
-    pi.add_argument(
+    pi_llama_endpoint = pi.add_mutually_exclusive_group()
+    pi_llama_endpoint.add_argument(
         "--port",
         help=(
             "local llama.cpp router port (default: "
             "ROCMLETE_PI_PORT or 8080)"
+        ),
+    )
+    pi_llama_endpoint.add_argument(
+        "--llama-url",
+        help=(
+            "remote llama.cpp router base URL ending in /v1 "
+            "(default: ROCMLETE_PI_LLAMA_URL, otherwise local)"
         ),
     )
     pi.add_argument(

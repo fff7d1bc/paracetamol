@@ -296,6 +296,17 @@ opencode
 # or: maki
 ```
 
+Pi can instead use a managed router on another trusted host. The remote
+router publishes no authentication, so restrict it with the host firewall:
+
+```bash
+# On the GPU host:
+./rocmplete run llama-cpp server --router --models-max 1 --listen 192.168.1.50
+
+# On the Pi client host:
+ROCMLETE_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
+```
+
 Qwen3.8 starts at native medium effort. Pi, OpenCode, and OMP expose its off,
 low, medium, and xhigh choices without inventing a `high` level. Maki builds
 containing commit `a9495e1` expose the same native model controls through

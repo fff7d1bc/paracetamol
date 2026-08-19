@@ -1013,6 +1013,14 @@ def command_pi(
     arguments: argparse.Namespace, catalog: Optional[Catalog] = None
 ) -> int:
     env = os.environ
+    if arguments.llama_url is not None:
+        llama_url = arguments.llama_url
+    elif arguments.port is not None:
+        # An explicit local port overrides a remote URL inherited from the
+        # environment, matching the normal command-line precedence rule.
+        llama_url = None
+    else:
+        llama_url = environment_value(env, "PI_LLAMA_URL")
     port_value = arguments.port or environment_value(env, "PI_PORT", "8080")
     dwarfstar_port_value = arguments.dwarfstar_port or environment_value(
         env, "PI_DWARFSTAR_PORT", "8000"
@@ -1025,6 +1033,7 @@ def command_pi(
         arguments.pi_arguments,
         env,
         dwarfstar_port=validate_port(dwarfstar_port_value),
+        llama_url=llama_url,
     )
     if plan.mode == "passthrough":
         try:
@@ -1032,10 +1041,28 @@ def command_pi(
         except OSError as error:
             raise LauncherError("cannot start Pi: {}".format(error))
         return 0
-    if plan.mode == "management":
+    if plan.mode == "management" or (
+        plan.mode == "session" and plan.remote_llama
+    ):
+        # A remote-only client has no local content installation to have
+        # created DATA_DIR, but Pi still needs its private managed state.
         data_dir = prepare_data_dir(data_dir)
     paths = pi_sandbox_paths(data_dir)
     agent_dir = prepare_pi_state(plan, paths, data_dir)
+    if plan.mode == "session" and plan.remote_llama:
+        print("Pi remote model server", file=sys.stderr)
+        print("  llama.cpp        {}".format(plan.endpoint), file=sys.stderr)
+        warning = "prompts and tool results use an unauthenticated"
+        if plan.endpoint.startswith("http://"):
+            warning += ", unencrypted connection"
+        else:
+            warning += " connection"
+        print(
+            "{} {}. Trust the remote host and network boundary.".format(
+                style("WARNING:", "warning", sys.stderr), warning
+            ),
+            file=sys.stderr,
+        )
     if arguments.sandbox:
         sandbox = create_pi_sandbox_plan(plan, data_dir, Path.cwd(), env)
         print("Pi sandbox", file=sys.stderr)

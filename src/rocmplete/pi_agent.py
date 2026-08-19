@@ -6,6 +6,9 @@ import json
 import os
 import stat
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Tuple
@@ -19,6 +22,7 @@ from .agent_models import (
     agent_client_sampling_parameters,
     default_agent_model,
     is_agent_capable,
+    reasoning_client_default,
 )
 from .agent_sandbox import (
     AgentSandboxPaths as PiSandboxPaths,
@@ -73,6 +77,8 @@ _MANAGEMENT_COMMANDS = frozenset(
     )
 )
 _INFORMATION_ARGUMENTS = frozenset(("--help", "-h", "--version", "-v"))
+_REMOTE_MODELS_LIMIT = 1024 * 1024
+_REMOTE_MODELS_TIMEOUT = 5
 
 
 @dataclass(frozen=True)
@@ -86,6 +92,124 @@ class PiLaunchPlan:
     dwarfstar_endpoint: str
     config_content: bytes
     mode: str
+    remote_llama: bool
+
+
+def normalize_llama_url(value: str) -> str:
+    """Validate and normalize an OpenAI-compatible llama.cpp base URL."""
+
+    if not value or any(ord(character) <= 32 for character in value):
+        raise LauncherError(
+            "Pi llama.cpp URL must not be empty or contain whitespace"
+        )
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise LauncherError("invalid Pi llama.cpp URL: {}".format(error))
+    if parsed.scheme not in ("http", "https"):
+        raise LauncherError("Pi llama.cpp URL must use http or https")
+    if not parsed.hostname:
+        raise LauncherError("Pi llama.cpp URL must include a host")
+    if parsed.username is not None or parsed.password is not None:
+        raise LauncherError("Pi llama.cpp URL must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise LauncherError(
+            "Pi llama.cpp URL must not contain a query or fragment"
+        )
+    if port is not None and not 1 <= port <= 65535:
+        raise LauncherError("Pi llama.cpp URL port must be between 1 and 65535")
+    endpoint = value.rstrip("/")
+    if not urllib.parse.urlsplit(endpoint).path.endswith("/v1"):
+        raise LauncherError("Pi llama.cpp URL path must end with /v1")
+    return endpoint
+
+
+def discover_remote_models(endpoint: str) -> Tuple[str, ...]:
+    """Read the bounded standard model inventory from a remote router."""
+
+    url = "{}/models".format(endpoint)
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=_REMOTE_MODELS_TIMEOUT
+        ) as response:
+            raw = response.read(_REMOTE_MODELS_LIMIT + 1)
+    except urllib.error.HTTPError as error:
+        raise LauncherError(
+            "remote llama.cpp model discovery at {} returned HTTP {}".format(
+                url, error.code
+            )
+        )
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise LauncherError(
+            "cannot reach remote llama.cpp model inventory at {}: {}".format(
+                url, error
+            )
+        )
+    if len(raw) > _REMOTE_MODELS_LIMIT:
+        raise LauncherError(
+            "remote llama.cpp model inventory at {} exceeds {} bytes".format(
+                url, _REMOTE_MODELS_LIMIT
+            )
+        )
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise LauncherError(
+            "remote llama.cpp returned invalid model inventory JSON at "
+            "{}: {}".format(url, error)
+        )
+    if not isinstance(document, dict) or not isinstance(
+        document.get("data"), list
+    ):
+        raise LauncherError(
+            "remote llama.cpp returned an invalid model inventory at {}".format(
+                url
+            )
+        )
+    identifiers = []
+    seen = set()
+    for item in document["data"]:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            raise LauncherError(
+                "remote llama.cpp returned an invalid model inventory at "
+                "{}".format(url)
+            )
+        identifier = item["id"]
+        if not identifier or identifier in seen:
+            continue
+        seen.add(identifier)
+        identifiers.append(identifier)
+    return tuple(identifiers)
+
+
+def _remote_default_model(
+    catalog: Catalog, endpoint: str, identifiers: Sequence[str]
+) -> Tuple[str, str, str]:
+    advertised = set(identifiers)
+    maintained = tuple(
+        identifier
+        for identifier, preset in catalog.llama_presets.items()
+        if identifier in advertised and is_agent_capable(preset)
+    )
+    if RECOMMENDED_MODEL in maintained:
+        identifier = RECOMMENDED_MODEL
+    elif maintained:
+        identifier = maintained[0]
+    else:
+        raise LauncherError(
+            "remote llama.cpp router at {} advertises no model maintained "
+            "for Pi; start the managed router with an installed agent model".format(
+                endpoint
+            )
+        )
+    preset = catalog.llama_preset(identifier)
+    return PROVIDER_ID, identifier, reasoning_client_default(preset)
 
 
 def _provider(
@@ -207,9 +331,15 @@ def create_launch_plan(
     *,
     dwarfstar_port: int = 8000,
     runtime: Optional[PiRuntime] = None,
+    llama_url: Optional[str] = None,
 ) -> PiLaunchPlan:
     env = os.environ if environ is None else environ
-    endpoint = "http://127.0.0.1:{}/v1".format(port)
+    remote_llama = llama_url is not None
+    endpoint = (
+        normalize_llama_url(llama_url)
+        if llama_url is not None
+        else "http://127.0.0.1:{}/v1".format(port)
+    )
     dwarfstar_endpoint = "http://127.0.0.1:{}/v1".format(dwarfstar_port)
     forwarded = tuple(arguments)
     if forwarded[:1] == ("--",):
@@ -246,6 +376,7 @@ def create_launch_plan(
                 catalog, endpoint, dwarfstar_endpoint
             ),
             mode="passthrough",
+            remote_llama=remote_llama,
         )
     if forwarded[:1] and forwarded[0] in _MANAGEMENT_COMMANDS:
         return PiLaunchPlan(
@@ -260,9 +391,15 @@ def create_launch_plan(
                 catalog, endpoint, dwarfstar_endpoint
             ),
             mode="management",
+            remote_llama=remote_llama,
         )
 
-    provider, model, thinking = _default_model(catalog, data_dir)
+    if remote_llama:
+        provider, model, thinking = _remote_default_model(
+            catalog, endpoint, discover_remote_models(endpoint)
+        )
+    else:
+        provider, model, thinking = _default_model(catalog, data_dir)
     command = (
         *command_prefix,
         *_CLIENT_ARGUMENTS,
@@ -284,6 +421,7 @@ def create_launch_plan(
         dwarfstar_endpoint=dwarfstar_endpoint,
         config_content=render_config(catalog, endpoint, dwarfstar_endpoint),
         mode="session",
+        remote_llama=remote_llama,
     )
 
 

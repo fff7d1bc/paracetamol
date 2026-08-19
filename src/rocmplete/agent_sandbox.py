@@ -299,6 +299,28 @@ def _runtime_resolver_target(
     return target
 
 
+def _runtime_mdns_socket(
+    socket_path: Path = Path("/run/avahi-daemon/socket"),
+) -> Optional[Path]:
+    """Return the exact host Avahi socket needed for `.local` lookups."""
+
+    try:
+        status = socket_path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        raise LauncherError(
+            "cannot inspect host mDNS socket {}: {}".format(
+                socket_path, error
+            )
+        )
+    if not stat.S_ISSOCK(status.st_mode):
+        raise LauncherError(
+            "host mDNS path is not a Unix socket: {}".format(socket_path)
+        )
+    return socket_path
+
+
 def _home_alias_arguments(
     home: Path = Path("/home"),
     expected_target: Path = Path("/var/home"),
@@ -387,6 +409,7 @@ def create_sandbox_plan(
     executable = Path(command[0]).resolve(strict=True)
     prefix = _linuxbrew_prefix(executable)
     resolver_target = _runtime_resolver_target()
+    mdns_socket = _runtime_mdns_socket()
     mount_paths = [
         SANDBOX_HOME,
         SANDBOX_HOME / ".config",
@@ -399,6 +422,8 @@ def create_sandbox_plan(
     ]
     if resolver_target is not None:
         mount_paths.append(resolver_target.parent)
+    if mdns_socket is not None:
+        mount_paths.append(mdns_socket.parent)
     mount_paths.extend(
         destination.parent for _, destination in read_only_mounts
     )
@@ -456,6 +481,13 @@ def create_sandbox_plan(
                 str(resolver_target),
                 str(resolver_target),
             )
+        )
+    if mdns_socket is not None:
+        # NSS mDNS modules ask Avahi over this Unix socket. Expose that one
+        # endpoint rather than the host /run tree so LAN `.local` names work
+        # without weakening the rest of the runtime-state boundary.
+        arguments.extend(
+            ("--ro-bind", str(mdns_socket), str(mdns_socket))
         )
     if prefix is not None:
         arguments.extend(("--ro-bind", str(prefix), str(prefix)))
