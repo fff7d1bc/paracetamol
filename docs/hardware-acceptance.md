@@ -732,6 +732,59 @@ substantially more headroom than 256K on Strix Halo. It suggests, but does not
 prove, that a headless 32 GiB discrete GPU can contain the preset; gfx1201
 acceptance remains pending on that hardware.
 
+#### Qwen3.8 Dynamic v3 Q4_K_XL update (2026-08-19)
+
+Unsloth replaced the Q4 artifact while leaving the managed Q8 bytes unchanged.
+The accepted Q4 pin is repository revision
+`27af057ecb382ddfea5d12837360a8980560e3ed`, exact size 17,559,178,144
+bytes (16.35 GiB), and SHA-256
+`3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e`.
+It contains 866 tensors, including the embedded block-64 MTP heads, so the Q4
+presets continue to share one file and do not use Unsloth's separately
+published MTP artifact. The changed destination lets this file coexist with
+the earlier 17,923,394,624-byte preview instead of overwriting it.
+
+Tests used ROCmplete source `1507f54dba3de141fa4592a9fdfd92d8f39809c1`,
+Pi 0.84.2, and stock r29 image
+`sha256:7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`
+on the Fedora Strix Halo host. A matched native ROCm benchmark used 4K
+populated context, `pp512`, `tg256`, Q8_0 target K/V, forced Flash Attention,
+and three repetitions. The new file measured 303.47 prompt and 11.89
+generated tokens/s versus 329.09 and 11.62 for the preview: prompt processing
+fell 7.8% while native decoding improved 2.4%.
+
+The more representative embedded-MTP screen used depth three, medium effort,
+128K server context, 256 generated tokens, two seeds, and 4K plus 64K populated
+prompts. Dynamic v3 aggregated 17.73 generated tokens/s, 64.1% draft
+acceptance, and 197.65 prompt tokens/s. The preview aggregated 17.16, 63.0%,
+and 201.54 respectively. The update therefore improved MTP generation 3.3%
+and reduced prompt processing 1.9%; it is a modest trade rather than a large
+speed release.
+
+Direct API acceptance returned exact bounded results at off, medium, and
+`xhigh`; off emitted no reasoning, while both enabled modes emitted reasoning.
+A required nested `record_value` call carried the requested string and integer
+arguments, and its tool-result continuation returned exact `FINAL_TOOL_OK`.
+No request required a separate MTP file, and the server stopped cleanly.
+
+Fresh Pi evaluation used the frozen `rocmplete-coding-v5` suite at the Q4
+preset's 128K default and native medium effort. Dynamic v3 strictly solved
+`re-align`, `fz-symlink`, and `proxy-late-probe`; `re-cancel` and
+`rc-selinux-verify` completed but failed hidden grading. The earlier artifact
+was rerun only on those two misses under identical conditions. It reproduced
+the same hidden cancellation failure, then took 2,610.0 seconds and 37,608
+output tokens before failing both visible-regression and hidden grading on the
+SELinux task. Dynamic v3 took 1,031.6 seconds and 15,229 output tokens on that
+task with no visible regression. This small stochastic control does not prove
+a general quality improvement, but it found no regression on either observed
+miss and found a large practical efficiency gain on the harder one.
+
+The complete verification, benchmarks, API probes, and seven Pi attempts
+produced no matching GPU page fault, reset, device loss, ring timeout, SVM
+mapping failure, general-protection fault, or OOM kernel event. This accepts
+the Dynamic v3 Q4 bytes on `gfx1151`; Q8 remains the managed-client default,
+and dedicated `gfx1201` 32 GiB capacity remains untested.
+
 #### Retired coding-agent comparisons (2026-08-17)
 
 The previous cross-model quality tables and retained result references were

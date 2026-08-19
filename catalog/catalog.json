@@ -1187,20 +1187,20 @@
       }
     },
     "qwen3.8-27b-ud-q4-k-xl-gguf": {
-      "description": "Qwen3.8 27B Unsloth Dynamic Q4_K_XL GGUF with embedded MTP heads for llama.cpp",
+      "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL GGUF with embedded MTP heads for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-27B-GGUF",
-        "revision": "4604b899a826000505a834e623272db5b7fd62f6",
+        "revision": "27af057ecb382ddfea5d12837360a8980560e3ed",
         "path": "Qwen3.8-27B-UD-Q4_K_XL.gguf"
       },
-      "destination": "qwen3.8-27b-ud-q4-k-xl/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+      "destination": "qwen3.8-27b-ud-q4-k-xl-dynamic-v3/Qwen3.8-27B-UD-Q4_K_XL.gguf",
       "target": "llama-models",
-      "size": 17923394624,
-      "sha256": "bee238bbeb3dc0a34bde4d0dedbaee1f98c009e8bb4226f03070054c12fb1372",
+      "size": 17559178144,
+      "sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
       "license": {
         "spdx": "Apache-2.0",
         "status": "verified",
-        "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/4604b899a826000505a834e623272db5b7fd62f6/README.md"
+        "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
     "gemma4-31b-it-q8-gguf": {
@@ -1902,7 +1902,7 @@
       ]
     },
     "llama-qwen3.8-27b-ud-q4-k-xl": {
-      "description": "Qwen3.8 27B Unsloth Dynamic Q4_K_XL llama.cpp model with embedded MTP heads",
+      "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
         "qwen3.8-27b-ud-q4-k-xl-gguf"

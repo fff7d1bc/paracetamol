@@ -64,10 +64,10 @@ so the matching base and MTP presets share one verified artifact. The initial
 integration is text-only: the optional vision projector remains outside the
 recipe until its multimodal runtime contract is separately accepted.
 
-The exact `llama-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.69 GiB
-Unsloth Dynamic Q4_K_XL variant from the same pinned revision. It deliberately
-stays outside the guided `qwen3.8` recipe so installing the recommended model
-does not also download a second quantization:
+The exact `llama-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
+Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
+`qwen3.8` recipe so installing the recommended model does not also download a
+second quantization:
 
 ```bash
 ./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl

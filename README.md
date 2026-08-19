@@ -150,7 +150,7 @@ prediction heads. The default preset starts at 256K context, verifies up to
 three draft tokens, and uses native medium reasoning effort. Its non-MTP
 control shares the same verified artifact.
 
-A separate 16.69 GiB Unsloth Dynamic Q4_K_XL bundle keeps the same model
+A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
 family available for more constrained GPUs without changing the recipe or
 managed-client default:
 
@@ -159,15 +159,15 @@ managed-client default:
 ./rocmplete run llama-cpp server --preset qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
-The Dynamic Q4_K_XL presets start at a reviewed 128K context. Treat the
+The Dynamic v3 Q4_K_XL presets start at a reviewed 128K context. Treat the
 smaller quantization as a capacity and throughput tradeoff, not an
 equivalent-quality replacement for the Dynamic Q8_K_XL default. On the
-accepted Strix Halo host it was within 12.4% of the retired Q4_K_M path across
-matched whole requests and generated 25-30% faster than Dynamic Q8_K_XL on
-matched ROCm MTP requests. Its 128K server used 30.83 GB while idle and was
-observed at 31.73-31.82 GB during controlled agent runs. ROCm and Vulkan traded
-wins by context, so there is no model-specific backend override. Dedicated
-32 GiB RDNA 4 capacity still needs acceptance on that hardware.
+accepted Strix Halo host its matched depth-three MTP screen generated 3.3%
+faster than the earlier preview Q4 artifact, with 1.9% slower prompt
+processing. It solved three of five fresh hidden-graded Pi tasks; the earlier
+artifact also missed both tasks used as direct failure controls, and was much
+slower on the harder control. ROCm remains the default backend. Dedicated 32
+GiB RDNA 4 capacity still needs acceptance on that hardware.
 
 The [Qwen3.8 Dynamic Q4 versus Q8 coding-agent
 comparison](docs/guides/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded

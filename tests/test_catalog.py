@@ -494,18 +494,23 @@ class CatalogTests(unittest.TestCase):
         self.assertTrue(qwen38_q4.reasoning_preserve)
         self.assertEqual(qwen38_q4_mtp.speculative_type, "draft-mtp")
         self.assertEqual(qwen38_q4_mtp.draft_tokens, 3)
-        self.assertEqual(qwen38_q4_artifact.size, 17923394624)
+        self.assertEqual(qwen38_q4_artifact.size, 17559178144)
+        self.assertEqual(
+            qwen38_q4_artifact.destination,
+            "qwen3.8-27b-ud-q4-k-xl-dynamic-v3/"
+            "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+        )
         self.assertEqual(
             qwen38_q4_artifact.source.repository,
             "unsloth/Qwen3.8-27B-GGUF",
         )
         self.assertEqual(
             qwen38_q4_artifact.source.revision,
-            "4604b899a826000505a834e623272db5b7fd62f6",
+            "27af057ecb382ddfea5d12837360a8980560e3ed",
         )
         self.assertEqual(
             qwen38_q4_artifact.sha256,
-            "bee238bbeb3dc0a34bde4d0dedbaee1f98c009e8bb4226f03070054c12fb1372",
+            "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
         )
         self.assertEqual(qwen38_q4_artifact.license.spdx, "Apache-2.0")
         hy = catalog.llama_preset("hy-mt1.5-7b-q8-0")

@@ -233,16 +233,16 @@ speculative decoding:
 | `qwen3.6-35b-a3b-ud-q8-k-xl` | Sparse 35B-A3B Dynamic Q8_K_XL | Non-MTP control for the sparse model |
 | `qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
 | `qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
-| `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic Q4_K_XL at 128K | Optional smaller non-speculative control |
-| `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
+| `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
+| `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
 
 The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
-`./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl` when the 16.69 GiB
-Dynamic Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets do
-not change the recommended model or any client default.
+`./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
+Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
+do not change the recommended model or any client default.
 
 On the accepted Fedora Strix Halo host, start the optional MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:
@@ -252,15 +252,29 @@ normal ROCm backend unless the local workload favors Vulkan:
   --preset qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
-At a 4K populated prompt, depth-three Vulkan generated 22.22 tokens/s and
+The current Dynamic v3 artifact passed ROCm startup, embedded-MTP, off,
+medium, `xhigh`, nested-tool, and tool-result-continuation checks on Strix
+Halo. Against the earlier preview artifact, a matched ROCm screen improved
+aggregate MTP generation by 3.3% (17.73 versus 17.16 tokens/s) while reducing
+prompt processing by 1.9% (197.65 versus 201.54 tokens/s). Native decoding
+improved 2.4%, while native `pp512` fell 7.8%. Five fresh Pi 0.84.2 tasks at
+128K and medium solved three first attempts. Both missed tasks were rerun with
+the earlier artifact: it reproduced the same cancellation failure and took
+43.5 minutes before also failing the hard SELinux task, versus 17.2 minutes
+for Dynamic v3. This accepts the updated bytes without claiming a broad
+quality improvement from five stochastic tasks.
+
+The earlier preview artifact produced the backend observations below. At a 4K
+populated prompt, depth-three Vulkan generated 22.22 tokens/s and
 finished the two requests in 78.19 seconds; ROCm generated 16.98 tokens/s and
 took 86.04 seconds. At 32K, Vulkan generated faster (20.07 versus 15.44
 tokens/s) but slower prefill made its whole request 3.5% slower (170.29 versus
 164.59 seconds). The mixed result does not justify a backend override.
 
-Against the retired Q4_K_M path, Dynamic Q4_K_XL stayed within 12.4% on these
-whole requests. Against the default Dynamic Q8_K_XL on matched ROCm requests,
-it generated 25% faster at 4K and 30% faster at 32K. A medium-effort Pi run at
+Against the retired Q4_K_M path, the preview Dynamic Q4_K_XL stayed within
+12.4% on these whole requests. Against the default Dynamic Q8_K_XL on matched
+ROCm requests, it generated 25% faster at 4K and 30% faster at 32K. A
+medium-effort Pi run at
 64K and a nested-tool router probe both passed. Two later hidden-graded
 medium-effort Pi runs at the reviewed 128K default also passed without
 compaction. This is useful single-host evidence, not an equivalent-quality

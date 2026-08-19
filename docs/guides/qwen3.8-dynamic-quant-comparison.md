@@ -2,6 +2,16 @@
 
 [Documentation index](../README.md)
 
+> **Historical artifact notice (2026-08-19):** this comparison tested the
+> earlier 17,923,394,624-byte Q4 preview at revision
+> `4604b899a826000505a834e623272db5b7fd62f6`. ROCmplete now pins Unsloth's
+> newer 17,559,178,144-byte Dynamic v3 Q4 at revision
+> `27af057ecb382ddfea5d12837360a8980560e3ed`. Every Q4 speed, memory, and
+> quality result on this page remains evidence for the exact older SHA-256
+> recorded below; it has not been relabeled as a result for the current
+> artifact. The current pin's focused update acceptance is recorded in the
+> [hardware acceptance log](../hardware-acceptance.md).
+
 This page compares ROCmplete's two managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind
 the quantization names: is the smaller Q4 useful, is Q8 clearly smarter, and
