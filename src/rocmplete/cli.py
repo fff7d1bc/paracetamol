@@ -176,14 +176,6 @@ from .llama_speculative_benchmark import (
     run_speculative_benchmark,
 )
 from .model_inventory import LlamaModel, llama_models
-from .opencode import (
-    create_launch_plan as create_opencode_launch_plan,
-    create_sandbox_plan as create_opencode_sandbox_plan,
-    launch_environment as opencode_launch_environment,
-    passthrough_command as opencode_passthrough_command,
-    prepare_sandbox_paths as prepare_opencode_sandbox_paths,
-    sandbox_paths as opencode_sandbox_paths,
-)
 from .pi_agent import (
     create_launch_plan as create_pi_launch_plan,
     create_sandbox_plan as create_pi_sandbox_plan,
@@ -192,13 +184,6 @@ from .pi_agent import (
     sandbox_paths as pi_sandbox_paths,
 )
 from .pi_runtime import install_pi_runtime
-from .omp_agent import (
-    create_launch_plan as create_omp_launch_plan,
-    create_sandbox_plan as create_omp_sandbox_plan,
-    launch_environment as omp_launch_environment,
-    prepare_state as prepare_omp_state,
-    sandbox_paths as omp_sandbox_paths,
-)
 from .maki_agent import (
     create_launch_plan as create_maki_launch_plan,
     create_sandbox_plan as create_maki_sandbox_plan,
@@ -944,71 +929,6 @@ def command_images(arguments: argparse.Namespace) -> int:
     return _command_images_import(arguments)
 
 
-def command_opencode(
-    arguments: argparse.Namespace, catalog: Optional[Catalog] = None
-) -> int:
-    env = os.environ
-    passthrough = opencode_passthrough_command(
-        arguments.opencode_arguments, env
-    )
-    if passthrough is not None:
-        try:
-            os.execvpe(passthrough[0], list(passthrough), dict(env))
-        except OSError as error:
-            raise LauncherError("cannot start OpenCode: {}".format(error))
-        return 0
-    port_value = arguments.port or environment_value(
-        env, "OPENCODE_PORT", "8080"
-    )
-    dwarfstar_port_value = arguments.dwarfstar_port or environment_value(
-        env, "OPENCODE_DWARFSTAR_PORT", "8000"
-    )
-    data_dir = _content_data_dir(arguments.data_dir, prepare=False)
-    plan = create_opencode_launch_plan(
-        catalog or load_catalog(),
-        data_dir,
-        validate_port(port_value),
-        arguments.opencode_arguments,
-        env,
-        dwarfstar_port=validate_port(dwarfstar_port_value),
-    )
-    if arguments.sandbox:
-        paths = opencode_sandbox_paths(data_dir)
-        sandbox = create_opencode_sandbox_plan(
-            plan, data_dir, Path.cwd(), env
-        )
-        prepare_opencode_sandbox_paths(paths, data_dir)
-        print("OpenCode sandbox", file=sys.stderr)
-        print(
-            "  Writable project  {}".format(sandbox.workdir),
-            file=sys.stderr,
-        )
-        print(
-            "  Private state     {}".format(sandbox.state_root),
-            file=sys.stderr,
-        )
-        print(
-            "  Network           host network retained for {} and {}".format(
-                plan.endpoint, plan.dwarfstar_endpoint
-            ),
-            file=sys.stderr,
-        )
-        command = sandbox.command
-        child = sandbox.environment
-    else:
-        command = plan.command
-        child = opencode_launch_environment(plan, env)
-    try:
-        os.execvpe(
-            command[0],
-            list(command),
-            dict(child),
-        )
-    except OSError as error:
-        raise LauncherError("cannot start OpenCode: {}".format(error))
-    return 0
-
-
 def command_pi(
     arguments: argparse.Namespace, catalog: Optional[Catalog] = None
 ) -> int:
@@ -1095,65 +1015,6 @@ def command_pi(
     return 0
 
 
-def command_omp(
-    arguments: argparse.Namespace, catalog: Optional[Catalog] = None
-) -> int:
-    env = os.environ
-    port_value = arguments.port or environment_value(env, "OMP_PORT", "8080")
-    dwarfstar_port_value = arguments.dwarfstar_port or environment_value(
-        env, "OMP_DWARFSTAR_PORT", "8000"
-    )
-    data_dir = _content_data_dir(arguments.data_dir, prepare=False)
-    plan = create_omp_launch_plan(
-        catalog or load_catalog(),
-        data_dir,
-        validate_port(port_value),
-        arguments.omp_arguments,
-        env,
-        dwarfstar_port=validate_port(dwarfstar_port_value),
-    )
-    if plan.mode == "passthrough":
-        try:
-            os.execvpe(plan.command[0], list(plan.command), dict(env))
-        except OSError as error:
-            raise LauncherError("cannot start OMP: {}".format(error))
-        return 0
-
-    data_dir = prepare_data_dir(data_dir)
-    paths = omp_sandbox_paths(data_dir)
-    prepare_omp_state(plan, paths, data_dir)
-    if arguments.sandbox:
-        sandbox = create_omp_sandbox_plan(
-            plan, data_dir, Path.cwd(), env
-        )
-        print("OMP sandbox", file=sys.stderr)
-        print(
-            "  Writable project  {}".format(sandbox.workdir),
-            file=sys.stderr,
-        )
-        print(
-            "  Private state     {}".format(sandbox.state_root),
-            file=sys.stderr,
-        )
-        if plan.mode == "session":
-            network = "host network retained for {} and {}".format(
-                plan.endpoint, plan.dwarfstar_endpoint
-            )
-        else:
-            network = "host network retained for explicit OMP command"
-        print("  Network           {}".format(network), file=sys.stderr)
-        command = sandbox.command
-        child = sandbox.environment
-    else:
-        command = plan.command
-        child = omp_launch_environment(paths, env)
-    try:
-        os.execvpe(command[0], list(command), dict(child))
-    except OSError as error:
-        raise LauncherError("cannot start OMP: {}".format(error))
-    return 0
-
-
 def command_maki(
     arguments: argparse.Namespace, catalog: Optional[Catalog] = None
 ) -> int:
@@ -1217,7 +1078,7 @@ def command_agent(arguments: argparse.Namespace) -> int:
     if arguments.agent_client is None:
         return _print_incomplete_command(
             arguments.command_parser,
-            "choose install, opencode, pi, omp, or maki",
+            "choose install, pi, or maki",
             AGENT_EXAMPLES,
         )
     if arguments.agent_client == "install":
@@ -1254,12 +1115,8 @@ def command_agent(arguments: argparse.Namespace) -> int:
             )
         )
         return 0
-    if arguments.agent_client == "opencode":
-        return command_opencode(arguments)
     if arguments.agent_client == "pi":
         return command_pi(arguments)
-    if arguments.agent_client == "omp":
-        return command_omp(arguments)
     return command_maki(arguments)
 
 
@@ -5124,18 +4981,8 @@ def _command_content_install(
                 actions.extend(
                     (
                         (
-                            "./rocmplete agent opencode",
-                            "Start the guarded OpenCode client after the "
-                            "router is ready.",
-                        ),
-                        (
                             "./rocmplete agent pi",
-                            "Or start the guarded Pi client against the same "
-                            "router.",
-                        ),
-                        (
-                            "./rocmplete agent omp",
-                            "Or start the guarded OMP client against the same "
+                            "Start the guarded Pi client against the same "
                             "router.",
                         ),
                         (

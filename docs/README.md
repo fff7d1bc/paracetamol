@@ -122,9 +122,9 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Content metadata and relationships | `catalog/catalog.json` |
 | Workflow transformation and provenance | `src/rocmplete/workflows.py` |
 | ComfyUI benchmark preparation and results | `src/rocmplete/benchmark.py` |
-| PATH launchers | `bin/rocmplete`, `bin/opencode`, `bin/pi`, `bin/omp`, `bin/maki` |
+| PATH launchers | `bin/rocmplete`, `bin/pi`, `bin/maki` |
 | Agent model policy and sandbox | `src/rocmplete/agent_models.py`, `src/rocmplete/agent_sandbox.py` |
-| Runtime client configuration | `src/rocmplete/opencode.py`, `src/rocmplete/pi_agent.py`, `src/rocmplete/omp_agent.py`, `src/rocmplete/maki_agent.py` |
+| Runtime client configuration | `src/rocmplete/pi_agent.py`, `src/rocmplete/maki_agent.py` |
 | Managed Pi installation | `agent-clients/pi/`, `src/rocmplete/pi_runtime.py` |
 | Read-only local GGUF inventory | `src/rocmplete/model_inventory.py` |
 | Native llama.cpp benchmark results | `src/rocmplete/llama_benchmark.py` |

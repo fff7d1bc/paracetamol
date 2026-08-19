@@ -403,8 +403,8 @@ persona or summarization instruction does not need a catalog preset. Do not
 add a hardware profile for task tuning either. In ROCmplete, profiles describe
 GPUs such as Strix Halo or RDNA 4.
 
-The managed OpenCode, Pi, and OMP launchers are coding-task callers, so their
-generated model entries apply caller-owned static defaults. For Qwen3.6 and
+The managed Pi launcher is a coding-task caller, so its generated model
+entries apply caller-owned static defaults. For Qwen3.6 and
 Qwen3.8, direct and router servers instead select the catalog's thinking or
 non-thinking policy, so raw API clients receive the same defaults without
 duplicating them. Explicit request fields remain authoritative.
@@ -482,20 +482,12 @@ npm tree below the selected ROCmplete data directory:
 
 The command is idempotent. Rerun it after pulling a change to
 `agent-clients/pi/package-lock.json`; an ordinary launch never downloads or
-repairs the runtime. OpenCode and OMP remain external clients. Install them by
-their supported method, for example through Linuxbrew or Homebrew:
-
-```bash
-brew install opencode
-brew install can1357/tap/omp
-```
+repairs the runtime.
 
 Maki is distributed separately. Put its `maki` executable on `PATH` before
 using the ROCmplete launcher.
 
-ROCmplete ships PATH-friendly OpenCode, Pi, Oh My Pi (`omp`), and Maki
-launchers. Oh My Pi is an independent Pi fork with its own executable and
-state, not an alternate mode of `pi`. The launchers render the current
+ROCmplete ships PATH-friendly Pi and Maki launchers. They render the current
 provider and model catalog every time they start. Install the recommended
 model and start the router first, then choose a client:
 
@@ -504,20 +496,17 @@ model and start the router first, then choose a client:
 ./rocmplete agent install pi
 ./rocmplete run llama-cpp server --router --models-max 1
 export PATH="$PWD/bin:$PATH"
-opencode
-# or: pi
-# or: omp
+pi
 # or: maki
 ```
 
 The generated provider lists every preset explicitly maintained for agent
 work, including ones not currently installed. Selecting an absent model does
 not download it; the router reports that it is unavailable. Use the client's
-model picker to choose a different installed model. OpenCode accepts `-m
-rocmplete/PRESET`. Pi accepts `--model PRESET`, with `--provider rocmplete`
-available when the provider would otherwise be ambiguous. OMP accepts
-`--model rocmplete-llama-cpp/PRESET`. Maki accepts `-m rocmplete/PRESET` and
-exposes the same entries through `/model`.
+model picker to choose a different installed model. Pi accepts `--model
+PRESET`, with `--provider rocmplete` available when the provider would
+otherwise be ambiguous. Maki accepts `-m rocmplete/PRESET` and exposes the
+same entries through `/model`.
 
 Pi can run on a client host while the managed llama.cpp router runs on a
 different Linux GPU host. Publish the router only on a trusted LAN address and
@@ -576,19 +565,13 @@ Neutral values make parameters omitted by an upstream configuration explicit
 and disable llama.cpp's otherwise nonzero min-p default. The upstream name
 `repetition_penalty` is sent to llama.cpp as `repeat_penalty`.
 
-These are defaults, not locks. OpenCode model options or an agent's provider
-options, Pi per-request sampling parameters, explicit OMP request
-configuration, and raw API fields can override them. OMP receives static
-policies as per-model `extraBody`, after its global sampling settings.
+These are defaults, not locks. Pi per-request sampling parameters, another
+agent's provider options, and raw API fields can override them.
 
-Qwen3.6 and Qwen3.8 are mode-dependent rather than static. OpenCode, Pi, and
-OMP omit their sampling tuples. OpenCode itself injects Qwen-family sampling
-values, so ROCmplete's generated raw model options replace `temperature` and
-`top_p` with JSON `null`; the managed llama.cpp server interprets those nulls
-as a request for its catalog fallback. The server can then supply the official
-family policy after resolving thinking, including for title generation and
-the Investigate, Plan, and Build agents. Project or request configuration can
-still replace the nulls with explicit numeric values.
+Qwen3.6 and Qwen3.8 are mode-dependent rather than static. Pi omits their
+sampling tuples so the managed llama.cpp server can supply the official family
+policy after resolving thinking. Explicit numeric request values still take
+precedence.
 
 Dense Qwen3.6 and Qwen3.8 thinking use zero presence penalty, sparse Qwen3.6
 thinking uses 1.5, and all three use the shared non-thinking tuple when off.
@@ -597,26 +580,6 @@ explicit task override rather than a default inferred from the client name.
 Maki's native named selector carries the model's reasoning control but no
 sampling tuple, so the server also supplies its mode-aware policy. Explicit
 sampling remains higher precedence field by field in every client.
-
-`bin/opencode` delegates to `./rocmplete agent opencode`, injects the
-generated main configuration directly into the child process, and points it
-at the read-only TUI keymap in the checkout. It writes no integration files.
-Pulling a catalog or policy update therefore changes the next launch without
-an install step.
-Qwen3.8 27B MTP is the default when present. If it is absent, the
-launcher selects another installed agent-capable preset; `-m
-rocmplete/PRESET` still overrides that selection through OpenCode itself.
-Project OpenCode configuration continues to load around the runtime settings.
-The user's normal global OpenCode configuration and state are hidden by the
-default sandbox.
-
-Informational and installation-management commands retain their normal
-upstream behavior through the PATH launcher. The commands `opencode --help`,
-`opencode --version`, `opencode completion`, `opencode plugin`, `opencode
-upgrade`, and `opencode uninstall` bypass ROCmplete's model configuration and
-sandbox. A plugin installed this way remains disabled by the default sandbox's
-`--pure` policy; use the documented `--no-sandbox` launch only when loading
-that host-side plugin is intentional.
 
 `bin/pi` delegates to `./rocmplete agent pi` and executes the exact Pi release
 installed by `./rocmplete agent install pi`; it never searches `PATH` for
@@ -642,36 +605,6 @@ managed launches. They are trusted executable inputs with access to the
 writable project and host network inside the sandbox, so review them before
 installation. A local `pi install -l` still requires explicit project approval
 before its project resources can load.
-
-`bin/omp` delegates to `./rocmplete agent omp`. It atomically refreshes
-`models.yml` and a separate ROCmplete overlay inside OMP's private state. The
-model catalog uses OMP's llama.cpp discovery compatibility for Qwen chat and
-reasoning behavior while limiting the picker to reviewed ROCmplete model IDs.
-Every built-in OMP role aliases its mutable default role. Selecting a new
-default in `/model` therefore moves title generation, subagents, planning,
-commits, and other background work to the same local model instead of making a
-one-resident-model llama.cpp router unload it for the initial model. Startup
-update checks, the setup wizard, and marketplace auto-update are disabled in
-managed state. OMP's ordinary `~/.omp` state and user `config.yml` are not read
-or modified.
-
-The picker uses the parallel `rocmplete-llama-cpp` and
-`rocmplete-dwarfstar` provider namespaces. OMP assigns one API endpoint to each
-provider, while the managed llama.cpp router and DwarfStar service listen on
-different ports. Combining them into one provider would require an additional
-routing proxy rather than a cosmetic model-name prefix.
-
-OMP starts Qwen3.8 at medium and every other reasoning model at its catalog
-default, plus its
-upstream `yolo` approval mode. A later `--model`, `--thinking`, or
-`--approval-mode` argument remains authoritative. OMP management commands such
-as `models`, `config`, and `plugin` use the private state without requiring an
-installed model. Informational flags, completions, and OMP self-update bypass
-the sandbox. Named OMP profiles select a different state root, so the managed
-launcher rejects `--profile`, `--alias`, and inherited profile variables. Run
-the real OMP executable directly when a host profile is intentional. Plugins
-installed into managed state are trusted executable inputs with the same
-writable project and host-network access as the agent.
 
 `bin/maki` delegates to `./rocmplete agent maki`. It atomically refreshes two
 executable provider descriptions and a small generated `init.lua` inside
@@ -714,8 +647,7 @@ reachable through unprivileged user namespaces, so Doctor says so alongside
 the command.
 
 System files and each resolved client installation are read-only. Pi's exact
-managed npm installation is mounted as one runtime tree. OpenCode's
-TUI keymap is mounted as one read-only file at a synthetic path. The launchers
+managed npm installation is mounted as one runtime tree. The launchers
 recognize Linuxbrew below `/home/linuxbrew/.linuxbrew` and mount that prefix
 read-only.
 
@@ -743,9 +675,7 @@ writable path before the client starts.
 Use the direct command for the explicit escape hatch:
 
 ```bash
-./rocmplete agent opencode --no-sandbox --
 ./rocmplete agent pi --no-sandbox --
-./rocmplete agent omp --no-sandbox --
 ./rocmplete agent maki --no-sandbox --
 ```
 
@@ -753,48 +683,12 @@ This restores ordinary host filesystem access and should be reserved for a
 toolchain or linked worktree that cannot operate inside the narrow mount set.
 It still uses ROCmplete's generated provider catalog and private client state.
 
-OpenCode's generated config leaves reads and searches automatic. Build and Plan ask
-before file edits, shell commands, and subagent launches. This keeps an
-explanation or review request from silently turning into implementation if a
-local model loses the task during a long session or after context compaction.
-Approval is still a trust decision: OpenCode's auto-approve mode approves
-`ask` actions, and a higher-precedence project config can override the
-generated policy. The sandbox remains useful even when an in-application
-policy is weakened because that policy cannot add host mounts.
-
-New sessions start in ROCmplete's Investigate agent. Press `Tab` to cycle
-through Investigate, Plan, then Build; `Shift+Tab` cycles in reverse.
-Investigate is a hard read-only primary agent for focused repository and
-external research. It cannot edit, run shell commands, or create todos. Small
-questions stay in the main session. For broader work it may invoke only two
-hidden ROCmplete workers: one can read and search the
-current repository but has no web access, while the other can research the
-web but has no local-file access. Both independently deny edits, commands,
-todos, and further delegation. Each receives a separate child-session context
-and is instructed to return at most 500 words, so raw files and fetched pages
-do not consume the main session unless the worker ignores its output bound.
-
-Investigate inherits the selected model's reviewed sampling policy and has no
-artificial step limit because OpenCode's limit injects a forced summary,
-remaining-tasks list, and next-step recommendations when reached. Its prompt
-instead requires focused searches, evidence, explicit inference, and a stop
-after answering the original question. These are containment and focus
-controls, not a guarantee that every factual conclusion from a local model is
-correct. A delegated report is evidence for the primary agent to reconcile,
-not automatically a reliable fact.
-
-Pi uses its standard coding-agent tool loop rather than ROCmplete's OpenCode
-agent modes. Project `.pi` resources are declined by default so a checkout
+Pi uses its standard coding-agent tool loop. Project `.pi` resources are
+declined by default so a checkout
 cannot silently add executable extensions or settings. That is an input guard,
 not an authorization prompt for model tool calls. Pi has no built-in sandbox,
 so the bubblewrap boundary is the control that limits filesystem damage. Pass
 `--approve` only when project Pi resources are intentionally trusted.
-
-OMP uses its native coding-agent loop and starts in its normal build-capable
-mode. The managed overlay makes tool approval explicit as `yolo`; pass
-`--approval-mode write` or `--approval-mode always-ask` when interactive
-approval is preferred. Bubblewrap, rather than OMP's approval setting, remains
-the boundary that hides the rest of the host filesystem.
 
 Maki starts in Build mode. Press `Tab` to toggle its built-in Plan mode, where
 only the plan file may be written, then return to Build when the plan is ready.
@@ -802,7 +696,7 @@ Its `--print` mode always starts a new Build-mode session, so use the TUI when
 the Plan boundary matters.
 
 For long-context presets, ROCmplete advertises a 16K per-turn output ceiling to
-all four clients. That leaves more native context available before automatic
+both clients. That leaves more native context available before automatic
 compaction. It is a per-turn output limit, not a model reasoning setting or a
 total-session limit.
 
@@ -829,11 +723,8 @@ Qwen3.8 off is `reasoning_effort: none`. Pi's separately named `qwen`
 transport is for DashScope-style top-level `enable_thinking`; do not use it
 for the managed llama.cpp provider.
 
-OpenCode uses `ctrl+t` or `/variants`, Pi uses `Shift+Tab`, `/settings`, or
-`--thinking`, OMP accepts `--thinking`, and Maki uses `/thinking`. Pi and
-OpenCode hide unsupported choices. OMP exposes all real levels but its schema
-cannot suppress the generic off choice for Muse; the Muse template interprets
-that unsupported choice as native low. Maki exposes a generic selector, while
+Pi uses `Shift+Tab`, `/settings`, or `--thinking`, and Maki uses `/thinking`.
+Pi hides unsupported choices. Maki exposes a generic selector, while
 ROCmplete's generated model entries map it to each model's native request
 fields. Unsupported named levels snap downward to a declared level: Qwen3.6
 maps every enabled level to its on toggle, Qwen3.8 maps `high` to `medium`, and
@@ -841,7 +732,7 @@ Muse clamps off to its native `low`. Adaptive mode follows the managed default
 for the currently selected family rather than retaining the previous model's
 named level.
 
-All four clients use `/v1/chat/completions` and expose their file and shell
+Both clients use `/v1/chat/completions` and expose their file and shell
 tools as ordinary function calls. That matches llama.cpp's current tool
 adapter. Still test a complete read, edit, command, and tool-result loop in
 each maintained client before letting a newly added model work unattended.
@@ -1102,12 +993,12 @@ not cross-hardware promises. The complete immutable inputs and caveats are in
 the [maintainer feasibility record](../muse-glimmer-llama-cpp-agent-feasibility.md).
 
 The target's base, 128K DFlash, and forced-256K DFlash presets are advertised
-to the managed OpenCode, Pi, OMP, and Maki clients. OpenCode, Pi, and OMP use
-the pinned upstream temperature 1.0, top-p 0.95, and top-k 64 defaults; Maki
+to the managed Pi and Maki clients. Pi uses the pinned upstream temperature
+1.0, top-p 0.95, and top-k 64 defaults; Maki
 retains the server sampler defaults because its dynamic-provider schema cannot
 express per-model sampling. Live Maki tasks completed substantial repository
 reviews with official K-quant at 128K, the former Q8 target at both 128K and
-forced 256K, and BF16 at 128K. An earlier short OpenCode answer was a shallow
+forced 256K, and BF16 at 128K. An earlier retired-client answer was a shallow
 turn, not a server crash: repository-review depth remains sensitive to the
 client scaffold and prompt. Test the actual workflow before granting
 unattended write access.
@@ -1115,9 +1006,8 @@ unattended write access.
 All three presets enable llama.cpp reasoning preservation so parsed reasoning
 remains available to multi-turn history. Muse does not have a native off mode.
 It exposes low, medium, high, and xhigh `Reasoning strength`, defaulting to
-high. Pi, OpenCode, and OMP expose the named levels. Maki converts its generic
-selector to a numeric ceiling but does not carry native strength; absent an
-explicit native field, Muse retains its template default.
+high. Pi exposes the named levels. Maki maps its generic selector to Muse's
+native strength field, and adaptive selects the managed high default.
 
 ROCmplete previously installed
 `Muse-Glimmer-30B-UD-Q8_K_XL.gguf` for this recipe. Upgrading the catalog does
@@ -1208,9 +1098,10 @@ for a nominal 128 GB Strix Halo. Strix Point also needs enough TTM/GTT mapping
 space for the resident model, context, and transient allocations. A discrete
 GPU may spill through ROCm into system memory, but that does not make a small
 VRAM host accepted or guarantee useful performance. During the manual Strix
-Halo run, the managed 128K server and an OpenCode tool workflow passed at this
-setting. At 100 GiB, a 32K server could start but a roughly 6K-token tool
-prefill ran out of mapping space on a transient 320 MiB allocation. The bounded
+Halo run, the managed 128K server and a historical retired-client tool
+workflow passed at this setting. At 100 GiB, a 32K server could start but a
+roughly 6K-token tool prefill ran out of mapping space on a transient 320 MiB
+allocation. The bounded
 acceptance smoke still uses a 4K context so routine checks remain short. The
 [pinned upstream Strix Halo guide](https://github.com/antirez/ds4/blob/84cc882352757baf628a1776badf7cc54d584e28/STRIXHALO.md)
 uses `amdgpu.gttsize=126976`, `ttm.pages_limit=32505856`, and
@@ -1306,14 +1197,12 @@ When the server was started with `--dspark`, include `"temperature": 0` in
 every Chat Completions request. This sampling requirement is independent of
 the request's thinking choice.
 
-All four agent launchers include DwarfStar as a separate provider. Start the
+Both agent launchers include DwarfStar as a separate provider. Start the
 server, then choose it explicitly in a client:
 
 ```bash
 ./rocmplete run dwarfstar server
-opencode -m dwarfstar/deepseek-v4-flash-0731-q2-imatrix
 pi --provider dwarfstar --model deepseek-v4-flash-0731-q2-imatrix --thinking high
-omp --model rocmplete-dwarfstar/deepseek-v4-flash-0731-q2-imatrix --thinking high
 maki -m dwarfstar/deepseek-v4-flash-0731-q2-imatrix
 ```
 
@@ -1323,20 +1212,14 @@ accepts the exact managed ID in Chat Completions requests; its own
 `/v1/models` response remains an engine-owned alias list and does not encode
 the installed release or quantization.
 
-Its OpenCode variants are `instant` and `thinking`. Instant sends
-`reasoning_effort: none`; thinking sends `reasoning_effort: high`, which is
-DwarfStar's normal thinking mode. The engine maps low, medium, and high to the
-same mode below its much larger Think Max context threshold, so ROCmplete does
-not expose three misleading labels. It also suppresses OpenCode's inherited
-`max` label because the managed 128K server cannot activate the 384K-minimum
-Think Max mode. If the DwarfStar server uses another port, pass
-`./rocmplete agent opencode --dwarfstar-port PORT --` or set
-`ROCMLETE_OPENCODE_DWARFSTAR_PORT`. Pi exposes the same two behaviors as `off`
-and `high`; pass `./rocmplete agent pi --dwarfstar-port PORT --` or set
-`ROCMLETE_PI_DWARFSTAR_PORT` for its provider. OMP exposes the reviewed `high`
-thinking behavior and uses
-`ROCMLETE_OMP_DWARFSTAR_PORT`. Maki exposes the same off and high behaviors
-through `/thinking`; adaptive selects high. Set
+Pi exposes direct and normal thinking behavior as `off` and `high`. The engine
+maps low, medium, and high to the same mode below its much larger Think Max
+context threshold, so ROCmplete does not expose three misleading labels. The
+managed 128K server also cannot activate the 384K-minimum Think Max mode. If
+the DwarfStar server uses another port, pass
+`./rocmplete agent pi --dwarfstar-port PORT --` or set
+`ROCMLETE_PI_DWARFSTAR_PORT` for its provider. Maki exposes the same off and
+high behaviors through `/thinking`; adaptive selects high. Set
 `ROCMLETE_MAKI_DWARFSTAR_PORT` when its
 server uses a different port.
 

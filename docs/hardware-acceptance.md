@@ -840,8 +840,8 @@ and a tool schema with a nested object, require a structured tool call, return
 the result as a tool message, and require a final answer. Repeat the exchange
 with streaming enabled. If either MTP preset fails, repeat it with its matching
 non-MTP preset to separate template handling from speculative decoding.
-Only after the raw API exchange passes should OpenCode, Pi, OMP, and Maki tasks be
-used as the final integration checks.
+Only after the raw API exchange passes should Pi and Maki tasks be used as the
+final integration checks.
 
 For a future agent comparison, declare explicit model-native selectors rather
 than treating one label as equivalent across families. Run every candidate
@@ -866,7 +866,7 @@ non-speculative controls when behavior or output is suspect. Exercise prompts
 extending beyond 128K and inspect retrieval quality, tool selection, draft
 acceptance, latency, and memory rather than treating successful startup as
 acceptance.
-OpenCode, Pi, OMP, and Maki remain exposed through the same reviewed
+Pi and Maki remain exposed through the same reviewed
 function-tool contract, but protocol compatibility does not establish
 comparative quality. Complete the intended live task in each client before
 allowing unattended writes. Confirm `reasoning-preserve = true` in

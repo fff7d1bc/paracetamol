@@ -224,12 +224,11 @@ def _llama_guide() -> ApplicationGuide:
                     "presets are the exception: they select official "
                     "family- and mode-specific sampling after resolving "
                     "each request's reasoning control.",
-                    "ROCmplete's managed OpenCode, Pi, and OMP configurations "
-                    "apply reviewed per-model sampling where the server "
-                    "cannot. Qwen3.6 and Qwen3.8 sampling tuples are "
-                    "intentionally omitted from those clients so direct "
-                    "API requests and Maki receive the same mode-aware "
-                    "server defaults.",
+                    "ROCmplete's managed Pi configuration applies reviewed "
+                    "per-model sampling where the server cannot. Qwen3.6 "
+                    "and Qwen3.8 sampling tuples are intentionally omitted "
+                    "from Pi so direct API requests and Maki receive the "
+                    "same mode-aware server defaults.",
                     "The qwen3.6 recipe installs dense 27B MTP Q8_0 and "
                     "sparse 35B-A3B MTP Dynamic Q8_K_XL together. Its "
                     "printed next step still starts dense 27B, and both "
@@ -350,7 +349,7 @@ def _llama_guide() -> ApplicationGuide:
                     "configure the client with that preset's actual context "
                     "limit. Qwen3 0.6B can smoke-test the protocol but is "
                     "not a dependable repository agent.",
-                    "ROCmplete's bin/opencode, bin/pi, bin/omp, and bin/maki "
+                    "ROCmplete's bin/pi and bin/maki "
                     "wrappers render the current server and model config at "
                     "launch without editing any client's normal settings. "
                     "Add the checkout's bin directory to PATH once, then "
@@ -361,44 +360,22 @@ def _llama_guide() -> ApplicationGuide:
                     "ROCmplete state. Explicitly installed user packages "
                     "load in later sandboxed Pi sessions; review them as "
                     "trusted executable inputs.",
-                    "OMP is a separate Pi fork with its own private state. "
-                    "Its managed local roles, reviewed sampling policy, "
-                    "and yolo approval default can be overridden by normal "
-                    "OMP session arguments. Named OMP profiles bypass that "
-                    "state boundary and are rejected by the wrapper.",
                     "The PATH launchers use bubblewrap by default. Only the "
                     "launch directory and private ROCmplete-owned client "
                     "state are writable; the real home, credentials, SSH "
                     "agent, Podman state, and GPU devices are hidden. Host "
                     "networking remains available for the local router.",
-                    "Build and Plan ask before edits, shell commands, and "
-                    "subagent launches. OpenCode auto-approve bypasses those "
-                    "prompts, so leave it off unless that is intended.",
-                    "New sessions start in the Investigate agent. Press Tab "
-                    "to cycle through Investigate, Plan, then Build; "
-                    "Shift+Tab goes the other way. Investigate is hard "
-                    "read-only but may "
-                    "delegate bounded work only to hidden read-only local and "
-                    "web workers. Their source material stays in separate "
-                    "child sessions. Investigate also avoids OpenCode's "
-                    "synthetic maximum-step continuation prompt and inherits "
-                    "the selected model's reviewed sampling policy.",
                     "Qwen3.6 exposes instant and thinking. Qwen3.8 exposes "
                     "instant, low, medium, and xhigh and starts at medium. "
                     "Muse reasons unconditionally and exposes native low, "
                     "medium, high, and xhigh strength; high is its default. "
                     "Each named level also has a bounded llama.cpp "
                     "thinking-token ceiling. "
-                    "OpenCode uses ctrl+t or /variants. Pi uses Shift+Tab "
-                    "or /settings. OMP accepts --thinking. Maki uses "
+                    "Pi uses Shift+Tab, /settings, or --thinking. Maki uses "
                     "/thinking and Tab toggles its Plan and Build modes. "
                     "ROCmplete maps Maki's selector to each model's native "
                     "toggle, effort, or strength field; unsupported named "
                     "levels snap downward to a declared native choice.",
-                    "For mode-dependent Qwen sampling, generated OpenCode "
-                    "options neutralize the client's built-in sampler values "
-                    "so the managed server selects the reviewed tuple after "
-                    "reasoning mode is resolved.",
                 ),
                 (
                     _action(
@@ -411,18 +388,8 @@ def _llama_guide() -> ApplicationGuide:
                         "Start one managed model for an agent client.",
                     ),
                     _action(
-                        "./rocmplete agent opencode",
-                        "Start OpenCode directly; bin/opencode is the "
-                        "PATH-friendly equivalent.",
-                    ),
-                    _action(
                         "./rocmplete agent pi",
                         "Start Pi directly; bin/pi is the PATH-friendly "
-                        "equivalent.",
-                    ),
-                    _action(
-                        "./rocmplete agent omp",
-                        "Start OMP directly; bin/omp is the PATH-friendly "
                         "equivalent.",
                     ),
                     _action(
@@ -665,25 +632,11 @@ def _dwarfstar_guide() -> ApplicationGuide:
                         "Start the API in the background.",
                     ),
                     _action(
-                        "./rocmplete agent opencode -- "
-                        "-m dwarfstar/"
-                        "deepseek-v4-flash-0731-q2-imatrix",
-                        "Use the running server through ROCmplete's guarded "
-                        "OpenCode launcher.",
-                    ),
-                    _action(
                         "./rocmplete agent pi -- --provider dwarfstar "
                         "--model deepseek-v4-flash-0731-q2-imatrix "
                         "--thinking high",
                         "Use the same server through ROCmplete's guarded "
                         "Pi launcher.",
-                    ),
-                    _action(
-                        "./rocmplete agent omp -- --model "
-                        "rocmplete-dwarfstar/"
-                        "deepseek-v4-flash-0731-q2-imatrix --thinking high",
-                        "Use the same server through ROCmplete's guarded "
-                        "OMP launcher.",
                     ),
                     _action(
                         "./rocmplete agent maki -- "

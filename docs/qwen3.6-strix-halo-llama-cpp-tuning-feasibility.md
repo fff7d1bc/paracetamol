@@ -246,7 +246,7 @@ and proposed comparable APIs.
 Preservation added roughly 3.2 seconds of second-turn prefill in this small
 case and showed no obvious quality difference. Its possible value is avoiding
 redundant reasoning or inconsistent decisions across longer tool loops. That
-must be measured separately in Pi, Maki, OMP, and OpenCode because clients may
+must be measured separately in Pi and Maki because clients may
 serialize assistant reasoning differently.
 
 ## 2026-08-14 chat-template A/B

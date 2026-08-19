@@ -34,7 +34,7 @@ passed.
 | Host | GPU target | Workloads exercised |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair; managed Qwen3.6 and Qwen3.8 llama.cpp MTP/tool paths, including the optional Qwen3.8 Dynamic Q4_K_XL path at 128K; OMP and ROCm/Vulkan paths; Muse Glimmer dynamic and 256K runtime probes; historical Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair; managed Qwen3.6 and Qwen3.8 llama.cpp MTP/tool paths, including the optional Qwen3.8 Dynamic Q4_K_XL path at 128K; managed agent-client and ROCm/Vulkan paths; Muse Glimmer dynamic and 256K runtime probes; historical Laguna XS and Ling feasibility controls |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
@@ -55,7 +55,7 @@ ROCmplete tries to cover the whole path.
   rebuilds.
 - Containers are rootless, read-only, capability-free, and expose only the
   selected GPU devices. Web applications publish on loopback by default.
-- Optional OpenCode, Pi, Oh My Pi, and Maki launchers add a bubblewrap filesystem
+- Optional Pi and Maki launchers add a bubblewrap filesystem
   boundary around local coding-agent work.
 - `acceptance run` checks more than startup. It runs small real workloads,
   checkpoints progress, and collects visual review after unattended work.
@@ -290,9 +290,7 @@ PATH launcher. At least one managed agent model must already be installed.
 ./rocmplete agent install pi  # once, and after ROCmplete changes its Pi pin
 ./rocmplete run llama-cpp server --router --models-max 1
 export PATH="$PWD/bin:$PATH"
-opencode
-# or: pi
-# or: omp
+pi
 # or: maki
 ```
 
@@ -307,15 +305,15 @@ router publishes no authentication, so restrict it with the host firewall:
 ROCMLETE_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
 ```
 
-Qwen3.8 starts at native medium effort. Pi, OpenCode, and OMP expose its off,
-low, medium, and xhigh choices without inventing a `high` level. Maki builds
+Qwen3.8 starts at native medium effort. Pi exposes its off, low, medium, and
+xhigh choices without inventing a `high` level. Maki builds
 containing commit `a9495e1` expose the same native model controls through
 `/thinking`; unsupported names snap downward, so `high` selects Qwen3.8
 medium. ROCmplete maps Qwen3.6 to its on/off toggle and prevents Muse from
 falling below its native low strength.
 
-OpenCode starts new sessions in read-only Investigate mode. All four launchers
-keep the current directory and private client state writable while hiding the
+Both launchers keep the current directory and private client state writable
+while hiding the
 real home directory, credentials, Podman state, and GPU devices. The
 [tool-using client guide](docs/guides/applications.md#tool-using-clients) documents
 models, reasoning variants, agent modes, sandbox limits, and escape hatches.
@@ -470,7 +468,7 @@ The complete [documentation index](docs/README.md) includes user guides,
 maintainer references, research snapshots, and source-of-truth pointers.
 
 - [Applications](docs/guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, managed models, APIs, OpenCode, Pi, Oh My Pi, Maki, and multi-GPU
+  DwarfStar, managed models, APIs, Pi, Maki, and multi-GPU
   workloads.
 - [Content](docs/guides/content.md) covers recipes, exact bundles, licenses,
   verification, resumable downloads, mirrors, imports, and workflows.

@@ -131,8 +131,8 @@ the result. It deliberately provides no “normalized” three-model condition:
 the same label would not mean the same control. Keep the Pi harness, hardware,
 task selection, repetitions, context, and runtime policy fixed, and state
 whether a run compares each model's operational default or performs a
-within-model reasoning sweep. Do not mix Pi results with OpenCode, OMP, or
-Maki results; harness comparisons are a separate experiment.
+within-model reasoning sweep. Do not mix Pi results with Maki or another
+harness; harness comparisons are a separate experiment.
 
 DwarfStar can run the same suite through its independently managed endpoint:
 

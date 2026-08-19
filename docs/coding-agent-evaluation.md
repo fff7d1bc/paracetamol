@@ -126,9 +126,8 @@ Use one machine, backend, image, context, harness version, task selection,
 repetition count, and runtime policy for a model comparison. Record reasoning
 as a model-native condition rather than assuming one shared label has the same
 meaning across families.
-Pi remains the fixed harness for version 5. OpenCode, Maki, and OMP have
-different tool prompts and context behavior and belong in a separately
-labelled harness comparison.
+Pi remains the fixed harness for version 5. Maki has different tool prompts
+and context behavior and belongs in a separately labelled harness comparison.
 
 Qwen3.6 supports only thinking off/on; Pi displays on in its generic `high`
 slot. Qwen3.8 supports off/low/medium/xhigh and defaults to medium. Muse

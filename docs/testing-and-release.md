@@ -54,17 +54,11 @@ Exercise user-visible composition:
 ./rocmplete run dwarfstar server --profile strix-halo --dry-run
 ./rocmplete agent --help
 ./rocmplete agent install pi --help
-./rocmplete agent opencode --help
-./rocmplete agent opencode --no-sandbox -- --help
 ./rocmplete agent pi --help
 ./rocmplete agent pi --no-sandbox -- --help
 ./rocmplete agent pi -- list
 ./rocmplete agent pi -- install --help
 ./rocmplete agent pi -- update --extensions --help
-./rocmplete agent omp --help
-./rocmplete agent omp --no-sandbox -- --help
-./rocmplete agent omp -- models rocmplete-llama-cpp --json
-./rocmplete agent omp -- config get tools.approvalMode
 ./rocmplete agent maki --help
 ./rocmplete agent maki --no-sandbox -- --help
 ./rocmplete agent maki -- index src/rocmplete/cli.py
@@ -100,7 +94,7 @@ Inspect resolved commands for:
 - exactly `/dev/kfd` plus the complete selected render-node set in GPU mode;
 - offline/network-none behavior where promised.
 
-For agent-client sandbox changes, run real OpenCode, Pi, OMP, and Maki bubblewrap
+For agent-client sandbox changes, run real Pi and Maki bubblewrap
 probes on Linux. Confirm each client starts and exits cleanly, its launch
 directory and private XDG state are writable, and the real home, SSH agent,
 inherited token variables, ordinary client state, and GPU devices are absent.
@@ -108,10 +102,8 @@ Confirm that the host loopback llama.cpp endpoint remains reachable. On a host
 with external connectivity, resolve one external hostname from inside the
 sandbox, especially when `/etc/resolv.conf` points into `/run`. Repeat with
 Linuxbrew client installations because their prefix lives below `/home`, which
-the sandbox otherwise hides. For Pi, OMP, and Maki, also confirm `AGENTS.md`
-loads while unapproved project `.pi` resources do not affect Pi. For OMP,
-confirm the generated model catalog loads, every auxiliary role remains local,
-and ordinary host `~/.omp` state and inherited named profiles are absent.
+the sandbox otherwise hides. Confirm `AGENTS.md` loads in both clients while
+unapproved project `.pi` resources do not affect Pi.
 On Fedora-family hosts where `/home` links to `/var/home`, confirm that both
 absolute spellings resolve to the mounted project while sibling home content
 remains absent.
@@ -234,20 +226,16 @@ preset; that is not managed content and should not be selected during the
 smoke test.
 
 For DwarfStar agent-client integration, start the managed 128K DwarfStar
-server, select `dwarfstar/deepseek-v4-flash-0731-q2-imatrix` in OpenCode and
-the matching provider/model in Pi and Maki. Select
-`rocmplete-dwarfstar/deepseek-v4-flash-0731-q2-imatrix` in OMP, then complete
-one read plus function-tool round trip in each. Confirm disabled reasoning and
-normal thinking through OpenCode and Pi, OMP's high thinking path, and Maki's
-off and high paths. Confirm the generated providers follow
+server, select the matching `dwarfstar/deepseek-v4-flash-0731-q2-imatrix`
+provider/model in Pi and Maki, then complete one read plus function-tool round
+trip in each. Confirm Pi's off and high choices and Maki's off and high paths.
+Confirm the generated providers follow
 `--dwarfstar-port`. Do not claim agent
 compatibility from `/v1/models` or a plain text response alone.
 
 For the maintained llama.cpp reasoning matrix, exercise each native choice
-through Pi, OpenCode, and OMP: Qwen3.6 off/on; Qwen3.8 off, low, medium, and
-xhigh; and Muse low, medium, high, and xhigh. Confirm the generated picker
-omits or disables unsupported values where the client schema permits it, and
-confirm OMP's unsupported Muse off choice resolves to native low. For Maki
+through Pi: Qwen3.6 off/on; Qwen3.8 off, low, medium, and xhigh; and Muse low,
+medium, high, and xhigh. Confirm Pi omits unsupported values. For Maki
 0.4.8 at or after commit `a9495e1`, capture the actual request fields for the
 same matrix. Confirm Qwen3.6 maps every enabled name to its on toggle,
 Qwen3.8 `high` snaps to medium, Muse off clamps to low, and adaptive follows
@@ -255,15 +243,6 @@ the selected family's managed default. Exercise new interactive sessions:
 Maki commit `a9495e1` does not apply `always_thinking` in `--print` mode, so
 that path cannot validate the generated default or named selector. Keep these
 protocol checks separate from cross-model quality benchmarking.
-
-For every generated OpenCode Qwen3.6 and Qwen3.8 model, confirm the raw model
-options contain JSON `null` for `temperature` and `top_p`. Capture installed
-OpenCode requests for representative thinking and off variants, including a
-title or background request and Investigate, and confirm those nulls survive
-provider serialization. Against the managed server, confirm the request then
-resolves to the catalog's thinking or non-thinking tuple. A variant label or
-generated-config inspection alone does not prove that OpenCode stopped
-injecting its own Qwen sampler values.
 
 After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every

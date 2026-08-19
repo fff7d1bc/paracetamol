@@ -655,37 +655,11 @@ Muse low without changing other model families.
 `bin/rocmplete` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream
-command names. `src/rocmplete/opencode.py` renders the
-OpenAI-compatible llama.cpp and DwarfStar providers at launch. `bin/opencode`
-delegates to the host launcher,
-which supplies the main JSON through `OPENCODE_CONFIG_CONTENT` and points
-`OPENCODE_TUI_CONFIG` at the repository-owned read-only keymap. No integration
-file is installed in the user's config directory. The model map contains only
-the reviewed agent set and advertises each preset's managed starting context.
-Presets with `reasoning_control` advertise only their catalog-owned OpenCode
-variants. Qwen3.6 has instant and thinking, Qwen3.8 has instant, low, medium,
-and xhigh, and Muse has low, medium, high, and xhigh. Unsupported inherited
-variants are explicitly disabled. OpenCode merges a selected variant later,
-so persisted per-model choices continue to take precedence. For a preset with
-a mode-dependent sampling policy, the raw provider options carry JSON `null`
-for `temperature` and `top_p`. Raw options override OpenCode's injected
-Qwen-family values, while the managed llama.cpp server treats null as a
-catalog fallback after resolving reasoning. This keeps the server policy in
-force for ordinary, title, background, and agent-variant requests without
-duplicating the tuple in client configuration. The launcher prefers Qwen3.8
-27B MTP Q8 at native medium effort and otherwise uses
-the first installed agent-capable preset. It refuses to start when none are
-installed. The wrapper resolves and executes the real OpenCode binary while
-excluding itself from the executable search, forwards all OpenCode arguments,
-and does not edit shell startup files. The generated global policy requires
-approval for edits, shell commands, and subagent launches while leaving
-ordinary reads and searches automatic. `default_agent` selects Investigate
-for new sessions. The TUI config reverses the normal Tab cycle because
-OpenCode places the selected default first, then sorts the other visible
-agents by name. This produces the intended Investigate, Plan, Build order
-while Shift+Tab moves in reverse. Investigate overrides only the task policy
-with an exact allowlist of its two ROCmplete-owned read-only workers. A project
-config has higher OpenCode precedence and may override these defaults.
+command names. The generated model maps contain only the reviewed agent set,
+advertise each preset's managed starting context, and prefer Qwen3.8 27B MTP
+Q8 at native medium effort when it is installed. A launcher otherwise selects
+the first installed agent-capable preset and refuses a normal session when no
+maintained model is available.
 
 `agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
 and transitive runtime dependency graph. `src/rocmplete/pi_runtime.py` requires
@@ -714,22 +688,19 @@ command-line defaults before forwarded Pi session arguments, so an explicit
 later `--provider`, `--model`, or `--thinking` remains authoritative.
 
 `src/rocmplete/agent_models.py` owns reviewed coding-task sampling metadata for
-every maintained llama.cpp agent preset. OpenCode receives static values as
-per-model request options, Pi as `samplingParams`, and OMP as per-model
-`compat.extraBody`; explicit client request settings remain higher-precedence
-caller policy. Qwen3.6 and Qwen3.8 are deliberately different because their
-official samplers depend on reasoning mode, and sparse Qwen3.6 has a distinct
-thinking policy. The catalog owns validated, reusable thinking and
-non-thinking policies and each applicable preset references one. Direct
-startup and router rendering pass the resolved data through a dedicated
-llama.cpp option that remains separate from Jinja. The patched server resolves
-thinking and fills only omitted or null sampling fields. OpenCode, Pi, OMP,
-and direct Chat Completions therefore share one mode-aware policy without
-separate model processes or duplicated client configuration. Maki receives
-the thinking policy while its numeric budget leaves the template enabled, but
-cannot select the native non-thinking policy until its transport carries that
-control. Evaluation metadata reads the same catalog policy when recording the
-resolved tuple.
+every maintained llama.cpp agent preset. Pi receives static fields as
+`samplingParams` where the policy does not vary with thinking; explicit client
+request settings remain higher-precedence caller policy. Qwen3.6 and Qwen3.8
+are deliberately different because their official samplers depend on
+reasoning mode, and sparse Qwen3.6 has a distinct thinking policy. The catalog
+owns validated, reusable thinking and non-thinking policies and each
+applicable preset references one. Direct startup and router rendering pass the
+resolved data through a dedicated llama.cpp option that remains separate from
+Jinja. The patched server resolves thinking and fills only omitted or null
+sampling fields. Pi, Maki, and direct Chat Completions therefore share one
+mode-aware policy without separate model processes or duplicated client
+configuration. Evaluation metadata reads the same catalog policy when
+recording the resolved tuple.
 
 Pi recognizes package and configuration commands only when the command is its
 first argument. The launcher classifies `install`, `remove`, `uninstall`,
@@ -741,36 +712,7 @@ launches without exposing Pi's ordinary host state. Informational `--help` and
 private state nor an installed model. Since bare `pi update` means self-update
 upstream, the bare, `self`, `pi`, `--self`, and `--all` forms are refused with
 the repository-managed update command; package-only update forms use the
-private state. OpenCode similarly
-passes information, completion, plugin, upgrade, and uninstall commands to the
-real executable without the managed environment. Its remaining subcommands
-accept global options first; a regression test preserves their position after
-the managed `--pure` option.
-
-`src/rocmplete/omp_agent.py` renders the reviewed providers into OMP's
-JSON-compatible `models.yml` schema and writes a separate runtime overlay.
-`bin/omp` delegates to the host launcher, which stores both generated files
-below `StorageLayout.application("omp") / "sandbox"` and points
-`PI_CODING_AGENT_DIR` and `PI_CONFIG_FILES` there. OMP is a Pi fork but remains
-an independent client with independent state. Its ordinary `~/.omp` tree and
-user `config.yml` are not read or rewritten. Generated files are atomically
-replaced, mode-restricted, and reject symbolic or multiple hard links.
-
-The `rocmplete-llama-cpp` OMP provider enables its llama.cpp discovery
-compatibility so Qwen chat, tool, and reasoning messages receive OMP's
-maintained adapter, while an exact `enabledModels` list prevents unrelated
-discovered IDs from entering the picker. The separate
-`rocmplete-dwarfstar` provider owns DwarfStar's second endpoint. Every built-in
-role aliases the mutable default model so changing that default also moves
-background work. The managed overlay makes OMP's upstream yolo approval mode
-explicit and disables the setup wizard, startup update checks, and marketplace
-auto-update. Session arguments are forwarded after the selected model and
-thinking defaults, so explicit later values win. Management commands use the
-same private state without requiring installed model bytes; help, version,
-completion, and self-update requests pass directly to the real executable.
-Named OMP profiles change the configuration root and would bypass this state
-contract, so inherited profile variables are removed and explicit `--profile`
-or `--alias` arguments are rejected.
+private state.
 
 `src/rocmplete/maki_agent.py` publishes the same reviewed model catalog as two
 executable dynamic providers below Maki's private XDG configuration. Both use
@@ -805,26 +747,23 @@ server. This public model ID follows the exact managed release and bundle
 identity. It deliberately does not copy the pinned server's generic
 `deepseek-v4-flash` discovery alias, which omits both the 0731 release and the
 reviewed Q2 imatrix selection; the server accepts and echoes the exact managed
-ID in Chat Completions requests. It offers
-only `instant` (`reasoning_effort: none`) and `thinking`
-(`reasoning_effort: high`). At this context DwarfStar maps low, medium, and
+ID in Chat Completions requests. The clients expose only direct
+(`reasoning_effort: none`) and normal thinking (`reasoning_effort: high`). At
+this context DwarfStar maps low, medium, and
 high to the same normal thinking mode; Think Max needs a substantially larger
-context and is not advertised. Disabled custom entries remove OpenCode's
-inherited low, medium, high, and max variants from the picker without hiding
-reasoning output. Pi maps the same behavior to `off` and `high` while hiding
-unsupported intermediate levels. OMP advertises only its supported `high`
-effort. Maki maps `/thinking off` and `/thinking high` directly to the same
+context and is not advertised. Pi maps the same behavior to `off` and `high`
+while hiding unsupported intermediate levels. Maki maps `/thinking off` and
+`/thinking high` directly to the same
 `reasoning_effort` values, with adaptive selecting high. A generated provider
 does not imply that the DwarfStar server or model is installed or running.
 
-`src/rocmplete/agent_sandbox.py` owns the common client boundary. All four
+`src/rocmplete/agent_sandbox.py` owns the common client boundary. Both
 launchers use bubblewrap by default and refuse to fall back silently when
 `bwrap` is unavailable. They unshare user, PID, IPC, UTS, cgroup, and other
 available namespaces while deliberately restoring host networking for the
 loopback model endpoints. They drop capabilities, start a new session, and use
 parent-death cleanup. `/usr`, `/etc`, and the resolved client installation are
-read-only; OpenCode's one repository-owned TUI JSON file is mounted read-only
-as well. If `/etc/resolv.conf` points to a dynamic regular file below `/run`,
+read-only. If `/etc/resolv.conf` points to a dynamic regular file below `/run`,
 that exact file is rebound read-only after the private `/run` tmpfs is created;
 DNS remains usable without exposing another runtime tree. The exact resolved
 working directory is the only general persistent writable mount and keeps its
@@ -833,9 +772,8 @@ session directories, and absolute paths while exposing no siblings from the
 host filesystem. When the
 host uses Fedora's `/home -> var/home` link, the same link is recreated in the
 otherwise empty sandbox root so login-home and canonical paths keep resolving
-to the one mounted project. The TUI file appears at a synthetic path below
-`/run/rocmplete`, avoiding otherwise empty source-tree parent directories. A
-minimal `/dev`, private `/tmp` and `/run`, and no GPU devices are provided. The
+to the one mounted project. A minimal `/dev`, private `/tmp` and `/run`, and no
+GPU devices are provided. The
 host home and its ancestors are refused as working directories;
 broader project parents remain an explicit user-selected scope and are printed
 before launch.
@@ -879,27 +817,6 @@ start while the legacy directory exists and directs the user to upstream
 `maki migrate xdg`; silently using ordinary host state would violate the
 private-state contract.
 
-Investigate is an additional primary agent selected through OpenCode's normal
-agent switcher. It inherits the selected managed model and its reviewed
-sampling policy while denying edit, bash, and todo tools. Its task policy
-first denies all subagents, then allows only `investigate-local` and
-`investigate-web`. Both are hidden subagents with the same inherited sampling,
-independent mutation and recursion denials, and a 500-word return bound. The
-local worker is confined to read-only repository tools with web and external-
-directory access denied.
-The web worker has web access but denies local reads, searches, LSP, external
-directories, commands, and mutation. Their child-session source material is
-not copied into the primary history; only the returned report is.
-
-Investigate's inline prompt makes the original question the only objective,
-requires targeted evidence, distinguishes inference from observed facts, and
-rejects generated continuation or summary text as authorization for further
-work. Investigate deliberately has no `steps` limit: reaching one makes
-OpenCode inject a higher-priority summary, remaining-work, and recommendation
-prompt, which is counterproductive for this mode. Hard tool denials are the
-mutation boundary; normal user interruption bounds an unproductive
-investigation.
-
 Agent clients reserve the advertised per-turn output limit when deciding when
 to compact a session. ROCmplete caps that allowance at 16384 tokens so a 256K
 agent preset retains roughly 240K tokens for prompts, history, tools, and
@@ -907,7 +824,7 @@ retained context. Compaction remains lossy and the sandbox remains the hard
 filesystem boundary when a local model misreads generated context.
 
 This protocol choice is deliberate. llama.cpp maps ordinary function tools
-from Chat Completions, which covers all four clients' host-side tools. A newly
+from Chat Completions, which covers both clients' host-side tools. A newly
 maintained preset still needs a complete tool-call and tool-result acceptance
 test in each client before unattended use.
 

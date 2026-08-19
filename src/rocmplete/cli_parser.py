@@ -152,41 +152,11 @@ AGENT_EXAMPLES = """\
 Run a supported coding agent against managed local models:
 
   ./rocmplete agent install pi
-  ./rocmplete agent opencode
   ./rocmplete agent pi
-  ./rocmplete agent omp
   ./rocmplete agent maki
 
 The PATH-friendly launchers in bin/ provide the same guarded defaults without
 the ROCmplete command prefix.
-"""
-OPENCODE_EXAMPLES = """\
-Run OpenCode with the current ROCmplete model catalog:
-
-  export PATH="$PWD/bin:$PATH"
-  ./rocmplete run llama-cpp server --router --models-max 1
-  opencode
-
-The PATH launcher uses bubblewrap by default. To troubleshoot without it:
-
-  ./rocmplete agent opencode --no-sandbox --
-
-Forward normal OpenCode arguments through the launcher:
-
-  opencode -m rocmplete/qwen3.8-27b-mtp-ud-q8-k-xl
-
-Use a separately running DwarfStar server:
-
-  ./rocmplete run dwarfstar server
-  opencode -m dwarfstar/deepseek-v4-flash-0731-q2-imatrix
-
-For a router on another local port:
-
-  ROCMLETE_OPENCODE_PORT=9090 opencode
-
-For DwarfStar on another local port:
-
-  ROCMLETE_OPENCODE_DWARFSTAR_PORT=8001 opencode
 """
 PI_EXAMPLES = """\
 Run Pi with the current ROCmplete model catalog:
@@ -220,29 +190,6 @@ For a router on another local port:
 For DwarfStar on another local port:
 
   ROCMLETE_PI_DWARFSTAR_PORT=8001 pi
-"""
-OMP_EXAMPLES = """\
-Run Oh My Pi with the current ROCmplete model catalog:
-
-  export PATH="$PWD/bin:$PATH"
-  ./rocmplete run llama-cpp server --router --models-max 1
-  omp
-
-The PATH launcher uses bubblewrap by default. To troubleshoot without it:
-
-  ./rocmplete agent omp --no-sandbox --
-
-Forward normal OMP arguments through the launcher:
-
-  omp --model rocmplete-llama-cpp/qwen3.8-27b-mtp-ud-q8-k-xl --thinking medium
-
-Use a separately running DwarfStar server:
-
-  ./rocmplete run dwarfstar server
-  omp --model rocmplete-dwarfstar/deepseek-v4-flash-0731-q2-imatrix --thinking high
-
-For servers on other local ports, set ROCMLETE_OMP_PORT or
-ROCMLETE_OMP_DWARFSTAR_PORT.
 """
 MAKI_EXAMPLES = """\
 Run Maki with the current ROCmplete model catalog:
@@ -826,54 +773,6 @@ def _parser() -> argparse.ArgumentParser:
         "--data-dir", help="persistent data directory"
     )
     agent_install.set_defaults(command_parser=agent_install)
-    opencode = agent_clients.add_parser(
-        "opencode",
-        help="run OpenCode with the managed local model providers",
-        allow_abbrev=False,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=OPENCODE_EXAMPLES,
-    )
-    opencode.add_argument(
-        "--port",
-        help=(
-            "local llama.cpp router port (default: "
-            "ROCMLETE_OPENCODE_PORT or 8080)"
-        ),
-    )
-    opencode.add_argument(
-        "--dwarfstar-port",
-        help=(
-            "local DwarfStar server port (default: "
-            "ROCMLETE_OPENCODE_DWARFSTAR_PORT or 8000)"
-        ),
-    )
-    opencode.add_argument(
-        "--data-dir", help="persistent data directory"
-    )
-    sandbox = opencode.add_mutually_exclusive_group()
-    sandbox.add_argument(
-        "--sandbox",
-        dest="sandbox",
-        action="store_true",
-        default=True,
-        help=(
-            "confine OpenCode to the launch directory with bubblewrap "
-            "(default)"
-        ),
-    )
-    sandbox.add_argument(
-        "--no-sandbox",
-        dest="sandbox",
-        action="store_false",
-        help="run OpenCode with normal host filesystem access",
-    )
-    opencode.add_argument(
-        "opencode_arguments",
-        nargs=argparse.REMAINDER,
-        help=argparse.SUPPRESS,
-    )
-    opencode.set_defaults(command_parser=opencode)
-
     pi = agent_clients.add_parser(
         "pi",
         help="run Pi with the managed local model providers",
@@ -924,49 +823,6 @@ def _parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     pi.set_defaults(command_parser=pi)
-
-    omp = agent_clients.add_parser(
-        "omp",
-        help="run Oh My Pi with the managed local model providers",
-        allow_abbrev=False,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=OMP_EXAMPLES,
-    )
-    omp.add_argument(
-        "--port",
-        help=(
-            "local llama.cpp router port (default: "
-            "ROCMLETE_OMP_PORT or 8080)"
-        ),
-    )
-    omp.add_argument(
-        "--dwarfstar-port",
-        help=(
-            "local DwarfStar server port (default: "
-            "ROCMLETE_OMP_DWARFSTAR_PORT or 8000)"
-        ),
-    )
-    omp.add_argument("--data-dir", help="persistent data directory")
-    omp_sandbox = omp.add_mutually_exclusive_group()
-    omp_sandbox.add_argument(
-        "--sandbox",
-        dest="sandbox",
-        action="store_true",
-        default=True,
-        help="confine OMP to the launch directory with bubblewrap (default)",
-    )
-    omp_sandbox.add_argument(
-        "--no-sandbox",
-        dest="sandbox",
-        action="store_false",
-        help="run OMP with normal host filesystem access",
-    )
-    omp.add_argument(
-        "omp_arguments",
-        nargs=argparse.REMAINDER,
-        help=argparse.SUPPRESS,
-    )
-    omp.set_defaults(command_parser=omp)
 
     maki = agent_clients.add_parser(
         "maki",

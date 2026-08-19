@@ -1039,16 +1039,12 @@ class CliTests(unittest.TestCase):
         self.assertIn("reviewed Jinja templates", normalized)
         self.assertIn("fixed managed template", normalized)
         self.assertIn("not a dependable repository agent", normalized)
-        self.assertIn("./rocmplete agent opencode", text)
-        self.assertIn("bin/opencode", text)
         self.assertIn("./rocmplete agent pi", text)
         self.assertIn("bin/pi", text)
-        self.assertIn("./rocmplete agent omp", text)
-        self.assertIn("bin/omp", text)
         self.assertIn("./rocmplete agent maki", text)
         self.assertIn("bin/maki", text)
-        self.assertNotIn("OPENCODE_CONFIG", text)
-        self.assertNotIn("OPENCODE_TUI_CONFIG", text)
+        self.assertNotIn("agent opencode", text)
+        self.assertNotIn("agent omp", text)
         self.assertIn("TranslateGemma has one preset", normalized)
         self.assertIn("--compare-backends", text)
         self.assertIn("docs/guides/applications.md#llamacpp", text)
@@ -5680,9 +5676,7 @@ class CliTests(unittest.TestCase):
             "./rocmplete run llama-cpp server --router --models-max 1",
             rendered,
         )
-        self.assertIn("./rocmplete agent opencode", rendered)
         self.assertIn("./rocmplete agent pi", rendered)
-        self.assertIn("./rocmplete agent omp", rendered)
         self.assertIn("./rocmplete agent maki", rendered)
         self.assertNotIn("./rocmplete client", rendered)
         self.assertNotIn("run llama-cpp server --preset", rendered)
@@ -5696,18 +5690,11 @@ class CliTests(unittest.TestCase):
             "--preset qwen3.6-35b-a3b-mtp-ud-q8-k-xl", rendered
         )
         self.assertLess(
-            rendered.index("server --router"), rendered.index("opencode")
-        )
-        self.assertLess(
-            rendered.index("opencode"),
+            rendered.index("server --router"),
             rendered.index("./rocmplete agent pi"),
         )
         self.assertLess(
             rendered.index("./rocmplete agent pi"),
-            rendered.index("./rocmplete agent omp"),
-        )
-        self.assertLess(
-            rendered.index("./rocmplete agent omp"),
             rendered.index("./rocmplete agent maki"),
         )
         self.assertLess(
@@ -6087,20 +6074,24 @@ class CliTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()) as output:
             self.assertEqual(main(["agent"]), 2)
         text = output.getvalue()
-        self.assertIn(
-            "error: choose install, opencode, pi, omp, or maki", text
-        )
-        self.assertIn("./rocmplete agent opencode", text)
+        self.assertIn("error: choose install, pi, or maki", text)
         self.assertIn("./rocmplete agent pi", text)
-        self.assertIn("./rocmplete agent omp", text)
         self.assertIn("./rocmplete agent maki", text)
 
     def test_agent_clients_are_not_top_level_commands(self):
-        for command in ("opencode", "pi", "omp", "maki"):
+        for command in ("pi", "maki"):
             with self.subTest(command=command):
                 with redirect_stderr(io.StringIO()):
                     with self.assertRaises(SystemExit) as result:
                         parse_arguments([command])
+                self.assertEqual(result.exception.code, 2)
+
+    def test_retired_agent_clients_are_not_available(self):
+        for command in ("opencode", "omp"):
+            with self.subTest(command=command):
+                with redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as result:
+                        parse_arguments(["agent", command])
                 self.assertEqual(result.exception.code, 2)
 
     def test_acceptance_without_operation_prints_copyable_examples(self):

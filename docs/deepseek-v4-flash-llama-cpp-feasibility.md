@@ -197,7 +197,7 @@ A complete basic tool round trip also succeeded:
 4. the model incorporated that result in a correct final answer.
 
 This established basic llama.cpp tool framing. It did not justify setting
-`agent_tools: true`: OpenCode, Pi, and Maki still require their own complete
+`agent_tools: true`: Pi and Maki still require their own complete
 tool-call, tool-result, long-task, and failure-path acceptance.
 
 ## Vulkan benchmark results
@@ -339,7 +339,7 @@ For a retry:
    and Flash Attention settings.
 8. Exercise multi-turn cache reuse, simultaneous slots, context compaction,
    a complete tool round trip, and a longer soak while watching kernel logs.
-9. If advertising agent support, run complete OpenCode, Pi, and Maki tasks;
+9. If advertising agent support, run complete Pi and Maki tasks;
    basic JSON tool syntax is not enough.
 10. Record partial success honestly. Plausible token rates with malformed text
     are a failure.
