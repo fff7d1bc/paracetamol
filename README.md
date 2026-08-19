@@ -64,7 +64,9 @@ ROCmplete tries to cover the whole path.
 
 The host needs rootless Podman and Python 3.12 or newer. The field-tested hosts
 above use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and
-Ubuntu 26.04. A minimal installation may not include Podman yet.
+Ubuntu 26.04. A minimal installation may not include Podman yet. The optional
+managed Pi client additionally requires distribution-provided Node.js 22.19
+or newer and npm; ROCmplete installs Pi itself into private application data.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -285,6 +287,7 @@ PATH launcher. At least one managed agent model must already be installed.
 
 ```bash
 ./rocmplete content install llama-cpp qwen3.8
+./rocmplete agent install pi  # once, and after ROCmplete changes its Pi pin
 ./rocmplete run llama-cpp server --router --models-max 1
 export PATH="$PWD/bin:$PATH"
 opencode

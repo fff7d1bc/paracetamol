@@ -133,6 +133,10 @@ class StorageLayout:
         return self.application("llama-cpp") / "benchmarks"
 
     @property
+    def pi_runtime(self) -> Path:
+        return self.application("pi") / "runtime"
+
+    @property
     def agent_evaluations(self) -> Path:
         return self.application("agent-evaluation")
 

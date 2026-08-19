@@ -687,9 +687,23 @@ while Shift+Tab moves in reverse. Investigate overrides only the task policy
 with an exact allowlist of its two ROCmplete-owned read-only workers. A project
 config has higher OpenCode precedence and may override these defaults.
 
-`src/rocmplete/pi_agent.py` renders the same reviewed model set into Pi's
+`agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
+and transitive runtime dependency graph. `src/rocmplete/pi_runtime.py` requires
+distribution-provided Node.js and npm, stages `npm ci --ignore-scripts` below
+`StorageLayout.application("pi") / "runtime"`, verifies the staged Pi version,
+and only then atomically activates the content-addressed installation. A
+failed install cannot look current, and normal launches never perform network
+installation. System Node.js remains outside the managed tree so distribution
+security updates do not require a separate ROCmplete runtime manager.
+Runtime installation does not own provider addresses or confinement policy.
+Those remain explicit inputs to configuration rendering and launch planning,
+so a later remote or non-bubblewrap client path can reuse the reviewed model
+profile without pretending that it is a local Linux sandbox.
+
+`src/rocmplete/pi_agent.py` renders the reviewed model set into Pi's
 `models.json` schema with the `openai-completions` API. `bin/pi` delegates to
-the host launcher, which atomically refreshes that file below
+the host launcher, which resolves only the runtime matching the current lock,
+mounts that complete tree read-only, and atomically refreshes the file below
 `StorageLayout.application("pi") / "sandbox"` and points
 `PI_CODING_AGENT_DIR` at the same private state. Pi's ordinary user config is
 never modified. The launcher disables startup network checks, telemetry,
@@ -722,12 +736,12 @@ first argument. The launcher classifies `install`, `remove`, `uninstall`,
 `update`, `list`, `config`, and `auth` before adding session defaults, runs
 them online when requested, and points them at the same private state used by
 managed sessions. User-installed package resources therefore load on later
-launches without exposing Pi's ordinary host state. Informational `--help`,
-`--version`, and self-update requests pass directly to the real executable and
-require neither private state nor an installed model. Since bare `pi update`
-means self-update upstream, the bare, `self`, `--self`, and `--all` forms take
-this path, as does the positional `pi` alias; package-only update forms use
-the private state. OpenCode similarly
+launches without exposing Pi's ordinary host state. Informational `--help` and
+`--version` pass directly to the managed executable and require neither
+private state nor an installed model. Since bare `pi update` means self-update
+upstream, the bare, `self`, `pi`, `--self`, and `--all` forms are refused with
+the repository-managed update command; package-only update forms use the
+private state. OpenCode similarly
 passes information, completion, plugin, upgrade, and uninstall commands to the
 real executable without the managed environment. Its remaining subcommands
 accept global options first; a regression test preserves their position after
@@ -852,7 +866,9 @@ against a copied worktree with dependency pins restored.
 
 A client executable inside Linuxbrew causes its complete
 `/home/linuxbrew/.linuxbrew` prefix to be mounted read-only. Other executables
-outside `/usr` are mounted as the exact resolved file. `--no-sandbox` is an
+outside `/usr` are mounted as the exact resolved file. Pi instead supplies its
+complete content-addressed runtime as an explicit read-only mount while
+executing distribution Node.js from `/usr`. `--no-sandbox` is an
 explicit troubleshooting escape hatch and restores ordinary host filesystem
 access while retaining generated provider settings and private client state.
 Neither mode starts or supervises a model server.

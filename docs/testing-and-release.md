@@ -53,6 +53,7 @@ Exercise user-visible composition:
   --profile cpu --listen 127.0.0.1 --dry-run
 ./rocmplete run dwarfstar server --profile strix-halo --dry-run
 ./rocmplete agent --help
+./rocmplete agent install pi --help
 ./rocmplete agent opencode --help
 ./rocmplete agent opencode --no-sandbox -- --help
 ./rocmplete agent pi --help

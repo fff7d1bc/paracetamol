@@ -472,12 +472,21 @@ the least ambiguous launch mode:
 ./rocmplete run llama-cpp server --router --models-max 1
 ```
 
-ROCmplete configures but does not install the clients. Install an upstream
-client by its supported method. For Linuxbrew or Homebrew:
+ROCmplete manages its own pinned Pi runtime. It requires Node.js 22.19 or
+newer and npm from the host distribution, then installs the repository-locked
+npm tree below the selected ROCmplete data directory:
+
+```bash
+./rocmplete agent install pi
+```
+
+The command is idempotent. Rerun it after pulling a change to
+`agent-clients/pi/package-lock.json`; an ordinary launch never downloads or
+repairs the runtime. OpenCode and OMP remain external clients. Install them by
+their supported method, for example through Linuxbrew or Homebrew:
 
 ```bash
 brew install opencode
-brew install pi-coding-agent
 brew install can1357/tap/omp
 ```
 
@@ -492,6 +501,7 @@ model and start the router first, then choose a client:
 
 ```bash
 ./rocmplete content install llama-cpp qwen3.6
+./rocmplete agent install pi
 ./rocmplete run llama-cpp server --router --models-max 1
 export PATH="$PWD/bin:$PATH"
 opencode
@@ -581,8 +591,12 @@ sandbox. A plugin installed this way remains disabled by the default sandbox's
 `--pure` policy; use the documented `--no-sandbox` launch only when loading
 that host-side plugin is intentional.
 
-`bin/pi` delegates to `./rocmplete agent pi` and writes only the generated
-`models.json` inside Pi's ROCmplete-owned private state. The file uses Pi's
+`bin/pi` delegates to `./rocmplete agent pi` and executes the exact Pi release
+installed by `./rocmplete agent install pi`; it never searches `PATH` for
+another Pi. The repository's package manifest and lockfile pin the complete
+npm dependency tree, while system Node.js remains the only runtime. The
+installed tree is mounted read-only and kept separate from the generated
+`models.json` and Pi's ROCmplete-owned private state. The file uses Pi's
 `openai-completions` provider, lists the same reviewed llama.cpp presets and
 DwarfStar model, and is refreshed atomically on every launch. Pi's normal
 `~/.pi/agent` state is not read or modified. The launcher disables Pi's update
@@ -592,10 +606,10 @@ resources by default, while ordinary `AGENTS.md` context still loads.
 Pi's package commands keep their upstream shape through the PATH launcher.
 For example, `pi install npm:pi-code-indexer`, `pi list`, and `pi update
 --extensions` act on Pi's private ROCmplete-owned state, without requiring an
-installed model or a running server. The upstream `pi update` command updates
-Pi itself by default, so self, `--self`, and `--all` updates bypass the sandbox
-and operate on the real installation. The positional aliases are `self` and
-`pi`. An explicit package command may use the network. Installed user packages
+installed model or a running server. Since Pi itself is repository-pinned,
+bare `pi update` and its `self`, `pi`, `--self`, and `--all` forms are refused;
+update the checkout and rerun `./rocmplete agent install pi` instead. An
+explicit package command may use the network. Installed user packages
 and their extensions, skills, prompts, and themes are available on later
 managed launches. They are trusted executable inputs with access to the
 writable project and host network inside the sandbox, so review them before
@@ -672,7 +686,8 @@ That opt-out applies system-wide and reduces protection against kernel bugs
 reachable through unprivileged user namespaces, so Doctor says so alongside
 the command.
 
-System files and the resolved client installation are read-only. OpenCode's
+System files and each resolved client installation are read-only. Pi's exact
+managed npm installation is mounted as one runtime tree. OpenCode's
 TUI keymap is mounted as one read-only file at a synthetic path. The launchers
 recognize Linuxbrew below `/home/linuxbrew/.linuxbrew` and mount that prefix
 read-only.

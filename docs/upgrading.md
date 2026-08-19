@@ -16,6 +16,7 @@ Start every upgrade by locating the current values:
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
 rg -n 'APPLICATIONS|ApplicationSpec' src/rocmplete/config.py
 rg -n 'source_version|source_revision' catalog/catalog.json
+cat agent-clients/pi/package.json
 sort -u containers/content_tools/requirements.txt \
   applications/comfyui/constraints.txt
 ```
@@ -33,6 +34,7 @@ The main pin classes are:
 | Content download tools | `containers/content_tools/requirements.txt` | full exact dependency set |
 | Comfy dependencies | `applications/comfyui/constraints.txt` | transitive constraints |
 | Models and workflows | `catalog/` | full commits plus content hashes |
+| Managed Pi client | `agent-clients/pi/` | exact npm release plus lockfile integrity |
 
 AMD ROCm runtime packages belong to the lower tagged runtime; PyTorch, `pip`,
 and `wheel` policy belong to the higher shared base.
@@ -63,6 +65,38 @@ the selected target's build instructions while checking prerequisites through
 their normal layer cache and retaining downloaded Python packages. Use
 `--no-cache` for the final cold validation because it also cold-builds the
 prerequisite closure and bypasses the host package-download cache.
+
+## Upgrade the managed Pi client
+
+Pi is a host-side managed client rather than a container application. Change
+the exact `@earendil-works/pi-coding-agent` dependency and matching Node.js
+minimum in `agent-clients/pi/package.json`, then resolve the complete npm tree
+without running package lifecycle scripts:
+
+```bash
+cd agent-clients/pi
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+cd ../..
+```
+
+Review the complete lockfile change, including package versions, registry
+origins, integrity values, licenses, engine requirements, and native optional
+dependencies. Update `THIRD_PARTY_NOTICES.md`, user requirements, and exact Pi
+versions in maintained evaluation documentation when applicable.
+
+Install into a disposable data directory first. The command requires system
+Node.js and npm rather than a Homebrew runtime, stages the locked tree, and
+verifies Pi's reported version before activation:
+
+```bash
+./rocmplete agent install pi --data-dir /absolute/disposable/data
+./rocmplete agent pi --data-dir /absolute/disposable/data -- --version
+```
+
+Then rerun the Pi launcher and package-management tests, install the new pin on
+each acceptance host, and perform the reasoning-transport checks documented in
+`testing-and-release.md`. A successful npm install or `pi --version` is not a
+substitute for one real tool call through the managed llama.cpp server.
 
 ## Upgrade content download tools
 

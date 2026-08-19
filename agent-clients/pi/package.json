@@ -1,0 +1,12 @@
+{
+  "name": "rocmplete-pi-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned Pi coding-agent runtime managed by ROCmplete",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

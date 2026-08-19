@@ -62,6 +62,8 @@ in the same change. Important ownership boundaries are:
 - `bin/rocmplete`: PATH-friendly delegation to the checkout launcher.
 - `src/rocmplete/agent_models.py` and `src/rocmplete/agent_sandbox.py`: shared
   agent-client model policy and bubblewrap boundary.
+- `agent-clients/pi/` and `src/rocmplete/pi_runtime.py`: pinned managed Pi npm
+  runtime, system Node.js requirement, installation, and receipts.
 - `bin/opencode`, `bin/pi`, `bin/omp`, `bin/maki`,
   `src/rocmplete/opencode.py`, `src/rocmplete/pi_agent.py`,
   `src/rocmplete/omp_agent.py`, and `src/rocmplete/maki_agent.py`: runtime

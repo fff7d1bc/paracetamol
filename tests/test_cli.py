@@ -6087,7 +6087,9 @@ class CliTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()) as output:
             self.assertEqual(main(["agent"]), 2)
         text = output.getvalue()
-        self.assertIn("error: choose opencode, pi, omp, or maki", text)
+        self.assertIn(
+            "error: choose install, opencode, pi, omp, or maki", text
+        )
         self.assertIn("./rocmplete agent opencode", text)
         self.assertIn("./rocmplete agent pi", text)
         self.assertIn("./rocmplete agent omp", text)

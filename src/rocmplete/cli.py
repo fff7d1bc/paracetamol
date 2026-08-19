@@ -191,6 +191,7 @@ from .pi_agent import (
     prepare_state as prepare_pi_state,
     sandbox_paths as pi_sandbox_paths,
 )
+from .pi_runtime import install_pi_runtime
 from .omp_agent import (
     create_launch_plan as create_omp_launch_plan,
     create_sandbox_plan as create_omp_sandbox_plan,
@@ -1189,9 +1190,43 @@ def command_agent(arguments: argparse.Namespace) -> int:
     if arguments.agent_client is None:
         return _print_incomplete_command(
             arguments.command_parser,
-            "choose opencode, pi, omp, or maki",
+            "choose install, opencode, pi, omp, or maki",
             AGENT_EXAMPLES,
         )
+    if arguments.agent_client == "install":
+        if arguments.managed_agent_client is None:
+            return _print_incomplete_command(
+                arguments.command_parser,
+                "choose pi",
+                AGENT_EXAMPLES,
+            )
+        data_dir = prepare_data_dir(
+            _content_data_dir(arguments.data_dir, prepare=False)
+        )
+        result = install_pi_runtime(data_dir, os.environ)
+        if result.installed:
+            state = "Installed"
+        else:
+            state = "Already installed"
+        print(
+            "{} Pi {}".format(
+                style(state + ":", "heading"),
+                result.runtime.package_version,
+            )
+        )
+        print(
+            "{} {}".format(
+                style("Runtime:", "label"), result.runtime.root
+            )
+        )
+        print(
+            "{} {} ({})".format(
+                style("System Node.js:", "label"),
+                result.runtime.node_version,
+                result.runtime.node,
+            )
+        )
+        return 0
     if arguments.agent_client == "opencode":
         return command_opencode(arguments)
     if arguments.agent_client == "pi":

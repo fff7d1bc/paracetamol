@@ -30,6 +30,7 @@ from rocmplete.pi_agent import (
     render_config,
     sandbox_paths,
 )
+from rocmplete.pi_runtime import PiRuntime, PiRuntimeInstallResult
 
 
 class PiLauncherTests(unittest.TestCase):
@@ -37,6 +38,21 @@ class PiLauncherTests(unittest.TestCase):
 
     def setUp(self):
         self.catalog = load_catalog()
+        self.runtime = None
+        self.runtime_resolver = patch(
+            "rocmplete.pi_agent.resolve_pi_runtime",
+            side_effect=self._resolve_fake_runtime,
+        )
+        self.runtime_resolver.start()
+        self.addCleanup(self.runtime_resolver.stop)
+
+    def _resolve_fake_runtime(self, data_dir, environ=None):
+        if self.runtime is None:
+            raise LauncherError(
+                "managed Pi is not installed; run "
+                "./rocmplete agent install pi"
+            )
+        return self.runtime
 
     def _mark_bundle_installed(self, data_dir, bundle_identifier):
         bundle = self.catalog.bundle(bundle_identifier)
@@ -54,9 +70,22 @@ class PiLauncherTests(unittest.TestCase):
         self._mark_bundle_installed(data_dir, preset.bundle)
 
     def _fake_pi(self, root):
-        executable = root / "pi"
-        executable.write_text("#!/bin/sh\nexit 0\n")
+        node = root / "node"
+        node.write_text("#!/bin/sh\nexit 0\n")
+        node.chmod(0o755)
+        runtime_root = root / "pi-runtime"
+        executable = runtime_root / "dist" / "cli.js"
+        executable.parent.mkdir(parents=True)
+        executable.write_text("#!/usr/bin/env node\n")
         executable.chmod(0o755)
+        self.runtime = PiRuntime(
+            root=runtime_root,
+            node=node,
+            entrypoint=executable,
+            package_version="0.84.2",
+            node_version="24.0.0",
+            lock_sha256="0" * 64,
+        )
         return executable
 
     def test_config_uses_chat_completions_and_exact_model_limits(self):
@@ -212,7 +241,10 @@ class PiLauncherTests(unittest.TestCase):
                 dwarfstar_port=8001,
             )
 
-            self.assertEqual(plan.command[0], str(executable))
+            self.assertEqual(
+                plan.command[:2],
+                (str(self.runtime.node), str(executable)),
+            )
             self.assertIn("--offline", plan.command)
             self.assertIn("--no-approve", plan.command)
             self.assertNotIn("--no-extensions", plan.command)
@@ -291,11 +323,6 @@ class PiLauncherTests(unittest.TestCase):
                 (("auth", "check"), "management"),
                 (("--help",), "passthrough"),
                 (("--version",), "passthrough"),
-                (("update",), "passthrough"),
-                (("update", "self"), "passthrough"),
-                (("update", "pi"), "passthrough"),
-                (("update", "--self"), "passthrough"),
-                (("update", "--all"), "passthrough"),
             ):
                 with self.subTest(arguments=arguments):
                     plan = create_launch_plan(
@@ -306,19 +333,43 @@ class PiLauncherTests(unittest.TestCase):
                         {"PATH": str(binary_dir)},
                     )
                     self.assertEqual(
-                        plan.command, (str(executable), *arguments)
+                        plan.command,
+                        (
+                            str(self.runtime.node),
+                            str(executable),
+                            *arguments,
+                        ),
                     )
                     self.assertEqual(plan.mode, expected_mode)
                     self.assertIsNone(plan.default_provider)
                     self.assertIsNone(plan.default_model)
                     self.assertIsNone(plan.default_thinking)
 
-    def test_launch_requires_real_pi_outside_wrapper_directory(self):
+            for arguments in (
+                ("update",),
+                ("update", "self"),
+                ("update", "pi"),
+                ("update", "--self"),
+                ("update", "--all"),
+            ):
+                with self.subTest(arguments=arguments):
+                    with self.assertRaisesRegex(
+                        LauncherError, "managed by ROCmplete"
+                    ):
+                        create_launch_plan(
+                            self.catalog,
+                            root / "empty-data",
+                            8080,
+                            arguments,
+                            {"PATH": str(binary_dir)},
+                        )
+
+    def test_launch_requires_managed_pi_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             data_dir = Path(directory) / "data"
             self._mark_installed(data_dir, self.default_model)
             with self.assertRaisesRegex(
-                LauncherError, "executable not found outside"
+                LauncherError, "managed Pi is not installed"
             ):
                 create_launch_plan(
                     self.catalog,
@@ -443,6 +494,7 @@ class PiLauncherTests(unittest.TestCase):
             )
             self.assertEqual(sandbox.environment, {"PATH": str(binary_dir)})
             self.assertEqual(sandbox.state_root, paths.root)
+            self.assertIn(str(self.runtime.root.resolve()), command)
             self.assertIn(str(executable.resolve()), command)
 
     def test_management_sandbox_keeps_command_first_and_allows_network(self):
@@ -475,8 +527,13 @@ class PiLauncherTests(unittest.TestCase):
             )
             command = list(sandbox.command)
             self.assertEqual(
-                command[-3:],
-                [str(executable.resolve()), "install", "npm:pi-code-indexer"],
+                command[-4:],
+                [
+                    str(self.runtime.node.resolve()),
+                    str(executable.resolve()),
+                    "install",
+                    "npm:pi-code-indexer",
+                ],
             )
             self.assertNotIn("PI_OFFLINE", command)
             self.assertIn(str(SANDBOX_AGENT_DIR), command)
@@ -555,7 +612,8 @@ class PiLauncherTests(unittest.TestCase):
                 self.assertEqual(command_pi(arguments, self.catalog), 0)
 
             command, argv, child = execute.call_args.args
-            self.assertEqual(command, str(executable))
+            self.assertEqual(command, str(self.runtime.node))
+            self.assertEqual(argv[1], str(executable))
             self.assertEqual(argv[-1], "--list-models")
             self.assertEqual(child["PI_OFFLINE"], "1")
             self.assertEqual(child["PI_TELEMETRY"], "0")
@@ -600,10 +658,15 @@ class PiLauncherTests(unittest.TestCase):
                 self.assertEqual(command_pi(arguments, self.catalog), 0)
 
             command, argv, child = execute.call_args.args
-            self.assertEqual(command, str(executable))
+            self.assertEqual(command, str(self.runtime.node))
             self.assertEqual(
                 argv,
-                [str(executable), "install", "npm:pi-code-indexer"],
+                [
+                    str(self.runtime.node),
+                    str(executable),
+                    "install",
+                    "npm:pi-code-indexer",
+                ],
             )
             self.assertNotIn("PI_OFFLINE", child)
             self.assertEqual(child["PI_TELEMETRY"], "0")
@@ -662,6 +725,47 @@ class PiLauncherTests(unittest.TestCase):
             '[str(launcher), "agent", "pi", "--", *sys.argv[1:]]',
             contents,
         )
+
+    @patch("rocmplete.cli.install_pi_runtime")
+    def test_cli_installs_the_managed_pi_runtime(self, install):
+        with tempfile.TemporaryDirectory() as directory:
+            data_dir = Path(directory) / "data"
+            runtime_root = data_dir / "apps" / "pi" / "runtime" / "test"
+            runtime_root.mkdir(parents=True)
+            node = Path(directory) / "node"
+            entrypoint = runtime_root / "dist" / "cli.js"
+            entrypoint.parent.mkdir()
+            node.write_text("")
+            entrypoint.write_text("")
+            runtime = PiRuntime(
+                root=runtime_root,
+                node=node,
+                entrypoint=entrypoint,
+                package_version="0.84.2",
+                node_version="24.1.0",
+                lock_sha256="0" * 64,
+            )
+            install.return_value = PiRuntimeInstallResult(
+                runtime=runtime, installed=True
+            )
+
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(
+                    main(
+                        [
+                            "agent",
+                            "install",
+                            "pi",
+                            "--data-dir",
+                            str(data_dir),
+                        ]
+                    ),
+                    0,
+                )
+            install.assert_called_once_with(data_dir, os.environ)
+            rendered = output.getvalue()
+            self.assertIn("Installed: Pi 0.84.2", rendered)
+            self.assertIn("System Node.js: 24.1.0", rendered)
 
 
 if __name__ == "__main__":

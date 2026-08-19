@@ -151,6 +151,7 @@ Move locally built ROCmplete images between machines:
 AGENT_EXAMPLES = """\
 Run a supported coding agent against managed local models:
 
+  ./rocmplete agent install pi
   ./rocmplete agent opencode
   ./rocmplete agent pi
   ./rocmplete agent omp
@@ -190,6 +191,7 @@ For DwarfStar on another local port:
 PI_EXAMPLES = """\
 Run Pi with the current ROCmplete model catalog:
 
+  ./rocmplete agent install pi
   export PATH="$PWD/bin:$PATH"
   ./rocmplete run llama-cpp server --router --models-max 1
   pi
@@ -803,8 +805,23 @@ def _parser() -> argparse.ArgumentParser:
         epilog=AGENT_EXAMPLES,
     )
     agent_clients = agent.add_subparsers(
-        dest="agent_client", metavar="CLIENT"
+        dest="agent_client", metavar="COMMAND"
     )
+    agent_install = agent_clients.add_parser(
+        "install",
+        help="install a pinned managed agent-client runtime",
+        allow_abbrev=False,
+    )
+    agent_install.add_argument(
+        "managed_agent_client",
+        choices=("pi",),
+        nargs="?",
+        help="managed agent-client runtime to install",
+    )
+    agent_install.add_argument(
+        "--data-dir", help="persistent data directory"
+    )
+    agent_install.set_defaults(command_parser=agent_install)
     opencode = agent_clients.add_parser(
         "opencode",
         help="run OpenCode with the managed local model providers",

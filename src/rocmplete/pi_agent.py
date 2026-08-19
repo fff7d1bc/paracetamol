@@ -25,7 +25,6 @@ from .agent_sandbox import (
     AgentSandboxPlan as PiSandboxPlan,
     SANDBOX_HOME,
     create_sandbox_plan as create_agent_sandbox_plan,
-    find_real_executable,
     prepare_sandbox_paths as prepare_agent_sandbox_paths,
     sandbox_paths as agent_sandbox_paths,
 )
@@ -36,6 +35,7 @@ from .config import (
 )
 from .errors import LauncherError
 from .layout import validate_managed_parent
+from .pi_runtime import PiRuntime, resolve_pi_runtime
 from .project import PROJECT_ROOT
 
 
@@ -78,6 +78,7 @@ _INFORMATION_ARGUMENTS = frozenset(("--help", "-h", "--version", "-v"))
 @dataclass(frozen=True)
 class PiLaunchPlan:
     command: Tuple[str, ...]
+    runtime_root: Path
     default_provider: Optional[str]
     default_model: Optional[str]
     default_thinking: Optional[str]
@@ -205,6 +206,7 @@ def create_launch_plan(
     environ: Optional[Mapping[str, str]] = None,
     *,
     dwarfstar_port: int = 8000,
+    runtime: Optional[PiRuntime] = None,
 ) -> PiLaunchPlan:
     env = os.environ if environ is None else environ
     endpoint = "http://127.0.0.1:{}/v1".format(port)
@@ -212,18 +214,29 @@ def create_launch_plan(
     forwarded = tuple(arguments)
     if forwarded[:1] == ("--",):
         forwarded = forwarded[1:]
-    executable = find_real_executable("pi", WRAPPER_PATH, env, "Pi")
+    managed_runtime = runtime or resolve_pi_runtime(data_dir, env)
+    command_prefix = (
+        str(managed_runtime.node),
+        str(managed_runtime.entrypoint),
+    )
     self_update = forwarded[:1] == ("update",) and (
         len(forwarded) == 1
         or "--self" in forwarded[1:]
         or "--all" in forwarded[1:]
         or forwarded[1:2] in (("self",), ("pi",))
     )
+    if self_update:
+        raise LauncherError(
+            "Pi is managed by ROCmplete; update the checkout and run "
+            "./rocmplete agent install pi. Use pi update --extensions for "
+            "Pi packages."
+        )
     if (
         bool(forwarded) and forwarded[0] in _INFORMATION_ARGUMENTS
-    ) or self_update:
+    ):
         return PiLaunchPlan(
-            command=(executable, *forwarded),
+            command=(*command_prefix, *forwarded),
+            runtime_root=managed_runtime.root,
             default_provider=None,
             default_model=None,
             default_thinking=None,
@@ -236,7 +249,8 @@ def create_launch_plan(
         )
     if forwarded[:1] and forwarded[0] in _MANAGEMENT_COMMANDS:
         return PiLaunchPlan(
-            command=(executable, *forwarded),
+            command=(*command_prefix, *forwarded),
+            runtime_root=managed_runtime.root,
             default_provider=None,
             default_model=None,
             default_thinking=None,
@@ -250,7 +264,7 @@ def create_launch_plan(
 
     provider, model, thinking = _default_model(catalog, data_dir)
     command = (
-        executable,
+        *command_prefix,
         *_CLIENT_ARGUMENTS,
         "--provider",
         provider,
@@ -262,6 +276,7 @@ def create_launch_plan(
     )
     return PiLaunchPlan(
         command=command,
+        runtime_root=managed_runtime.root,
         default_provider=provider,
         default_model=model,
         default_thinking=thinking,
@@ -423,5 +438,8 @@ def create_sandbox_plan(
         "Pi",
         runtime_environment,
         environ,
-        read_only_mounts=read_only_mounts,
+        read_only_mounts=(
+            (plan.runtime_root, plan.runtime_root),
+            *read_only_mounts,
+        ),
     )
