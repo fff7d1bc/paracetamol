@@ -40,9 +40,9 @@ Limit a diagnostic run with a repeatable `--application`:
 ./rocmplete acceptance --application dwarfstar
 ```
 
-If images or exact content bundles are missing, terminal use shows the
-preparation plan and asks once before building or downloading. For unattended
-preparation, authorize it explicitly:
+If images or exact content bundles are missing, inspect the dry-run plan first.
+`--prepare` is the explicit authorization to build and install those exact
+prerequisites; unattended use also disables visual prompts:
 
 ```bash
 ./rocmplete acceptance --prepare --non-interactive \
@@ -61,8 +61,10 @@ Each run is checkpointed below
 `apps/acceptance/results/` in the configured data directory and receives a
 neighboring Markdown summary. Resume retries failed or interrupted cases,
 skips passed cases, and rejects changes to the source identity, image IDs,
-catalog pins, hardware, selection, or runtime policies. Exit status is 0 for
-`PASS`, 1 for `FAIL`, and 2 for `BLOCKED`.
+catalog pins, hardware, selection, or runtime policies. Completed case
+evidence is recorded with its size and SHA-256; resume also rejects evidence
+that disappeared or changed. Exit status is 0 for `PASS`, 1 for `FAIL`, and 2
+for `BLOCKED`.
 
 Acceptance result schemas are deliberately not migrated in place. A result
 from an older schema remains available as a historical JSON/Markdown record,
@@ -75,8 +77,8 @@ probing, building, or downloading, then creates a new checkpoint without
 replacing a file that appeared in the meantime.
 
 The source identity is the Git commit for a clean checkout. In a dirty
-checkout it also includes staged and unstaged tracked changes, plus untracked
-files below runtime and build-input directories. A resume therefore cannot
+checkout it also hashes staged and unstaged tracked changes plus every
+nonignored untracked file. A resume therefore cannot
 silently mix smoke cases run from two different local code states.
 
 In practical terms, `PASS` means the automated work and visual review
@@ -200,7 +202,7 @@ Build the shared prerequisites directly when you need to inspect or refresh
 one without building an application:
 
 ```bash
-./rocmplete build base
+./rocmplete build pytorch-base
 ./rocmplete build content-tools
 ```
 

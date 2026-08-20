@@ -14,7 +14,7 @@ Run for every change:
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
@@ -30,6 +30,11 @@ workflow rendering, benchmark preparation, CLI resolution, profile detection,
 Podman command construction, persistent verification, and evaluation grading.
 Add tests for behavior and failure paths, not merely new lines or parser
 choices.
+
+The small `tests/` Python suite exercises retained container-side policy at
+the source boundary: profile validation, resumable downloader confinement,
+and ComfyUI Manager patch fail-closed behavior. `make test` runs it after the
+Go suite.
 
 `.github/workflows/checks.yml` runs the Go 1.26 checks, static build, the
 container-owned Python and shell checks, catalog validation, and representative
@@ -58,19 +63,19 @@ Exercise user-visible composition:
 ./rocmplete run dwarfstar server --profile strix-halo --dry-run
 ./rocmplete agent --help
 ./rocmplete agent install pi --help
-./rocmplete agent pi --help
-./rocmplete agent pi --no-sandbox -- --help
-./rocmplete agent pi -- list
-./rocmplete agent pi -- install --help
-./rocmplete agent pi -- update --extensions --help
-./rocmplete agent maki --help
-./rocmplete agent maki --no-sandbox -- --help
-./rocmplete agent maki -- index internal/cli/
-./rocmplete benchmark llama-cpp \
+./rocmplete agent run pi --help
+./rocmplete agent run pi --no-sandbox -- --help
+./rocmplete agent run pi -- list
+./rocmplete agent run pi -- install --help
+./rocmplete agent run pi -- update --extensions --help
+./rocmplete agent run maki --help
+./rocmplete agent run maki --no-sandbox -- --help
+./rocmplete agent run maki -- index internal/cli/
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --profile cpu --dry-run
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --compare-backends --dry-run
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --context-depth 32768 \
   --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --dry-run
 ./rocmplete acceptance --dry-run
@@ -508,7 +513,7 @@ source revision or image base.
 - [ ] Representative inference passes for affected applications/families.
 - [ ] Memory and experimental kernel policies are tested if changed.
 - [ ] Relevant managed benchmark completes and records expected metadata.
-- [ ] A relevant `benchmark suite --dry-run` resolves the intended ordered
+- [ ] A relevant `benchmark comfyui suite --dry-run` resolves the intended ordered
       bundle set without starting a container.
 - [ ] Suite resume skips intact completed entries and rejects changed
       catalog/runtime inputs, rebuilt image IDs, and mismatched result files.

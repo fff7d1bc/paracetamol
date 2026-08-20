@@ -25,17 +25,18 @@ in the same change. Important ownership boundaries are:
   application commits, and final image stages.
 - `containers/content_tools/requirements.txt`: complete pinned content-tools
   dependency set.
-- `internal/config/config.go`: image tags, ports, container names, profiles, and
-  the application registry, capabilities, and runtime defaults.
+- `internal/application/`: the application registry, capabilities, guide
+  actions, image identities, ports, and prerequisite build DAG.
+- `internal/config/config.go`: host settings, environment/config precedence,
+  and runtime defaults.
 - `internal/platform/`: canonical GPU profile and architecture
   identities.
-- `internal/cli/`: public command tree, usage examples, and
-  parser defaults.
-- `internal/cli/`: command validation, orchestration, and human-facing
-  output.
+- `internal/cli/`: public command tree, leaf parsing, command validation,
+  orchestration, usage examples, and human-facing output.
 - `internal/project/`: repository-root discovery for source-tree
   resources and build context.
-- `internal/buildplan/`: local image build command construction.
+- `internal/buildplan/`: validated local image build planning and dependency
+  closure.
 - `internal/runtime/`: constrained application Podman commands.
 - `internal/storage/`: host application/content/staging partitions.
 - `internal/verification/`: durable managed-content verification
@@ -53,10 +54,12 @@ in the same change. Important ownership boundaries are:
   destination inference, and verified ignored local-pack generation.
 - `catalog/workflows/` and `internal/cli/commands_content.go`: immutable
   workflow resources, deterministic transformation, and provenance.
-- `internal/benchmark/`: benchmark preparation, execution, results,
-  suite resume, and cleanup.
-- `internal/benchmark/`: native llama-bench result capture,
-  metadata, atomic writes, and cleanup.
+- `internal/benchmark/`: ComfyUI and llama.cpp benchmark preparation,
+  execution, typed results, suite resume, and cleanup.
+- `internal/atomicfile/`: durable create-once and owned-checkpoint file
+  publication policy.
+- `internal/probe/` and `tools/`: read-only archive, provider-metadata, and
+  workflow research probes.
 - `bin/rocmplete`: PATH-friendly delegation to the checkout launcher.
 - `internal/agent/models.go` and `internal/agent/sandbox.go`: shared
   agent-client model policy and bubblewrap boundary.
@@ -261,7 +264,7 @@ For every change, run the applicable Tier 1 checks:
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh

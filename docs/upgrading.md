@@ -14,7 +14,7 @@ Start every upgrade by locating the current values:
 
 ```bash
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-rg -n 'applications|Application' internal/config/config.go
+rg -n 'BuildUnit|Spec{' internal/application/registry.go
 rg -n 'source_version|source_revision' catalog/catalog.json
 cat agent-clients/pi/package.json
 sort -u containers/content_tools/requirements.txt \
@@ -90,7 +90,7 @@ verifies Pi's reported version before activation:
 
 ```bash
 ./rocmplete agent install pi --data-dir /absolute/disposable/data
-./rocmplete agent pi --data-dir /absolute/disposable/data -- --version
+./rocmplete agent run pi --data-dir /absolute/disposable/data -- --version
 ```
 
 Then rerun the Pi launcher and package-management tests, install the new pin on

@@ -59,7 +59,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    ./rocmplete guide
    ./rocmplete run --help
    ./rocmplete content list
-   ./rocmplete content list --bundles
+   ./rocmplete content list bundles
    ./rocmplete content install all --dry-run
    ```
 
@@ -73,7 +73,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    make check
    make test
    make static
-   PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
+   PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
    bash -n applications/comfyui/entrypoint.sh \
      applications/llama-cpp/entrypoint.sh \
      applications/dwarfstar/entrypoint.sh
@@ -108,7 +108,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | --- | --- |
 | Runtime/base images, ROCm/PyTorch, application commits | `Containerfile` |
 | Product name and durable namespace identities | `internal/identity/identity.go`, `Makefile` |
-| Application defaults, images, ports, and registry | `internal/config/config.go` |
+| Application capabilities, guides, images, ports, and build DAG | `internal/application/` |
+| Host settings and environment/config precedence | `internal/config/config.go` |
 | GPU profile discovery and platform boundary | `internal/platform/` |
 | Offline managed image archives | `internal/imagearchive/` |
 | Public command tree, validation, and orchestration | `internal/cli/` |
@@ -120,6 +121,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | In-container GPU/profile validation | `containers/common/profile.py` |
 | Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
 | Remote URL resolution and generated local packs | `internal/remoteimport/` |
+| Read-only provider/archive/workflow research tools | `internal/probe/`, `tools/` |
 | Application build and runtime policy | `applications/<application>/` |
 | Content metadata and relationships | `catalog/catalog.json` |
 | Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |
@@ -133,6 +135,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Server-side llama.cpp speculative-depth screens | `internal/benchmark/` |
 | Frozen coding-agent tasks and results | `evaluations/coding/`, `internal/evaluation/` |
 | Checkpointed target-hardware smoke acceptance | `internal/cli/commands_acceptance.go` |
+| Durable atomic file publication | `internal/atomicfile/` |
 | Third-party provenance summary | `THIRD_PARTY_NOTICES.md` |
 | Enforced host behavior | package-local `internal/**/*_test.go` files |
 

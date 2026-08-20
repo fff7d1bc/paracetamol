@@ -58,6 +58,24 @@ command output, or documentation.
 Metadata is necessary but not sufficient. Read the model card, repository
 license file, upstream lineage, and conversion notes at the exact revision.
 
+Four read-only Go probes support catalog research without expanding the public
+human-oriented CLI. They print structured JSON and never modify the catalog or
+persistent data:
+
+```bash
+go run ./tools/huggingface-probe repository OWNER/REPOSITORY
+go run ./tools/huggingface-probe revision OWNER/REPOSITORY FULL_REVISION
+go run ./tools/huggingface-probe file OWNER/REPOSITORY FULL_REVISION PATH
+go run ./tools/civitai-probe version MODEL_VERSION_ID
+go run ./tools/archive-probe --member EXACT/MEMBER archive.zip
+go run ./tools/workflow-probe workflow.json
+```
+
+Set `HF_TOKEN` or `CIVITAI_TOKEN` only when the provider requires it. The
+provider probes attach a token to the intended API host; their unit tests use
+substituted HTTP clients. Probe output is research input, not catalog truth:
+review licensing and independently verify downloaded bytes before pinning.
+
 ## License and agreement decisions
 
 A verified license entry requires:
@@ -783,7 +801,7 @@ for `LoadImage`, and a unique output prefix. It rejects `LoadVideo`.
 Run:
 
 ```bash
-./rocmplete benchmark comfyui BUNDLE --dry-run
+./rocmplete benchmark comfyui run BUNDLE --dry-run
 ```
 
 Then run both persistent-cache and isolated-cache benchmarks on supported
@@ -796,8 +814,8 @@ llama.cpp presets need no catalog benchmark graph. Run the pinned native
 binary directly:
 
 ```bash
-./rocmplete benchmark llama-cpp --preset PRESET --dry-run
-./rocmplete benchmark llama-cpp --preset PRESET
+./rocmplete benchmark llama-cpp throughput --preset PRESET --dry-run
+./rocmplete benchmark llama-cpp throughput --preset PRESET
 ```
 
 Keep prompt tokens, generation tokens, repetitions, profile, render-node set,
@@ -809,8 +827,8 @@ unless the exact file identity is recorded separately.
 For family-wide validation:
 
 ```bash
-./rocmplete benchmark suite --family FAMILY --dry-run
-./rocmplete benchmark suite --family FAMILY --accept-license
+./rocmplete benchmark comfyui suite --family FAMILY --dry-run
+./rocmplete benchmark comfyui suite --family FAMILY --accept-license
 ```
 
 The real suite requires every selected bundle to be installed and never

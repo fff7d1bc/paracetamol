@@ -26,7 +26,8 @@ persistent storage
 The host control plane is a Go binary. It does not import ROCm, PyTorch, or
 application dependencies and needs only Go 1.26+, GNU Make, rootless Podman,
 and access to the selected device files. Python remains an implementation
-detail of Python application containers and frozen evaluation fixtures.
+detail of Python application containers, their focused policy tests, and
+frozen evaluation fixtures; no host command dispatches through Python.
 
 Data-path resolution has two explicit modes. Status, inspection, and dry-run
 commands resolve an absent path without creating it. Real installs, shells,
@@ -43,16 +44,48 @@ temporary files, and binaries stay below the anchored ignored `build/` tree.
 `internal/project/` owns repository-root discovery for build context, catalog,
 and immutable workflow resources.
 
+`internal/identity/` and the `Makefile` own the product identity. `PRODUCT_ID`
+derives the command name, host-configuration environment prefix, persistent
+namespace, image namespace, container prefix, and ownership labels;
+`DISPLAY_NAME` is presentation only. Container-entrypoint environment keys and
+result schema identifiers are versioned internal protocols and deliberately
+remain stable. A rename is therefore one reviewed build-time choice, while
+durable compatibility with an old state namespace remains an explicit
+migration decision rather than a partial string replacement.
+
 The Go packages under `internal/` are the host control plane. `internal/cli/`
-owns parsing and orchestration, while filesystem, subprocess, device, catalog,
-and runtime boundaries remain in their focused packages so tests can replace
-them without invoking GPU inference.
+owns a declarative public command tree, explicit leaf parsers, and
+orchestration. `internal/application/` owns the closed application registry,
+capabilities, guide actions, and prerequisite build DAG. Filesystem,
+subprocess, HTTP, device, catalog, and runtime boundaries remain in focused
+packages so tests can replace them without invoking GPU inference.
+
+The command parser accepts launcher flags before or after positionals while
+preserving `--` as an explicit upstream boundary. A mode only defines flags it
+can honor: for example, llama.cpp and DwarfStar CLI mode do not accept server
+publication or detach controls. Agent arguments must follow `--`; the `bin/pi`
+and `bin/maki` shims add that separator automatically.
 
 The Go migration deliberately preserved persistent application state, managed
 content paths and receipts, staging, image references, and Podman labels. Its
 benchmark and acceptance checkpoint schemas are a new controller boundary;
 Python-era result files remain inspectable historical evidence but are not
 accepted for resume.
+
+Controller-owned output uses two explicit publication policies from
+`internal/atomicfile/`. Final results, immutable derived resources, and
+archives are create-once and never replace another writer. Generated client
+or router configuration, a known checkpoint, and its derived report may
+replace only a singly linked regular file at the exact owned path. Both paths
+sync file data and the containing directory; links, directories, and multiply
+linked files fail closed.
+
+The typed controller schemas introduced at that boundary are hardware
+acceptance v2, ComfyUI benchmark/result-suite v2, llama.cpp benchmark/backend
+comparison v2, speculative-depth sweep v2, and coding-agent evaluation v4.
+Resume decodes these with unknown-field rejection and validates their bound
+definitions and managed paths before trusting progress. Older files remain
+readable records, not resumable state.
 
 For a managed web application:
 
@@ -79,13 +112,11 @@ The profile does not select a physical device. A multi-GPU workload must
 resolve to one supported architecture.
 
 Attached application runs keep Podman in the terminal process group for normal
-interactive input and signal delivery. `internal/podman/` owns
-the named-container cleanup race: if Ctrl-C interrupts both the launcher and
-Podman client before `--rm` completes, it force-removes that one exact managed
-container and reaps the client before propagating the interruption. A nonzero
-attached container status becomes a controlled error that retains the exact
-child status for the human diagnostic. Detached runs deliberately retain the
-ordinary Podman lifecycle.
+interactive input and signal delivery. A nonzero attached container status
+becomes a controlled error that retains the child status. If an attached run
+returns before Podman's `--rm` cleanup completes, the launcher removes that one
+exact named container through a context-independent typed Podman operation.
+Detached runs deliberately retain the ordinary Podman lifecycle.
 
 The llama.cpp entrypoint writes a closed, versioned runtime snapshot below the
 container's private `/tmp` after resolving the hardware profile and backend
@@ -105,9 +136,10 @@ long-running application names. A small exact-name set covers known transient
 containers, while generated downloader names retain their separately
 constrained prefix.
 Explicit application stop allows a brief graceful interval before forced
-removal. Interruption and confirmed cleanup use a zero-second forced removal
-and verify absence under a signal-masked critical section, so repeated Ctrl-C
-cannot strand the removal client after Podman enters `Stopping`.
+removal. Confirmed cleanup uses a zero-second forced removal and verifies
+absence when Podman reports an error. Runtime, benchmark, and downloader
+cleanup each target one exact managed container rather than using a general
+Podman prune.
 
 For content installation:
 
@@ -129,12 +161,11 @@ their catalog metadata retains the exact upstream package provenance. Managed
 ComfyUI benchmarks also
 default to the ComfyUI application image.
 
-Downloader containers use unique `rocmplete-download-*` names. Repeated
-Ctrl-C is ignored only while the launcher sends an immediate kill, reaps the
-isolated Podman client, and waits for that exact child name to disappear. The
-absence check is authoritative because Podman may return a transient failure
-after the container has already entered `Stopping`. A new downloader refuses
-to start while another managed downloader name remains. On enforcing SELinux
+Downloader containers use unique `rocmplete-download-*` names and ownership
+labels. After every downloader process outcome—including cancellation—the
+launcher issues an exact, context-independent `podman rm --force --ignore`
+before returning. A separately confirmed `cleanup containers` also discovers
+any interrupted downloader by its ownership labels. On enforcing SELinux
 hosts, the reusable storage bind uses the shared `:z` label: private `:Z` MCS
 categories would make an interrupted container's resumable partials
 inaccessible to its successor even though both processes use the same keep-id
@@ -269,11 +300,12 @@ Application stages must not install conflicting frameworks into one
 all-purpose image.
 Derived builds use `--pull=never` for both managed base references, so a
 missing local prerequisite fails rather than pulling an image with the same
-name. `command_build` always passes required local prerequisites through
-Podman's layer cache before building a dependent image. An existing tag alone
+name. `internal/buildplan/` resolves and validates the selected build-unit
+closure before invoking Podman, then builds prerequisites before dependents.
+An existing tag alone
 is not treated as proof that build-context inputs still match the checkout. A
 fully cold `--no-cache` build deliberately refreshes the complete prerequisite
-closure. The public `build base` target builds `rocm-runtime` followed by the
+closure. The public `build pytorch-base` target builds `rocm-runtime` followed by the
 ROCm/PyTorch base for GPU diagnostics or prerequisite validation; it does not
 also build content tools or an application. The symmetric
 `build content-tools` target refreshes only the verified download-tools
@@ -286,8 +318,8 @@ all four supported architectures. The development payload exists only in the
 builder. The final image also starts from `ROCM_RUNTIME_IMAGE`, adds the Mesa
 RADV and small native runtime dependencies, and copies only the server, CLI,
 and benchmark binaries. RPC and remote UI assets are disabled.
-The application registry's `SharedPyTorchBase` field keeps the choice of the higher base
-explicit in build and image-archive planning; every GPU application still
+The application registry's `PyTorchBase` capability keeps the choice of the
+higher base explicit in build and image-archive planning; every GPU application still
 shares the lower runtime.
 
 `dwarfstar` follows the same native split without inheriting llama.cpp's
@@ -856,10 +888,11 @@ derive a closely related task-specific prompt from the same pinned upstream
 graph; both source and rendered SHA-256 values are then cataloged. Unknown
 renderers or structural drift are fatal.
 
-A benchmark suite orchestrates the same per-bundle runner. Its signature
-covers the ordered selection, pinned workflow and benchmark hashes, image
-reference, GPU profile, render node, seeds, run count, cache mode, and runtime
-policies. Resume is rejected when a signed input changes. State is written
+A benchmark suite orchestrates the same per-bundle runner. Its fingerprint
+covers the ordered selection, pinned artifact, workflow, and benchmark hashes,
+the exact local image reference and ID, GPU profile, render node, seeds, run
+count, cache mode, and runtime policies. Resume is rejected when a
+fingerprinted input changes. State is written
 after every entry transition, and an entry is skipped only while its
 referenced completed result still exists.
 

@@ -84,7 +84,7 @@ final image from `ROCM_RUNTIME_IMAGE`, as llama.cpp does, rather than carrying
 the higher PyTorch base. In that case:
 
 - reuse the project runtime's pinned OS and native ROCm package tuple;
-- leave `SharedPyTorchBase` false;
+- leave `PyTorchBase` false;
 - pass `ROCM_RUNTIME_IMAGE` as an exact local prerequisite with pulling
   disabled;
 - build upstream source at a full immutable commit for every supported GPU
@@ -136,8 +136,8 @@ in it.
 
 ### 4. Register the application on the host
 
-Add one `config.Application` to the application registry in
-`internal/config/config.go`. Declare its image, container, build target,
+Add one `application.Spec` to the closed registry in
+`internal/application/registry.go`. Declare its image, container, build unit,
 optional web port, supported shell/log capabilities, and lifecycle guidance.
 The application-name and capability tuples are derived from this registry.
 
