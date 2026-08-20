@@ -5,7 +5,7 @@ import (
 	"os"
 	"syscall"
 
-	"rocmplete/internal/atomicfile"
+	"paracetamol/internal/atomicfile"
 )
 
 func secureDirectory(path string, private bool) error {

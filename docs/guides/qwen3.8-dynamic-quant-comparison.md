@@ -4,7 +4,7 @@
 
 > **Historical artifact notice (2026-08-19):** this comparison tested the
 > earlier 17,923,394,624-byte Q4 preview at revision
-> `4604b899a826000505a834e623272db5b7fd62f6`. ROCmplete now pins Unsloth's
+> `4604b899a826000505a834e623272db5b7fd62f6`. Paracetamol now pins Unsloth's
 > newer 17,559,178,144-byte Dynamic v3 Q4 at revision
 > `27af057ecb382ddfea5d12837360a8980560e3ed`. Every Q4 speed, memory, and
 > quality result on this page remains evidence for the exact older SHA-256
@@ -12,7 +12,7 @@
 > artifact. The current pin's focused update acceptance is recorded in the
 > [hardware acceptance log](../hardware-acceptance.md).
 
-This page compares ROCmplete's two managed Qwen3.8 27B MTP presets on real
+This page compares Paracetamol's two managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind
 the quantization names: is the smaller Q4 useful, is Q8 clearly smarter, and
 is `xhigh` reasoning worth its cost?
@@ -70,13 +70,13 @@ first-pass reliability.
 
 | Need | Suggested starting point | Why |
 | --- | --- | --- |
-| Normal coding-agent work on a high-memory host | `qwen3.8-27b-mtp-ud-q8-k-xl`, medium | ROCmplete's conservative managed default and the stronger `xhigh` first-pass result |
+| Normal coding-agent work on a high-memory host | `qwen3.8-27b-mtp-ud-q8-k-xl`, medium | Paracetamol's conservative managed default and the stronger `xhigh` first-pass result |
 | Faster responses or a smaller memory budget | `qwen3.8-27b-mtp-ud-q4-k-xl`, medium | Strong medium result, 16.69 GiB model, and 27.5% higher generation rate in this agent pass |
 | A difficult task that medium missed | Retry the chosen quant at `xhigh` | `xhigh` helped some hard cases, but greatly increased token use and latency |
 | A 32 GiB discrete GPU | Q4 at its 128K default, pending local acceptance | The Strix Halo working set was below 32 GB in decimal units, but a discrete `gfx1201` result is still required |
-| A definitive choice for your own work | Run both against representative repositories | This suite was small, stochastic, Go-only, and specific to the pinned ROCmplete stack |
+| A definitive choice for your own work | Run both against representative repositories | This suite was small, stochastic, Go-only, and specific to the pinned Paracetamol stack |
 
-ROCmplete keeps Q8 as the managed-client default. The evidence here makes Q4
+Paracetamol keeps Q8 as the managed-client default. The evidence here makes Q4
 a credible alternative rather than proving it should replace Q8 for every
 user.
 
@@ -188,7 +188,7 @@ context received two independent attempts:
 This tiny screen does not prove that 128K improves model intelligence or that
 it is always better than 256K. It showed that 64K could obstruct a realistic
 agent trajectory and that 128K removed the observed pressure without the
-large 256K working set. That evidence supports ROCmplete's reviewed 128K Q4
+large 256K working set. That evidence supports Paracetamol's reviewed 128K Q4
 default.
 
 The largest live prompt observed in the `xhigh` runs was about 100.4K tokens.
@@ -203,10 +203,10 @@ The comparison ran on 2026-08-17 and 2026-08-18 with this pinned stack:
 | Component | Tested value |
 | --- | --- |
 | Host | Fedora Linux 44, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000, Strix Halo `gfx1151` |
-| ROCmplete source | `80f2e2f3d6bf6406c0f2ef3f9d195e8bb93cad6c` |
+| Paracetamol source | `80f2e2f3d6bf6406c0f2ef3f9d195e8bb93cad6c` |
 | llama.cpp | `3cb7ffb1a1f612d5e4a46244ae5a3c77ad934a70` |
 | ROCm | 7.14.0 |
-| Container | `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` |
+| Container | `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` |
 | Agent harness | Pi 0.84.2, network-disabled sandbox, one fresh server per attempt |
 | Inference | ROCm backend, embedded MTP heads, draft depth 3 |
 | Reasoning sampling | Temperature 1.0, top-p 0.95, top-k 20, min-p 0, presence penalty 0, repeat penalty 1 |
@@ -220,7 +220,7 @@ The exact model inputs were:
 | `qwen3.8-27b-mtp-ud-q8-k-xl` | `Qwen3.8-27B-UD-Q8_K_XL.gguf` | 31,457,991,680 bytes (29.30 GiB) | `af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377` |
 
 Both files came from `unsloth/Qwen3.8-27B-GGUF` at revision
-`4604b899a826000505a834e623272db5b7fd62f6`. Both used ROCmplete's same
+`4604b899a826000505a834e623272db5b7fd62f6`. Both used Paracetamol's same
 reviewed Qwen3.8 chat template and server-side thinking sampling policy. The
 medium pass held context at 64K, so quantization was the intended model
 difference. The `xhigh` pass deliberately exercised each preset's current

@@ -1,4 +1,4 @@
-"""Resolve and validate a ROCmplete execution profile inside a container."""
+"""Resolve and validate a Paracetamol execution profile inside a container."""
 
 from __future__ import annotations
 

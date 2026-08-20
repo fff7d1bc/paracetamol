@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-const rocmpleteParentDeathHelper = "ROCMLETE_PARENT_DEATH_HELPER"
+const paracetamolParentDeathHelper = "PARACETAMOL_PARENT_DEATH_HELPER"
 
-func TestROCmpleteSIGTERMIsRelayedToTarget(t *testing.T) {
+func TestParacetamolSIGTERMIsRelayedToTarget(t *testing.T) {
 	process, err := os.StartProcess("/bin/sleep", []string{"sleep", "60"}, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
 	})
@@ -43,15 +43,15 @@ func TestROCmpleteSIGTERMIsRelayedToTarget(t *testing.T) {
 	pid = -1
 }
 
-func TestROCmpleteParentDeathTerminatesTarget(t *testing.T) {
+func TestParacetamolParentDeathTerminatesTarget(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "target.pid")
 	command := exec.Command(
-		os.Args[0], "-test.run=^TestROCmpleteParentDeathHelper$",
+		os.Args[0], "-test.run=^TestParacetamolParentDeathHelper$",
 	)
 	command.Env = append(
 		os.Environ(),
-		rocmpleteParentDeathHelper+"=1",
-		"ROCMLETE_TARGET_PID_FILE="+pidFile,
+		paracetamolParentDeathHelper+"=1",
+		"PARACETAMOL_TARGET_PID_FILE="+pidFile,
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("parent-death helper failed: %v\n%s", err, output)
@@ -82,11 +82,11 @@ func TestROCmpleteParentDeathTerminatesTarget(t *testing.T) {
 	t.Fatal("target remained alive after its nonet parent exited")
 }
 
-func TestROCmpleteParentDeathHelper(t *testing.T) {
-	if os.Getenv(rocmpleteParentDeathHelper) != "1" {
+func TestParacetamolParentDeathHelper(t *testing.T) {
+	if os.Getenv(paracetamolParentDeathHelper) != "1" {
 		return
 	}
-	pidFile := os.Getenv("ROCMLETE_TARGET_PID_FILE")
+	pidFile := os.Getenv("PARACETAMOL_TARGET_PID_FILE")
 	setupReader, setupWriter, err := os.Pipe()
 	if err != nil {
 		t.Fatalf("setup pipe: %v", err)

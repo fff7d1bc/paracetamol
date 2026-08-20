@@ -15,7 +15,7 @@ Start with Doctor. It checks the selected device nodes, container policy, and
 a real GPU operation when the managed PyTorch image is available:
 
 ```bash
-./rocmplete doctor
+./paracetamol doctor
 ```
 
 GPU use needs read/write access to `/dev/kfd` and every selected
@@ -27,7 +27,7 @@ sudo setsebool -P container_use_devices 1
 ```
 
 This permits the container domain to use device nodes that Podman explicitly
-mounts. ROCmplete continues to pass only `/dev/kfd` and the selected render
+mounts. Paracetamol continues to pass only `/dev/kfd` and the selected render
 nodes.
 
 Ubuntu normally creates the GPU compute nodes as `0660 root:render`. Adding
@@ -72,7 +72,7 @@ TORCH_BLAS_PREFER_HIPBLASLT=1
 Example:
 
 ```bash
-./rocmplete run comfyui --profile strix-halo \
+./paracetamol run comfyui --profile strix-halo \
   --memory-policy conservative \
   --kernel-policy experimental
 ```
@@ -82,7 +82,7 @@ multi-GPU host, pass every node intended for one supported workload by
 repeating the option:
 
 ```bash
-./rocmplete doctor \
+./paracetamol doctor \
   --render-node /dev/dri/renderD128 \
   --render-node /dev/dri/renderD129
 ```
@@ -101,7 +101,7 @@ unmapped.
 The short version is:
 
 1. Keep the fixed BIOS VRAM reservation small.
-2. Build the base or an application and run `./rocmplete doctor`.
+2. Build the base or an application and run `./paracetamol doctor`.
 3. If Doctor reports a small TTM/GTT ceiling, use the exact host recipe it
    prints and reboot.
 4. Run with the defaults first. Try the conservative memory policy only when
@@ -118,7 +118,7 @@ After building a PyTorch application, inspect the active module, RAM, TTM
 ceiling, effective GTT pool, and the architecture PyTorch sees:
 
 ```bash
-./rocmplete doctor
+./paracetamol doctor
 ```
 
 Doctor groups host state, GPU access, the live GPU probe, and shared-memory
@@ -151,7 +151,7 @@ keeps the parameter in a small owned GRUB drop-in:
 ```bash
 printf '%s\n' \
   'GRUB_CMDLINE_LINUX_DEFAULT="${GRUB_CMDLINE_LINUX_DEFAULT} amdgpu.gttsize=114688 ttm.pages_limit=29360128 ttm.page_pool_size=29360128"' |
-  sudo tee /etc/default/grub.d/70-rocmplete-ttm.cfg
+  sudo tee /etc/default/grub.d/70-paracetamol-ttm.cfg
 sudo update-grub
 sudo reboot
 ```
@@ -180,15 +180,15 @@ sudo reboot
 Use the module and bootloader command reported by Doctor. Packaging may expose
 TTM as `ttm`, `amd_ttm`, or `amdttm`. If a conventional host has no supported
 GRUB drop-in or `grubby` mechanism, Doctor falls back to a module configuration
-and the detected initramfs tool. ROCmplete does not execute these privileged
+and the detected initramfs tool. Paracetamol does not execute these privileged
 host changes.
 
 These ceilings do not reserve their full values for the GPU. Leave headroom for
 the OS, CPU-side allocations, caches, and other services. At the 112 GiB tier,
-ROCmplete sets the GTT aperture, allocation limit, and page-pool limit together
+Paracetamol sets the GTT aperture, allocation limit, and page-pool limit together
 because that configuration ran the large DwarfStar workload successfully in
 manual testing. The smaller tiers need only the active TTM module's allocation
-limit. ROCmplete does not require AMD's optional `amd-ttm` userspace helper.
+limit. Paracetamol does not require AMD's optional `amd-ttm` userspace helper.
 
 `amd_iommu=off` is a separate performance experiment, not part of the memory
 capacity fix. The
@@ -206,13 +206,13 @@ and repetitions before keeping it.
 Use defaults first:
 
 ```bash
-./rocmplete run comfyui
+./paracetamol run comfyui
 ```
 
 If one workflow has memory-pressure or retention problems, compare:
 
 ```bash
-./rocmplete run comfyui --memory-policy conservative
+./paracetamol run comfyui --memory-policy conservative
 ```
 
 The memory capacity only determines which models can fit. Strix Point has far
@@ -244,13 +244,13 @@ promise. Do not apply RDNA 3.5 APU firmware or TTM/GTT guidance. Start with
 auto detection and balanced memory:
 
 ```bash
-./rocmplete run comfyui
+./paracetamol run comfyui
 ```
 
 For a ComfyUI workflow that does not fit, try explicit offload:
 
 ```bash
-./rocmplete run comfyui -- --lowvram
+./paracetamol run comfyui -- --lowvram
 ```
 
 System-RAM offload crosses PCIe and is not equivalent to an RDNA 3.5 APU's
@@ -260,7 +260,7 @@ not add VRAM.
 For two discrete cards, the motherboard layout matters. Prefer equal-width
 CPU-connected PCIe slots. If peer access behaves badly with IOMMU translation,
 AMD documents `iommu=pt` as the first host setting to test. Treat it as a
-measured hardware workaround, not a default ROCmplete requirement.
+measured hardware workaround, not a default Paracetamol requirement.
 
 ## Benchmarks
 
@@ -268,16 +268,16 @@ Managed ComfyUI benchmark results record image, content pins, profile, render
 node, seed, cache mode, and both runtime policies:
 
 ```bash
-./rocmplete benchmark comfyui run qwen-image-2512-bf16-base --dry-run
-./rocmplete benchmark comfyui run qwen-image-2512-bf16-base
-./rocmplete benchmark comfyui run qwen-image-2512-bf16-base \
+./paracetamol benchmark comfyui run qwen-image-2512-bf16-base --dry-run
+./paracetamol benchmark comfyui run qwen-image-2512-bf16-base
+./paracetamol benchmark comfyui run qwen-image-2512-bf16-base \
   --cache-mode isolated
 
-./rocmplete benchmark comfyui suite --family qwen --accept-license
-./rocmplete benchmark comfyui suite --family qwen --accept-license \
-  --resume ~/.local/share/rocmplete/apps/comfyui/benchmarks/suites/SUITE.json
-./rocmplete benchmark report \
-  ~/.local/share/rocmplete/apps/comfyui/benchmarks/suites/SUITE.json
+./paracetamol benchmark comfyui suite --family qwen --accept-license
+./paracetamol benchmark comfyui suite --family qwen --accept-license \
+  --resume ~/.local/share/paracetamol/apps/comfyui/benchmarks/suites/SUITE.json
+./paracetamol benchmark report \
+  ~/.local/share/paracetamol/apps/comfyui/benchmarks/suites/SUITE.json
 ```
 
 A suite requires all selected bundles before its first GPU workload. It writes
@@ -291,9 +291,9 @@ fresh per-run directory and removes it afterward.
 llama.cpp uses its native `llama-bench`:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --dry-run
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
@@ -305,16 +305,16 @@ record only resolved path, size, and modification time and are weaker
 reproducibility evidence.
 
 Speculative presets are intentionally rejected here. `llama-bench` measures
-the main model without ROCmplete's speculative-decoding policy, so accepting
+the main model without Paracetamol's speculative-decoding policy, so accepting
 an MTP or DFlash preset would produce a clean-looking result for a different
 runtime. Select a non-speculative control for a native `llama-bench`
 comparison, or use the separate managed server sweep:
 
 ```bash
-./rocmplete benchmark llama-cpp speculative \
+./paracetamol benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
-./rocmplete benchmark llama-cpp speculative \
+./paracetamol benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium
 ```
@@ -354,7 +354,7 @@ output divergence but is not model-quality acceptance.
 Resume with the same options and the printed checkpoint path:
 
 ```bash
-./rocmplete benchmark llama-cpp speculative \
+./paracetamol benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --resume RESULT.json
 ```
@@ -366,7 +366,7 @@ or prompt policy is rejected instead of silently mixing conditions.
 The llama.cpp image contains both ROCm and Vulkan. Compare them unattended:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
@@ -391,7 +391,7 @@ do not describe an agent session after its context has grown. Populate the KV
 cache before each measured prompt and generation run with `--context-depth`:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends \
   --context-depth 32768 \
@@ -405,7 +405,7 @@ when comparing results. Flash Attention defaults to `auto` for compatibility,
 but use explicit `on` and `off` runs when validating an upgrade because an
 upstream default can change without the workload changing.
 
-ROCmplete enables its reviewed f16 KV-contiguization patch automatically for
+Paracetamol enables its reviewed f16 KV-contiguization patch automatically for
 Vulkan on Strix Halo. It addresses the dense-model prompt-processing cliff
 that otherwise appears as context grows. The path is deliberately not enabled
 for Strix Point or RDNA 4 without matching hardware results. It does not
@@ -414,7 +414,7 @@ the comparison above for each model and workload.
 
 To measure the memory and long-context effects of a quantized KV cache, set
 `--cache-type-k` and `--cache-type-v` to `q8_0` or `q4_0`. Quantized values
-require `--flash-attn on` and ROCmplete rejects an ambiguous or incompatible
+require `--flash-attn on` and Paracetamol rejects an ambiguous or incompatible
 combination before starting the container. Treat q4 cache measurements as
 experimental and check task output as well as throughput. These flags affect
 only the one-shot benchmark. A managed application preset changes cache type

@@ -9,8 +9,8 @@ import (
 
 func TestReadAcceptanceResultRejectsUnknownFieldsAndTrailingData(t *testing.T) {
 	for name, contents := range map[string]string{
-		"unknown":  `{"schema":"rocmplete.hardware-acceptance.v2","unknown":true}`,
-		"trailing": `{"schema":"rocmplete.hardware-acceptance.v2"} {}`,
+		"unknown":  `{"schema":"paracetamol.hardware-acceptance.v2","unknown":true}`,
+		"trailing": `{"schema":"paracetamol.hardware-acceptance.v2"} {}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "acceptance.json")

@@ -2,7 +2,7 @@
 
 ## Mental model
 
-ROCmplete has three layers:
+Paracetamol has three layers:
 
 ```text
 host launcher
@@ -37,7 +37,7 @@ mounted separately and read-only below `/content`.
 
 ## Command flow
 
-`rocmplete` is a small POSIX shell bootstrap. It asks the `Makefile` for the
+`paracetamol` is a small POSIX shell bootstrap. It asks the `Makefile` for the
 current platform binary below `build/<goos>-<goarch>/bin/` and executes it.
 Make rebuilds only when Go inputs are newer. All compiler caches, module state,
 temporary files, and binaries stay below the anchored ignored `build/` tree.
@@ -48,10 +48,11 @@ and immutable workflow resources.
 derives the command name, host-configuration environment prefix, persistent
 namespace, image namespace, container prefix, and ownership labels;
 `DISPLAY_NAME` is presentation only. Container-entrypoint environment keys and
-result schema identifiers are versioned internal protocols and deliberately
-remain stable. A rename is therefore one reviewed build-time choice, while
-durable compatibility with an old state namespace remains an explicit
-migration decision rather than a partial string replacement.
+result schema identifiers are fixed, versioned internal protocols rather than
+build-time aliases. A complete source-level product rename must update those
+protocols deliberately; a custom `PRODUCT_ID` build does not. Durable
+compatibility with another state namespace remains an explicit migration
+decision rather than a partial string replacement.
 
 The Go packages under `internal/` are the host control plane. `internal/cli/`
 owns a declarative public command tree, explicit leaf parsers, and
@@ -66,11 +67,13 @@ can honor: for example, llama.cpp and DwarfStar CLI mode do not accept server
 publication or detach controls. Agent arguments must follow `--`; the `bin/pi`
 and `bin/maki` shims add that separator automatically.
 
-The Go migration deliberately preserved persistent application state, managed
-content paths and receipts, staging, image references, and Podman labels. Its
-benchmark and acceptance checkpoint schemas are a new controller boundary;
-Python-era result files remain inspectable historical evidence but are not
-accepted for resume.
+The Go migration preserved persistent application state, managed content paths
+and receipts, staging, image references, and Podman labels within its original
+identity. The later pre-release Paracetamol identity cutover deliberately
+selected a new default state and ownership namespace and does not silently
+adopt differently named state. Benchmark and acceptance checkpoint schemas are
+a typed controller boundary; earlier result files remain inspectable
+historical evidence but are not accepted for resume.
 
 Controller-owned output uses two explicit publication policies from
 `internal/atomicfile/`. Final results, immutable derived resources, and
@@ -102,7 +105,7 @@ CLI parser
 Profile precedence is:
 
 ```text
---profile → ROCMLETE_PROFILE → auto
+--profile → PARACETAMOL_PROFILE → auto
 ```
 
 With one render node, the host selects it. With zero or multiple nodes, a GPU
@@ -129,7 +132,7 @@ read-only generated INI mounted into the running container. The report prints
 authentication presence
 but never reads or exposes API-key values or host secret paths.
 
-Every ROCmplete-created runtime container carries Podman metadata labels for
+Every Paracetamol-created runtime container carries Podman metadata labels for
 ownership, role, and application where applicable. Scoped cleanup discovers
 these labels instead of assuming that all owned containers are the
 long-running application names. A small exact-name set covers known transient
@@ -161,7 +164,7 @@ their catalog metadata retains the exact upstream package provenance. Managed
 ComfyUI benchmarks also
 default to the ComfyUI application image.
 
-Downloader containers use unique `rocmplete-download-*` names and ownership
+Downloader containers use unique `paracetamol-download-*` names and ownership
 labels. After every downloader process outcome—including cancellation—the
 launcher issues an exact, context-independent `podman rm --force --ignore`
 before returning. A separately confirmed `cleanup containers` also discovers
@@ -277,13 +280,13 @@ does not authenticate the case outcomes and is not a signed attestation.
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
 Every application build ensures and tags this prerequisite as
-`localhost/rocmplete:content-ubuntu26.04-huggingface1.27-r1`; `content install`
+`localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r1`; `content install`
 uses it without building anything itself. This keeps downloads independent of
 ComfyUI and makes a llama.cpp-only initial setup complete.
 
 `Containerfile` defines a minimal `rocm-runtime` target, which the launcher
 builds and tags as the managed local prerequisite
-`localhost/rocmplete:runtime-ubuntu26.04-rocm7.14-r2`. It owns the pinned
+`localhost/paracetamol:runtime-ubuntu26.04-rocm7.14-r2`. It owns the pinned
 Ubuntu runtime, Python environment, and AMD's modular ROCm core, libraries,
 and exact `gfx1150`, `gfx1151`, `gfx1200`, and `gfx1201` device wheels. It
 does not contain PyTorch or a compiler toolchain.
@@ -291,7 +294,7 @@ does not contain PyTorch or a compiler toolchain.
 The `rocm-base` target starts from `ROCM_RUNTIME_IMAGE`, adds PyTorch,
 torchvision, torchaudio, and the common Python-application build tools, and is
 tagged as
-`localhost/rocmplete:base-ubuntu26.04-rocm7.14-torch2.11-r5`. Each final
+`localhost/paracetamol:base-ubuntu26.04-rocm7.14-torch2.11-r5`. Each final
 PyTorch application target starts from the `ROCM_BASE_IMAGE` build argument:
 
 - `comfyui`
@@ -331,7 +334,7 @@ to the modular ROCm runtime libraries. Clang's per-architecture offload jobs
 share the bounded GNU Make jobserver, so the four device targets compile in
 parallel without creating a second, unbounded worker pool. The final image
 starts again from `ROCM_RUNTIME_IMAGE` and retains only `ds4`, `ds4-server`,
-`ds4-bench`, the license, and ROCmplete's constrained entrypoint. Upstream
+`ds4-bench`, the license, and Paracetamol's constrained entrypoint. Upstream
 setup scripts and runtime binaries are not build inputs.
 
 All GPU applications follow the global `ROCM_VERSION`. The native llama.cpp
@@ -354,12 +357,12 @@ and all targets retain the host pip cache. `--no-cache` bypasses both cache
 classes and cold-builds the prerequisite closure.
 
 The host pip cache lives below
-`${XDG_CACHE_HOME:-$HOME/.cache}/rocmplete/build/pip` and is mounted only for
-build `RUN` instructions at `/var/cache/rocmplete/pip`. The launcher supplies
+`${XDG_CACHE_HOME:-$HOME/.cache}/paracetamol/build/pip` and is mounted only for
+build `RUN` instructions at `/var/cache/paracetamol/pip`. The launcher supplies
 the mount and pip build arguments together; direct Containerfile builds
 default to `PIP_NO_CACHE_DIR=true`. The cache is therefore neither copied into
 an image nor mixed with persistent application data. `cleanup build-cache`
-removes only ROCmplete's build-cache directory and never prunes Podman state.
+removes only Paracetamol's build-cache directory and never prunes Podman state.
 Like every cleanup scope, it prints a validated non-empty plan and crosses the
 shared confirmation boundary before mutation.
 
@@ -385,7 +388,7 @@ explicitly added there or Podman will report that the source was filtered out.
 Application source repositories are initialized and fetched at exact commits.
 The build checks `git rev-parse HEAD` before removing `.git`. Upstream license
 files remain with their source trees; application stages may also copy them to
-documented paths below `/usr/share/licenses/rocmplete`.
+documented paths below `/usr/share/licenses/paracetamol`.
 
 Application-specific build inputs live below `applications/<application>/`.
 ComfyUI Manager policy uses a strict build-time patch program. It matches
@@ -413,12 +416,12 @@ from Nathan Wilson's `strix-halo-fa-fixes` branch at commits `4edaca09`,
 `4355d03e`, and `2a24abc6`. It removes repeated KV dequantization at long
 context while leaving f16 paths unchanged. The patch is retained only while
 the pinned upstream source lacks those changes and must be requalified on all
-four ROCmplete architectures whenever llama.cpp, ROCm, or Mesa moves.
+four Paracetamol architectures whenever llama.cpp, ROCm, or Mesa moves.
 
 The separate fail-closed
 `applications/llama-cpp/vulkan-f16-kv-contiguize.patch` carries the small,
 environment-gated part of commit `b1a10f981` that copies strided f16 KV data
-into contiguous scratch before Vulkan Flash Attention prefill. ROCmplete
+into contiguous scratch before Vulkan Flash Attention prefill. Paracetamol
 enables it only for the Vulkan backend on `gfx1151`; every other backend and
 architecture retains pinned-upstream behavior. This deliberately excludes the
 fork's wider collection of experimental kernels and tuning flags.
@@ -460,7 +463,7 @@ The common web runtime in `internal/runtime/web.go` applies:
 
 On enforcing SELinux hosts, the launcher requires the standard
 `container_use_devices` policy boolean before a GPU run. Podman still mounts
-only `/dev/kfd` and the selected render nodes. ROCmplete refuses a disabled
+only `/dev/kfd` and the selected render nodes. Paracetamol refuses a disabled
 policy with a copyable host command instead of disabling SELinux labeling for
 the container; ROCr otherwise reports device enumeration successfully and can
 segfault only when it first maps `/dev/kfd`.
@@ -512,8 +515,8 @@ including `--disable-mmap` for both RDNA 3.5 APU profiles and conservative
 memory flags.
 ComfyUI Manager is installed at the version required by the pinned ComfyUI
 source but is enabled only by forwarding `--enable-manager` after the
-ROCmplete `--` separator. Its security policy receives
-`ROCMLETE_HOST_LISTEN`, because ComfyUI itself must bind to a wildcard inside
+Paracetamol `--` separator. Its security policy receives
+`PARACETAMOL_HOST_LISTEN`, because ComfyUI itself must bind to a wildcard inside
 the private container namespace even when Podman publishes only on host
 loopback. Manager installation remains denied for a non-loopback host
 publication.
@@ -521,7 +524,7 @@ publication.
 The entrypoint creates a persistent child virtual environment below
 `/data/custom-node-python`. A `.pth` file exposes the immutable image
 site-packages as its base, while standard Manager and node `pip` subprocesses
-write only to the child environment. ROCmplete's validated Manager patch uses
+write only to the child environment. Paracetamol's validated Manager patch uses
 `pip` instead of Manager's optional `uv` path here because `pip` includes the
 image packages exposed through `.pth` when resolving and listing the combined
 environment. The image-owned Python environment stays immutable; custom-node
@@ -545,12 +548,12 @@ behavior.
 Without configuration, the default host directory is:
 
 ```text
-${XDG_DATA_HOME:-$HOME/.local/share}/rocmplete
+${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol
 ```
 
 `[storage].data_dir` in
-`${XDG_CONFIG_HOME:-$HOME/.config}/rocmplete/config.toml` provides the durable
-host-level override. An explicit `--data-dir` wins over `ROCMLETE_DATA_DIR`,
+`${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml` provides the durable
+host-level override. An explicit `--data-dir` wins over `PARACETAMOL_DATA_DIR`,
 which wins over TOML configuration, which wins over the XDG data default.
 Configuration lookup and dry-run resolution do not create either directory.
 The TOML surface is intentionally limited and unknown sections or keys fail
@@ -664,7 +667,7 @@ through narrow environment fields that the entrypoint validates before
 constructing llama.cpp arguments. The entrypoint derives a tmpfs router copy
 that injects offline and resolved-profile policy into each model section
 without modifying the mounted source. The router is upstream llama-server;
-ROCmplete does not implement a routing daemon.
+Paracetamol does not implement a routing daemon.
 
 `agent_tools` is a reviewed compatibility claim, not an inference from model
 size or Jinja alone. It requires Jinja and at least a 16384-token managed
@@ -688,12 +691,12 @@ the exact UI contract. Qwen3.6 declares a toggle, Qwen3.8 declares native
 effort, and Muse declares native strength. llama.cpp forwards recognized
 OpenAI-compatible labels through its template capability layer as both
 `reasoning_effort` and `reasoning_strength`; each template consumes only its
-own variable. ROCmplete does not infer a native label from a client's numeric
+own variable. Paracetamol does not infer a native label from a client's numeric
 reasoning budget. Muse declares no off choice because its model always
 reasons; the reviewed template maps clients' unavoidable generic off value to
 Muse low without changing other model families.
 
-`bin/rocmplete` is a PATH-friendly delegate to the root checkout launcher and
+`bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream
 command names. The generated model maps contain only the reviewed agent set,
@@ -709,7 +712,7 @@ the Pi application layout's `runtime/` directory, verifies the staged Pi version
 and only then atomically activates the content-addressed installation. A
 failed install cannot look current, and normal launches never perform network
 installation. System Node.js remains outside the managed tree so distribution
-security updates do not require a separate ROCmplete runtime manager.
+security updates do not require a separate Paracetamol runtime manager.
 Runtime installation does not own provider addresses or confinement policy.
 Those remain explicit inputs to configuration rendering and launch planning,
 so a later remote or non-bubblewrap client path can reuse the reviewed model
@@ -719,7 +722,7 @@ profile without pretending that it is a local Linux sandbox.
 `models.json` schema with the `openai-completions` API. `bin/pi` delegates to
 the host launcher, which resolves only the runtime matching the current lock,
 mounts that complete tree read-only, and atomically refreshes `models.json`
-and ROCmplete's managed extensions below the Pi application's `sandbox/`
+and Paracetamol's managed extensions below the Pi application's `sandbox/`
 directory. It points
 `PI_CODING_AGENT_DIR` at the same private state. Pi's ordinary user config is
 never modified. The managed model-picker extension intercepts the configured
@@ -792,7 +795,7 @@ Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
 to a declared level; models marked `requires_thinking` clamp off upward before
 the fragment is selected. Explicit numeric budgets remain separate sampler
 ceilings and are not decoded into model-native labels. The schema does not
-carry per-model sampling parameters; those retain ROCmplete's server-side
+carry per-model sampling parameters; those retain Paracetamol's server-side
 mode-aware defaults and normal per-request override precedence.
 
 DwarfStar is a separate provider at its own loopback endpoint, with the one
@@ -836,7 +839,7 @@ before launch.
 The child environment starts empty. Terminal and locale values, generated
 client settings, a narrow executable path, and sanitized Git author and
 committer identity are added explicitly. Tokens, proxy settings, SSH and
-desktop sockets, and unrelated `ROCMLETE_*` values are not inherited. The real
+desktop sockets, and unrelated `PARACETAMOL_*` values are not inherited. The real
 home is absent; config, data, state, cache, sessions, logs, and tool output
 persist only below the client's application `sandbox/` partition, whose owned
 directories are forced to mode `0700`. Sandbox state
@@ -873,7 +876,7 @@ start while the legacy directory exists and directs the user to upstream
 private-state contract.
 
 Agent clients reserve the advertised per-turn output limit when deciding when
-to compact a session. ROCmplete caps that allowance at 16384 tokens so a 256K
+to compact a session. Paracetamol caps that allowance at 16384 tokens so a 256K
 agent preset retains roughly 240K tokens for prompts, history, tools, and
 retained context. Compaction remains lossy and the sandbox remains the hard
 filesystem boundary when a local model misreads generated context.
@@ -900,13 +903,13 @@ Workflow reproducibility has two hashes:
 
 1. `source_sha256` proves the resource extracted from the pinned workflow
    template package.
-2. `rendered_sha256` proves the deterministic ROCmplete transformation.
+2. `rendered_sha256` proves the deterministic Paracetamol transformation.
 
 Installed workflows contain source, modification, license, and hash
-provenance under `extra.rocmplete`. Existing differing workflows are treated
+provenance under `extra.paracetamol`. Existing differing workflows are treated
 as user modifications and are not replaced without `--force`.
 
-ROCmplete owns two workflow subdirectories. `curated/` contains deterministic
+Paracetamol owns two workflow subdirectories. `curated/` contains deterministic
 renderings of pinned official templates. `imported/` contains exact downloaded
 workflow artifacts that may have unmet external dependencies. Other workflow
 paths are user-owned and are not content installation targets.

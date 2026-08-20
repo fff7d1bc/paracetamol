@@ -43,7 +43,7 @@
     {{- raise_exception('No messages provided.') }}
 {%- endif %}
 {# Apache-2.0 adaptation of Qwen3.8-27B revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0. #}
-{# ROCmplete defaults reasoning to native medium instead of upstream xhigh. #}
+{# Paracetamol defaults reasoning to native medium instead of upstream xhigh. #}
 {%- set reasoning_instructions = '' %}
 {%- if enable_thinking is undefined or enable_thinking is true %}
     {%- set resolved_reasoning_effort = reasoning_effort|default('medium') %}

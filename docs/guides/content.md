@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-ROCmplete treats application images and model content as two different things.
+Paracetamol treats application images and model content as two different things.
 Images are replaceable software builds. Content is the much larger collection
 of models and workflows that should survive an image rebuild.
 
@@ -20,7 +20,7 @@ revision or exact model-version ID, exact byte size, and SHA-256.
 The default list shows the small recipe surface:
 
 ```bash
-./rocmplete content list
+./paracetamol content list
 ```
 
 Recipes are organized by their consuming application:
@@ -38,15 +38,15 @@ dwarfstar
 Install interactively, or select one recipe explicitly:
 
 ```bash
-./rocmplete content install
-./rocmplete content install comfyui image
-./rocmplete content install llama-cpp qwen3.6
-./rocmplete content install llama-cpp qwen3.8
-./rocmplete content install llama-cpp muse-glimmer
-./rocmplete content install llama-cpp shisa-v2.1 --accept-license
-./rocmplete content install llama-cpp translation-gemma --accept-license
-./rocmplete content install dwarfstar flash-0731-q2-imatrix
-./rocmplete content install dwarfstar flash-0731-q2-imatrix-dspark
+./paracetamol content install
+./paracetamol content install comfyui image
+./paracetamol content install llama-cpp qwen3.6
+./paracetamol content install llama-cpp qwen3.8
+./paracetamol content install llama-cpp muse-glimmer
+./paracetamol content install llama-cpp shisa-v2.1 --accept-license
+./paracetamol content install llama-cpp translation-gemma --accept-license
+./paracetamol content install dwarfstar flash-0731-q2-imatrix
+./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
 ```
 
 The `qwen3.6` recipe installs both reviewed MTP choices: dense 27B MTP Q8_0
@@ -55,7 +55,7 @@ and sparse 35B-A3B MTP Dynamic Q8_K_XL. Its next-step command starts dense
 non-MTP GGUFs remain available through the exact-bundle browser.
 
 The upstream 27B and 35B-A3B MTP artifact basenames omit `MTP`. Their
-ROCmplete directories, bundles, presets, and pinned sources retain the exact
+Paracetamol directories, bundles, presets, and pinned sources retain the exact
 MTP identity and prevent collisions with the non-MTP files.
 
 The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
@@ -70,7 +70,7 @@ Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
 second quantization:
 
 ```bash
-./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl
+./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl
 ```
 
 Its base and embedded-MTP presets start at a reviewed 128K context for more
@@ -100,24 +100,24 @@ one application rather than one practical recipe. This stays out of the guided
 menu because it can be hundreds of gigabytes:
 
 ```bash
-./rocmplete content install llama-cpp all --dry-run
-./rocmplete content install llama-cpp all
-./rocmplete content install dwarfstar all
+./paracetamol content install llama-cpp all --dry-run
+./paracetamol content install llama-cpp all
+./paracetamol content install dwarfstar all
 ```
 
 The command uses the normal resumable installer. Existing verified models are
 reported as ready, and only missing files are downloaded. A file from an older
-ROCmplete checkout may be shown as `verify` the first time. The installer
+Paracetamol checkout may be shown as `verify` the first time. The installer
 hashes it in place instead of downloading it again. Model terms and
 unverified-license acknowledgments are collected once for the complete plan.
 
 Use the advanced inventory directly when a recipe is insufficient:
 
 ```bash
-./rocmplete content list bundles
-./rocmplete content list bundles --application comfyui
-./rocmplete content list families
-./rocmplete content install qwen-image-2512-bf16-base --dry-run
+./paracetamol content list bundles
+./paracetamol content list bundles --application comfyui
+./paracetamol content list families
+./paracetamol content install qwen-image-2512-bf16-base --dry-run
 ```
 
 The `family qwen` and `family wan` targets select those model families
@@ -125,8 +125,8 @@ within ComfyUI. The literal `all` target selects the entire catalog and can
 require around a tebibyte plus resumable cache space. Inspect it first:
 
 ```bash
-./rocmplete content install all --dry-run
-./rocmplete content install all \
+./paracetamol content install all --dry-run
+./paracetamol content install all \
   --accept-license --acknowledge-license-risk
 ```
 
@@ -135,13 +135,13 @@ global `all`. Those choices are too large to select accidentally.
 
 ## Terms and verification
 
-ROCmplete shows additional model terms and separately identifies content whose
+Paracetamol shows additional model terms and separately identifies content whose
 license metadata could not be verified. On a terminal, omitted approval flags
 become confirmation questions. Noninteractive use requires the applicable
 flags:
 
 ```bash
-./rocmplete content install BUNDLE \
+./paracetamol content install BUNDLE \
   --non-interactive \
   --accept-license \
   --acknowledge-license-risk
@@ -163,7 +163,7 @@ Public Hugging Face repositories work without a token. Supplying one uses the
 account's rate-limit tier instead of the anonymous IP limit and can avoid
 throttling during a long installation. It does not guarantee more raw download
 bandwidth. Export `CIVITAI_TOKEN` separately when making an authenticated
-Civitai import or installing a user-owned pack. ROCmplete passes tokens to the
+Civitai import or installing a user-owned pack. Paracetamol passes tokens to the
 short-lived download container by environment variable name and never writes
 their values into command arguments, generated content packs, images, or
 persistent data.
@@ -179,7 +179,7 @@ verification, or final moves with the active command. The lock is released on
 normal completion, failure, and Ctrl-C; resumable staging remains in place.
 
 Installation begins only after exact size and SHA-256 verification.
-ROCmplete records a durable receipt after a successful hash. A missing or stale
+Paracetamol records a durable receipt after a successful hash. A missing or stale
 receipt makes the file `unverified`, not ready. The receipt avoids repeatedly
 hashing large unchanged files; it is not a signature or a substitute for the
 catalog's pinned hash.
@@ -193,7 +193,7 @@ does not redownload or replace the files. A dry run reports the bytes under
 Ctrl-C kills the downloader, waits until its exact container is gone, and keeps
 partial data for the next attempt.
 
-If a host crash or older launcher leaves a `rocmplete-download-*` container,
+If a host crash or older launcher leaves a `paracetamol-download-*` container,
 the next download refuses to start and prints its exact name. Confirm that it
 is stale, remove only that named container with the printed
 `podman rm --force NAME` command, and retry; staging remains available for
@@ -202,9 +202,9 @@ resume.
 Inspect installed state:
 
 ```bash
-./rocmplete content status comfyui image
-./rocmplete content status family qwen --details
-./rocmplete content status comfyui image --verify
+./paracetamol content status comfyui image
+./paracetamol content status family qwen --details
+./paracetamol content status comfyui image --verify
 ```
 
 Normal `content status` uses the durable receipts. `--verify` is a read-only
@@ -216,10 +216,10 @@ practical question of what can be run, list the managed llama.cpp and
 DwarfStar choices alongside local llama.cpp GGUFs found on disk:
 
 ```bash
-./rocmplete content list models
-./rocmplete content list models --application llama-cpp
-./rocmplete content list models --application dwarfstar
-./rocmplete content list models --details
+./paracetamol content list models
+./paracetamol content list models --application llama-cpp
+./paracetamol content list models --application dwarfstar
+./paracetamol content list models --details
 ```
 
 Every managed model is shown even when it is not installed. Missing rows use
@@ -236,15 +236,15 @@ exact bundle and preset IDs, catalog file count and total size, conservative
 starting context, chat-template policy, MTP setup, and profile-specific Flash
 Attention policy. DwarfStar details show its target model, optional support
 file, bundle, combined size, and copyable install and run commands. These are
-properties ROCmplete needs to launch a model correctly, not task descriptions
+properties Paracetamol needs to launch a model correctly, not task descriptions
 or claims about which model is best.
 
-ROCmplete does not search the rest of the machine by default. Add known model
+Paracetamol does not search the rest of the machine by default. Add known model
 locations explicitly; `--scan` is repeatable and accepts one GGUF or a
 directory:
 
 ```bash
-./rocmplete content list models \
+./paracetamol content list models \
   --scan ~/models \
   --scan /mnt/shared/ggufs
 ```
@@ -267,22 +267,22 @@ content/
 
 ## Local mirror migration
 
-Moving from an older ROCmplete data directory or another machine? A local
+Moving from an older Paracetamol data directory or another machine? A local
 mirror can save the download without trusting the old directory layout.
 
 ```bash
-./rocmplete content install all \
-  --local-mirror /path/to/old-rocmplete \
+./paracetamol content install all \
+  --local-mirror /path/to/old-paracetamol \
   --accept-license --acknowledge-license-risk
 ```
 
-ROCmplete searches relevant filenames, rejects wrong sizes, and hashes every
+Paracetamol searches relevant filenames, rejects wrong sizes, and hashes every
 candidate before reuse. Copying is the default. On filesystems without
 reflinks, exact validated matches can be moved:
 
 ```bash
-./rocmplete content install all \
-  --local-mirror /path/to/old-rocmplete \
+./paracetamol content install all \
+  --local-mirror /path/to/old-paracetamol \
   --local-mirror-move \
   --accept-license --acknowledge-license-risk
 ```
@@ -299,11 +299,11 @@ several pinned files or needs to be installed again later. Packs live in
 ignored JSON files:
 
 ```bash
-./rocmplete content install \
+./paracetamol content install \
   --from-file local-content/models.json \
   --dry-run
 
-HF_TOKEN=... ./rocmplete content install \
+HF_TOKEN=... ./paracetamol content install \
   --from-file local-content/models.json
 ```
 
@@ -324,17 +324,17 @@ catalog. It resolves provider metadata into a small local content pack and
 then hands installation back to the normal verified downloader.
 
 ```bash
-./rocmplete content import
+./paracetamol content import
 
-./rocmplete content import \
+./paracetamol content import \
   'https://huggingface.co/OWNER/REPOSITORY/blob/main/MODEL.gguf'
 
-./rocmplete content import \
+./paracetamol content import \
   'https://civitai.com/models/MODEL_ID?modelVersionId=VERSION_ID'
 ```
 
 Both `civitai.com` and `civitai.red` are accepted. Hugging Face imports accept
-a model repository page or one `blob`/`resolve` file URL. ROCmplete resolves
+a model repository page or one `blob`/`resolve` file URL. Paracetamol resolves
 the source to exact provider metadata and rejects other hosts and arbitrary
 direct-download URLs.
 
@@ -352,7 +352,7 @@ Unsupported provider categories fail instead of inviting an unsafe guess.
 Select everything explicitly for scripts:
 
 ```bash
-./rocmplete content import URL \
+./paracetamol content import URL \
   --version VERSION_ID \
   --file FILE_ID_OR_PATH \
   --as comfyui:diffusion-model \
@@ -378,16 +378,16 @@ Imported GGUF files go below `content/llama-cpp/models/imported/`; the
 completed command prints a copyable `llama-cpp --model` invocation rather
 than inventing a managed preset.
 
-Before downloading, ROCmplete prints the source, resolved file, exact size and
+Before downloading, Paracetamol prints the source, resolved file, exact size and
 hash, destination, and license state. Remote imports deliberately use
-`NOASSERTION`: provider metadata is recorded as context, but ROCmplete does not
+`NOASSERTION`: provider metadata is recorded as context, but Paracetamol does not
 claim that it establishes rights to the hosted bytes. Interactive use asks for
 the normal license-risk acknowledgment. Scripts need
 `--non-interactive --acknowledge-license-risk`. Export `HF_TOKEN` or
 `CIVITAI_TOKEN` for private, gated, or authenticated sources.
 
 For an interactive download, that acknowledgment is the final confirmation
-after the full size, destination, disk-space, and license summary. ROCmplete
+after the full size, destination, disk-space, and license summary. Paracetamol
 saves the reusable pack only after it is accepted, immediately before the
 normal verified installation starts. Declining leaves no generated pack and
 downloads nothing.
@@ -402,7 +402,7 @@ Use `--save-pack PATH` to choose another JSON path. Reinstall it later without
 contacting the metadata API:
 
 ```bash
-./rocmplete content install \
+./paracetamol content install \
   --from-file local-content/imports/IMPORT.json
 ```
 
@@ -412,7 +412,7 @@ installation. A dry run resolves and validates everything but saves no pack,
 downloads no bytes, and creates no persistent data:
 
 ```bash
-./rocmplete content import URL --dry-run
+./paracetamol content import URL --dry-run
 ```
 
 This deliberately narrow command does not import Civitai ZIP members, whole
@@ -435,19 +435,19 @@ The curated catalog includes practical variants for:
 Examples:
 
 ```bash
-./rocmplete content install qwen-image-2512-bf16-lightning
-./rocmplete content install wan-2.2-i2v-14b-fp16-base \
+./paracetamol content install qwen-image-2512-bf16-lightning
+./paracetamol content install wan-2.2-i2v-14b-fp16-base \
   --acknowledge-license-risk
-./rocmplete content install ltx-2-t2v-19b-bf16-full \
+./paracetamol content install ltx-2-t2v-19b-bf16-full \
   --accept-license --acknowledge-license-risk
-./rocmplete content install hunyuan-video-1.5-t2v-720p-fp16 \
+./paracetamol content install hunyuan-video-1.5-t2v-720p-fp16 \
   --accept-license --acknowledge-license-risk
 ```
 
 Official LTX camera LoRAs are separate alternatives:
 
 ```bash
-./rocmplete content install ltx-2-camera-dolly-left --accept-license
+./paracetamol content install ltx-2-camera-dolly-left --accept-license
 ```
 
 Select one camera LoRA in the bypassed camera loader of a compatible
@@ -455,7 +455,7 @@ full-model workflow; do not stack the entire camera set.
 
 Third-party Civitai content belongs in a user-owned local content pack.
 Civitai permits files to be replaced behind an unchanged model-version ID, so
-ROCmplete does not include those mutable files in its built-in complete
+Paracetamol does not include those mutable files in its built-in complete
 install. `content import` creates a reviewed local pack for a direct model
 file and immediately subjects it to the normal size and SHA-256 checks.
 
@@ -463,7 +463,7 @@ file and immediately subjects it to the normal size and SHA-256 checks.
 immutable Hugging Face revision after presenting its terms:
 
 ```bash
-./rocmplete content install krea-2-turbo-fp8-base --accept-license
+./paracetamol content install krea-2-turbo-fp8-base --accept-license
 ```
 
 Curated workflows use pinned licensed sources and deterministic renderers:
@@ -478,10 +478,10 @@ Exact third-party workflows are preserved under:
 apps/comfyui/user/default/workflows/imported/
 ```
 
-These names describe ROCmplete's processing level, not who initiated the
+These names describe Paracetamol's processing level, not who initiated the
 installation. Workflows elsewhere in the ComfyUI user tree remain user-owned.
 Advanced workflow-only inspection and repair is available through:
 
 ```bash
-./rocmplete content workflows status
+./paracetamol content workflows status
 ```

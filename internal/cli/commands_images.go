@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/imagearchive"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/imagearchive"
 )
 
 func (app *App) commandImages(args []string) error {

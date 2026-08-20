@@ -1,22 +1,22 @@
-# ROCmplete
+# Paracetamol
 
-ROCm without the scavenger hunt. ROCmplete builds and runs useful AMD GPU
-applications as local, rootless containers with pinned software and verified
-content.
+Local AI without the scavenger hunt. Paracetamol makes local AI less painful
+by building and running useful GPU applications as local, rootless containers
+with pinned software and verified content. Its current hardware support is AMD
+ROCm; the product identity is intentionally not tied to one accelerator stack.
 
-Possibly the least frustrating way to run ROCm. That is pretty much the design
-goal. Bringing up a new machine should take a few commands that you can inspect
-and understand. If the host is not ready, the tool should tell you what is
-wrong and what to do next.
+Bringing up a new machine should take a few commands that you can inspect and
+understand. If the host is not ready, the tool should tell you what is wrong
+and what to do next.
 
-ROCmplete targets AMD RDNA 4 discrete GPUs. That includes the 32 GB Radeon AI
+Paracetamol targets AMD RDNA 4 discrete GPUs. That includes the 32 GB Radeon AI
 PRO R9700, RX 9070 XT, RX 9070, and RX 9070 GRE using `gfx1201`, plus the RX
 9060 XT and RX 9060 using `gfx1200`. It also targets AMD Ryzen AI Max / Strix
 Halo (`gfx1151`) and AMD Ryzen AI 300 / Strix Point (`gfx1150`). The build and
 runtime enforce all four architectures, but the project remains pre-release
 while its target-hardware acceptance matrix is being completed.
 
-ROCmplete currently manages:
+Paracetamol currently manages:
 
 - ComfyUI for image generation, image editing, and video on port 8188
 - llama.cpp as an OpenAI-compatible API server and interactive GGUF CLI on
@@ -38,11 +38,15 @@ passed.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
-## Why ROCmplete
+## Why Paracetamol
+
+The name is a small joke with a serious design goal: local AI should involve
+less pain, and powerful machinery should remain explicit enough to use
+responsibly.
 
 Getting a container to start is the easy part. It does not prove that PyTorch
 found the right GPU or that inference survives contact with the hardware.
-ROCmplete tries to cover the whole path.
+Paracetamol tries to cover the whole path.
 
 - Ubuntu base images, ROCm and PyTorch versions, application commits,
   dependencies, source patches, models, and workflows have explicit pins.
@@ -68,7 +72,7 @@ binaries and Go caches stay below ignored `build/`. The field-tested hosts above
 use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and Ubuntu
 26.04. A minimal installation may not include Podman yet. The optional managed
 Pi client additionally requires distribution-provided Node.js 22.19 or newer
-and npm; ROCmplete installs Pi itself into private application data.
+and npm; Paracetamol installs Pi itself into private application data.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -82,30 +86,35 @@ distribution `bubblewrap` package from `apt`, `dnf`, or `pacman` when possible.
 Doctor reports Ubuntu's AppArmor user-namespace policy when it can interfere
 with a launcher.
 
-### Go control-plane transition
+### Pre-release identity and Go transition
 
-The Go cutover preserves the existing data directory, installed content,
-verification receipts, resumable download staging, application state, managed
-Pi state, image tags, and Podman ownership labels. Two pre-release command
-shapes changed deliberately: `acceptance run` is now `acceptance`, agent
-clients live below `agent run`, and benchmarks use explicit `comfyui run`,
-`comfyui suite`, `llama-cpp throughput`, and `llama-cpp speculative` modes.
-Python-era benchmark and acceptance JSON remains historical evidence but
-cannot be used as a Go resume checkpoint; start a new run under the current
-schema.
+Paracetamol's host control plane is fully Go. Its command, configuration
+prefix, default data directory, image and container names, ownership labels,
+container protocol, and result schemas use one coherent product identity.
+This pre-release identity cutover does not alias or automatically migrate
+state created by a differently named checkout. Existing files are never
+deleted implicitly; select the intended `data_dir` explicitly and run the
+normal installer to validate managed content before reuse.
+
+The Go transition also introduced deliberate command and checkpoint changes:
+`acceptance` is a direct leaf command, agent clients live below `agent run`,
+and benchmarks use explicit `comfyui run`, `comfyui suite`, `llama-cpp
+throughput`, and `llama-cpp speculative` modes. Earlier benchmark and
+acceptance JSON remains historical evidence but cannot be used as a current
+resume checkpoint.
 
 ## Quick start
 
-Clone the source and inspect the host. ROCmplete's host control plane is Go;
+Clone the source and inspect the host. Paracetamol's host control plane is Go;
 Python remains appropriate for Python container code, its focused tests, and
-frozen evaluation fixtures. ROCmplete does not publish prebuilt application
+frozen evaluation fixtures. Paracetamol does not publish prebuilt application
 images.
 
 ```bash
-git clone https://github.com/fff7d1bc/rocmplete.git
-cd rocmplete
-./rocmplete --version
-./rocmplete doctor
+git clone https://github.com/fff7d1bc/paracetamol.git
+cd paracetamol
+./paracetamol --version
+./paracetamol doctor
 ```
 
 Before the first build, Doctor reports that its containerized PyTorch probe was
@@ -113,9 +122,9 @@ skipped. Build all applications, inspect the available content, and choose a
 recipe:
 
 ```bash
-./rocmplete build all
-./rocmplete doctor
-./rocmplete content install
+./paracetamol build all
+./paracetamol doctor
+./paracetamol content install
 ```
 
 `build all` builds ComfyUI, llama.cpp, and the experimental DwarfStar image.
@@ -124,15 +133,15 @@ hundreds of MiB to more than 100 GiB, so inspect a dry run before a large
 installation.
 
 ```bash
-./rocmplete content install llama-cpp muse-glimmer --dry-run
+./paracetamol content install llama-cpp muse-glimmer --dry-run
 ```
 
 Use the built-in guides for short, copyable walkthroughs:
 
 ```bash
-./rocmplete guide comfyui
-./rocmplete guide llama-cpp
-./rocmplete guide dwarfstar
+./paracetamol guide comfyui
+./paracetamol guide llama-cpp
+./paracetamol guide dwarfstar
 ```
 
 ### ComfyUI
@@ -141,9 +150,9 @@ The practical image recipe installs Qwen Image FP8 Lightning and its curated
 workflow:
 
 ```bash
-./rocmplete build comfyui
-./rocmplete content install comfyui image
-./rocmplete run comfyui
+./paracetamol build comfyui
+./paracetamol content install comfyui image
+./paracetamol run comfyui
 ```
 
 Open `http://127.0.0.1:8188`. Image editing, T2V, I2V, imported content,
@@ -155,9 +164,9 @@ Manager, and multi-GPU graphs are covered in the
 Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default:
 
 ```bash
-./rocmplete build llama-cpp
-./rocmplete content install llama-cpp qwen3.8
-./rocmplete run llama-cpp server \
+./paracetamol build llama-cpp
+./paracetamol content install llama-cpp qwen3.8
+./paracetamol run llama-cpp server \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
@@ -171,8 +180,8 @@ family available for more constrained GPUs without changing the recipe or
 managed-client default:
 
 ```bash
-./rocmplete content install llama-qwen3.8-27b-ud-q4-k-xl
-./rocmplete run llama-cpp server --preset qwen3.8-27b-mtp-ud-q4-k-xl
+./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl
+./paracetamol run llama-cpp server --preset qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
 The Dynamic v3 Q4_K_XL presets start at a reviewed 128K context. Treat the
@@ -195,8 +204,8 @@ install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic
 target/DFlash pair:
 
 ```bash
-./rocmplete content install llama-cpp qwen3.6
-./rocmplete content install llama-cpp muse-glimmer
+./paracetamol content install llama-cpp qwen3.6
+./paracetamol content install llama-cpp muse-glimmer
 ```
 
 The Qwen3.6 recipe prints dense 27B MTP as its next step; sparse 35B-A3B MTP
@@ -210,7 +219,7 @@ presets similarly share one artifact pair.
 For an API serving several installed presets, use the managed router:
 
 ```bash
-./rocmplete run llama-cpp server --router --models-max 1
+./paracetamol run llama-cpp server --router --models-max 1
 ```
 
 The [llama.cpp guide](docs/guides/applications.md#llamacpp) explains presets,
@@ -220,7 +229,7 @@ the KAT-Coder Q8 coding-agent candidate independently without changing the
 default:
 
 ```bash
-./rocmplete content install llama-cpp kat-coder
+./paracetamol content install llama-cpp kat-coder
 ```
 
 For Japanese and English translation on a high-memory host, the separate
@@ -228,8 +237,8 @@ Shisa V2.1 recipe installs the 70B Q8_0 model and requires acknowledgment of
 the Llama 3.3 terms:
 
 ```bash
-./rocmplete content install llama-cpp shisa-v2.1 --accept-license
-./rocmplete run llama-cpp server \
+./paracetamol content install llama-cpp shisa-v2.1 --accept-license
+./paracetamol run llama-cpp server \
   --preset shisa-v2.1-llama3.3-70b-q8-0
 ```
 
@@ -242,17 +251,17 @@ GiB before context and working allocations, so this path is for a host with
 enough GPU-mapped memory:
 
 ```bash
-./rocmplete build dwarfstar
-./rocmplete content install dwarfstar flash-0731-q2-imatrix
-./rocmplete run dwarfstar server
+./paracetamol build dwarfstar
+./paracetamol content install dwarfstar flash-0731-q2-imatrix
+./paracetamol run dwarfstar server
 ```
 
 The separate 5.58 GiB DSpark support GGUF is an opt-in speculative-decoding
 path; it does not replace the default model or improve its quality:
 
 ```bash
-./rocmplete content install dwarfstar flash-0731-q2-imatrix-dspark
-./rocmplete run dwarfstar server --dspark
+./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
+./paracetamol run dwarfstar server --dspark
 ```
 
 The [DwarfStar guide](docs/guides/applications.md#dwarfstar) covers its 128K
@@ -265,15 +274,15 @@ Inspect local state, start an installed application, and let `auto` select the
 hardware profile:
 
 ```bash
-./rocmplete status
-./rocmplete run comfyui
+./paracetamol status
+./paracetamol run comfyui
 ```
 
 A running llama.cpp server also exposes a pasteable configuration report:
 
 ```bash
-./rocmplete status llama-cpp
-./rocmplete status llama-cpp \
+./paracetamol status llama-cpp
+./paracetamol status llama-cpp \
   --model qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
@@ -285,26 +294,26 @@ command without printing API-key values or host secret paths.
 Override the profile only when testing or diagnosing:
 
 ```bash
-./rocmplete run comfyui --profile rdna4
-./rocmplete run comfyui --profile strix-halo
-./rocmplete run comfyui --profile strix-point
-./rocmplete run comfyui --profile cpu
+./paracetamol run comfyui --profile rdna4
+./paracetamol run comfyui --profile strix-halo
+./paracetamol run comfyui --profile strix-point
+./paracetamol run comfyui --profile cpu
 ```
 
 Web applications publish on `127.0.0.1` by default. Select one exact LAN or
 Tailscale address only when unauthenticated network access is intentional:
 
 ```bash
-./rocmplete run comfyui --listen 192.168.1.50
+./paracetamol run comfyui --listen 192.168.1.50
 ```
 
 For local coding-agent work, start the llama.cpp router and use the sandboxed
 PATH launcher. At least one managed agent model must already be installed.
 
 ```bash
-./rocmplete content install llama-cpp qwen3.8
-./rocmplete agent install pi  # once, and after ROCmplete changes its Pi pin
-./rocmplete run llama-cpp server --router --models-max 1
+./paracetamol content install llama-cpp qwen3.8
+./paracetamol agent install pi  # once, and after Paracetamol changes its Pi pin
+./paracetamol run llama-cpp server --router --models-max 1
 export PATH="$PWD/bin:$PATH"
 pi
 # or: maki
@@ -315,21 +324,21 @@ router publishes no authentication, so restrict it with the host firewall:
 
 ```bash
 # On the GPU host:
-./rocmplete run llama-cpp server --router --models-max 1 --listen 192.168.1.50
+./paracetamol run llama-cpp server --router --models-max 1 --listen 192.168.1.50
 
 # On the Pi client host:
-ROCMLETE_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
+PARACETAMOL_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
 ```
 
 Qwen3.8 starts at native medium effort. Pi exposes its off, low, medium, and
 xhigh choices without inventing a `high` level. Maki builds
 containing commit `a9495e1` expose the same native model controls through
 `/thinking`; unsupported names snap downward, so `high` selects Qwen3.8
-medium. ROCmplete maps Qwen3.6 to its on/off toggle and prevents Muse from
+medium. Paracetamol maps Qwen3.6 to its on/off toggle and prevents Muse from
 falling below its native low strength.
 
 In managed Pi sessions, the configured model-selection shortcut (`Ctrl+L` by
-default) and bare `/model` open ROCmplete's family-grouped picker. Models stay
+default) and bare `/model` open Paracetamol's family-grouped picker. Models stay
 under stable headings such as Qwen 3.8 and Qwen 3.6 instead of moving the
 current model into a recent section. Selecting a model immediately opens its
 valid reasoning choices. An exact `/model PROVIDER/MODEL` command also opens
@@ -347,11 +356,11 @@ real home directory, credentials, Podman state, and GPU devices. The
 models, reasoning variants, agent modes, sandbox limits, and escape hatches.
 
 On a multi-GPU host, repeat `--render-node` for every card intended for one
-supported workload. ROCmplete never guesses the set and requires matching
+supported workload. Paracetamol never guesses the set and requires matching
 architectures:
 
 ```bash
-./rocmplete run llama-cpp server \
+./paracetamol run llama-cpp server \
   --model /path/to/large-model.gguf \
   --render-node /dev/dri/renderD128 \
   --render-node /dev/dri/renderD129
@@ -366,16 +375,16 @@ Foreground runs own the container lifecycle. Ctrl-C stops and removes the
 container. Detached runs are managed explicitly:
 
 ```bash
-./rocmplete logs comfyui --follow
-./rocmplete stop comfyui
+./paracetamol logs comfyui --follow
+./paracetamol stop comfyui
 ```
 
 Update without rewriting local work or persistent content:
 
 ```bash
 git pull --ff-only
-./rocmplete doctor
-./rocmplete build all
+./paracetamol doctor
+./paracetamol build all
 ```
 
 ## Builds, content, and storage
@@ -396,30 +405,30 @@ prerequisite images, cache boundaries, cleanup, and image transfer.
 Content discovery starts with practical recipes and expands only when asked:
 
 ```bash
-./rocmplete content list
-./rocmplete content list bundles
-./rocmplete content list families
-./rocmplete content list models --details
-./rocmplete content import
+./paracetamol content list
+./paracetamol content list bundles
+./paracetamol content list families
+./paracetamol content list models --details
+./paracetamol content import
 ```
 
 Set `HF_TOKEN` before a large Hugging Face installation when you have one.
 `CIVITAI_TOKEN` is needed only for authenticated Civitai imports and
-user-owned packs. ROCmplete passes supplied tokens only to its download tools
+user-owned packs. Paracetamol passes supplied tokens only to its download tools
 and does not store them in images or persistent state. The
 [content guide](docs/guides/content.md) covers recipes, exact bundles, terms,
 verification, resumable downloads, mirrors, imports, and workflows.
 
 Persistent data defaults to
-`${XDG_DATA_HOME:-$HOME/.local/share}/rocmplete`. Put large content on another
-filesystem with `${XDG_CONFIG_HOME:-$HOME/.config}/rocmplete/config.toml`:
+`${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol`. Put large content on another
+filesystem with `${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`:
 
 ```toml
 [storage]
-data_dir = "/mnt/ai/rocmplete"
+data_dir = "/mnt/ai/paracetamol"
 ```
 
-The configuration is optional and ROCmplete never creates or migrates it.
+The configuration is optional and Paracetamol never creates or migrates it.
 See [persistent data](docs/guides/operations.md#persistent-data) before moving or
 cleaning application state, models, inputs, or outputs.
 
@@ -429,8 +438,8 @@ After onboarding a host or updating software, run the bounded checkpointed
 smoke suite:
 
 ```bash
-./rocmplete acceptance --dry-run
-./rocmplete acceptance
+./paracetamol acceptance --dry-run
+./paracetamol acceptance
 ```
 
 Automated workloads finish before the visual review pass, so the run can be
@@ -442,7 +451,7 @@ mean.
 Compare llama.cpp's ROCm and Vulkan backends on the exact model you use:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends
 ```
@@ -456,7 +465,7 @@ managed chat template, reasoning, sampling, cache, and speculative policy that
 native `llama-bench` cannot exercise:
 
 ```bash
-./rocmplete benchmark llama-cpp speculative \
+./paracetamol benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
@@ -469,8 +478,8 @@ Evaluate a managed model as a coding agent against the frozen Go and Python
 task suite:
 
 ```bash
-./rocmplete benchmark agent --list-tasks
-./rocmplete benchmark agent \
+./paracetamol benchmark agent --list-tasks
+./paracetamol benchmark agent \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
@@ -508,12 +517,12 @@ maintainer references, research snapshots, and source-of-truth pointers.
 Command-specific help remains the authoritative interface reference:
 
 ```bash
-./rocmplete --help
-./rocmplete build --help
-./rocmplete content --help
-./rocmplete run --help
-./rocmplete acceptance --help
-./rocmplete benchmark agent --help
+./paracetamol --help
+./paracetamol build --help
+./paracetamol content --help
+./paracetamol run --help
+./paracetamol acceptance --help
+./paracetamol benchmark agent --help
 ```
 
 The host binary can be built explicitly with `make build`, tested with
@@ -521,12 +530,16 @@ The host binary can be built explicitly with `make build`, tested with
 test host without transferring repository-local binaries or Go caches, use:
 
 ```bash
-rsync -a -v --progress --delete --exclude=/build/ \
-  ~/src/rocmplete/ aion.local:src/rocmplete
+rsync -a -v --progress --delete \
+  --exclude=/.git/ --exclude=/build/ \
+  --exclude='__pycache__/' --exclude='*.py[cod]' \
+  ~/src/paracetamol/ aion.local:src/paracetamol
 ```
 
-The anchored exclusion keeps the destination's own `build/` cache while
-`--delete` still removes obsolete source files. Do not add `--delete-excluded`.
+The anchored exclusions preserve the destination's own Git metadata and
+`build/` cache, while the Python patterns keep ignored container-test bytecode
+out of a deployment. `--delete` still removes obsolete source files. Do not
+add `--delete-excluded`.
 
 The pre-release product identity is centralized rather than scattered through
 Go packages. `make PRODUCT_ID=new-name DISPLAY_NAME='New Name'` changes the
@@ -535,7 +548,7 @@ persistent namespace, local image namespace, container names, and
 ownership-label namespace together.
 Set `ENV_PREFIX` explicitly only when a renamed command needs another spelling.
 Changing that identity deliberately selects new state and image ownership; it
-is not an automatic migration of an existing ROCmplete data directory.
+is not an automatic migration of an existing Paracetamol data directory.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [catalog/README.md](catalog/README.md) for provenance and catalog policy.
@@ -552,7 +565,7 @@ public issue.
 
 ## License
 
-ROCmplete source is available under the [BSD 3-Clause License](LICENSE).
+Paracetamol source is available under the [BSD 3-Clause License](LICENSE).
 Downloaded models, workflows, and bundled third-party components retain their
 own terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the catalog
 license metadata before using them.

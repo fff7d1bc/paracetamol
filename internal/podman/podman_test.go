@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"rocmplete/internal/process"
+	"paracetamol/internal/process"
 )
 
 type fakeRunner struct {

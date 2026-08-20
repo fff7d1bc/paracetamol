@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 type Layout struct{ Root string }

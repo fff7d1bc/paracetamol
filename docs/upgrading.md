@@ -89,8 +89,8 @@ Node.js and npm rather than a Homebrew runtime, stages the locked tree, and
 verifies Pi's reported version before activation:
 
 ```bash
-./rocmplete agent install pi --data-dir /absolute/disposable/data
-./rocmplete agent run pi --data-dir /absolute/disposable/data -- --version
+./paracetamol agent install pi --data-dir /absolute/disposable/data
+./paracetamol agent run pi --data-dir /absolute/disposable/data -- --version
 ```
 
 Then rerun the Pi launcher and package-management tests, install the new pin on
@@ -110,9 +110,9 @@ set, and update `CONTENT_TOOLS_IMAGE` in `internal/config/config.go`.
 Build through one application so the normal prerequisite path is exercised:
 
 ```bash
-./rocmplete build comfyui --no-cache
+./paracetamol build comfyui --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/rocmplete:content-ubuntu26.04-huggingface1.27-r1 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r1 \
   -m pip check
 ```
 
@@ -151,9 +151,9 @@ package identity matters for a release candidate.
 Validate with:
 
 ```bash
-./rocmplete build all --no-cache
+./paracetamol build all --no-cache
 podman run --rm --entrypoint /bin/bash \
-  localhost/rocmplete:comfyui-ubuntu26.04-rocm7.14-0.28.0 \
+  localhost/paracetamol:comfyui-ubuntu26.04-rocm7.14-0.28.0 \
   -lc 'cat /etc/os-release; python --version'
 ```
 
@@ -195,7 +195,7 @@ Update:
 Build all targets without cache:
 
 ```bash
-./rocmplete build all --no-cache
+./paracetamol build all --no-cache
 ```
 
 Inspect the installed tuple:
@@ -212,7 +212,7 @@ PY
 Then run:
 
 ```bash
-./rocmplete doctor --render-node /dev/dri/renderD128
+./paracetamol doctor --render-node /dev/dri/renderD128
 ```
 
 `doctor` imports PyTorch and reads device properties but does not perform
@@ -268,7 +268,7 @@ protected behavior is fixed.
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
 | `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
 | `quantized-kv-flash-attention.patch` | Provides reviewed Vulkan q8_0 and HIP q8_0/q4_0 dequantize-on-load paths. It combines commits `4edaca09`, `4355d03e`, and `2a24abc6` from the `strix-halo-fa-fixes` branch. | Matching upstream code passes the same f16 and q8_0 cache, backend, context-depth, performance, and output checks on every applicable hardware class. |
-| `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. ROCmplete enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
+| `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 
 The 2026-08-14 update from llama.cpp commit `62bf73d` to release `b10430`,
 commit `4c1a0af`, initially classified all four then-current patches as
@@ -299,7 +299,7 @@ than treating a successful build as acceptance.
 The bundled `muse-glimmer-atem.jinja` derives from Meta's 9,992-byte template
 at base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
 `cfc67e5f349f37690dfd31ed1f18bc4442a9dd32fe39a648f993cb4eb3cae678`.
-ROCmplete's 10,219-byte reviewed derivative has SHA-256
+Paracetamol's 10,219-byte reviewed derivative has SHA-256
 `4849b801303b351a82dab37107a665410070cd58315fadccd8f5fde02084bd34`.
 It retains Meta's duplicate-directive correction and adds one scoped policy:
 because Muse cannot disable reasoning, `enable_thinking=false` renders native
@@ -308,7 +308,7 @@ later repacked the official GGUFs at
 revision `43c7eadd41352a299ea8e0a36b3157978dd63596` with this fixed template and
 canonical Q4_K filenames. The dynamic target and DFlash candidate at that
 revision retained their tensor inventories and byte-identical tensor payloads;
-the only changed GGUF metadata key was the chat-template value. ROCmplete
+the only changed GGUF metadata key was the chat-template value. Paracetamol
 therefore did not replace the behavior-equivalent target and draft merely to
 acquire the embedded copy. On upgrades, compare the base-model template, GGUF
 metadata, and tensor payload independently, then repeat direct and router
@@ -477,7 +477,7 @@ For an upstream source update:
    optimized direct WMMA kernel only on `gfx11`, and route RDNA 4 through the
    existing generic Q8 batch path. Remove it when upstream owns that device
    selection.
-4. Review the supported command surface. ROCmplete currently retains only
+4. Review the supported command surface. Paracetamol currently retains only
    `ds4`, `ds4-server`, and `ds4-bench`, and exposes only server and CLI mode.
    Do not inherit new upstream flags by forwarding arbitrary arguments.
 5. Update the short commit and policy revision in the image tag. Update the
@@ -500,7 +500,7 @@ For an upstream source update:
    is not GPU acceptance.
 
 The 2026-08-17 source update from `d250a7c` to `84cc882` reviewed the complete
-112-commit range. It retained ROCmplete's three-binary surface and existing
+112-commit range. It retained Paracetamol's three-binary surface and existing
 multi-architecture WMMA fallback while incorporating upstream parser and
 server hardening, Flash 0731 fixture/version handling, DeepSeek ROCm attention
 and indexer work, and the final ROCm DSpark implementation. The follow-up
@@ -511,7 +511,7 @@ and kernel logs whenever the source or either artifact changes.
 
 Arbitrary MTP support, multi-GPU, distributed execution, SSD streaming,
 evaluation, and the upstream native agent remain outside this procedure until
-ROCmplete deliberately adopts one of those surfaces.
+Paracetamol deliberately adopts one of those surfaces.
 
 ## Upgrade ComfyUI
 
@@ -535,10 +535,10 @@ Build the current ROCm base as a temporary resolver environment:
 
 ```bash
 podman build --target rocm-base \
-  --tag localhost/rocmplete-maintenance:rocm-base .
+  --tag localhost/paracetamol-maintenance:rocm-base .
 ```
 
-Normal ROCmplete builds tag this target using `ROCM_BASE_IMAGE` from
+Normal Paracetamol builds tag this target using `ROCM_BASE_IMAGE` from
 `internal/config/config.go`, then build application targets from that local
 image with pulling disabled. When changing Ubuntu, ROCm, PyTorch, or the base
 dependency set, update the managed base tag so its visible version remains
@@ -568,7 +568,7 @@ Manager version declared by the selected ComfyUI commit.
 Then update the source commit and build:
 
 ```bash
-./rocmplete build comfyui --no-cache
+./paracetamol build comfyui --no-cache
 ```
 
 The build runs `pip check`. Also inspect:
@@ -635,7 +635,7 @@ Build ComfyUI without cache and verify `python -m pip check`. Test both normal
 startup and:
 
 ```bash
-./rocmplete run comfyui --profile cpu \
+./paracetamol run comfyui --profile cpu \
   --listen 127.0.0.1 --disable-bundled-extensions
 ```
 
@@ -657,7 +657,7 @@ Update `RGTHREE_COMMIT`, bump the ComfyUI image revision in
 `internal/config/config.go`, and build:
 
 ```bash
-./rocmplete build comfyui --no-layer-cache
+./paracetamol build comfyui --no-layer-cache
 podman run --rm --entrypoint /opt/venv/bin/python CURRENT_COMFY_IMAGE \
   -m pip check
 ```
@@ -666,7 +666,7 @@ For the final validation, use `--no-cache` as required by the standard upgrade
 loop. Start the image on loopback and allow rgthree during the CPU probe:
 
 ```bash
-./rocmplete run comfyui --profile cpu --listen 127.0.0.1 \
+./paracetamol run comfyui --profile cpu --listen 127.0.0.1 \
   -- --whitelist-custom-nodes rgthree-comfy
 ```
 
@@ -745,7 +745,7 @@ changes made without changing the upstream application revision:
 ```go
 "comfyui": {
     ID: "comfyui",
-    Image: "localhost/rocmplete:comfyui-ubuntuX.Y-rocmX.Y-COMFY_VERSION",
+    Image: "localhost/paracetamol:comfyui-ubuntuX.Y-rocmX.Y-COMFY_VERSION",
     // Keep the remaining established fields unchanged.
 },
 ```
@@ -753,14 +753,14 @@ changes made without changing the upstream application revision:
 Search for stale tags:
 
 ```bash
-rg -n 'localhost/rocmplete:|rocm[0-9]|COMFYUI_VERSION|_COMMIT' .
+rg -n 'localhost/paracetamol:|rocm[0-9]|COMFYUI_VERSION|_COMMIT' .
 ```
 
 Old locally built images are not removed automatically by a tag change.
-Inspect with `podman images localhost/rocmplete` and remove obsolete images
+Inspect with `podman images localhost/paracetamol` and remove obsolete images
 only as an explicit housekeeping action.
 
 Managed image archives are deliberately tied to these exact current tags.
-Import an older backup with the matching ROCmplete source revision, or use
+Import an older backup with the matching Paracetamol source revision, or use
 Podman directly for manual recovery. The current launcher does not silently
 retag an obsolete archive as a newer build.

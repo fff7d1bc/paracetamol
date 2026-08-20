@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestROCmpleteEvalSourceSnapshotDetectsModification(t *testing.T) {
+func TestParacetamolEvalSourceSnapshotDetectsModification(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "movie.mkv")
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestROCmpleteEvalSourceSnapshotDetectsModification(t *testing.T) {
 	}
 }
 
-func TestROCmpleteEvalQuarantineRejectsReplacement(t *testing.T) {
+func TestParacetamolEvalQuarantineRejectsReplacement(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "movie.mkv")
 	originalCopy := filepath.Join(dir, "original.mkv")
@@ -57,7 +57,7 @@ func TestROCmpleteEvalQuarantineRejectsReplacement(t *testing.T) {
 	}
 }
 
-func TestROCmpleteEvalQuarantineCanRestoreMatchingSource(t *testing.T) {
+func TestParacetamolEvalQuarantineCanRestoreMatchingSource(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "movie.mkv")
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
 		t.Fatal(err)

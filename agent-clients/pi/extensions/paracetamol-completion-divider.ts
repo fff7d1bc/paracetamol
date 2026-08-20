@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const ENTRY_TYPE = "rocmplete-completion-divider";
+const ENTRY_TYPE = "paracetamol-completion-divider";
 
 interface CompletionData {
 	elapsedMilliseconds: number;
@@ -47,7 +47,7 @@ class CompletionDivider implements Component {
 	invalidate(): void {}
 }
 
-export default function rocmpleteCompletionDivider(pi: ExtensionAPI): void {
+export default function paracetamolCompletionDivider(pi: ExtensionAPI): void {
 	let startedAt: number | undefined;
 
 	pi.registerEntryRenderer<CompletionData>(

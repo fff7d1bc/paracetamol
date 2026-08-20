@@ -6,31 +6,31 @@ die() {
     exit 1
 }
 
-profile="${ROCMLETE_PROFILE:-auto}"
-backend="${ROCMLETE_LLAMA_BACKEND:-rocm}"
-mode="${ROCMLETE_LLAMA_MODE:-server}"
-model="${ROCMLETE_LLAMA_MODEL:-}"
-draft_model="${ROCMLETE_LLAMA_DRAFT_MODEL:-}"
-speculative_type="${ROCMLETE_LLAMA_SPECULATIVE_TYPE:-}"
-draft_tokens="${ROCMLETE_LLAMA_DRAFT_TOKENS:-0}"
-context_override="${ROCMLETE_LLAMA_CONTEXT_OVERRIDE:-}"
-jinja="${ROCMLETE_LLAMA_JINJA:-0}"
-reasoning_preserve="${ROCMLETE_LLAMA_REASONING_PRESERVE:-0}"
-chat_template="${ROCMLETE_LLAMA_CHAT_TEMPLATE:-}"
-sampling_defaults="${ROCMLETE_LLAMA_SAMPLING_DEFAULTS:-}"
-flash_attn_rdna4="${ROCMLETE_LLAMA_FLASH_ATTN_RDNA4:-}"
-flash_attn_strix_halo="${ROCMLETE_LLAMA_FLASH_ATTN_STRIX_HALO:-}"
-flash_attn_strix_point="${ROCMLETE_LLAMA_FLASH_ATTN_STRIX_POINT:-}"
-kv_cache_rdna4="${ROCMLETE_LLAMA_KV_CACHE_RDNA4:-}"
-kv_cache_strix_halo="${ROCMLETE_LLAMA_KV_CACHE_STRIX_HALO:-}"
-kv_cache_strix_point="${ROCMLETE_LLAMA_KV_CACHE_STRIX_POINT:-}"
-router="${ROCMLETE_LLAMA_ROUTER:-0}"
-models_max="${ROCMLETE_LLAMA_MODELS_MAX:-2}"
-listen="${ROCMLETE_LISTEN:-0.0.0.0}"
-host_listen="${ROCMLETE_HOST_LISTEN:-unknown}"
-port="${ROCMLETE_PORT:-8080}"
-gpu_count="${ROCMLETE_GPU_COUNT:-0}"
-runtime_report=/tmp/rocmplete-llama-runtime
+profile="${PARACETAMOL_PROFILE:-auto}"
+backend="${PARACETAMOL_LLAMA_BACKEND:-rocm}"
+mode="${PARACETAMOL_LLAMA_MODE:-server}"
+model="${PARACETAMOL_LLAMA_MODEL:-}"
+draft_model="${PARACETAMOL_LLAMA_DRAFT_MODEL:-}"
+speculative_type="${PARACETAMOL_LLAMA_SPECULATIVE_TYPE:-}"
+draft_tokens="${PARACETAMOL_LLAMA_DRAFT_TOKENS:-0}"
+context_override="${PARACETAMOL_LLAMA_CONTEXT_OVERRIDE:-}"
+jinja="${PARACETAMOL_LLAMA_JINJA:-0}"
+reasoning_preserve="${PARACETAMOL_LLAMA_REASONING_PRESERVE:-0}"
+chat_template="${PARACETAMOL_LLAMA_CHAT_TEMPLATE:-}"
+sampling_defaults="${PARACETAMOL_LLAMA_SAMPLING_DEFAULTS:-}"
+flash_attn_rdna4="${PARACETAMOL_LLAMA_FLASH_ATTN_RDNA4:-}"
+flash_attn_strix_halo="${PARACETAMOL_LLAMA_FLASH_ATTN_STRIX_HALO:-}"
+flash_attn_strix_point="${PARACETAMOL_LLAMA_FLASH_ATTN_STRIX_POINT:-}"
+kv_cache_rdna4="${PARACETAMOL_LLAMA_KV_CACHE_RDNA4:-}"
+kv_cache_strix_halo="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_HALO:-}"
+kv_cache_strix_point="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_POINT:-}"
+router="${PARACETAMOL_LLAMA_ROUTER:-0}"
+models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
+listen="${PARACETAMOL_LISTEN:-0.0.0.0}"
+host_listen="${PARACETAMOL_HOST_LISTEN:-unknown}"
+port="${PARACETAMOL_PORT:-8080}"
+gpu_count="${PARACETAMOL_GPU_COUNT:-0}"
+runtime_report=/tmp/paracetamol-llama-runtime
 
 case "$profile" in
     auto|rdna4|strix-halo|strix-point|cpu) ;;
@@ -120,7 +120,7 @@ case "$router" in
         ;;
     1)
         [[ "$mode" == server ]] || die "router mode requires the server"
-        [[ -f /run/rocmplete/models.ini ]] ||
+        [[ -f /run/paracetamol/models.ini ]] ||
             die "router preset is not a regular file"
         [[ "$models_max" =~ ^[1-9][0-9]*$ ]] ||
             die "router models-max must be positive"
@@ -146,7 +146,7 @@ if [[ "$router" == 0 && "$reasoning_preserve" == 1 ]]; then
     model_policy_args+=(--reasoning-preserve)
 fi
 if [[ "$router" == 0 && -n "$chat_template" ]]; then
-    chat_template_path="/usr/local/share/rocmplete/llama-chat-templates/${chat_template}.jinja"
+    chat_template_path="/usr/local/share/paracetamol/llama-chat-templates/${chat_template}.jinja"
     [[ -f "$chat_template_path" && -r "$chat_template_path" ]] ||
         die "managed llama.cpp chat template is not a readable regular file: $chat_template_path"
     model_policy_args+=(--jinja --chat-template-file "$chat_template_path")
@@ -314,7 +314,7 @@ done
 } > "$runtime_report"
 chmod 0444 "$runtime_report"
 
-printf '\nROCmplete: llama.cpp %s\n' "$mode"
+printf '\nParacetamol: llama.cpp %s\n' "$mode"
 printf '  profile:       %s\n' "$profile"
 printf '  backend:       %s\n' "$backend"
 printf '  device:        %s\n' "$device"
@@ -348,59 +348,59 @@ printf '\n'
 
 if [[ "$mode" == server ]]; then
     if [[ "$router" == 1 ]]; then
-        router_preset=/tmp/rocmplete-models.ini
-        IFS= read -r preset_version < /run/rocmplete/models.ini
+        router_preset=/tmp/paracetamol-models.ini
+        IFS= read -r preset_version < /run/paracetamol/models.ini
         [[ "$preset_version" == "version = 1" ]] ||
             die "router preset has an unsupported version"
-        ! grep -q '^\[\*\]$' /run/rocmplete/models.ini ||
+        ! grep -q '^\[\*\]$' /run/paracetamol/models.ini ||
             die "router preset must not contain global settings"
         {
             printf 'version = 1\n'
-            tail -n +2 /run/rocmplete/models.ini |
+            tail -n +2 /run/paracetamol/models.ini |
                 awk \
                     -v profile="$profile" \
                     -v gpu_count="$gpu_count" \
                     -v backend_devices="${backend_devices:-none}" '
-                    /^rocmplete-flash-attn-rdna4 = / {
+                    /^paracetamol-flash-attn-rdna4 = / {
                         if (profile == "rdna4") {
-                            sub(/^rocmplete-flash-attn-rdna4 = /, "")
+                            sub(/^paracetamol-flash-attn-rdna4 = /, "")
                             print "flash-attn = " $0
                         }
                         next
                     }
-                    /^rocmplete-flash-attn-strix-halo = / {
+                    /^paracetamol-flash-attn-strix-halo = / {
                         if (profile == "strix-halo") {
-                            sub(/^rocmplete-flash-attn-strix-halo = /, "")
+                            sub(/^paracetamol-flash-attn-strix-halo = /, "")
                             print "flash-attn = " $0
                         }
                         next
                     }
-                    /^rocmplete-flash-attn-strix-point = / {
+                    /^paracetamol-flash-attn-strix-point = / {
                         if (profile == "strix-point") {
-                            sub(/^rocmplete-flash-attn-strix-point = /, "")
+                            sub(/^paracetamol-flash-attn-strix-point = /, "")
                             print "flash-attn = " $0
                         }
                         next
                     }
-                    /^rocmplete-kv-cache-rdna4 = / {
+                    /^paracetamol-kv-cache-rdna4 = / {
                         if (profile == "rdna4") {
-                            sub(/^rocmplete-kv-cache-rdna4 = /, "")
+                            sub(/^paracetamol-kv-cache-rdna4 = /, "")
                             print "cache-type-k = " $0
                             print "cache-type-v = " $0
                         }
                         next
                     }
-                    /^rocmplete-kv-cache-strix-halo = / {
+                    /^paracetamol-kv-cache-strix-halo = / {
                         if (profile == "strix-halo") {
-                            sub(/^rocmplete-kv-cache-strix-halo = /, "")
+                            sub(/^paracetamol-kv-cache-strix-halo = /, "")
                             print "cache-type-k = " $0
                             print "cache-type-v = " $0
                         }
                         next
                     }
-                    /^rocmplete-kv-cache-strix-point = / {
+                    /^paracetamol-kv-cache-strix-point = / {
                         if (profile == "strix-point") {
-                            sub(/^rocmplete-kv-cache-strix-point = /, "")
+                            sub(/^paracetamol-kv-cache-strix-point = /, "")
                             print "cache-type-k = " $0
                             print "cache-type-v = " $0
                         }

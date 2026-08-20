@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/catalog"
+	"paracetamol/internal/catalog"
 )
 
 const validPack = `{

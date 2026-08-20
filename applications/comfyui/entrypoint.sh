@@ -6,16 +6,16 @@ die() {
     exit 1
 }
 
-profile="${ROCMLETE_PROFILE:-auto}"
-listen_address="${ROCMLETE_LISTEN:-0.0.0.0}"
-host_listen="${ROCMLETE_HOST_LISTEN:-unknown}"
-port="${ROCMLETE_PORT:-8188}"
-disable_bundled_extensions="${ROCMLETE_DISABLE_BUNDLED_EXTENSIONS:-0}"
-memory_policy="${ROCMLETE_MEMORY_POLICY:-balanced}"
-kernel_policy="${ROCMLETE_KERNEL_POLICY:-default}"
+profile="${PARACETAMOL_PROFILE:-auto}"
+listen_address="${PARACETAMOL_LISTEN:-0.0.0.0}"
+host_listen="${PARACETAMOL_HOST_LISTEN:-unknown}"
+port="${PARACETAMOL_PORT:-8188}"
+disable_bundled_extensions="${PARACETAMOL_DISABLE_BUNDLED_EXTENSIONS:-0}"
+memory_policy="${PARACETAMOL_MEMORY_POLICY:-balanced}"
+kernel_policy="${PARACETAMOL_KERNEL_POLICY:-default}"
 image_python="/opt/venv/bin/python"
 custom_python_root="/data/custom-node-python"
-bundled_custom_node_root="/tmp/rocmplete-bundled-custom-nodes"
+bundled_custom_node_root="/tmp/paracetamol-bundled-custom-nodes"
 bundled_custom_nodes=()
 persistent_node_overrides=()
 
@@ -88,12 +88,12 @@ prepare_custom_node_python() {
         "$custom_python_root/bin/python" -c \
             'import sysconfig; print(sysconfig.get_path("purelib"))'
     )"
-    path_file="$custom_site_packages/rocmplete-image.pth"
-    path_file_pending="$(mktemp "$custom_site_packages/.rocmplete-image.XXXXXX")"
+    path_file="$custom_site_packages/paracetamol-image.pth"
+    path_file_pending="$(mktemp "$custom_site_packages/.paracetamol-image.XXXXXX")"
     printf '%s\n' "$image_site_packages" >"$path_file_pending"
     mv -f -- "$path_file_pending" "$path_file"
 
-    export ROCMLETE_CUSTOM_NODE_ENV=1
+    export PARACETAMOL_CUSTOM_NODE_ENV=1
     export VIRTUAL_ENV="$custom_python_root"
     export PATH="$custom_python_root/bin:$PATH"
     export PIP_CACHE_DIR=/data/cache/pip
@@ -108,7 +108,7 @@ prepare_bundled_custom_nodes() {
 
     mkdir -p "$bundled_custom_node_root"
     for name in ComfyUI-GGUF rgthree-comfy; do
-        bundled="/opt/rocmplete/custom_nodes/$name"
+        bundled="/opt/paracetamol/custom_nodes/$name"
         persistent="/data/custom_nodes/$name"
         [[ -d "$bundled" && ! -L "$bundled" ]] ||
             die "bundled custom node is missing or unsafe: $bundled"
@@ -140,12 +140,12 @@ profile_args=()
 if [[ "$disable_bundled_extensions" != 1 ]]; then
     profile_args+=(
         --extra-model-paths-config
-        /opt/rocmplete/extra_model_paths.yaml
+        /opt/paracetamol/extra_model_paths.yaml
     )
 fi
 
 profile_info="$(
-    python /opt/rocmplete/container_profile.py "$profile"
+    python /opt/paracetamol/container_profile.py "$profile"
 )" || die "profile detection failed"
 mapfile -t profile_fields <<<"$profile_info"
 ((${#profile_fields[@]} == 5)) || die "unexpected output from profile detection"
@@ -171,7 +171,7 @@ else
     fi
 fi
 
-printf '\nROCmplete: ComfyUI application\n'
+printf '\nParacetamol: ComfyUI application\n'
 printf '  profile:       %s\n' "$profile"
 printf '  device:        %s\n' "$detected_name"
 printf '  architecture:  %s\n' "$detected_arch"

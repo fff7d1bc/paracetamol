@@ -13,19 +13,19 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/benchmark"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/config"
-	"rocmplete/internal/content"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/runtime"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/content"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/runtime"
+	"paracetamol/internal/storage"
 )
 
-const acceptanceSchema = "rocmplete.hardware-acceptance.v2"
+const acceptanceSchema = "paracetamol.hardware-acceptance.v2"
 
 type acceptanceCase struct {
 	id, description, application, bundle string

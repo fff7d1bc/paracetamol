@@ -20,15 +20,15 @@ type Product struct {
 }
 
 var (
-	CommandName    = "rocmplete"
-	DisplayName    = "ROCmplete"
-	StateNamespace = "rocmplete"
+	CommandName    = "paracetamol"
+	DisplayName    = "Paracetamol"
+	StateNamespace = "paracetamol"
 	// An empty EnvPrefix derives it from CommandName. Builds can still set an
 	// explicit prefix when a rename needs a spelling other than the normalized
 	// command name.
-	EnvPrefix      = "ROCMLETE"
-	ImageNamespace = "localhost/rocmplete"
-	LabelNamespace = "io.github.fff7d1bc.rocmplete"
+	EnvPrefix      = ""
+	ImageNamespace = "localhost/paracetamol"
+	LabelNamespace = "io.github.fff7d1bc.paracetamol"
 )
 
 const Version = "0.1.0-dev"

@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/config"
-	"rocmplete/internal/platform"
+	"paracetamol/internal/config"
+	"paracetamol/internal/platform"
 )
 
 const SchemaVersion = 24

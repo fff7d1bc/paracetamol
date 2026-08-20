@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/storage"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/verification"
 )
 
 type State string
@@ -72,9 +72,14 @@ func InspectArtifact(store *verification.Store, dataRoot string, artifact catalo
 		status.State = Unverified
 		return status, nil
 	}
+	fingerprint := fileIdentity(info)
 	digest, err := fileSHA256(file)
 	if err != nil {
 		return status, err
+	}
+	hashed, err := os.Lstat(file)
+	if err != nil || !hashed.Mode().IsRegular() || fileIdentity(hashed) != fingerprint {
+		return status, fmt.Errorf("managed content changed during verification: %s", file)
 	}
 	if digest != artifact.SHA256 {
 		status.State = HashMismatch

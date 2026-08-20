@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/identity"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/identity"
 )
 
 var shaPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)

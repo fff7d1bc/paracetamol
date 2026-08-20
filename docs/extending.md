@@ -72,7 +72,7 @@ orchestrator will ensure the tagged base first and pass `ROCM_BASE_IMAGE` with
 pulling disabled. Do not add a separate remote or application-specific ROCm
 base.
 
-Keep the target late-copy pattern: copy frequently changed ROCmplete
+Keep the target late-copy pattern: copy frequently changed Paracetamol
 entrypoints and patches after expensive dependency layers where possible so
 normal edits retain build cache.
 
@@ -106,29 +106,29 @@ A managed web entrypoint receives the common profile, address, port, and
 kernel inputs:
 
 ```text
-ROCMLETE_PROFILE
-ROCMLETE_LISTEN
-ROCMLETE_HOST_LISTEN
-ROCMLETE_PORT
-ROCMLETE_KERNEL_POLICY
+PARACETAMOL_PROFILE
+PARACETAMOL_LISTEN
+PARACETAMOL_HOST_LISTEN
+PARACETAMOL_PORT
+PARACETAMOL_KERNEL_POLICY
 ```
 
-Pass `ROCMLETE_MEMORY_POLICY` only to an application whose entrypoint
+Pass `PARACETAMOL_MEMORY_POLICY` only to an application whose entrypoint
 implements a selectable memory behavior. A shared parser or runtime helper is
 not enough to make the policy real.
 
-Use `/opt/rocmplete/container_profile.py` to resolve and enforce profiles.
+Use `/opt/paracetamol/container_profile.py` to resolve and enforce profiles.
 Create writable paths before importing PyTorch. Force model libraries offline
 where supported, and route state, inputs, outputs, caches, and custom content
 below `/data`.
 
-A GPU-only batch application still consumes `ROCMLETE_PROFILE` and invokes the
+A GPU-only batch application still consumes `PARACETAMOL_PROFILE` and invokes the
 same detector before its workload. Do not rely on host-side profile parsing as
 a substitute for checking the architecture PyTorch actually sees.
 
-`ROCMLETE_LISTEN` is the internal container bind address; managed web runs use
+`PARACETAMOL_LISTEN` is the internal container bind address; managed web runs use
 `0.0.0.0` for IPv4 host publications and `::` for IPv6 host publications
-inside a private namespace. `ROCMLETE_HOST_LISTEN` records the exact host IP
+inside a private namespace. `PARACETAMOL_HOST_LISTEN` records the exact host IP
 on which Podman publishes the one application port. Print a short startup
 banner containing the resolved profile, device, architecture, PyTorch/ROCm
 versions, data path, container bind, and host publication. Never put secrets
@@ -272,7 +272,7 @@ allowlist with known persistence, network, and model behavior.
 
 ## Add a hardware profile
 
-A new profile means ROCmplete intentionally supports another architecture. It
+A new profile means Paracetamol intentionally supports another architecture. It
 is more than a CLI label.
 
 Update all of the following:

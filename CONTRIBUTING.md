@@ -1,6 +1,6 @@
-# Contributing to ROCmplete
+# Contributing to Paracetamol
 
-ROCmplete is a public pre-release project. Focused fixes, hardware results, and
+Paracetamol is a public pre-release project. Focused fixes, hardware results, and
 careful improvements are welcome. Interfaces can still change, but changes
 should make the whole design clearer rather than add compatibility layers for
 interfaces that have not been declared stable.
@@ -23,14 +23,14 @@ successful image build or CPU startup as GPU inference acceptance.
 
 ## Validation
 
-ROCmplete's host control plane is Go and the checkout launcher builds into the
+Paracetamol's host control plane is Go and the checkout launcher builds into the
 ignored `build/` tree. Run these checks for every change:
 
 ```bash
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
+PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
@@ -72,11 +72,11 @@ or machine-specific state.
 ## Bug reports
 
 For an ordinary bug, use
-[GitHub Issues](https://github.com/fff7d1bc/rocmplete/issues) and include the
+[GitHub Issues](https://github.com/fff7d1bc/paracetamol/issues) and include the
 smallest useful set of details:
 
-- `./rocmplete --version` and the exact command that failed;
-- relevant `./rocmplete doctor` output;
+- `./paracetamol --version` and the exact command that failed;
+- relevant `./paracetamol doctor` output;
 - distribution, kernel, Podman version, GPU, and system memory;
 - the selected profile, render nodes, application, and content bundle; and
 - complete error output or logs around the failure.

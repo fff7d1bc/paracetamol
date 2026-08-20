@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"rocmplete/internal/podman"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/storage"
 )
 
 func ShellCommand(image, dataDir, volumeSuffix, application string) []string {

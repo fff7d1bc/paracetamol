@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/project"
+	"paracetamol/internal/project"
 )
 
 func TestContainerProfileIdentitiesMatchHostRegistry(t *testing.T) {

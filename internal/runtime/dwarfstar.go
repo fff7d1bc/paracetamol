@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"rocmplete/internal/config"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/config"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/storage"
 )
 
 type DwarfStarOptions struct {
@@ -52,21 +52,21 @@ func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, 
 	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", application.ContainerName}
 	command = append(command, podman.ManagedArguments("dwarfstar", "application")...)
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("dwarfstar")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
-	command = env(command, "ROCMLETE_PROFILE", options.Profile)
-	command = env(command, "ROCMLETE_DWARFSTAR_MODE", options.Mode)
-	command = env(command, "ROCMLETE_DWARFSTAR_MODEL", "/content/models/"+filepath.Base(options.Model))
-	command = env(command, "ROCMLETE_DWARFSTAR_DSPARK", boolInt(options.DSpark))
-	command = env(command, "ROCMLETE_DWARFSTAR_CONTEXT", options.Context)
-	command = env(command, "ROCMLETE_DWARFSTAR_OUTPUT_TOKENS", options.OutputTokens)
-	command = env(command, "ROCMLETE_DWARFSTAR_NO_THINKING", boolInt(options.NoThinking))
-	command = env(command, "ROCMLETE_LISTEN", containerListen(options.Listen))
-	command = env(command, "ROCMLETE_HOST_LISTEN", options.Listen)
-	command = env(command, "ROCMLETE_PORT", options.Port)
+	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
+	command = env(command, "PARACETAMOL_DWARFSTAR_MODE", options.Mode)
+	command = env(command, "PARACETAMOL_DWARFSTAR_MODEL", "/content/models/"+filepath.Base(options.Model))
+	command = env(command, "PARACETAMOL_DWARFSTAR_DSPARK", boolInt(options.DSpark))
+	command = env(command, "PARACETAMOL_DWARFSTAR_CONTEXT", options.Context)
+	command = env(command, "PARACETAMOL_DWARFSTAR_OUTPUT_TOKENS", options.OutputTokens)
+	command = env(command, "PARACETAMOL_DWARFSTAR_NO_THINKING", boolInt(options.NoThinking))
+	command = env(command, "PARACETAMOL_LISTEN", containerListen(options.Listen))
+	command = env(command, "PARACETAMOL_HOST_LISTEN", options.Listen)
+	command = env(command, "PARACETAMOL_PORT", options.Port)
 	if options.DSpark {
-		command = env(command, "ROCMLETE_DWARFSTAR_DSPARK_MODEL", "/content/models/"+filepath.Base(options.SupportModel))
+		command = env(command, "PARACETAMOL_DWARFSTAR_DSPARK_MODEL", "/content/models/"+filepath.Base(options.SupportModel))
 	}
 	if options.Prompt != nil {
-		command = env(command, "ROCMLETE_DWARFSTAR_PROMPT", *options.Prompt)
+		command = env(command, "PARACETAMOL_DWARFSTAR_PROMPT", *options.Prompt)
 	}
 	if options.Mode == "server" {
 		command = append(command, publicationNetwork(options.Listen)...)

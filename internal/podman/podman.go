@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/process"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/process"
 )
 
 var (

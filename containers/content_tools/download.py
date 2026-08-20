@@ -27,7 +27,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _request(url: str, offset: int, token: str) -> urllib.request.Request:
-    headers = {"User-Agent": "ROCmplete/1"}
+    headers = {"User-Agent": "Paracetamol/1"}
     if offset:
         headers["Range"] = "bytes={}-".format(offset)
     request = urllib.request.Request(url, headers=headers)

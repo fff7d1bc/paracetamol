@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"rocmplete/internal/podman"
+	"paracetamol/internal/podman"
 )
 
 var diagnosticFields = []string{"PyTorch", "ROCm/HIP", "Device", "Architecture", "GPU operation", "GPU devices"}

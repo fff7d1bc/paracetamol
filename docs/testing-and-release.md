@@ -14,7 +14,7 @@ Run for every change:
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
+PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
@@ -47,38 +47,38 @@ checks, or target-hardware acceptance.
 Exercise user-visible composition:
 
 ```bash
-./rocmplete --help
-./rocmplete guide comfyui
-./rocmplete run --help
-./rocmplete images export all --output /tmp/rocmplete-images.tar --dry-run
-./rocmplete doctor --help
-./rocmplete content install all --dry-run
-./rocmplete run comfyui --profile cpu \
+./paracetamol --help
+./paracetamol guide comfyui
+./paracetamol run --help
+./paracetamol images export all --output /tmp/paracetamol-images.tar --dry-run
+./paracetamol doctor --help
+./paracetamol content install all --dry-run
+./paracetamol run comfyui --profile cpu \
   --listen 127.0.0.1 --dry-run
-./rocmplete run llama-cpp server --model /path/to/model.gguf \
+./paracetamol run llama-cpp server --model /path/to/model.gguf \
   --profile cpu --listen 127.0.0.1 --dry-run
-./rocmplete content install llama-cpp qwen3.6 --dry-run
-./rocmplete run llama-cpp server --router \
+./paracetamol content install llama-cpp qwen3.6 --dry-run
+./paracetamol run llama-cpp server --router \
   --profile cpu --listen 127.0.0.1 --dry-run
-./rocmplete run dwarfstar server --profile strix-halo --dry-run
-./rocmplete agent --help
-./rocmplete agent install pi --help
-./rocmplete agent run pi --help
-./rocmplete agent run pi --no-sandbox -- --help
-./rocmplete agent run pi -- list
-./rocmplete agent run pi -- install --help
-./rocmplete agent run pi -- update --extensions --help
-./rocmplete agent run maki --help
-./rocmplete agent run maki --no-sandbox -- --help
-./rocmplete agent run maki -- index internal/cli/
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol run dwarfstar server --profile strix-halo --dry-run
+./paracetamol agent --help
+./paracetamol agent install pi --help
+./paracetamol agent run pi --help
+./paracetamol agent run pi --no-sandbox -- --help
+./paracetamol agent run pi -- list
+./paracetamol agent run pi -- install --help
+./paracetamol agent run pi -- update --extensions --help
+./paracetamol agent run maki --help
+./paracetamol agent run maki --no-sandbox -- --help
+./paracetamol agent run maki -- index internal/cli/
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --profile cpu --dry-run
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --compare-backends --dry-run
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --context-depth 32768 \
   --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --dry-run
-./rocmplete acceptance --dry-run
+./paracetamol acceptance --dry-run
 ```
 
 For remote-import changes, also exercise one exact Hugging Face LFS file and
@@ -127,7 +127,7 @@ remains absent.
 For image-archive changes, additionally create a tiny disposable local image,
 save it as a Docker archive, inspect it through `images import --dry-run`, remove and
 load it, compare the image config ID, and remove it again. Do not use a full
-ROCmplete export merely to exercise archive plumbing on every development
+Paracetamol export merely to exercise archive plumbing on every development
 pass.
 
 ### Tier 3: image builds
@@ -136,14 +136,14 @@ Build every affected target. During ordinary iteration, force the affected
 image instructions to run while retaining locally downloaded Python packages:
 
 ```bash
-./rocmplete build comfyui --no-layer-cache
+./paracetamol build comfyui --no-layer-cache
 ```
 
 Before a release or after base/dependency changes, perform a genuinely cold
 build of all targets:
 
 ```bash
-./rocmplete build all --no-cache
+./paracetamol build all --no-cache
 ```
 
 The output must show one `content` tools build, one minimal `runtime` build,
@@ -153,7 +153,7 @@ PyTorch application builds reference the newly tagged PyTorch base with
 `--pull=never`; native applications reference the lower runtime with
 `--pull=never` and must not reference the managed PyTorch base.
 
-`--no-cache` bypasses both Podman's image-layer cache and ROCmplete's host pip
+`--no-cache` bypasses both Podman's image-layer cache and Paracetamol's host pip
 download cache. `--no-layer-cache` bypasses only the selected application's
 image layers; prerequisite targets still pass through their normal layer
 cache. It is suitable for repeated local build testing where downloading the
@@ -212,17 +212,17 @@ podman history CURRENT_IMAGE
 CPU mode is a startup and HTTP smoke test, not an inference test:
 
 ```bash
-./rocmplete run comfyui --profile cpu \
+./paracetamol run comfyui --profile cpu \
   --listen 127.0.0.1 --detach
 curl --fail http://127.0.0.1:8188/ >/dev/null
-./rocmplete logs comfyui
-./rocmplete stop comfyui
+./paracetamol logs comfyui
+./paracetamol stop comfyui
 
-./rocmplete run llama-cpp server --router --models-max 1 \
+./paracetamol run llama-cpp server --router --models-max 1 \
   --profile cpu --listen 127.0.0.1 --detach
 curl --fail http://127.0.0.1:8080/health
 curl --fail http://127.0.0.1:8080/v1/models
-./rocmplete stop llama-cpp
+./paracetamol stop llama-cpp
 ```
 
 Use different ports if they are occupied. Confirm startup banners show `cpu`
@@ -269,8 +269,8 @@ For coding-agent evaluation changes, validate the frozen inputs before using
 GPU time:
 
 ```bash
-./rocmplete benchmark agent --list-tasks
-./rocmplete benchmark agent \
+./paracetamol benchmark agent --list-tasks
+./paracetamol benchmark agent \
   --preset qwen3.6-27b-mtp-q8-0 \
   --thinking high --task re-align --dry-run
 go test ./internal/evaluation ./internal/agent ./internal/cli
@@ -280,7 +280,7 @@ Every implementation hidden test must fail on its recorded base commit, pass
 on its reference commit, and grade the complete reference diff as `solved`.
 Inspect the generated fixture to confirm it has exactly one Git commit, no
 remote, controlled `AGENTS.md`, and no mounted hidden-test sibling. Confirm a
-review task can change only `ROCMLETE_EVAL_ANSWER.md`, dependency changes are
+review task can change only `PARACETAMOL_EVAL_ANSWER.md`, dependency changes are
 reported and restored before grading, and recognized network commands make an
 attempt unsolved. Dry runs must create no data, source mirror, server, fixture,
 or result.
@@ -324,8 +324,8 @@ On each target host, use the finite
 [target-hardware acceptance matrix](hardware-acceptance.md):
 
 ```bash
-./rocmplete doctor --render-node /dev/dri/renderD128
-./rocmplete run comfyui --profile EXPECTED_PROFILE \
+./paracetamol doctor --render-node /dev/dri/renderD128
+./paracetamol run comfyui --profile EXPECTED_PROFILE \
   --render-node /dev/dri/renderD128 --listen 127.0.0.1
 ```
 
@@ -372,7 +372,7 @@ test at least:
 Begin with the bounded checkpointed smoke:
 
 ```bash
-./rocmplete acceptance
+./paracetamol acceptance
 ```
 
 Keep its JSON and Markdown result. A `BLOCKED` result means generated media
@@ -448,7 +448,7 @@ Do not treat one successful tiny workflow as acceptance of every model family.
 
 ## Release checklist
 
-ROCmplete does not currently publish prebuilt images, so “release” means a
+Paracetamol does not currently publish prebuilt images, so “release” means a
 source state from which users build locally.
 
 ### Source and documentation
@@ -468,7 +468,7 @@ Useful searches:
 ```bash
 rg -n 'TODO|FIXME|WIP|latest|main' \
   Containerfile applications catalog internal docs README.md
-rg -n 'localhost/rocmplete:|_COMMIT|_VERSION' .
+rg -n 'localhost/paracetamol:|_COMMIT|_VERSION' .
 ```
 
 `latest` or `main` may appear in explanatory prose, but must not be a stored
@@ -497,7 +497,7 @@ source revision or image base.
 - [ ] No managed test container remains:
 
   ```bash
-  podman ps -a --filter name=rocmplete
+  podman ps -a --filter name=paracetamol
   ```
 
 ### Hardware acceptance
@@ -525,7 +525,7 @@ source revision or image base.
 ```bash
 git status --short
 make test
-podman ps -a --filter name=rocmplete
+podman ps -a --filter name=paracetamol
 ```
 
 This distinguishes pre-existing local changes and containers from work created
@@ -547,7 +547,7 @@ in the current session.
 
   ```bash
   podman system df
-  du -sh "${XDG_DATA_HOME:-$HOME/.local/share}/rocmplete" 2>/dev/null
+  du -sh "${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol" 2>/dev/null
   ```
 
 - Back up user-owned persistent subtrees.
@@ -596,7 +596,7 @@ agreement, or a workflow bundle without a benchmark.
 
 ### Setup reports size or hash mismatch
 
-ROCmplete will not overwrite an installed file. Determine whether it is:
+Paracetamol will not overwrite an installed file. Determine whether it is:
 
 - user content at a managed destination;
 - an old pinned model revision;
@@ -608,7 +608,7 @@ Move the file aside explicitly, verify provenance again, and rerun
 is a security/provenance event and should not be normalized by updating the
 hash without investigation.
 
-An exact-size staging file that fails SHA-256 is different: ROCmplete preserves
+An exact-size staging file that fails SHA-256 is different: Paracetamol preserves
 it beside the expected path with an `.invalid-*` suffix. Retrying can then
 download or reuse a verified replacement without deleting other resumable
 staging. Inspect the quarantined file if the mismatch may indicate remote or
@@ -617,7 +617,7 @@ storage corruption.
 ### Hugging Face returns 401 or 403
 
 Check repository visibility, gating, account acceptance, and `HF_TOKEN`.
-License acceptance in ROCmplete does not grant upstream account access, and an
+License acceptance in Paracetamol does not grant upstream account access, and an
 HF token does not replace `--accept-license`.
 
 ### Workflow source hash mismatch
@@ -642,12 +642,12 @@ intended workflow.
 Use:
 
 ```bash
-./rocmplete logs APPLICATION
-./rocmplete stop APPLICATION
+./paracetamol logs APPLICATION
+./paracetamol stop APPLICATION
 ```
 
 If normal stop cannot recover an abandoned managed container, inspect it with
-Podman before using `./rocmplete cleanup containers` and confirming its plan.
+Podman before using `./paracetamol cleanup containers` and confirming its plan.
 The cleanup plan must include labelled transient benchmark, acceptance,
 diagnostic, shell, and downloader containers as well as application
 containers. It must never select an unlabelled container merely because its

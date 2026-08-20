@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/process"
+	"paracetamol/internal/process"
 )
 
 type commandRunner struct {
@@ -46,7 +46,7 @@ func (*commandRunner) LookPath(name string) (string, error) {
 func testApp(t *testing.T, runner process.Runner) (*App, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	return &App{Context: context.Background(), Root: filepath.Join("/src", "rocmplete"), Environment: map[string]string{"HOME": t.TempDir()}, Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Runner: runner}, &stdout, &stderr
+	return &App{Context: context.Background(), Root: filepath.Join("/src", "paracetamol"), Environment: map[string]string{"HOME": t.TempDir()}, Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Runner: runner}, &stdout, &stderr
 }
 
 func TestBuildLlamaUsesOnlyItsDependencyClosure(t *testing.T) {

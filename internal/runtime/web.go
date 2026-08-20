@@ -3,9 +3,9 @@ package runtime
 import (
 	"fmt"
 
-	"rocmplete/internal/config"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/config"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/storage"
 )
 
 type WebOptions struct {
@@ -49,14 +49,14 @@ func WebCommand(options WebOptions, volumeSuffix string) []string {
 	if options.Application == "comfyui" {
 		command = append(command, "--volume", layout.ComfyModels()+":/content/models"+readOnly)
 	}
-	command = env(command, "ROCMLETE_PROFILE", options.Profile)
-	command = env(command, "ROCMLETE_LISTEN", containerListen(options.Listen))
-	command = env(command, "ROCMLETE_HOST_LISTEN", options.Listen)
-	command = env(command, "ROCMLETE_PORT", options.Port)
-	command = env(command, "ROCMLETE_KERNEL_POLICY", options.KernelPolicy)
-	command = env(command, "ROCMLETE_DISABLE_BUNDLED_EXTENSIONS", boolInt(options.DisableBundledExtensions))
+	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
+	command = env(command, "PARACETAMOL_LISTEN", containerListen(options.Listen))
+	command = env(command, "PARACETAMOL_HOST_LISTEN", options.Listen)
+	command = env(command, "PARACETAMOL_PORT", options.Port)
+	command = env(command, "PARACETAMOL_KERNEL_POLICY", options.KernelPolicy)
+	command = env(command, "PARACETAMOL_DISABLE_BUNDLED_EXTENSIONS", boolInt(options.DisableBundledExtensions))
 	if options.Application == "comfyui" {
-		command = env(command, "ROCMLETE_MEMORY_POLICY", options.MemoryPolicy)
+		command = env(command, "PARACETAMOL_MEMORY_POLICY", options.MemoryPolicy)
 	}
 	if options.NetworkNone {
 		command = append(command, "--network", "none")

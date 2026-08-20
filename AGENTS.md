@@ -1,14 +1,14 @@
-# ROCmplete Agent Notes
+# Paracetamol Agent Notes
 
 ## Project purpose
 
-ROCmplete bootstraps locally built, rootless ROCm application containers and
+Paracetamol bootstraps locally built, rootless ROCm application containers and
 verified persistent content for AMD `gfx1150` (Strix Point), `gfx1151` (Strix
 Halo), `gfx1200` (Radeon RX 9060 family), and `gfx1201` (Radeon AI PRO R9700
 and Radeon RX 9070 family). It currently manages ComfyUI, llama.cpp, and an
 experimental high-memory DwarfStar path for DeepSeek V4 Flash.
 
-The project does not publish or depend on prebuilt ROCmplete application
+The project does not publish or depend on prebuilt Paracetamol application
 images. A successful build or CPU startup is not evidence that GPU inference
 works on any target hardware class.
 
@@ -60,7 +60,7 @@ in the same change. Important ownership boundaries are:
   publication policy.
 - `internal/probe/` and `tools/`: read-only archive, provider-metadata, and
   workflow research probes.
-- `bin/rocmplete`: PATH-friendly delegation to the checkout launcher.
+- `bin/paracetamol`: PATH-friendly delegation to the checkout launcher.
 - `internal/agent/models.go` and `internal/agent/sandbox.go`: shared
   agent-client model policy and bubblewrap boundary.
 - `agent-clients/pi/` and `internal/agent/piruntime.go`: pinned managed Pi npm
@@ -127,7 +127,7 @@ them:
   user modifications unless replacement is explicitly forced.
 - Source patches, workflow renderers, catalog validation, and benchmark
   transformations fail closed when upstream structure or pinned bytes change.
-- Cleanup is scoped to ROCmplete-owned resources. Never introduce a general
+- Cleanup is scoped to Paracetamol-owned resources. Never introduce a general
   Podman or system prune.
 
 Use project terminology precisely:
@@ -153,7 +153,7 @@ would only clutter the guided menu.
 
 ### Current project phase: public pre-release
 
-ROCmplete is public but has not yet promised stable interfaces. Backward
+Paracetamol is public but has not yet promised stable interfaces. Backward
 compatibility is a design consideration, not a release constraint. Avoid
 arbitrary interface churn, but do not preserve an awkward command, state
 layout, module boundary, schema, image structure, or internal API merely
@@ -248,7 +248,7 @@ explicitly requests it.
 - When partial success is possible, report what completed, what remains, and
   whether retrying resumes or repeats the work.
 
-ROCmplete's CLI is currently human-oriented. Do not silently introduce a
+Paracetamol's CLI is currently human-oriented. Do not silently introduce a
 machine-readable stdout contract or move established output between stdout and
 stderr as incidental cleanup; define and test such a contract deliberately.
 
@@ -264,7 +264,7 @@ For every change, run the applicable Tier 1 checks:
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
+PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
@@ -278,7 +278,7 @@ Also apply the relevant higher tier:
 - CLI changes: inspect `--help`, incomplete-command guidance, and affected
   CPU/dry-run command composition.
 - Catalog or workflow changes: load the full catalog and run
-  `./rocmplete content install all --dry-run`; check counts, sizes, licenses,
+  `./paracetamol content install all --dry-run`; check counts, sizes, licenses,
   relationships, hashes, and rendered graphs.
 - Container, dependency, patch, or entrypoint changes: build every affected
   target and run `pip check`; build all targets without cache for shared-base

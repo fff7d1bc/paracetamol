@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/application"
-	"rocmplete/internal/config"
+	"paracetamol/internal/application"
+	"paracetamol/internal/config"
 )
 
 const (

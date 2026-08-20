@@ -7,14 +7,14 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/benchmark"
-	"rocmplete/internal/config"
-	"rocmplete/internal/content"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/runtime"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/benchmark"
+	"paracetamol/internal/config"
+	"paracetamol/internal/content"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/runtime"
+	"paracetamol/internal/storage"
 )
 
 func (app *App) commandBenchmark(args []string) error {

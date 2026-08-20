@@ -100,7 +100,7 @@ func TestDwarfStarCLIAppliesPrivateServerDefaultsWithoutPublishing(t *testing.T)
 		t.Fatal(err)
 	}
 	joined := strings.Join(command, " ")
-	for _, expected := range []string{"--network none", "ROCMLETE_HOST_LISTEN=127.0.0.1", "ROCMLETE_PORT=8000"} {
+	for _, expected := range []string{"--network none", "PARACETAMOL_HOST_LISTEN=127.0.0.1", "PARACETAMOL_PORT=8000"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("command lacks %q: %s", expected, joined)
 		}

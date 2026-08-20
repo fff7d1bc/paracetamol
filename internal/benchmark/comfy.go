@@ -20,14 +20,14 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/identity"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/identity"
 )
 
 const (
-	ComfyResultSchema = "rocmplete.comfyui-benchmark.v2"
-	ComfySuiteSchema  = "rocmplete.comfyui-benchmark-suite.v2"
+	ComfyResultSchema = "paracetamol.comfyui-benchmark.v2"
+	ComfySuiteSchema  = "paracetamol.comfyui-benchmark-suite.v2"
 )
 
 var SyntheticInput = identity.StateNamespace + "/benchmark-input-768.png"

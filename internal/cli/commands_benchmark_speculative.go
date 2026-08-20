@@ -12,17 +12,17 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/agent"
-	"rocmplete/internal/benchmark"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/config"
-	"rocmplete/internal/content"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/runtime"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/agent"
+	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/content"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/runtime"
+	"paracetamol/internal/storage"
 )
 
 type intList []int

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/verification"
 )
 
 func TestInspectArtifactUsesCompatibleReceipt(t *testing.T) {

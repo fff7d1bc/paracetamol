@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 func TestRequestedRenderNodesUsesProductEnvironmentPrefix(t *testing.T) {

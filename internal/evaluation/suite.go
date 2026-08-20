@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/process"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/process"
 )
 
-const ResultSchema = "rocmplete.coding-agent-evaluation.v4"
+const ResultSchema = "paracetamol.coding-agent-evaluation.v4"
 
 type HiddenTest struct {
 	Resource    string `json:"resource"`

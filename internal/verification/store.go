@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/storage"
 )
 
 const SchemaVersion = 1

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/process"
+	"paracetamol/internal/process"
 )
 
 type resultRunner struct{ result process.Result }

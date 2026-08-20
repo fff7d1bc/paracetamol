@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestROCmpleteEvalGroupCommandReturnsInterruptStatus(t *testing.T) {
+func TestParacetamolEvalGroupCommandReturnsInterruptStatus(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	opts := EncodeOptions{ProbeOptions: defaultProbeOptions(), GroupCRF: true}
@@ -15,7 +15,7 @@ func TestROCmpleteEvalGroupCommandReturnsInterruptStatus(t *testing.T) {
 	}
 }
 
-func TestROCmpleteEvalCancellationPreventsFallbackEncoding(t *testing.T) {
+func TestParacetamolEvalCancellationPreventsFallbackEncoding(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	opts := EncodeOptions{

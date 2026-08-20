@@ -15,14 +15,14 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/config"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/process"
-	"rocmplete/internal/storage"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/process"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/verification"
 )
 
 type InstallOptions struct {
@@ -171,15 +171,18 @@ func Install(options InstallOptions) error {
 		}
 		if status.State == Unverified {
 			fmt.Fprintf(options.Output, "Verifying [%d/%d] %s (%s)\n", index+1, len(options.Artifacts), artifact.Destination, humanBytes(artifact.Size))
+			// Relabel before hashing. On enforcing SELinux hosts chcon changes
+			// filesystem identity, and a newly written receipt must describe the
+			// post-label file that application containers will actually mount.
+			if err := client.PrepareSharedContentLabel(options.Context, status.Path); err != nil {
+				return err
+			}
 			verified, verifyErr := InspectArtifact(store, options.DataRoot, artifact, true)
 			if verifyErr != nil {
 				return verifyErr
 			}
 			if verified.State != Verified {
 				return controlerr.New("SHA-256 mismatch for existing managed content: %s", verified.Path)
-			}
-			if err := client.PrepareSharedContentLabel(options.Context, verified.Path); err != nil {
-				return err
 			}
 			continue
 		}
@@ -266,7 +269,17 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	if err != nil || !info.Mode().IsRegular() || info.Size() != artifact.Size {
 		return controlerr.New("downloader did not create the expected regular file: %s", payload)
 	}
-	fingerprint := fileIdentity(info)
+	// Prepare the final shared label before hashing. Besides changing ctime on
+	// SELinux, this is an external mutation boundary: only bytes verified after
+	// it returns may be published and receipted.
+	if err := client.PrepareSharedContentLabel(options.Context, payload); err != nil {
+		return err
+	}
+	labeled, err := os.Lstat(payload)
+	if err != nil || !labeled.Mode().IsRegular() || labeled.Size() != artifact.Size {
+		return controlerr.New("managed content changed while preparing its shared label: %s", payload)
+	}
+	fingerprint := fileIdentity(labeled)
 	fmt.Fprintf(options.Output, "Verifying SHA-256 for %s (%s)\n", artifact.Destination, humanBytes(artifact.Size))
 	digest, err := fileSHA256(payload)
 	if err != nil {
@@ -283,17 +296,6 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	if err != nil || !hashed.Mode().IsRegular() || fileIdentity(hashed) != fingerprint {
 		return controlerr.New("managed content changed during verification: %s", payload)
 	}
-	if err := client.PrepareSharedContentLabel(options.Context, payload); err != nil {
-		return err
-	}
-	labeled, err := os.Lstat(payload)
-	if err != nil || !labeled.Mode().IsRegular() || labeled.Size() != artifact.Size {
-		return controlerr.New("managed content changed while preparing its shared label: %s", payload)
-	}
-	// Relabeling on an enforcing SELinux filesystem legitimately changes ctime.
-	// Capture the post-label identity, then keep guarding that exact object until
-	// the atomic move rather than weakening the verification race check.
-	fingerprint = fileIdentity(labeled)
 	destination := ArtifactPath(options.DataRoot, artifact)
 	root := artifactRoot(options.DataRoot, artifact)
 	if err := storage.ValidateManagedParent(destination, root, options.DataRoot, "content"); err != nil {
@@ -347,7 +349,7 @@ func downloadCommand(options InstallOptions, client podman.Client, artifact cata
 		if url == "" {
 			url = fmt.Sprintf("https://civitai.com/api/download/models/%d", artifact.Source.ModelVersionID)
 		}
-		command = append(command, "--entrypoint", "/opt/venv/bin/python", options.Image, "/opt/rocmplete/container_download.py", "--url", url, "--output", local+"/"+artifact.Source.Path)
+		command = append(command, "--entrypoint", "/opt/venv/bin/python", options.Image, "/opt/paracetamol/container_download.py", "--url", url, "--output", local+"/"+artifact.Source.Path)
 		if artifact.Source.ArchiveMember != "" {
 			command = append(command, "--maximum-size", fmt.Sprint(artifact.Source.ArchiveMaxSize))
 		} else {

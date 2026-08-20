@@ -13,9 +13,9 @@ import (
 	"strings"
 	"syscall"
 
-	"rocmplete/internal/identity"
-	"rocmplete/internal/process"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/process"
+	"paracetamol/internal/storage"
 )
 
 const PiPackage = "@earendil-works/pi-coding-agent"

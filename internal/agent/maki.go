@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/storage"
 )
 
 type MakiPlan struct {
@@ -164,7 +164,7 @@ func PrepareMakiState(plan MakiPlan, dataRoot string) (SandboxPaths, error) {
 		}
 	}
 	tiers := filepath.Join(stateDir, "model-tiers")
-	seed := filepath.Join(stateDir, "rocmplete-tier-seed")
+	seed := filepath.Join(stateDir, "paracetamol-tier-seed")
 	preserve := false
 	if current, err := os.ReadFile(tiers); err == nil {
 		previous, _ := os.ReadFile(seed)

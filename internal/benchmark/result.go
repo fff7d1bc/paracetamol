@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"rocmplete/internal/atomicfile"
+	"paracetamol/internal/atomicfile"
 )
 
 func Timestamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -51,7 +51,7 @@ func WriteNewCheckpoint(path string, value any) error {
 }
 
 // ReadJSON decodes one complete JSON document. Strict mode rejects unknown
-// fields and is appropriate for ROCmplete-owned resumable state.
+// fields and is appropriate for Paracetamol-owned resumable state.
 func ReadJSON(path string, destination any, strict bool) error {
 	handle, err := os.Open(path)
 	if err != nil {

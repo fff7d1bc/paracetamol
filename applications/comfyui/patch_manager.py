@@ -1,4 +1,4 @@
-"""Adapt pinned ComfyUI Manager to ROCmplete's container boundaries."""
+"""Adapt pinned ComfyUI Manager to Paracetamol's container boundaries."""
 
 import importlib.metadata
 import os
@@ -24,7 +24,7 @@ def patch_manager(root):
 """,
         """def is_loopback(address):
     import ipaddress
-    address = os.environ.get("ROCMLETE_HOST_LISTEN", address)
+    address = os.environ.get("PARACETAMOL_HOST_LISTEN", address)
     try:
 """,
         "effective listen address",
@@ -39,7 +39,7 @@ def patch_manager(root):
 """,
         """def is_loopback(address):
     import ipaddress
-    address = os.environ.get("ROCMLETE_HOST_LISTEN", address)
+    address = os.environ.get("PARACETAMOL_HOST_LISTEN", address)
     try:
 """,
         "legacy effective listen address",
@@ -54,7 +54,7 @@ def patch_manager(root):
         """    global use_uv
     force_uv = (
         use_uv
-        and os.environ.get("ROCMLETE_CUSTOM_NODE_ENV") != "1"
+        and os.environ.get("PARACETAMOL_CUSTOM_NODE_ENV") != "1"
     )
     base_cmd = get_pip_cmd(force_uv=force_uv)
 """,
@@ -63,7 +63,7 @@ def patch_manager(root):
 
 
 def installed_manager_root():
-    override = os.environ.get("ROCMLETE_MANAGER_PACKAGE_DIR")
+    override = os.environ.get("PARACETAMOL_MANAGER_PACKAGE_DIR")
     if override:
         return Path(override)
     distribution = importlib.metadata.distribution("comfyui-manager")

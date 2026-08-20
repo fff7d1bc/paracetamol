@@ -4,7 +4,7 @@
 
 This is the guide for everything around a normal run: checking a new machine,
 moving built images, finding persistent data, stopping services, and cleaning
-up. ROCmplete only touches resources it owns and never performs a general
+up. Paracetamol only touches resources it owns and never performs a general
 Podman or system prune.
 
 ## Target-hardware smoke acceptance
@@ -13,8 +13,8 @@ After onboarding a GPU host or updating software, dry-run the acceptance suite
 and then let it work:
 
 ```bash
-./rocmplete acceptance --dry-run
-./rocmplete acceptance
+./paracetamol acceptance --dry-run
+./paracetamol acceptance
 ```
 
 The default suite first checks a real PyTorch GPU operation, exact render-node
@@ -36,8 +36,8 @@ art contest. Reviews can be passed, failed, or deferred independently.
 Limit a diagnostic run with a repeatable `--application`:
 
 ```bash
-./rocmplete acceptance --application llama-cpp
-./rocmplete acceptance --application dwarfstar
+./paracetamol acceptance --application llama-cpp
+./paracetamol acceptance --application dwarfstar
 ```
 
 If images or exact content bundles are missing, inspect the dry-run plan first.
@@ -45,7 +45,7 @@ If images or exact content bundles are missing, inspect the dry-run plan first.
 prerequisites; unattended use also disables visual prompts:
 
 ```bash
-./rocmplete acceptance --prepare --non-interactive \
+./paracetamol acceptance --prepare --non-interactive \
   --accept-license
 ```
 
@@ -54,7 +54,7 @@ generated paths and criteria in the Markdown report, then resume in a terminal
 to record the visual decision:
 
 ```bash
-./rocmplete acceptance --resume RESULT.json
+./paracetamol acceptance --resume RESULT.json
 ```
 
 Each run is checkpointed below
@@ -68,11 +68,11 @@ for `BLOCKED`.
 
 Acceptance result schemas are deliberately not migrated in place. A result
 from an older schema remains available as a historical JSON/Markdown record,
-but a new ROCmplete acceptance policy requires a new run instead of resuming
+but a new Paracetamol acceptance policy requires a new run instead of resuming
 that file.
 
 An explicit `--output` must be a new `.json` path whose neighboring `.md`
-path is also unused. ROCmplete validates output and resume files before GPU
+path is also unused. Paracetamol validates output and resume files before GPU
 probing, building, or downloading, then creates a new checkpoint without
 replacing a file that appeared in the meantime.
 
@@ -100,25 +100,25 @@ Inspect the eleven tasks and preview one model without fetching sources,
 creating data, loading a model, or starting Pi:
 
 ```bash
-./rocmplete benchmark agent --list-tasks
-./rocmplete benchmark agent \
+./paracetamol benchmark agent --list-tasks
+./paracetamol benchmark agent \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
 
 The frozen suite has nine implementation tasks and two read-only review tasks
-drawn from `reencode`, `fzr`, `ssh-host-proxy`, `rocmplete`, and `nonet`. Run
+drawn from `reencode`, `fzr`, `ssh-host-proxy`, `paracetamol`, and `nonet`. Run
 the complete suite with one exact managed llama.cpp preset:
 
 ```bash
-./rocmplete benchmark agent \
+./paracetamol benchmark agent \
   --preset qwen3.6-27b-mtp-q8-0 --thinking high
 ```
 
 Or run selected tasks while calibrating a model:
 
 ```bash
-./rocmplete benchmark agent \
+./paracetamol benchmark agent \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium \
   --task re-align --task re-cancel
@@ -139,10 +139,10 @@ harness; harness comparisons are a separate experiment.
 DwarfStar can run the same suite through its independently managed endpoint:
 
 ```bash
-./rocmplete benchmark agent --dwarfstar
+./paracetamol benchmark agent --dwarfstar
 ```
 
-ROCmplete fetches each pinned public repository into a managed source mirror,
+Paracetamol fetches each pinned public repository into a managed source mirror,
 verifies the exact Git tree, and archives the base commit into a new repository
 with one synthetic commit and no remote. Pi therefore cannot discover the
 later reference fix through local Git history. Each attempt is sandboxed to
@@ -188,13 +188,13 @@ Build one application during ordinary work, or all managed applications after
 an update:
 
 ```bash
-./rocmplete build comfyui
-./rocmplete build all
+./paracetamol build comfyui
+./paracetamol build all
 ```
 
 Normal builds use Podman's image-layer cache and retain downloaded Python
-packages below `${XDG_CACHE_HOME:-$HOME/.cache}/rocmplete/build/pip`.
-ROCmplete still passes prerequisite targets through the build so changed
+packages below `${XDG_CACHE_HOME:-$HOME/.cache}/paracetamol/build/pip`.
+Paracetamol still passes prerequisite targets through the build so changed
 source inputs are noticed after `git pull`. Current explicit image tags remain
 the boundary for reusing an unchanged local prerequisite.
 
@@ -202,8 +202,8 @@ Build the shared prerequisites directly when you need to inspect or refresh
 one without building an application:
 
 ```bash
-./rocmplete build pytorch-base
-./rocmplete build content-tools
+./paracetamol build pytorch-base
+./paracetamol build content-tools
 ```
 
 `base` builds the minimal ROCm runtime and the ROCm/PyTorch diagnostic base.
@@ -215,21 +215,21 @@ downloaded packages and allowing prerequisite layers to use their normal
 cache:
 
 ```bash
-./rocmplete build comfyui --no-layer-cache
+./paracetamol build comfyui --no-layer-cache
 ```
 
 Use `--no-cache` for a genuinely cold build. It bypasses Podman's layers and
-ROCmplete's package-download cache for the selected build closure:
+Paracetamol's package-download cache for the selected build closure:
 
 ```bash
-./rocmplete build all --no-cache
+./paracetamol build all --no-cache
 ```
 
 Remove retained package downloads separately. The command prints the exact
 path and size and asks for confirmation:
 
 ```bash
-./rocmplete cleanup build-cache
+./paracetamol cleanup build-cache
 ```
 
 ## Image backups and transfer
@@ -238,13 +238,13 @@ Built the images on one machine and do not want to rebuild them on another?
 Export the complete managed set to one archive:
 
 ```bash
-./rocmplete images export all \
-  --output /path/to/backup/rocmplete-images.tar
+./paracetamol images export all \
+  --output /path/to/backup/paracetamol-images.tar
 
-./rocmplete images import \
-  /path/to/backup/rocmplete-images.tar --dry-run
-./rocmplete images import \
-  /path/to/backup/rocmplete-images.tar
+./paracetamol images import \
+  /path/to/backup/paracetamol-images.tar --dry-run
+./paracetamol images import \
+  /path/to/backup/paracetamol-images.tar
 ```
 
 `export all` writes content tools, the minimal ROCm runtime, the managed
@@ -254,8 +254,8 @@ base layers. llama.cpp includes content tools and the lower ROCm runtime but
 not the unrelated PyTorch base:
 
 ```bash
-./rocmplete images export comfyui \
-  --output /path/to/backup/rocmplete-comfyui.tar
+./paracetamol images export comfyui \
+  --output /path/to/backup/paracetamol-comfyui.tar
 ```
 
 The output must be new. Export writes a same-directory partial file and
@@ -268,7 +268,7 @@ import idempotent. A current tag pointing to different bytes is refused;
 remove that exact tag deliberately before retrying:
 
 ```bash
-./rocmplete cleanup images --image-tag IMAGE_TAG
+./paracetamol cleanup images --image-tag IMAGE_TAG
 ```
 
 Image archives contain build outputs only. Models, workflows, inputs, outputs,
@@ -283,24 +283,24 @@ workflows, inputs, outputs, and application state you probably care about.
 Without configuration, the default host data directory is:
 
 ```text
-${XDG_DATA_HOME:-$HOME/.local/share}/rocmplete
+${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol
 ```
 
 For a durable location on another filesystem, create
-`${XDG_CONFIG_HOME:-$HOME/.config}/rocmplete/config.toml`:
+`${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`:
 
 ```toml
 [storage]
-data_dir = "/mnt/ai/rocmplete"
+data_dir = "/mnt/ai/paracetamol"
 ```
 
-The path must be absolute. ROCmplete reads this file but never creates it or
+The path must be absolute. Paracetamol reads this file but never creates it or
 moves existing data automatically. A malformed file, misspelled section, or
 unknown setting is rejected instead of silently falling back somewhere else.
 Resolution order is:
 
 1. `--data-dir`
-2. `ROCMLETE_DATA_DIR`
+2. `PARACETAMOL_DATA_DIR`
 3. `[storage].data_dir` in `config.toml`
 4. the XDG data default above
 
@@ -315,24 +315,24 @@ staging/    resumable downloads and reproducible caches
 Container root filesystems are read-only. Persistent mounts use Podman's
 `keep-id` user namespace, so private host files remain accessible without
 making them world-readable and container-created files belong to the invoking
-host user. ROCmplete passes the launcher's umask into managed containers.
+host user. Paracetamol passes the launcher's umask into managed containers.
 
 ## Status, logs, and stop
 
 `status` is a read-only human dashboard:
 
 ```bash
-./rocmplete status
+./paracetamol status
 ```
 
 For a running llama.cpp server, select the application scope to print a
 shareable runtime report instead of the general dashboard:
 
 ```bash
-./rocmplete status llama-cpp
+./paracetamol status llama-cpp
 
 # Required for model-specific details when the router serves many presets:
-./rocmplete status llama-cpp \
+./paracetamol status llama-cpp \
   --model qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
@@ -341,19 +341,19 @@ exact PID 1 command, and generated router selection. It identifies the
 resolved profile and GPU rather than repeating a requested `auto`, then joins
 that state to the managed model's source, template, reasoning, sampling,
 context, cache, Flash Attention, and speculative-decoding policy. It also
-prints a copyable ROCmplete command reproducing the effective launch. API-key
+prints a copyable Paracetamol command reproducing the effective launch. API-key
 values and host secret paths are redacted. A router report without `--model`
 lists its configured preset identifiers and shows how to select one.
 
 Detached application containers have independent names:
 
 ```bash
-./rocmplete logs comfyui --follow
-./rocmplete logs llama-cpp --follow
+./paracetamol logs comfyui --follow
+./paracetamol logs llama-cpp --follow
 
-./rocmplete stop comfyui
-./rocmplete stop llama-cpp
-./rocmplete stop all
+./paracetamol stop comfyui
+./paracetamol stop llama-cpp
+./paracetamol stop all
 ```
 
 Logs show the newest 200 lines by default. Use `--tail N`, `--follow`, or
@@ -363,7 +363,7 @@ Podman force-removes the exact container instead of leaving it indefinitely
 in `Stopping`.
 
 An attached application or batch process that exits unsuccessfully is reported
-as a ROCmplete error containing the container's exact exit status. The launcher
+as a Paracetamol error containing the container's exact exit status. The launcher
 itself exits with status 1 after printing that diagnostic.
 
 ## Scoped cleanup
@@ -372,20 +372,20 @@ Choose what you mean to remove. There is no hidden system-wide prune behind
 any of these commands:
 
 ```bash
-./rocmplete cleanup containers
-./rocmplete cleanup containers comfyui
-./rocmplete cleanup build-cache
-./rocmplete cleanup images
-./rocmplete cleanup images comfyui
-./rocmplete cleanup caches
-./rocmplete cleanup downloads
-./rocmplete cleanup data
+./paracetamol cleanup containers
+./paracetamol cleanup containers comfyui
+./paracetamol cleanup build-cache
+./paracetamol cleanup images
+./paracetamol cleanup images comfyui
+./paracetamol cleanup caches
+./paracetamol cleanup downloads
+./paracetamol cleanup data
 ```
 
 `cleanup containers` covers more than the application
-names. It also discovers ROCmplete-labelled benchmark, acceptance, shell,
+names. It also discovers Paracetamol-labelled benchmark, acceptance, shell,
 diagnostic, and downloader containers. Exact benchmark names and the generated
-`rocmplete-download-*` namespace remain recognized so cleanup can recover
+`paracetamol-download-*` namespace remain recognized so cleanup can recover
 owned containers after an interruption.
 This scope uses immediate forced removal because it is explicitly for
 abandoned or unwanted containers; persistent application and content data
@@ -397,7 +397,7 @@ An already-empty scope reports the absent resources and exits without a
 prompt. Scripts must make both intent and noninteractive execution explicit:
 
 ```bash
-./rocmplete cleanup downloads --yes --non-interactive
+./paracetamol cleanup downloads --yes --non-interactive
 ```
 
 The same `--yes` and `--non-interactive` flags apply to `containers`, `images`,
@@ -411,7 +411,7 @@ expected staging path is freed for a verified retry. Reproducible caches and
 resumable downloads can be removed independently of installed content.
 
 `cleanup build-cache` removes reusable Python packages downloaded during image
-builds from `${XDG_CACHE_HOME:-$HOME/.cache}/rocmplete/build`. This cache is
+builds from `${XDG_CACHE_HOME:-$HOME/.cache}/paracetamol/build`. This cache is
 separate from persistent application/content data and from Podman's image
 layers. Cleanup therefore does not require stopping managed containers and
 never invokes a general Podman prune. Its plan includes the exact cache path

@@ -6,8 +6,8 @@ package application
 import (
 	"fmt"
 
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
 )
 
 type ID string

@@ -1,6 +1,6 @@
 # Routine upgrade runbook
 
-Use this runbook for a periodic review of ROCmplete's upstreams and pinned
+Use this runbook for a periodic review of Paracetamol's upstreams and pinned
 dependencies. It is the short operational entry point; the linked maintenance
 guides remain authoritative for how each kind of update is performed.
 
@@ -25,7 +25,7 @@ not prose snapshots:
 
 ```bash
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-rg -n 'localhost/rocmplete:' internal/config/config.go
+rg -n 'localhost/paracetamol:' internal/config/config.go
 cat containers/content_tools/requirements.txt
 cat applications/comfyui/constraints.txt
 ```

@@ -17,18 +17,18 @@ import (
 	"strings"
 	"syscall"
 
-	"rocmplete/internal/application"
-	"rocmplete/internal/buildplan"
-	"rocmplete/internal/config"
-	"rocmplete/internal/content"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/process"
-	"rocmplete/internal/runtime"
-	"rocmplete/internal/storage"
-	"rocmplete/internal/ui"
+	"paracetamol/internal/application"
+	"paracetamol/internal/buildplan"
+	"paracetamol/internal/config"
+	"paracetamol/internal/content"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/process"
+	"paracetamol/internal/runtime"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) commandBuild(args []string) error {
@@ -1000,7 +1000,7 @@ func (app *App) projectSourceIdentity() (string, error) {
 		return revision, nil
 	}
 	hash := sha256.New()
-	hash.Write([]byte("rocmplete-source-v1\x00" + revision + "\x00"))
+	hash.Write([]byte("paracetamol-source-v1\x00" + revision + "\x00"))
 	hash.Write(difference.Stdout)
 	paths := strings.Split(strings.TrimSuffix(string(untracked.Stdout), "\x00"), "\x00")
 	sort.Strings(paths)

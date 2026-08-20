@@ -10,13 +10,13 @@ import (
 	"regexp"
 	"strings"
 
-	"rocmplete/internal/application"
-	"rocmplete/internal/benchmark"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/process"
+	"paracetamol/internal/application"
+	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/process"
 )
 
 type App struct {

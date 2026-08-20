@@ -1,6 +1,6 @@
 # Target-hardware acceptance
 
-ROCmplete targets `gfx1201`, `gfx1200`, `gfx1151`, and `gfx1150`, but a
+Paracetamol targets `gfx1201`, `gfx1200`, `gfx1151`, and `gfx1150`, but a
 successful build, CPU startup, or unit test is not GPU inference acceptance.
 This matrix defines a finite pre-release gate and prevents one convenient
 workflow from standing in for the complete target surface.
@@ -28,11 +28,11 @@ this document.
 
 ### Fedora 44 Strix Halo Maki native reasoning transport (2026-08-18)
 
-ROCmplete commit `cf7e75e` was exercised with a Maki 0.4.8 build containing
+Paracetamol commit `cf7e75e` was exercised with a Maki 0.4.8 build containing
 commit `a9495e1` on the Fedora 44 Strix Halo host with kernel
 `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The existing llama.cpp image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
 `7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
 
 Fresh Maki TUI sessions and a loopback request capture confirmed the exact
@@ -60,10 +60,10 @@ representative GPU inference wiring, not agent-task quality or performance.
 
 ### Fedora 44 Strix Halo model-scoped reasoning fallback (2026-08-17)
 
-ROCmplete commit `0355a73` was built and exercised on the Fedora 44 Strix Halo
+Paracetamol commit `0355a73` was built and exercised on the Fedora 44 Strix Halo
 host with kernel `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The resulting image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
 `7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
 The complete managed patch set applied to pinned llama.cpp commit `3cb7ffb`,
 the image passed `pip check`, and the three direct-preset containers stopped
@@ -89,10 +89,10 @@ live GPU inference wiring, not comparative model quality.
 
 ### Fedora 44 Strix Halo Pi Qwen reasoning transports (2026-08-17)
 
-ROCmplete commit `84ada22` was exercised with Pi 0.84.2 on the Fedora 44
+Paracetamol commit `84ada22` was exercised with Pi 0.84.2 on the Fedora 44
 Strix Halo host with kernel `7.1.7-200.fc44.x86_64`, ROCm 7.14, and
 `/dev/dri/renderD128`. The router used the existing
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` image (image
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` image (image
 ID `24e307ca7006bc093d20111e18e71d41256c4e8fda0a74c5df2729d417ecd1a3`);
 the correction changed generated Pi metadata and required no image rebuild.
 
@@ -113,10 +113,10 @@ general-protection fault, or OOM event.
 
 ### Fedora 44 Strix Halo llama.cpp runtime report (2026-08-17)
 
-ROCmplete commit `492bafb` was built and exercised on the Fedora 44 Strix Halo
+Paracetamol commit `492bafb` was built and exercised on the Fedora 44 Strix Halo
 host with kernel `7.1.7-200.fc44.x86_64`, ROCm 7.14, and
 `/dev/dri/renderD128`. The resulting image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
 `24e307ca7006bc093d20111e18e71d41256c4e8fda0a74c5df2729d417ecd1a3`).
 The image passed `pip check`, and its labels identified the pinned llama.cpp
 revision and all four applied downstream patches.
@@ -142,10 +142,10 @@ performance.
 
 ### Fedora 44 Strix Halo catalog-driven reasoning sampling (2026-08-17)
 
-ROCmplete commit `b90eded` was built and exercised on the Fedora 44 Strix Halo
+Paracetamol commit `b90eded` was built and exercised on the Fedora 44 Strix Halo
 host with kernel `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The resulting image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r28` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r28` (image ID
 `4d432e66ee54226bb8ada1d938fc264832ceabd2be657e12ccde2f7e791f5dba`).
 The complete managed patch set applied to the pinned llama.cpp source and
 compiled its ROCm and Vulkan backends. The image passed `pip check`; its three
@@ -175,10 +175,10 @@ not a model-quality or performance comparison.
 
 ### Fedora 44 Strix Halo Qwen3.8 mode-aware sampling (2026-08-17)
 
-ROCmplete commit `fe6d5c3` was built and exercised on the Fedora 44 Strix Halo
+Paracetamol commit `fe6d5c3` was built and exercised on the Fedora 44 Strix Halo
 host with kernel `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The resulting image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r26` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r26` (image ID
 `0b1f72908463ed2bf243bb6ac3a412872f520264b257d2c6caa1ed2fec4869dc`).
 The image passed `pip check`, and the pinned llama.cpp source accepted and
 compiled the complete managed patch set.
@@ -205,11 +205,11 @@ performance comparison.
 
 ### Fedora 44 Strix Halo Qwen3.6 mode-aware sampling (2026-08-17)
 
-ROCmplete implementation commit `abec977`, from checkout `53b0032`, was built
+Paracetamol implementation commit `abec977`, from checkout `53b0032`, was built
 and exercised on the Fedora 44 Strix Halo host with kernel
 `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The resulting image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r27` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r27` (image ID
 `30e73b218a52de1891be90c787317deeddd991370442f28a34db3dea233bb775`).
 The downstream patch applied to the pinned llama.cpp source and compiled for
 all four managed GPU targets. The image passed `pip check`, retained only the
@@ -239,12 +239,12 @@ sampling-policy wiring and inference path, not comparative model quality.
 
 ### Fedora 44 Strix Halo Qwen3.6 35B-A3B restoration (2026-08-17)
 
-ROCmplete commit `f6d4c43` restored the pinned non-MTP and MTP Qwen3.6
+Paracetamol commit `f6d4c43` restored the pinned non-MTP and MTP Qwen3.6
 35B-A3B catalog paths without changing the managed-client default. The MTP
 path was exercised on the Fedora 44 Strix Halo host with kernel
 `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The existing llama.cpp image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r25` (image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r25` (image ID
 `55b2ed6796687891d18e77b86bf8d1ded883ce3a03c5e97769da92ddb21a803c`).
 Its managed `qwen3.6.jinja` matched SHA-256
 `ea69920311f2efccf6343675490b27bd22d03787ebb8ccaf6e9101bfeba72898`.
@@ -273,10 +273,10 @@ this restoration check.
 
 ### Fedora 44 Strix Halo DwarfStar DSpark observation (2026-08-17)
 
-ROCmplete commit `363fedf` was exercised on the Fedora 44 Strix Halo host with
+Paracetamol commit `363fedf` was exercised on the Fedora 44 Strix Halo host with
 kernel `7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
 `/dev/dri/renderD128`. The DwarfStar image was
-`localhost/rocmplete:dwarfstar-ubuntu26.04-rocm7.14-84cc882-r7` (image ID
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm7.14-84cc882-r7` (image ID
 `246657a79924b937e6cf641852b8ae01066d2e19980f58851f453b073f077570`).
 The installed pair combined the verified 80.76 GiB target with the independently
 verified 5.58 GiB support GGUF from revision
@@ -314,10 +314,10 @@ These results provide no reason to make it the DwarfStar default on Strix Halo.
 This field observation used kernel `7.1.7-200.fc44.x86_64`, profile
 `strix-halo`, and `/dev/dri/renderD128`. The final bounded DwarfStar smoke used
 source commit `a333de2`, DwarfStar image
-`localhost/rocmplete:dwarfstar-ubuntu26.04-rocm7.14-d250a7c-r4` (image ID
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm7.14-d250a7c-r4` (image ID
 `531fdef3be07c78825c573a3b2ceb333ab6b47245158f65894150fe3a54e902d`),
 and the managed DeepSeek V4 Flash 0731 Q2 imatrix bundle. The llama.cpp tests
-used image `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-ddd4ec1-r14`
+used image `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-ddd4ec1-r14`
 (image ID
 `e3459ab8f0d7f96d3b846ebd90b29f8fd5187a7eb7689226cf69877c1ba8fd29`).
 
@@ -362,7 +362,7 @@ Observed results:
   `20260809T184422Z-backend-comparison-860c0bbf.json` below the same benchmark
   directory.
 - A 2026-08-11 OMP 17.2.12 probe used the managed launcher and
-  llama.cpp image `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16`
+  llama.cpp image `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16`
   to load Qwen3.6 35B-A3B MTP at 262144 context.
   OMP called its `read` tool inside the default bubblewrap boundary, replayed
   the 318-line `AGENTS.md` result, and returned the exact requested heading.
@@ -377,7 +377,7 @@ Observed results:
   on two providers, not the complete agent matrix.
 - A later manual Muse Glimmer run used source commit `9de3587`, llama.cpp
   commit `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0`, image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r15`, and the
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r15`, and the
   then-managed Unsloth Q8 target through preset
   `muse-glimmer-30b-ud-q8-k-xl-dflash` at 128K. OpenCode 1.18.15 completed a five-turn
   read-only repository task with structured grep and read calls, replayed
@@ -396,7 +396,7 @@ Observed results:
   inputs and runtime caveats are recorded in
   [the feasibility snapshot](muse-glimmer-llama-cpp-agent-feasibility.md).
 - The candidate integration image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16` (image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16` (image ID
   `15aa29c45b41f011f5edacd9f5fb761db26eae488d447453414e2d1b2a9e07a3`)
   subsequently loaded the verified official K-quant and DFlash files through
   the managed 128K preset. Direct startup included `--reasoning-preserve`, a
@@ -406,7 +406,7 @@ Observed results:
   containers stopped cleanly. This verifies the new wiring, but remains a
   field observation rather than a formal matrix `PASS`.
 - The 2026-08-12 Muse ATEM template correction was accepted with image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r17` (image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r17` (image ID
   `98369219e680a5e44517ba1955a4fb3ce18fbcbf80cc3d89961e76648ddcb193`).
   Direct and routed 128K DFlash servers both received the pinned managed
   template and completed required structured tool calls; the direct path also
@@ -441,7 +441,7 @@ Observed results:
 - A 2026-08-12 KAT-Coder template audit used the same Fedora Strix Halo host,
   llama.cpp commit, KAT Q8_0 artifact, Pi 0.84.1, ROCm backend, 131072-token
   evaluation context, and high thinking. Candidate image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r18` had image
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r18` had image
   ID `98b81f0ab4b1cf948de4564e3c01bd722acc360a1c25538380e1b9f9361f0a04`.
   Its managed template matched Kwaipilot base revision
   `3a7d874090df0cd4399401982eca67df2c5a7e82` byte for byte and rendered a
@@ -468,7 +468,7 @@ Observed results:
   wall time rose from 6.16 to 6.75 seconds.
 
   Final image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r20` (image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r20` (image ID
   `ad6d419895b89e050c5e813e6cb0e2ed82261d2887bea27b0a92734fd1774992`)
   contained managed `qwen3.6.jinja` with SHA-256
   `ea69920311f2efccf6343675490b27bd22d03787ebb8ccaf6e9101bfeba72898`.
@@ -508,7 +508,7 @@ Observed results:
   [Ling feasibility snapshot](ling-3.0-flash-llama-cpp-feasibility.md).
 - The 2026-08-13 Qwen27 tuning acceptance used the candidate bytes subsequently
   committed as `9fa54a5` and image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19` (image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19` (image ID
   `d4b7065b465a85efbfc5ff0aa10895283bdc5e79b2aae5b528f9f1b6e9647147`).
   Direct and router ROCm startup at the default 262144 context both resolved
   MTP depth three, Flash Attention on, and symmetric Q8_0 target K/V while
@@ -518,7 +518,7 @@ Observed results:
   kernel recorded no GPU fault. Qwen35-A3B and other hardware profiles remain
   unchanged. Full controls and caveats are in the
   [Qwen tuning snapshot](qwen3.6-strix-halo-llama-cpp-tuning-feasibility.md).
-- A 2026-08-14 llama.cpp source update used ROCmplete commit `cad4588`,
+- A 2026-08-14 llama.cpp source update used Paracetamol commit `cad4588`,
   upstream release `b10430` at commit
   `4c1a0af40d88c7fbb3b15c85bf2e8016d1d5b64c`, and the same Fedora Strix
   Halo host. All four downstream patches were rebased and applied fail closed.
@@ -526,7 +526,7 @@ Observed results:
   `ab0c12904be072df89dfc983d1a7a56b4bed55c1dcd251278465e8965789af30`.
   The final cold build rebuilt the complete prerequisite closure without image
   or package-download caches and produced image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r21`, image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r21`, image ID
   `94d426c19c6ea20270168e91da53346c7c4dd951349788426060138cdf11aa67`.
   The final image reported the exact upstream revision and all four target
   architectures, passed `pip check` and retained-binary `ldd`, and contained
@@ -576,7 +576,7 @@ Observed results:
   The one 31,457,991,680-byte file reports the `qwen35` architecture, native
   262144 context, and embedded MTP tensors. The reasoning-template forwarding
   change produced image
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r22`, image ID
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r22`, image ID
   `86351eeda1d4c89f7cc980f0fbbf0a5bddd21bbe0a8e6a109a3f2d5b171be6ea`.
   The image passed `pip check`; CPU startup at 4096 context and direct base,
   direct depth-three MTP, and router ROCm startup on `gfx1151` all passed. The
@@ -585,7 +585,7 @@ Observed results:
 
   The embedded Unsloth template retained three consecutive leading system or
   developer messages, advertised object and parallel tool-call support, and
-  rendered ROCmplete's top-level low and high effort choices as the model's
+  rendered Paracetamol's top-level low and high effort choices as the model's
   low and xhigh instructions. Medium selected the template's intentionally
   unadorned middle policy. Low, medium, and high requests all returned the
   correct bounded result. A required function call produced the exact nested
@@ -710,8 +710,8 @@ general-protection fault, or OOM event.
 The Fedora Strix Halo host then compared the same pinned Dynamic Q4_K_XL
 artifact at 64K, 128K, and 256K with ROCm, embedded MTP depth three, native
 medium effort, Pi 0.84.2, and the balanced platform profile. Tests used
-ROCmplete commit `80f2e2f3d6bf6406c0f2ef3f9d195e8bb93cad6c` and image
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+Paracetamol commit `80f2e2f3d6bf6406c0f2ef3f9d195e8bb93cad6c` and image
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
 `7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`).
 
 Each context received two fresh attempts at the same hidden-graded synthetic
@@ -744,7 +744,7 @@ presets continue to share one file and do not use Unsloth's separately
 published MTP artifact. The changed destination lets this file coexist with
 the earlier 17,923,394,624-byte preview instead of overwriting it.
 
-Tests used ROCmplete source `1507f54dba3de141fa4592a9fdfd92d8f39809c1`,
+Tests used Paracetamol source `1507f54dba3de141fa4592a9fdfd92d8f39809c1`,
 Pi 0.84.2, and stock r29 image
 `sha256:7c5d6efa0df5c5965db38fd59911ab4856a02620674e62ff62dfc55b9ca58d3f`
 on the Fedora Strix Halo host. A matched native ROCm benchmark used 4K
@@ -767,7 +767,7 @@ A required nested `record_value` call carried the requested string and integer
 arguments, and its tool-result continuation returned exact `FINAL_TOOL_OK`.
 No request required a separate MTP file, and the server stopped cleanly.
 
-Fresh Pi evaluation used the frozen `rocmplete-coding-v5` suite at the Q4
+Fresh Pi evaluation used the frozen `paracetamol-coding-v5` suite at the Q4
 preset's 128K default and native medium effort. Dynamic v3 strictly solved
 `re-align`, `fz-symlink`, and `proxy-late-probe`; `re-cancel` and
 `rc-selinux-verify` completed but failed hidden grading. The earlier artifact
@@ -798,8 +798,8 @@ conditions; no model-quality conclusion is carried forward.
 Start acceptance on a new or updated host with:
 
 ```bash
-./rocmplete acceptance --dry-run
-./rocmplete acceptance
+./paracetamol acceptance --dry-run
+./paracetamol acceptance
 ```
 
 The checkpointed suite covers exact GPU/CPU device isolation, short ComfyUI
@@ -904,7 +904,7 @@ results only after all candidates complete; record quality, protocol,
 state-corruption, or truncation failures instead of treating wall time as the
 sole rank. Run per-model native-level sweeps as a separate experiment.
 
-Keep the first Qwen3.8 pass on ROCmplete's pinned official-template adaptation.
+Keep the first Qwen3.8 pass on Paracetamol's pinned official-template adaptation.
 Do not replace it mid-comparison in response to anecdotal release reports. The
 froggeric community template is a separate candidate because it changes
 history rendering, role handling, tool serialization, control tags, and

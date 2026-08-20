@@ -26,7 +26,7 @@ func TestParseStorageDataDirRejectsUnknownSettings(t *testing.T) {
 
 func TestDefaultDataDirUsesConfiguration(t *testing.T) {
 	root := t.TempDir()
-	configuration := filepath.Join(root, "config", "rocmplete")
+	configuration := filepath.Join(root, "config", "paracetamol")
 	if err := os.MkdirAll(configuration, 0o755); err != nil {
 		t.Fatal(err)
 	}

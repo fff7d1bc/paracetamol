@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestROCmpleteEvalRetryEINTRUntilSuccess(t *testing.T) {
+func TestParacetamolEvalRetryEINTRUntilSuccess(t *testing.T) {
 	calls := 0
 	got, err := retryEINTR(func() (int, error) {
 		calls++
@@ -24,7 +24,7 @@ func TestROCmpleteEvalRetryEINTRUntilSuccess(t *testing.T) {
 	}
 }
 
-func TestROCmpleteEvalRetryEINTRReturnsOtherErrors(t *testing.T) {
+func TestParacetamolEvalRetryEINTRReturnsOtherErrors(t *testing.T) {
 	wantErr := errors.New("permanent failure")
 	calls := 0
 	_, err := retryEINTR(func() (int, error) {

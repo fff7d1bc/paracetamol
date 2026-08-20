@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 var renderNodePattern = regexp.MustCompile(`^/dev/dri/renderD[0-9]+$`)
