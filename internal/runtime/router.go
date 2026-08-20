@@ -26,7 +26,6 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 		identifiers = append(identifiers, identifier)
 	}
 	sort.Strings(identifiers)
-	sections := []string{"version = 1", ""}
 	installed := make([]string, 0, len(identifiers))
 	for _, identifier := range identifiers {
 		preset := managed.LlamaPresets[identifier]
@@ -47,7 +46,39 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 		if !ready {
 			return "", nil, fmt.Errorf("managed llama.cpp preset %s is incomplete", identifier)
 		}
-		artifact := managed.Artifacts[preset.Artifact]
+		installed = append(installed, identifier)
+	}
+	if len(installed) == 0 {
+		return "", nil, fmt.Errorf("no managed llama.cpp presets are installed")
+	}
+	contents, err := RenderRouterModels(managed, backend, installed)
+	return contents, installed, err
+}
+
+// RenderRouterModels renders exactly the already-validated preset snapshot
+// supplied by its caller. The gateway uses this after receipt validation so
+// unrelated incomplete content cannot alter its frozen startup inventory.
+func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []string) (string, error) {
+	if len(identifiers) == 0 {
+		return "", fmt.Errorf("router requires at least one llama.cpp preset")
+	}
+	selected := append([]string(nil), identifiers...)
+	sort.Strings(selected)
+	for index, identifier := range selected {
+		if index > 0 && selected[index-1] == identifier {
+			return "", fmt.Errorf("duplicate llama.cpp router preset %q", identifier)
+		}
+		if _, ok := managed.LlamaPresets[identifier]; !ok {
+			return "", fmt.Errorf("unknown llama.cpp router preset %q", identifier)
+		}
+	}
+	sections := []string{"version = 1", ""}
+	for _, identifier := range selected {
+		preset := managed.LlamaPresets[identifier]
+		artifact, ok := managed.Artifacts[preset.Artifact]
+		if !ok {
+			return "", fmt.Errorf("llama.cpp preset %s references unknown artifact %s", identifier, preset.Artifact)
+		}
 		section := []string{"[" + identifier + "]", "model = /content/models/" + artifact.Destination, fmt.Sprintf("c = %d", preset.DefaultContext)}
 		if len(preset.ContextOverrideArchitectures) > 0 {
 			var overrides []string
@@ -69,7 +100,7 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 			policy := managed.SamplingPolicies[preset.SamplingPolicy]
 			encoded, encodeErr := orderedSamplingJSON(policy)
 			if encodeErr != nil {
-				return "", nil, encodeErr
+				return "", encodeErr
 			}
 			section = append(section, "sampling-defaults-by-reasoning = "+encoded)
 		}
@@ -88,12 +119,8 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 			}
 		}
 		sections = append(sections, append(section, "load-on-startup = false", "")...)
-		installed = append(installed, identifier)
 	}
-	if len(installed) == 0 {
-		return "", nil, fmt.Errorf("no managed llama.cpp presets are installed")
-	}
-	return strings.Join(sections, "\n"), installed, nil
+	return strings.Join(sections, "\n"), nil
 }
 
 func orderedSamplingJSON(policy catalog.SamplingPolicy) (string, error) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,7 @@ import (
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/process"
+	"paracetamol/internal/textmodel"
 )
 
 func projectRoot(t *testing.T) string {
@@ -98,7 +101,11 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := PiConfig(managed, "http://127.0.0.1:8080/v1", "http://127.0.0.1:8000/v1")
+	models, err := AgentModels(managed, []string{"qwen3.8-27b-mtp-ud-q8-k-xl", "deepseek-v4-flash-0731-q2-imatrix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := PiConfig(managed, "http://127.0.0.1:8080/v1", models)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,18 +114,78 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	providers, ok := document["providers"].(map[string]any)
-	if !ok || providers[ProviderID] == nil || providers[DwarfStarProviderID] == nil {
+	if !ok || len(providers) != 1 || providers[ProviderID] == nil {
 		t.Fatalf("providers = %#v", document["providers"])
+	}
+	if len(models) != 2 || models[0].Backend != textmodel.BackendDwarfStar || models[1].Backend != textmodel.BackendLlamaCPP {
+		t.Fatalf("selected models = %#v", models)
 	}
 }
 
-func TestNormalizeRemoteLlamaURL(t *testing.T) {
-	if value, err := NormalizeLlamaURL("http://aion.local:8080/v1/"); err != nil || value != "http://aion.local:8080/v1" {
+func TestNormalizeGatewayURL(t *testing.T) {
+	if value, err := NormalizeGatewayURL("http://aion.local:8080/v1/"); err != nil || value != "http://aion.local:8080/v1" {
 		t.Fatalf("value = %q, err = %v", value, err)
 	}
 	for _, value := range []string{"aion.local:8080/v1", "http://user@aion.local/v1", "http://aion.local/other"} {
-		if _, err := NormalizeLlamaURL(value); err == nil {
+		if _, err := NormalizeGatewayURL(value); err == nil {
 			t.Fatalf("accepted %q", value)
 		}
+	}
+}
+
+func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/models" {
+			t.Fatalf("path=%s", request.URL.Path)
+		}
+		_, _ = writer.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash-0731-q2-imatrix"}]}`))
+	}))
+	defer server.Close()
+	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), server.URL+"/v1", nil, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.DefaultProvider != ProviderID || plan.DefaultModel != "deepseek-v4-flash-0731-q2-imatrix" || plan.DefaultThinking != "high" {
+		t.Fatalf("plan=%#v", plan)
+	}
+	if strings.Contains(string(plan.Config), RecommendedModel) {
+		t.Fatalf("unadvertised model leaked into Pi config: %s", plan.Config)
+	}
+}
+
+func TestPiManagementDoesNotContactGateway(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:1/v1", []string{"list"}, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Mode != "management" || len(plan.Config) == 0 {
+		t.Fatalf("plan=%#v", plan)
+	}
+}
+
+func TestMakiStateRemovesOnlyRecognizedLegacyDwarfStarProvider(t *testing.T) {
+	root := t.TempDir()
+	plan := MakiPlan{Providers: map[string][]byte{ProviderID: []byte("#!/bin/sh\n")}, Init: []byte("maki.setup({})\n"), Tiers: []byte("{}\n")}
+	paths, err := PrepareMakiState(plan, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(paths.Config, "maki", "providers", "dwarfstar")
+	if err := os.WriteFile(legacy, []byte("#!/bin/sh\nset -eu\n# Paracetamol DwarfStar\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PrepareMakiState(plan, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("legacy provider still exists: %v", err)
 	}
 }

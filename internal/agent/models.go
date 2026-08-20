@@ -3,126 +3,101 @@ package agent
 
 import (
 	"fmt"
-	"sort"
+	"strings"
 
 	"paracetamol/internal/catalog"
-	"paracetamol/internal/content"
 	"paracetamol/internal/identity"
-	"paracetamol/internal/verification"
+	"paracetamol/internal/textmodel"
 )
 
 var ProviderID = identity.StateNamespace
 
-const (
-	DwarfStarProviderID = "dwarfstar"
-	DwarfStarModel      = "deepseek-v4-flash-0731-q2-imatrix"
-	RecommendedModel    = "qwen3.8-27b-mtp-ud-q8-k-xl"
-	DwarfStarContext    = 131072
-	DwarfStarOutput     = 16000
-)
+const RecommendedModel = "qwen3.8-27b-mtp-ud-q8-k-xl"
 
-func OutputLimit(context int64) int64 {
-	value := context / 4
-	if value < 4096 {
-		value = 4096
-	}
-	if value > 16384 {
-		value = 16384
-	}
-	return value
-}
-
-func ReasoningLevels(preset catalog.LlamaPreset) []string {
-	if preset.ReasoningControl == "" {
-		return []string{"off"}
-	}
-	levels := append([]string(nil), preset.ReasoningLevels...)
-	if preset.ReasoningControl == "toggle" {
-		levels = []string{"high"}
-	}
-	if preset.ReasoningOff {
-		levels = append([]string{"off"}, levels...)
-	}
-	return levels
-}
-
-func ReasoningDefault(preset catalog.LlamaPreset) string {
-	if preset.ReasoningControl == "toggle" {
-		return "high"
-	}
-	return preset.ReasoningDefault
-}
-
-func InstalledAgentPresets(managed catalog.Catalog, dataRoot string) ([]string, error) {
-	store, err := verification.Load(dataRoot)
+// AgentModels intersects the catalog's client capabilities with the gateway's
+// frozen advertised inventory. A nil inventory deliberately means all models
+// and is used only by client management commands that do not contact a gateway.
+func AgentModels(managed catalog.Catalog, advertised []string) ([]textmodel.Model, error) {
+	models, err := textmodel.All(managed)
 	if err != nil {
 		return nil, err
 	}
-	var result []string
-	for identifier, preset := range managed.LlamaPresets {
-		if !preset.AgentTools {
-			continue
-		}
-		bundle := managed.Bundles[preset.Bundle]
-		statuses, err := content.InspectBundle(store, managed, bundle, dataRoot, false)
-		if err != nil {
-			return nil, err
-		}
-		ready := len(statuses) > 0
-		for _, status := range statuses {
-			ready = ready && content.Ready(status.State)
-		}
-		if ready {
-			result = append(result, identifier)
+	var selected map[string]bool
+	if advertised != nil {
+		selected = make(map[string]bool, len(advertised))
+		for _, identifier := range advertised {
+			selected[identifier] = true
 		}
 	}
-	sort.Strings(result)
+	result := make([]textmodel.Model, 0, len(models))
+	for _, model := range models {
+		if model.AgentTools && (selected == nil || selected[model.ID]) {
+			result = append(result, model)
+		}
+	}
 	return result, nil
 }
 
-func DefaultModel(managed catalog.Catalog, dataRoot, client string) (string, string, string, error) {
-	installed, err := InstalledAgentPresets(managed, dataRoot)
-	if err != nil {
-		return "", "", "", err
+func DefaultModel(models []textmodel.Model, client string) (string, string, string, error) {
+	if len(models) == 0 {
+		return "", "", "", fmt.Errorf("gateway advertises no model maintained for %s", client)
 	}
-	selected := ""
-	for _, identifier := range installed {
-		if identifier == RecommendedModel {
-			selected = identifier
+	selected := models[0]
+	for _, model := range models {
+		if model.ID == RecommendedModel {
+			selected = model
 			break
 		}
 	}
-	if selected == "" && len(installed) > 0 {
-		selected = installed[0]
+	return ProviderID, selected.ID, textmodel.ReasoningDefault(selected), nil
+}
+
+func DwarfStarModel(managed catalog.Catalog) (textmodel.Model, error) {
+	models, err := AgentModels(managed, nil)
+	if err != nil {
+		return textmodel.Model{}, err
 	}
-	if selected != "" {
-		return ProviderID, selected, ReasoningDefault(managed.LlamaPresets[selected]), nil
-	}
-	bundle := managed.Bundles["dwarfstar-deepseek-v4-flash-0731-q2-imatrix"]
-	store, loadErr := verification.Load(dataRoot)
-	if loadErr == nil {
-		statuses, inspectErr := content.InspectBundle(store, managed, bundle, dataRoot, false)
-		ready := inspectErr == nil && len(statuses) > 0
-		for _, status := range statuses {
-			ready = ready && content.Ready(status.State)
-		}
-		if ready {
-			return DwarfStarProviderID, DwarfStarModel, "high", nil
+	var selected []textmodel.Model
+	for _, model := range models {
+		if model.Backend == textmodel.BackendDwarfStar {
+			selected = append(selected, model)
 		}
 	}
-	return "", "", "", fmt.Errorf("no installed model is maintained for %s\n  llama.cpp: %s\n  DwarfStar: %s", client, identity.Command("content", "install", "llama-cpp", "qwen3.8"), identity.Command("content", "install", "dwarfstar", "flash-0731-q2-imatrix"))
+	if len(selected) != 1 {
+		return textmodel.Model{}, fmt.Errorf("expected exactly one agent-capable DwarfStar preset, found %d", len(selected))
+	}
+	return selected[0], nil
+}
+
+// These adapters keep benchmark reasoning validation on the same shared model
+// policy without making benchmark code construct backend-neutral models.
+func OutputLimit(context int64) int64 { return textmodel.OutputLimit(context) }
+
+func ReasoningLevels(preset catalog.LlamaPreset) []string {
+	return textmodel.ReasoningLevels(llamaTextModel(preset))
+}
+
+func ReasoningDefault(preset catalog.LlamaPreset) string {
+	return textmodel.ReasoningDefault(llamaTextModel(preset))
+}
+
+func llamaTextModel(preset catalog.LlamaPreset) textmodel.Model {
+	return textmodel.Model{
+		ReasoningControl: preset.ReasoningControl, ReasoningLevels: append([]string(nil), preset.ReasoningLevels...),
+		ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
+	}
 }
 
 func ClientSampling(managed catalog.Catalog, identifier string) map[string]any {
-	preset := managed.LlamaPresets[identifier]
-	if preset.SamplingPolicy != "" {
+	preset, ok := managed.LlamaPresets[identifier]
+	if !ok || preset.SamplingPolicy != "" {
 		return nil
 	}
 	shared := map[string]any{"temperature": 1.0, "top_p": 0.95, "top_k": 64, "min_p": 0.0, "presence_penalty": 0.0, "repeat_penalty": 1.0}
 	if identifier == "kat-coder-v2.5-dev-q8-0" {
 		return map[string]any{"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5, "repeat_penalty": 1.0}
 	}
-	if identifier == "gemma4-31b-it-q8-0-mtp" || len(identifier) >= len("muse-glimmer") && identifier[:len("muse-glimmer")] == "muse-glimmer" {
+	if identifier == "gemma4-31b-it-q8-0-mtp" || strings.HasPrefix(identifier, "muse-glimmer") {
 		return shared
 	}
 	return nil

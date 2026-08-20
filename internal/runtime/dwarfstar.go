@@ -10,27 +10,36 @@ import (
 )
 
 type DwarfStarOptions struct {
-	Image        string
-	Mode         string
-	DataDir      string
-	Model        string
-	SupportModel string
-	DSpark       bool
-	RenderNodes  []string
-	Profile      string
-	Listen       string
-	Port         int
-	Context      int64
-	OutputTokens int64
-	Prompt       *string
-	NoThinking   bool
-	Detach       bool
-	Interactive  bool
-	Unconfined   bool
+	Image           string
+	Mode            string
+	DataDir         string
+	Model           string
+	SupportModel    string
+	DSpark          bool
+	RenderNodes     []string
+	Profile         string
+	Listen          string
+	Port            int
+	Context         int64
+	OutputTokens    int64
+	Prompt          *string
+	NoThinking      bool
+	Detach          bool
+	Interactive     bool
+	Unconfined      bool
+	ContainerName   string
+	ContainerRole   string
+	DynamicHostPort bool
 }
 
 func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, error) {
 	application, _ := config.ApplicationByID("dwarfstar")
+	if options.ContainerName == "" {
+		options.ContainerName = application.ContainerName
+	}
+	if options.ContainerRole == "" {
+		options.ContainerRole = "application"
+	}
 	if options.Listen == "" {
 		options.Listen = config.DefaultListen
 	}
@@ -49,8 +58,8 @@ func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, 
 	}
 	layout := storage.Layout{Root: options.DataDir}
 	readOnly := readOnlySharedSuffix(volumeSuffix)
-	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", application.ContainerName}
-	command = append(command, podman.ManagedArguments("dwarfstar", "application")...)
+	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", options.ContainerName}
+	command = append(command, podman.ManagedArguments("dwarfstar", options.ContainerRole)...)
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("dwarfstar")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
 	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
 	command = env(command, "PARACETAMOL_DWARFSTAR_MODE", options.Mode)
@@ -70,7 +79,11 @@ func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, 
 	}
 	if options.Mode == "server" {
 		command = append(command, publicationNetwork(options.Listen)...)
-		command = append(command, "--publish", publishedPort(options.Listen, options.Port))
+		publication := publishedPort(options.Listen, options.Port)
+		if options.DynamicHostPort {
+			publication = dynamicallyPublishedPort(options.Listen, options.Port)
+		}
+		command = append(command, "--publish", publication)
 	} else {
 		command = append(command, "--network", "none")
 	}

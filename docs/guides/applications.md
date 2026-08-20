@@ -479,12 +479,33 @@ smoke test, but it is too small to treat as a dependable repository agent.
 Template support means a client and server can exchange tool calls; it does
 not make every Qwen variant equally capable of choosing and using tools.
 
-Agents normally send a model name with every request, so the managed router is
-the least ambiguous launch mode:
+### Inference gateway
+
+Agents and small application integrations normally send a model name with
+every request. Use the native gateway as their shared, least-ambiguous entry
+point:
 
 ```bash
-./paracetamol run llama-cpp server --router --models-max 1
+./paracetamol run gateway --application llama-cpp
 ```
+
+Add DwarfStar to the same public inventory only when its verified model and
+image are present:
+
+```bash
+./paracetamol run gateway \
+  --application llama-cpp \
+  --application dwarfstar
+```
+
+The gateway advertises a frozen receipt-verified snapshot, but starts no
+backend until the first Chat Completions request. It keeps only one application
+allocation resident: cross-application requests wait in FIFO order while
+active work drains and the private backend changes. `status gateway` reports
+the snapshot and current allocation. Direct llama.cpp and DwarfStar server
+commands remain useful for engine diagnostics, isolated benchmarks, and API
+features outside the gateway's intentionally small surface. The complete
+lifecycle and failure policy is in the [gateway design](../gateway.md).
 
 Paracetamol manages its own pinned Pi runtime. It requires Node.js 22.19 or
 newer and npm from the host distribution, then installs the repository-locked
@@ -501,23 +522,23 @@ repairs the runtime.
 Maki is distributed separately. Put its `maki` executable on `PATH` before
 using the Paracetamol launcher.
 
-Paracetamol ships PATH-friendly Pi and Maki launchers. They render the current
-provider and model catalog every time they start. Install the recommended
-model and start the router first, then choose a client:
+Paracetamol ships PATH-friendly Pi and Maki launchers. Normal sessions query
+the gateway and render the intersection of its live frozen inventory with the
+current reviewed client catalog. Install the recommended model and start the
+gateway first, then choose a client:
 
 ```bash
-./paracetamol content install llama-cpp qwen3.6
+./paracetamol content install llama-cpp qwen3.8
 ./paracetamol agent install pi
-./paracetamol run llama-cpp server --router --models-max 1
+./paracetamol run gateway --application llama-cpp
 export PATH="$PWD/bin:$PATH"
 pi
 # or: maki
 ```
 
-The generated provider lists every preset explicitly maintained for agent
-work, including ones not currently installed. Selecting an absent model does
-not download it; the router reports that it is unavailable. Use the client's
-model picker to choose a different installed model. Pi accepts `--model
+The generated provider lists only agent-capable models advertised by that
+gateway process. Installing or verifying another model does not mutate a
+running snapshot; restart the gateway before it can appear. Pi accepts `--model
 PRESET`, with `--provider paracetamol` available when the provider would
 otherwise be ambiguous. Maki accepts `-m paracetamol/PRESET` and exposes the
 same entries through `/model`.
@@ -537,30 +558,28 @@ automatic retry, compaction retry, or queued continuation, managed interactive
 sessions add a full-width `Worked for 2m 56s` divider. The divider remains in
 restored scrollback but does not enter the model context.
 
-Pi can run on a client host while the managed llama.cpp router runs on a
-different Linux GPU host. Publish the router only on a trusted LAN address and
-limit its port with the host firewall, because llama.cpp provides no
-application authentication:
+Pi or Maki can run on a client host while the gateway runs on a different GPU
+host. Publish it only on a trusted LAN address and limit its port with the host
+firewall because the gateway provides no application authentication:
 
 ```bash
 # GPU host
-./paracetamol run llama-cpp server --router --models-max 1 \
-  --listen 192.168.1.50
+./paracetamol run gateway --application llama-cpp --listen 192.168.1.50
 
-# Pi client host
-PARACETAMOL_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
+# Pi or Maki client host
+PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
 ```
 
 The equivalent direct form is
-`./paracetamol agent run pi --llama-url URL --`. Remote mode performs a bounded
+`./paracetamol agent run pi --gateway-url URL --` (or the matching Maki
+command). A normal session performs a bounded
 `GET /v1/models` probe before starting Pi, intersects the advertised IDs with
 the reviewed Paracetamol agent catalog, and applies the normal recommended-model
 order. It therefore needs no local GGUF installation or verification receipt
 on the client host. The generated reasoning, context, and sampling metadata
 still comes from the client's Paracetamol checkout, so keep the two hosts on the
-same revision. An explicit `--port` selects a local router even when
-`PARACETAMOL_PI_LLAMA_URL` is inherited. Pi prints the selected remote endpoint
-and a transport warning before the session begins. HTTPS protects transport
+same revision. Pi and Maki print the selected remote endpoint and a transport
+warning before the session begins. HTTPS protects transport
 when supplied by a trusted reverse proxy; Paracetamol does not attach remote API
 credentials.
 
@@ -636,10 +655,10 @@ writable project and host network inside the sandbox, so review them before
 installation. A local `pi install -l` still requires explicit project approval
 before its project resources can load.
 
-`bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes two
-executable provider descriptions and a small generated `init.lua` inside
-Maki's Paracetamol-owned XDG directories. The providers inherit Maki's native
-llama.cpp Chat Completions adapter and publish the exact context, output, and
+`bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes one
+executable provider description and a small generated `init.lua` inside
+Maki's Paracetamol-owned XDG directories. The provider inherits Maki's native
+llama.cpp Chat Completions adapter and publishes the exact context, output, and
 thinking capabilities of the reviewed presets. Maki's normal global config,
 sessions, and model choices are not read or modified. Native named reasoning
 requires a Maki 0.4.8 build containing commit `a9495e1` or a later release.
@@ -1227,31 +1246,28 @@ When the server was started with `--dspark`, include `"temperature": 0` in
 every Chat Completions request. This sampling requirement is independent of
 the request's thinking choice.
 
-Both agent launchers include DwarfStar as a separate provider. Start the
-server, then choose it explicitly in a client:
+When the gateway was started with `--application dwarfstar`, both launchers
+include its reviewed model in the same `paracetamol` provider. Choose it
+explicitly in a client:
 
 ```bash
-./paracetamol run dwarfstar server
-pi --provider dwarfstar --model deepseek-v4-flash-0731-q2-imatrix --thinking high
-maki -m dwarfstar/deepseek-v4-flash-0731-q2-imatrix
+./paracetamol run gateway --application llama-cpp --application dwarfstar
+pi --provider paracetamol --model deepseek-v4-flash-0731-q2-imatrix --thinking high
+maki -m paracetamol/deepseek-v4-flash-0731-q2-imatrix
 ```
 
 The harness model ID identifies the managed 0731 Q2 imatrix bundle rather
-than DwarfStar's generic `deepseek-v4-flash` discovery alias. The server
-accepts the exact managed ID in Chat Completions requests; its own
-`/v1/models` response remains an engine-owned alias list and does not encode
-the installed release or quantization.
+than DwarfStar's generic `deepseek-v4-flash` discovery alias. The gateway's
+frozen `/v1/models` response therefore identifies the reviewed installed
+release and quantization instead of forwarding the engine-owned alias list.
 
 Pi exposes direct and normal thinking behavior as `off` and `high`. The engine
 maps low, medium, and high to the same mode below its much larger Think Max
 context threshold, so Paracetamol does not expose three misleading labels. The
-managed 128K server also cannot activate the 384K-minimum Think Max mode. If
-the DwarfStar server uses another port, pass
-`./paracetamol agent run pi --dwarfstar-port PORT --` or set
-`PARACETAMOL_PI_DWARFSTAR_PORT` for its provider. Maki exposes the same off and
-high behaviors through `/thinking`; adaptive selects high. Set
-`PARACETAMOL_MAKI_DWARFSTAR_PORT` when its
-server uses a different port.
+managed 128K server also cannot activate the 384K-minimum Think Max mode.
+Maki exposes the same off and high behaviors through `/thinking`; adaptive
+selects high. Both clients use their one `--gateway-url` rather than carrying
+separate ports for each backend.
 
 Run the hardware-bound smoke separately after initial setup. Outside Strix
 Halo, selecting DwarfStar explicitly is also the opt-in that prevents the

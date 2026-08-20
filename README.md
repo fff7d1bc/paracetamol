@@ -23,6 +23,8 @@ Paracetamol currently manages:
   port 8080, with selectable ROCm and Vulkan backends
 - DwarfStar as an experimental, high-memory DeepSeek V4 Flash server and CLI
   on port 8000
+- a native lazy gateway that presents the verified llama.cpp and DwarfStar
+  inventory through one OpenAI-compatible port
 
 ## Hardware exercised so far
 
@@ -311,28 +313,44 @@ Tailscale address only when unauthenticated network access is intentional:
 ./paracetamol run comfyui --listen 192.168.1.50
 ```
 
-For local coding-agent work, start the llama.cpp router and use the sandboxed
-PATH launcher. At least one managed agent model must already be installed.
+For local coding-agent work, start the gateway and use the sandboxed PATH
+launcher. The explicit application list controls which verified model families
+are exposed; it does not load either backend at startup.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol agent install pi  # once, and after Paracetamol changes its Pi pin
-./paracetamol run llama-cpp server --router --models-max 1
+./paracetamol run gateway --application llama-cpp
 export PATH="$PWD/bin:$PATH"
 pi
 # or: maki
 ```
 
-Pi can instead use a managed router on another trusted host. The remote
-router publishes no authentication, so restrict it with the host firewall:
+Add `--application dwarfstar` when its reviewed model is installed and should
+appear on the same endpoint. The first request lazily starts the matching
+private backend. A request for the other application drains active work,
+stops the current backend, and starts the other one; queued requests remain
+FIFO. Inspect the frozen inventory and live allocation with
+`./paracetamol status gateway`.
+
+Pi and Maki can instead use a gateway on another trusted host. The gateway
+has no authentication, so bind it to one intended address and restrict that
+port with the host firewall:
 
 ```bash
 # On the GPU host:
-./paracetamol run llama-cpp server --router --models-max 1 --listen 192.168.1.50
+./paracetamol run gateway --application llama-cpp \
+  --application dwarfstar --listen 192.168.1.50
 
-# On the Pi client host:
-PARACETAMOL_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
+# On a Pi or Maki client host:
+PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
 ```
+
+Both managed clients perform a bounded `/v1/models` probe and generate only
+the reviewed models that this gateway instance actually advertises. Direct
+llama.cpp and DwarfStar servers remain available for diagnostics, benchmarks,
+and engine-specific API work. See the [application guide](docs/guides/applications.md#inference-gateway)
+and [gateway design](docs/gateway.md).
 
 Qwen3.8 starts at native medium effort. Pi exposes its off, low, medium, and
 xhigh choices without inventing a `high` level. Maki builds

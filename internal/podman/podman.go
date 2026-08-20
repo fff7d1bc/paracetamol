@@ -4,8 +4,10 @@ package podman
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -132,6 +134,42 @@ func (client Client) ManagedContainerNames(ctx context.Context, application stri
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+func (client Client) ContainerLabels(ctx context.Context, name string) (map[string]string, error) {
+	raw, err := client.Capture(ctx, []string{"inspect", "--format", "{{json .Config.Labels}}", name}, "cannot inspect container labels for "+name)
+	if err != nil {
+		return nil, err
+	}
+	labels := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &labels); err != nil {
+		return nil, controlerr.New("cannot decode container labels for %s", name)
+	}
+	return labels, nil
+}
+
+func (client Client) PublishedLoopbackPort(ctx context.Context, name string, containerPort int) (int, error) {
+	if containerPort < 1 || containerPort > 65535 {
+		return 0, fmt.Errorf("invalid container port")
+	}
+	raw, err := client.Capture(ctx, []string{"port", name, fmt.Sprintf("%d/tcp", containerPort)}, "cannot inspect published port for "+name)
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.Fields(raw)
+	if len(lines) != 1 {
+		return 0, controlerr.New("container %s has an ambiguous published port", name)
+	}
+	host, portText, err := net.SplitHostPort(lines[0])
+	if err != nil {
+		return 0, controlerr.New("container %s returned an invalid published port", name)
+	}
+	address := net.ParseIP(host)
+	port, parseErr := strconv.Atoi(portText)
+	if address == nil || !address.IsLoopback() || parseErr != nil || port < 1 || port > 65535 {
+		return 0, controlerr.New("container %s is not published on one loopback port", name)
+	}
+	return port, nil
 }
 
 func (client Client) Capture(ctx context.Context, arguments []string, failure string) (string, error) {

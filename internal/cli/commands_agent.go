@@ -78,9 +78,7 @@ func (app *App) agentInstall(args []string) error {
 
 func (app *App) agentPi(args []string) error {
 	set := app.flags("agent run pi", usage("agent", "run", "pi", "[OPTIONS]", "[-- PI-ARGS]"))
-	portText := set.String("port", "", "local llama.cpp router port")
-	llamaURL := set.String("llama-url", "", "remote llama.cpp base URL ending in /v1")
-	dwarfstarPortText := set.String("dwarfstar-port", "", "local DwarfStar port")
+	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Pi to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -97,18 +95,7 @@ func (app *App) agentPi(args []string) error {
 	if setWasSet(set, "sandbox") && *noSandbox {
 		return controlerr.Usage("--sandbox and --no-sandbox are mutually exclusive")
 	}
-	port, err := config.ValidatePort(firstNonEmpty(*portText, config.EnvironmentValue(app.Environment, "PI_PORT", "8080")))
-	if err != nil {
-		return err
-	}
-	dwarfstarPort, err := config.ValidatePort(firstNonEmpty(*dwarfstarPortText, config.EnvironmentValue(app.Environment, "PI_DWARFSTAR_PORT", "8000")))
-	if err != nil {
-		return err
-	}
-	remote := *llamaURL
-	if remote == "" && !setWasSet(set, "port") {
-		remote = config.EnvironmentValue(app.Environment, "PI_LLAMA_URL", "")
-	}
+	endpoint := firstNonEmpty(*gatewayURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL))
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
 		return err
@@ -121,18 +108,16 @@ func (app *App) agentPi(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreatePiPlan(app.Context, managed, dataRoot, app.Root, port, dwarfstarPort, remote, upstreamArgs, runtime)
+	plan, err := agent.CreatePiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, runtime)
 	if err != nil {
 		return err
 	}
 	if plan.Mode == "passthrough" {
 		return app.execProcess(plan.Command, app.Environment)
 	}
-	if plan.Mode == "management" || plan.Remote {
-		dataRoot, err = app.resolveDataDir(*dataFlag, true)
-		if err != nil {
-			return err
-		}
+	dataRoot, err = app.resolveDataDir(*dataFlag, true)
+	if err != nil {
+		return err
 	}
 	agentDir, err := agent.PreparePiState(plan, dataRoot)
 	if err != nil {
@@ -141,7 +126,7 @@ func (app *App) agentPi(args []string) error {
 	command := plan.Command
 	environment := agent.PiEnvironment(app.Environment, agentDir, plan.Mode == "session")
 	if plan.Remote {
-		fmt.Fprintf(app.Stderr, "Pi remote model server\n  llama.cpp        %s\nWARNING: prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", plan.Endpoint)
+		fmt.Fprintf(app.Stderr, "Pi remote gateway\n  endpoint          %s\nWARNING: prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", plan.Endpoint)
 	}
 	if *sandbox {
 		child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
@@ -152,7 +137,7 @@ func (app *App) agentPi(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stderr, "Pi sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s and %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint, plan.DwarfStarEndpoint)
+		fmt.Fprintf(app.Stderr, "Pi sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint)
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}
@@ -161,8 +146,7 @@ func (app *App) agentPi(args []string) error {
 
 func (app *App) agentMaki(args []string) error {
 	set := app.flags("agent run maki", usage("agent", "run", "maki", "[OPTIONS]", "[-- MAKI-ARGS]"))
-	portText := set.String("port", "", "local llama.cpp router port")
-	dwarfstarPortText := set.String("dwarfstar-port", "", "local DwarfStar port")
+	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Maki to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -179,14 +163,7 @@ func (app *App) agentMaki(args []string) error {
 	if setWasSet(set, "sandbox") && *noSandbox {
 		return controlerr.Usage("--sandbox and --no-sandbox are mutually exclusive")
 	}
-	port, err := config.ValidatePort(firstNonEmpty(*portText, config.EnvironmentValue(app.Environment, "MAKI_PORT", "8080")))
-	if err != nil {
-		return err
-	}
-	dwarfstarPort, err := config.ValidatePort(firstNonEmpty(*dwarfstarPortText, config.EnvironmentValue(app.Environment, "MAKI_DWARFSTAR_PORT", "8000")))
-	if err != nil {
-		return err
-	}
+	endpoint := firstNonEmpty(*gatewayURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL))
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
 		return err
@@ -195,7 +172,7 @@ func (app *App) agentMaki(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreateMakiPlan(managed, dataRoot, app.Root, port, dwarfstarPort, upstreamArgs, app.Environment)
+	plan, err := agent.CreateMakiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, app.Environment)
 	if err != nil {
 		return err
 	}
@@ -215,12 +192,15 @@ func (app *App) agentMaki(args []string) error {
 	if err != nil {
 		return err
 	}
+	if plan.Remote {
+		fmt.Fprintf(app.Stderr, "Maki remote gateway\n  endpoint          %s\nWARNING: prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", plan.Endpoint)
+	}
 	if *sandbox {
 		sandboxPlan, err := agent.CreateSandboxPlan(app.Context, app.Runner, command, dataRoot, mustWorkingDirectory(), "maki", map[string]string{}, app.Environment, nil)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stderr, "Maki sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s and %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint, plan.DwarfStarEndpoint)
+		fmt.Fprintf(app.Stderr, "Maki sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint)
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}

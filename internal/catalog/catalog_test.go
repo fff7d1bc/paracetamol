@@ -21,12 +21,16 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 51 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 3 || len(loaded.LlamaPresets) != 17 {
-		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets))
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 51 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 3 || len(loaded.LlamaPresets) != 17 || len(loaded.DwarfStarPresets) != 1 {
+		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
+	}
+	dwarfstar := loaded.DwarfStarPresets["deepseek-v4-flash-0731-q2-imatrix"]
+	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
+		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
 	}
 }
 

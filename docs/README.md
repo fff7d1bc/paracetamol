@@ -17,6 +17,8 @@ then choose a user guide or maintainer reference below.
 - [Qwen3.8 Dynamic Q4 versus Q8](guides/qwen3.8-dynamic-quant-comparison.md)
   reports the hidden-graded medium and `xhigh` coding-agent comparison,
   context results, exact Unsloth artifacts, and limitations.
+- [Inference gateway](gateway.md) documents the native one-port scheduler,
+  frozen inventory, backend lifecycle, API boundary, and failure policy.
 
 For a shorter application walkthrough made of copyable commands, use the
 built-in guide:
@@ -118,6 +120,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Built-in application walkthroughs | `internal/cli/commands_basic.go` |
 | Local image build commands | `internal/buildplan/` |
 | Podman process boundary and runtime command construction | `internal/podman/`, `internal/runtime/` |
+| Lazy text-inference inventory, proxy, scheduler, and backend lifecycle | `internal/gateway/`, `internal/textmodel/` |
 | In-container GPU/profile validation | `containers/common/profile.py` |
 | Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
 | Remote URL resolution and generated local packs | `internal/remoteimport/` |
@@ -130,7 +133,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Agent model policy and sandbox | `internal/agent/models.go`, `internal/agent/sandbox.go` |
 | Runtime client configuration | `internal/agent/pi.go`, `internal/agent/maki.go` |
 | Managed Pi installation | `agent-clients/pi/`, `internal/agent/piruntime.go` |
-| Read-only local GGUF inventory | `internal/agent/models.go` |
+| Gateway-advertised agent model intersection | `internal/agent/models.go`, `internal/textmodel/` |
 | Native llama.cpp benchmark results | `internal/benchmark/` |
 | Server-side llama.cpp speculative-depth screens | `internal/benchmark/` |
 | Frozen coding-agent tasks and results | `evaluations/coding/`, `internal/evaluation/` |

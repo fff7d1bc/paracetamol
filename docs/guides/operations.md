@@ -325,6 +325,18 @@ host user. Paracetamol passes the launcher's umask into managed containers.
 ./paracetamol status
 ```
 
+For the foreground inference gateway, query its versioned HTTP status rather
+than looking for a fixed backend container:
+
+```bash
+./paracetamol status gateway
+./paracetamol status gateway --gateway-url http://aion.local:8080/v1
+```
+
+This reports the frozen inventory fingerprint, exposed applications and
+models, current lazy allocation, lifecycle state, and active/queued request
+counts. Backend startup detail remains on the foreground gateway stderr.
+
 For a running llama.cpp server, select the application scope to print a
 shareable runtime report instead of the general dashboard:
 

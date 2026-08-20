@@ -230,8 +230,26 @@ connect it to a stable router identity:
 
 DwarfStar model files use `"target": "dwarfstar-models"`, application
 `dwarfstar`, and groups `all` and `dwarfstar`. They deliberately do not become
-llama.cpp presets or llama.cpp client-provider entries. The public DwarfStar
-recipe and runtime own one reviewed target-model identity. The optional
+llama.cpp presets. Give the reviewed serving identity its own validated policy:
+
+```json
+"dwarfstar_presets": {
+  "deepseek-v4-flash-0731-q2-imatrix": {
+    "bundle": "dwarfstar-target-bundle",
+    "dspark_bundle": "dwarfstar-target-and-support-bundle",
+    "default_context": 131072,
+    "max_output_tokens": 16000,
+    "agent_tools": true,
+    "reasoning_control": "effort",
+    "reasoning_levels": ["high"],
+    "reasoning_default": "high",
+    "reasoning_off": true
+  }
+}
+```
+
+The public DwarfStar recipe and runtime own one reviewed target-model identity.
+The gateway v1 exposes only its non-DSpark bundle. The optional
 DSpark bundle contains that target first and its exact support GGUF second;
 the runtime accepts the pair only through `--dspark` and never treats the
 support file as another user-selectable model.

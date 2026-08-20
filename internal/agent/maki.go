@@ -1,29 +1,30 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/textmodel"
 )
 
 type MakiPlan struct {
-	Command           []string
-	DefaultProvider   string
-	DefaultModel      string
-	DefaultThinking   string
-	Endpoint          string
-	DwarfStarEndpoint string
-	Init              []byte
-	Providers         map[string][]byte
-	Tiers             []byte
-	Mode              string
+	Command         []string
+	DefaultProvider string
+	DefaultModel    string
+	DefaultThinking string
+	Endpoint        string
+	Init            []byte
+	Providers       map[string][]byte
+	Tiers           []byte
+	Mode            string
+	Remote          bool
 }
 
 func FindRealExecutable(name, wrapper string, environment map[string]string) (string, error) {
@@ -47,7 +48,7 @@ func FindRealExecutable(name, wrapper string, environment map[string]string) (st
 	return "", fmt.Errorf("%s executable not found outside %s's bin directory", name, identity.DisplayName)
 }
 
-func CreateMakiPlan(managed catalog.Catalog, dataRoot, projectRoot string, port, dwarfstarPort int, arguments []string, environment map[string]string) (MakiPlan, error) {
+func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, environment map[string]string) (MakiPlan, error) {
 	if len(arguments) > 0 && arguments[0] == "--" {
 		arguments = arguments[1:]
 	}
@@ -61,18 +62,29 @@ func CreateMakiPlan(managed catalog.Catalog, dataRoot, projectRoot string, port,
 	} else if len(arguments) > 0 && contains([]string{"auth", "models", "index", "mcp", "prompt"}, arguments[0]) {
 		mode = "management"
 	}
-	provider, model, thinking := ProviderID, RecommendedModel, ReasoningDefault(managed.LlamaPresets[RecommendedModel])
+	if mode == "passthrough" {
+		return MakiPlan{Command: append([]string{executable}, arguments...), Mode: mode}, nil
+	}
+	endpoint, err := NormalizeGatewayURL(gatewayURL)
+	if err != nil {
+		return MakiPlan{}, err
+	}
+	var advertised []string
 	if mode == "session" {
-		provider, model, thinking, err = DefaultModel(managed, dataRoot, "Maki")
+		advertised, err = DiscoverGatewayModels(ctx, endpoint)
 		if err != nil {
 			return MakiPlan{}, err
 		}
 	}
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
-	dwarfstarEndpoint := fmt.Sprintf("http://127.0.0.1:%d/v1", dwarfstarPort)
-	models := makiModels(managed)
-	dwarfstarModels := []map[string]any{{"id": DwarfStarModel, "tier": "medium", "context_window": DwarfStarContext, "max_output_tokens": DwarfStarOutput, "supports_thinking": true, "thinking_fields": map[string]any{"off": map[string]string{"reasoning_effort": "none"}, "adaptive": map[string]string{"reasoning_effort": "high"}, "high": map[string]string{"reasoning_effort": "high"}}}}
-	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, DwarfStarEndpoint: dwarfstarEndpoint, Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" llama.cpp", endpoint, models), DwarfStarProviderID: makiProvider(identity.DisplayName+" DwarfStar", dwarfstarEndpoint, dwarfstarModels)}, Mode: mode}
+	models, err := AgentModels(managed, advertised)
+	if err != nil {
+		return MakiPlan{}, err
+	}
+	provider, model, thinking, err := DefaultModel(models, "Maki")
+	if err != nil {
+		return MakiPlan{}, err
+	}
+	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, Remote: remoteEndpoint(endpoint), Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" gateway", endpoint, makiModels(models))}, Mode: mode}
 	tiers, _ := json.MarshalIndent(map[string]string{"compaction": provider + "/" + model, "weak": provider + "/" + model, "medium": provider + "/" + model, "strong": provider + "/" + model}, "", "  ")
 	plan.Tiers = append(tiers, '\n')
 	if mode == "session" {
@@ -81,36 +93,28 @@ func CreateMakiPlan(managed catalog.Catalog, dataRoot, projectRoot string, port,
 	return plan, nil
 }
 
-func makiModels(managed catalog.Catalog) []map[string]any {
-	var ids []string
-	for id, preset := range managed.LlamaPresets {
-		if preset.AgentTools {
-			ids = append(ids, id)
-		}
-	}
-	sort.Strings(ids)
-	result := make([]map[string]any, 0, len(ids))
-	for _, id := range ids {
-		preset := managed.LlamaPresets[id]
-		model := map[string]any{"id": id, "tier": "medium", "context_window": preset.DefaultContext, "max_output_tokens": OutputLimit(preset.DefaultContext), "supports_thinking": preset.ReasoningControl != ""}
-		if preset.ReasoningControl != "" {
+func makiModels(models []textmodel.Model) []map[string]any {
+	result := make([]map[string]any, 0, len(models))
+	for _, selected := range models {
+		model := map[string]any{"id": selected.ID, "tier": "medium", "context_window": selected.Context, "max_output_tokens": selected.MaxOutputTokens, "supports_thinking": selected.ReasoningControl != ""}
+		if selected.ReasoningControl != "" {
 			fields := make(map[string]any)
-			switch preset.ReasoningControl {
+			switch selected.ReasoningControl {
 			case "toggle":
 				fields["off"] = map[string]any{"chat_template_kwargs": map[string]bool{"enable_thinking": false}}
 				fields["adaptive"] = map[string]any{"chat_template_kwargs": map[string]bool{"enable_thinking": true}}
 			default:
-				field := "reasoning_" + preset.ReasoningControl
-				fields["adaptive"] = map[string]string{field: preset.ReasoningDefault}
-				for _, level := range preset.ReasoningLevels {
+				field := "reasoning_" + selected.ReasoningControl
+				fields["adaptive"] = map[string]string{field: selected.ReasoningDefault}
+				for _, level := range selected.ReasoningLevels {
 					fields[level] = map[string]string{field: level}
 				}
-				if preset.ReasoningOff {
+				if selected.ReasoningOff {
 					fields["off"] = map[string]string{field: "none"}
 				}
 			}
 			model["thinking_fields"] = fields
-			if !preset.ReasoningOff {
+			if !selected.ReasoningOff {
 				model["requires_thinking"] = true
 			}
 		}
@@ -148,6 +152,21 @@ func PrepareMakiState(plan MakiPlan, dataRoot string) (SandboxPaths, error) {
 		return SandboxPaths{}, err
 	}
 	for _, entry := range entries {
+		if entry.Name() == "dwarfstar" {
+			path := filepath.Join(providersDir, entry.Name())
+			info, infoErr := entry.Info()
+			if infoErr != nil || !info.Mode().IsRegular() || info.Size() > 1024*1024 {
+				return SandboxPaths{}, fmt.Errorf("Maki legacy provider %s is not a small regular file", path)
+			}
+			contents, readErr := os.ReadFile(path)
+			if readErr != nil || !strings.HasPrefix(string(contents), "#!/bin/sh\nset -eu\n") || !strings.Contains(string(contents), `Paracetamol DwarfStar`) {
+				return SandboxPaths{}, fmt.Errorf("Maki legacy provider %s is not the expected managed file", path)
+			}
+			if err := os.Remove(path); err != nil {
+				return SandboxPaths{}, fmt.Errorf("remove retired Maki DwarfStar provider: %w", err)
+			}
+			continue
+		}
 		if _, ok := plan.Providers[entry.Name()]; !ok {
 			return SandboxPaths{}, fmt.Errorf("Maki provider directory contains unmanaged entry %s", entry.Name())
 		}

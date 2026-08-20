@@ -3,6 +3,8 @@ package runtime
 import (
 	"strings"
 	"testing"
+
+	"paracetamol/internal/catalog"
 )
 
 func TestWebCommandConfinesCPUApplication(t *testing.T) {
@@ -54,6 +56,60 @@ func TestLlamaServerExposesOnlySelectedGPUAndOnePort(t *testing.T) {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("server command contains %q: %s", forbidden, joined)
 		}
+	}
+}
+
+func TestGatewayBackendsUseDynamicLoopbackPortsAndOwnedRole(t *testing.T) {
+	llama, err := LlamaCommand(LlamaOptions{
+		Image: "llama-image", Profile: "strix-halo", Mode: "server", Backend: "rocm",
+		DataDir: "/data", RouterPreset: "/data/models.ini", ModelsMax: 2,
+		RenderNodes: []string{"/dev/dri/renderD129"}, Listen: "127.0.0.1", Port: 8080,
+		ContainerName: "gateway-llama", ContainerRole: "gateway-backend", AutoRemove: true,
+		Detach: true, DynamicHostPort: true,
+	}, ":rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dwarf, err := DwarfStarCommand(DwarfStarOptions{
+		Image: "dwarf-image", Mode: "server", DataDir: "/data", Model: "/models/model.gguf",
+		RenderNodes: []string{"/dev/dri/renderD129"}, Profile: "strix-halo",
+		Listen: "127.0.0.1", Port: 8000, Context: 131072, OutputTokens: 16000,
+		ContainerName: "gateway-dwarf", ContainerRole: "gateway-backend", Detach: true,
+		DynamicHostPort: true,
+	}, ":rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, command := range map[string][]string{"llama.cpp": llama, "DwarfStar": dwarf} {
+		joined := strings.Join(command, " ")
+		for _, required := range []string{"--publish 127.0.0.1::", "gateway-backend", "--detach"} {
+			if !strings.Contains(joined, required) {
+				t.Fatalf("%s command lacks %q: %s", name, required, joined)
+			}
+		}
+	}
+}
+
+func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
+	managed := catalog.Catalog{
+		Artifacts: map[string]catalog.Artifact{
+			"one": {ID: "one", Destination: "one.gguf"},
+			"two": {ID: "two", Destination: "two.gguf"},
+		},
+		LlamaPresets: map[string]catalog.LlamaPreset{
+			"one": {ID: "one", Artifact: "one", DefaultContext: 4096},
+			"two": {ID: "two", Artifact: "two", DefaultContext: 8192},
+		},
+	}
+	contents, err := RenderRouterModels(managed, "rocm", []string{"two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(contents, "[one]") || !strings.Contains(contents, "[two]") {
+		t.Fatalf("unexpected frozen router contents:\n%s", contents)
+	}
+	if _, err := RenderRouterModels(managed, "rocm", []string{"missing"}); err == nil {
+		t.Fatal("unknown selected preset was accepted")
 	}
 }
 
