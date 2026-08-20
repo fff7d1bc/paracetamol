@@ -678,12 +678,13 @@ profile without pretending that it is a local Linux sandbox.
 `models.json` schema with the `openai-completions` API. `bin/pi` delegates to
 the host launcher, which resolves only the runtime matching the current lock,
 mounts that complete tree read-only, and atomically refreshes `models.json`
-and ROCmplete's model-picker extension below
+and ROCmplete's managed extensions below
 `StorageLayout.application("pi") / "sandbox"`. It points
 `PI_CODING_AGENT_DIR` at the same private state. Pi's ordinary user config is
-never modified. The managed extension intercepts the configured interactive
-model-selection shortcut and bare `/model`, presents stable model-family
-groups, and chains selection into Pi's native reasoning-level component. An
+never modified. The managed model-picker extension intercepts the configured
+interactive model-selection shortcut and bare `/model`, presents stable
+model-family groups, and chains selection into Pi's native reasoning-level
+component. An
 exact built-in `/model PROVIDER/MODEL` change triggers the same reasoning
 step. Cycled and restored models deliberately do not, so ordinary navigation
 and session startup remain quiet. The launcher disables startup network
@@ -692,6 +693,13 @@ context discovery enabled. It supplies the recommended installed model and
 its catalog default thinking level as command-line defaults before forwarded
 Pi session arguments, so an explicit later `--provider`, `--model`, or
 `--thinking` remains authoritative.
+
+The completion-divider extension records the first low-level agent start and
+waits for Pi's `agent_settled` lifecycle event before adding a full-width
+elapsed-time marker to the transcript. Unlike `agent_end`, that boundary
+guarantees that no automatic retry, compaction retry, or queued continuation
+remains. The marker is a durable custom session entry, so restored scrollback
+retains it while the model context excludes it.
 
 `src/rocmplete/agent_models.py` owns reviewed coding-task sampling metadata for
 every maintained llama.cpp agent preset. Pi receives static fields as

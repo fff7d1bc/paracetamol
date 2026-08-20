@@ -532,7 +532,10 @@ Pi immediately asks for one of that model's supported reasoning levels. An
 exact `/model PROVIDER/MODEL` command uses Pi's normal selector and then opens
 the same reasoning prompt. Model cycling and session restoration do not add a
 prompt; `Shift+Tab`, `/settings`, and `--thinking` remain available for direct
-reasoning changes.
+reasoning changes. After Pi has finished the complete agent run, including any
+automatic retry, compaction retry, or queued continuation, managed interactive
+sessions add a full-width `Worked for 2m 56s` divider. The divider remains in
+restored scrollback but does not enter the model context.
 
 Pi can run on a client host while the managed llama.cpp router runs on a
 different Linux GPU host. Publish the router only on a trusted LAN address and

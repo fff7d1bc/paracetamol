@@ -319,6 +319,11 @@ current model into a recent section. Selecting a model immediately opens its
 valid reasoning choices. An exact `/model PROVIDER/MODEL` command also opens
 the reasoning picker after changing models.
 
+When an interactive Pi run is fully settled, its transcript ends with a
+full-width `Worked for 2m 56s` divider. This appears only after automatic
+retries, compaction retries, and queued continuations are finished, and the
+marker never enters the model context.
+
 Both launchers keep the current directory and private client state writable
 while hiding the
 real home directory, credentials, Podman state, and GPU devices. The
