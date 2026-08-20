@@ -1255,9 +1255,9 @@ server uses a different port.
 
 Run the hardware-bound smoke separately after initial setup. Outside Strix
 Halo, selecting DwarfStar explicitly is also the opt-in that prevents the
-80.76 GiB model from joining an ordinary default acceptance run:
+80.76 GiB model from joining an ordinary default acceptance smoke:
 
 ```bash
-./rocmplete acceptance run --application dwarfstar --dry-run
-./rocmplete acceptance run --application dwarfstar
+./rocmplete acceptance --application dwarfstar --dry-run
+./rocmplete acceptance --application dwarfstar
 ```

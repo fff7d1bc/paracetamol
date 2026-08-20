@@ -23,8 +23,10 @@ persistent storage
   └── removable download scratch space under staging/
 ```
 
-The host Python launcher does not import ROCm or application dependencies. It
-only needs Python 3.12+, Podman, and access to the device files.
+The host control plane is a Go binary. It does not import ROCm, PyTorch, or
+application dependencies and needs only Go 1.26+, GNU Make, rootless Podman,
+and access to the selected device files. Python remains an implementation
+detail of Python application containers and frozen evaluation fixtures.
 
 Data-path resolution has two explicit modes. Status, inspection, and dry-run
 commands resolve an absent path without creating it. Real installs, shells,
@@ -34,16 +36,23 @@ mounted separately and read-only below `/content`.
 
 ## Command flow
 
-`rocmplete` is a small Python entry script. It adds the repository-local
-`src/` directory to the import path and calls `rocmplete.cli.main()`. Keeping
-the import package below `src/` leaves `rocmplete` as the only matching path at
-the repository root for shell completion. `src/rocmplete/project.py` owns
-repository-root discovery for build context and catalog resources.
+`rocmplete` is a small POSIX shell bootstrap. It asks the `Makefile` for the
+current platform binary below `build/<goos>-<goarch>/bin/` and executes it.
+Make rebuilds only when Go inputs are newer. All compiler caches, module state,
+temporary files, and binaries stay below the anchored ignored `build/` tree.
+`internal/project/` owns repository-root discovery for build context, catalog,
+and immutable workflow resources.
 
-`src/rocmplete/ui.py` owns semantic terminal styling. It emits ANSI sequences
-only to a TTY, honors `NO_COLOR`, and leaves redirected output plain. CLI and
-content modules select roles such as heading, command, success, warning, or
-error; they do not embed raw escape sequences.
+The Go packages under `internal/` are the host control plane. `internal/cli/`
+owns parsing and orchestration, while filesystem, subprocess, device, catalog,
+and runtime boundaries remain in their focused packages so tests can replace
+them without invoking GPU inference.
+
+The Go migration deliberately preserved persistent application state, managed
+content paths and receipts, staging, image references, and Podman labels. Its
+benchmark and acceptance checkpoint schemas are a new controller boundary;
+Python-era result files remain inspectable historical evidence but are not
+accepted for resume.
 
 For a managed web application:
 
@@ -70,11 +79,11 @@ The profile does not select a physical device. A multi-GPU workload must
 resolve to one supported architecture.
 
 Attached application runs keep Podman in the terminal process group for normal
-interactive input and signal delivery. `podman.run_managed_foreground` owns
+interactive input and signal delivery. `internal/podman/` owns
 the named-container cleanup race: if Ctrl-C interrupts both the launcher and
 Podman client before `--rm` completes, it force-removes that one exact managed
 container and reaps the client before propagating the interruption. A nonzero
-attached container status becomes a `LauncherError` that retains the exact
+attached container status becomes a controlled error that retains the exact
 child status for the human diagnostic. Detached runs deliberately retain the
 ordinary Podman lifecycle.
 
@@ -115,9 +124,9 @@ catalog loader
 ```
 
 Artifact downloads execute in the dedicated content-tools image. Curated
-workflow sources are package resources of the managed ComfyUI
-image and must be read from that image instead; a content-tools image override
-must never become a workflow-source override. Managed ComfyUI benchmarks also
+workflows are immutable, hash-verified resources below `catalog/workflows/`;
+their catalog metadata retains the exact upstream package provenance. Managed
+ComfyUI benchmarks also
 default to the ComfyUI application image.
 
 Downloader containers use unique `rocmplete-download-*` names. Repeated
@@ -144,13 +153,13 @@ allowlisted Civitai or Hugging Face URL
   → ordinary content-install planning, approval, download, and verification
 ```
 
-`src/rocmplete/remote_import.py` owns provider URL parsing, metadata requests,
+`internal/remoteimport/` owns provider URL parsing, metadata requests,
 file/type inference, stable generated identifiers, and atomic pack writes.
 It does not own another downloader. Tokens are attached only to the initial
 provider request and are not forwarded across redirects. Generated imports
 remain `NOASSERTION` even when provider metadata names an upstream license.
 
-`src/rocmplete/recipes.py` owns the small application-first recipes shown by
+`internal/recipes/` owns the small application-first recipes shown by
 the guided installer and application guides. A recipe resolves to exact
 catalog bundles, validates application ownership, and provides the copyable
 next command printed after installation. It is not a broad model family.
@@ -183,8 +192,8 @@ exact local GGUF or installed catalog preset
 Backend comparison invokes that same path once for ROCm and once for Vulkan.
 Each native result remains independently useful. A small atomic comparison
 manifest records both paths, failures, extracted pp/tg rates, and the derived
-time for that exact token ratio. `LauncherError` from one backend is recorded
-before the other runs; `KeyboardInterrupt` still escapes immediately after
+time for that exact token ratio. A controlled failure from one backend is
+recorded before the other runs; interruption still escapes immediately after
 the current benchmark's normal container cleanup.
 
 For a speculative llama.cpp depth screen:
@@ -201,7 +210,7 @@ installed speculative preset plus reviewed agent request policy
   → aggregate server-timed generation work over total generation time by draft depth
 ```
 
-`src/rocmplete/llama_speculative_benchmark.py` owns prompt generation,
+`internal/benchmark/` owns prompt generation,
 calibration, result compatibility, server/request execution, checkpointing,
 resume, and screening summaries. Native `llama-bench` remains a separate
 non-speculative measurement and the screen does not mutate catalog policy.
@@ -277,7 +286,7 @@ all four supported architectures. The development payload exists only in the
 builder. The final image also starts from `ROCM_RUNTIME_IMAGE`, adds the Mesa
 RADV and small native runtime dependencies, and copies only the server, CLI,
 and benchmark binaries. RPC and remote UI assets are disabled.
-`ApplicationSpec.shared_pytorch_base` keeps the choice of the higher base
+The application registry's `SharedPyTorchBase` field keeps the choice of the higher base
 explicit in build and image-archive planning; every GPU application still
 shares the lower runtime.
 
@@ -322,7 +331,7 @@ removes only ROCmplete's build-cache directory and never prunes Podman state.
 Like every cleanup scope, it prints a validated non-empty plan and crosses the
 shared confirmation boundary before mutation.
 
-`src/rocmplete/image_archive.py` owns offline build-output transfer. A managed
+`internal/imagearchive/` owns offline build-output transfer. A managed
 export is one Docker-format archive containing the content-tools prerequisite,
 the shared ROCm runtime, the ROCm/PyTorch base when required, and selected
 application images.
@@ -401,7 +410,7 @@ evaluation, and agent surfaces remain unavailable.
 
 ## Runtime isolation
 
-The common web runtime in `src/rocmplete/runtime/web.py` applies:
+The common web runtime in `internal/runtime/web.go` applies:
 
 - `--rm` and a deterministic container name;
 - a private rootless network namespace and one explicitly published TCP port;
@@ -455,7 +464,7 @@ filesystem writable or restore capabilities.
 
 Profiles exist on both sides of the container boundary:
 
-- `src/rocmplete/config.py` controls accepted CLI values.
+- `internal/config/config.go` controls accepted CLI values.
 - `containers/common/profile.py` maps PyTorch architecture names to resolved
   profiles.
 
@@ -578,7 +587,7 @@ destination roots are therefore required not to overlap.
 ## Catalog and workflow trust chain
 
 `catalog/catalog.json` is schema version 23. The loader in
-`src/rocmplete/catalog.py` rejects malformed identifiers, unsafe paths,
+`internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.
 
@@ -662,9 +671,9 @@ the first installed agent-capable preset and refuses a normal session when no
 maintained model is available.
 
 `agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
-and transitive runtime dependency graph. `src/rocmplete/pi_runtime.py` requires
+and transitive runtime dependency graph. `internal/agent/piruntime.go` requires
 distribution-provided Node.js and npm, stages `npm ci --ignore-scripts` below
-`StorageLayout.application("pi") / "runtime"`, verifies the staged Pi version,
+the Pi application layout's `runtime/` directory, verifies the staged Pi version,
 and only then atomically activates the content-addressed installation. A
 failed install cannot look current, and normal launches never perform network
 installation. System Node.js remains outside the managed tree so distribution
@@ -674,12 +683,12 @@ Those remain explicit inputs to configuration rendering and launch planning,
 so a later remote or non-bubblewrap client path can reuse the reviewed model
 profile without pretending that it is a local Linux sandbox.
 
-`src/rocmplete/pi_agent.py` renders the reviewed model set into Pi's
+`internal/agent/pi.go` renders the reviewed model set into Pi's
 `models.json` schema with the `openai-completions` API. `bin/pi` delegates to
 the host launcher, which resolves only the runtime matching the current lock,
 mounts that complete tree read-only, and atomically refreshes `models.json`
-and ROCmplete's managed extensions below
-`StorageLayout.application("pi") / "sandbox"`. It points
+and ROCmplete's managed extensions below the Pi application's `sandbox/`
+directory. It points
 `PI_CODING_AGENT_DIR` at the same private state. Pi's ordinary user config is
 never modified. The managed model-picker extension intercepts the configured
 interactive model-selection shortcut and bare `/model`, presents stable
@@ -701,7 +710,7 @@ guarantees that no automatic retry, compaction retry, or queued continuation
 remains. The marker is a durable custom session entry, so restored scrollback
 retains it while the model context excludes it.
 
-`src/rocmplete/agent_models.py` owns reviewed coding-task sampling metadata for
+`internal/agent/models.go` owns reviewed coding-task sampling metadata for
 every maintained llama.cpp agent preset. Pi receives static fields as
 `samplingParams` where the policy does not vary with thinking; explicit client
 request settings remain higher-precedence caller policy. Qwen3.6 and Qwen3.8
@@ -728,7 +737,7 @@ upstream, the bare, `self`, `pi`, `--self`, and `--all` forms are refused with
 the repository-managed update command; package-only update forms use the
 private state.
 
-`src/rocmplete/maki_agent.py` publishes the same reviewed model catalog as two
+`internal/agent/maki.go` publishes the same reviewed model catalog as two
 executable dynamic providers below Maki's private XDG configuration. Both use
 Maki's native `llama-cpp` provider as their protocol base, so the exact
 loopback `/v1` URL comes from the generated provider while Chat Completions,
@@ -771,7 +780,7 @@ while hiding unsupported intermediate levels. Maki maps `/thinking off` and
 `reasoning_effort` values, with adaptive selecting high. A generated provider
 does not imply that the DwarfStar server or model is installed or running.
 
-`src/rocmplete/agent_sandbox.py` owns the common client boundary. Both
+`internal/agent/sandbox.go` owns the common client boundary. Both
 launchers use bubblewrap by default and refuse to fall back silently when
 `bwrap` is unavailable. They unshare user, PID, IPC, UTS, cgroup, and other
 available namespaces while deliberately restoring host networking for the
@@ -797,12 +806,12 @@ client settings, a narrow executable path, and sanitized Git author and
 committer identity are added explicitly. Tokens, proxy settings, SSH and
 desktop sockets, and unrelated `ROCMLETE_*` values are not inherited. The real
 home is absent; config, data, state, cache, sessions, logs, and tool output
-persist only below the client's `StorageLayout.application(CLIENT) /
-"sandbox"`, whose owned directories are forced to mode `0700`. Sandbox state
+persist only below the client's application `sandbox/` partition, whose owned
+directories are forced to mode `0700`. Sandbox state
 and the writable working directory must not overlap. Project `AGENTS.md`
 discovery remains available from the mounted project.
 
-`src/rocmplete/agent_evaluation.py` builds a benchmark-specific layer on top
+`internal/evaluation/` builds a benchmark-specific layer on top
 of the Pi boundary. Every pinned source commit is exported into a new
 repository with one synthetic commit and no remote, while hidden graders and
 protected inputs remain outside the mounted worktree. Fixed repository-owned

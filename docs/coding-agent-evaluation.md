@@ -12,18 +12,17 @@ The authoritative inputs are:
   base and reference commits, expected Git trees, prompts, and task metadata;
 - `evaluations/coding/hidden/`: post-run Go or Python tests with exact SHA-256
   hashes;
-- `src/rocmplete/agent_evaluation.py`: definition validation, source mirrors,
+- `internal/evaluation/`: definition validation, source mirrors,
   single-commit fixtures, Pi execution, transcript capture, grading,
   checkpointing, and Markdown reporting;
-- `src/rocmplete/pi_agent.py`: the normal Pi provider policy and the shared
+- `internal/agent/pi.go`: the normal Pi provider policy and the shared
   sandbox extension point used to mount a prepared Go module cache read-only
   when the selected task requires it;
   and
-- `tests/test_agent_evaluation.py`: schema, isolation, audit, metrics, review,
-  dry-run, and report behavior.
+- `internal/evaluation/*_test.go` and `internal/cli/*_test.go`: schema,
+  isolation, audit, metrics, review, dry-run, and report behavior.
 
-Raw machine results belong below
-`StorageLayout.agent_evaluations`, normally
+Raw machine results belong below the evaluation storage partition, normally
 `apps/agent-evaluation/` in the configured data directory. Do not commit raw
 transcripts, generated patches, timing, or host-specific result JSON to the
 source tree. A curated result summary may be added to an appropriate research
@@ -217,11 +216,12 @@ For a new implementation task:
 5. Confirm the hidden test fails on the base and passes on the reference.
 6. Confirm the complete reference diff, including legitimate test updates,
    is graded `solved` without dependency changes.
-7. Run the focused Python tests and the complete Tier 1 suite.
+7. Run `go test ./internal/evaluation ./internal/cli` and the complete Tier 1
+   suite.
 8. Dry-run the public command before target-hardware execution.
 
 Repository-to-toolchain ownership is an allowlist in
-`src/rocmplete/agent_evaluation.py`. Go and Python commands are selected by
+`internal/evaluation/`. Go and Python commands are selected by
 controller code, not task JSON. Adding another language requires a reviewed
 fixed adapter with explicit dependency preparation, sandbox environment,
 ordinary-test, hidden-test, and build behavior. Never make the frozen task

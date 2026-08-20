@@ -11,25 +11,29 @@ target-hardware acceptance.
 Run for every change:
 
 ```bash
-python3 -m compileall -q applications containers src/rocmplete tests tools
+make check
+make test
+make static
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
-python3 -m json.tool catalog/catalog.json >/dev/null
+find catalog -type f -name '*.json' -print0 | \
+  xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check
-PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
 If a shell entrypoint or JSON manifest is added, include it explicitly.
 
-Unit tests cover catalog invariants, download command confinement, native-tree
-behavior, workflow rendering, research probes, benchmark preparation, CLI
-resolution, profile detection, Podman command construction, and local Markdown
-links and section anchors. Add tests for behavior, not merely new lines or
-parser choices.
+Package-local Go tests cover catalog invariants, download command confinement,
+workflow rendering, benchmark preparation, CLI resolution, profile detection,
+Podman command construction, persistent verification, and evaluation grading.
+Add tests for behavior and failure paths, not merely new lines or parser
+choices.
 
-`.github/workflows/checks.yml` runs this dependency-free surface on Python 3.12
-and Python 3.14. It also exercises representative CLI dry-runs without Podman.
+`.github/workflows/checks.yml` runs the Go 1.26 checks, static build, the
+container-owned Python and shell checks, catalog validation, and representative
+CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
@@ -61,7 +65,7 @@ Exercise user-visible composition:
 ./rocmplete agent pi -- update --extensions --help
 ./rocmplete agent maki --help
 ./rocmplete agent maki --no-sandbox -- --help
-./rocmplete agent maki -- index src/rocmplete/cli.py
+./rocmplete agent maki -- index internal/cli/
 ./rocmplete benchmark llama-cpp \
   --preset qwen3-0.6b-q8-0 --profile cpu --dry-run
 ./rocmplete benchmark llama-cpp \
@@ -69,7 +73,7 @@ Exercise user-visible composition:
 ./rocmplete benchmark llama-cpp \
   --preset qwen3-0.6b-q8-0 --context-depth 32768 \
   --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --dry-run
-./rocmplete acceptance run --dry-run
+./rocmplete acceptance --dry-run
 ```
 
 For remote-import changes, also exercise one exact Hugging Face LFS file and
@@ -116,7 +120,7 @@ absolute spellings resolve to the mounted project while sibling home content
 remains absent.
 
 For image-archive changes, additionally create a tiny disposable local image,
-save it as a Docker archive, inspect it through `image_archive.py`, remove and
+save it as a Docker archive, inspect it through `images import --dry-run`, remove and
 load it, compare the image config ID, and remove it again. Do not use a full
 ROCmplete export merely to exercise archive plumbing on every development
 pass.
@@ -150,15 +154,12 @@ image layers; prerequisite targets still pass through their normal layer
 cache. It is suitable for repeated local build testing where downloading the
 same multi-gigabyte AMD wheels adds no coverage.
 
-Check installed dependency consistency:
+Check installed dependency consistency. Read the current image references from
+`internal/config/config.go`; for every Python application image run:
 
 ```bash
-for app_image in $(PYTHONPATH=src python3 -c \
-  'from rocmplete.config import APPLICATIONS; print(*(item.image for item in APPLICATIONS.values() if item.shared_pytorch_base))')
-do
-  podman run --rm --entrypoint /opt/venv/bin/python \
-    "$app_image" -m pip check
-done
+podman run --rm --entrypoint /opt/venv/bin/python CURRENT_COMFY_IMAGE \
+  -m pip check
 ```
 
 For llama.cpp, inspect the exact labels and native runtime closure:
@@ -267,7 +268,7 @@ GPU time:
 ./rocmplete benchmark agent \
   --preset qwen3.6-27b-mtp-q8-0 \
   --thinking high --task re-align --dry-run
-PYTHONPATH=src python3 -m unittest tests.test_agent_evaluation
+go test ./internal/evaluation ./internal/agent ./internal/cli
 ```
 
 Every implementation hidden test must fail on its recorded base commit, pass
@@ -366,7 +367,7 @@ test at least:
 Begin with the bounded checkpointed smoke:
 
 ```bash
-./rocmplete acceptance run
+./rocmplete acceptance
 ```
 
 Keep its JSON and Markdown result. A `BLOCKED` result means generated media
@@ -461,7 +462,7 @@ Useful searches:
 
 ```bash
 rg -n 'TODO|FIXME|WIP|latest|main' \
-  Containerfile applications catalog src/rocmplete docs README.md
+  Containerfile applications catalog internal docs README.md
 rg -n 'localhost/rocmplete:|_COMMIT|_VERSION' .
 ```
 
@@ -498,7 +499,7 @@ source revision or image base.
 
 - [ ] The finite [target-hardware acceptance matrix](hardware-acceptance.md)
       records current results or explicit `N/P` reasons.
-- [ ] `acceptance run` passes, or its checkpointed result records reviewed
+- [ ] `acceptance` passes, or its checkpointed result records reviewed
       failures and explicit profile-level `N/P` cases.
 - [ ] RX 9060 family diagnostics and forced/auto profile tests pass.
 - [ ] R9700 or RX 9070 family diagnostics and forced/auto profile tests pass.
@@ -518,7 +519,7 @@ source revision or image base.
 
 ```bash
 git status --short
-PYTHONPATH=src python3 -m unittest discover -s tests
+make test
 podman ps -a --filter name=rocmplete
 ```
 

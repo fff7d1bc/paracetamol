@@ -14,7 +14,7 @@ Start every upgrade by locating the current values:
 
 ```bash
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-rg -n 'APPLICATIONS|ApplicationSpec' src/rocmplete/config.py
+rg -n 'applications|Application' internal/config/config.go
 rg -n 'source_version|source_revision' catalog/catalog.json
 cat agent-clients/pi/package.json
 sort -u containers/content_tools/requirements.txt \
@@ -105,7 +105,7 @@ any application image. `containers/content_tools/requirements.txt` is a
 complete exact dependency set, not merely a list of direct dependencies. When
 upgrading `huggingface-hub`, resolve its full environment in a clean Python
 virtual environment, review every transitive change, replace the complete pin
-set, and update `CONTENT_TOOLS_IMAGE` in `src/rocmplete/config.py`.
+set, and update `CONTENT_TOOLS_IMAGE` in `internal/config/config.go`.
 
 Build through one application so the normal prerequisite path is exercised:
 
@@ -116,7 +116,7 @@ podman run --rm --entrypoint /opt/venv/bin/python \
   -m pip check
 ```
 
-Use the current tag from `config.py`. Then dry-run at least one direct
+Use the current tag from `internal/config/config.go`. Then dry-run at least one direct
 Hugging Face artifact and one authenticated Civitai artifact. A dry run
 validates metadata but does not test transport; use small pinned fixtures when
 transport behavior itself changed.
@@ -157,7 +157,7 @@ podman run --rm --entrypoint /bin/bash \
   -lc 'cat /etc/os-release; python --version'
 ```
 
-Use the actual current image tag from `src/rocmplete/config.py`, not the
+Use the actual current image tag from `internal/config/config.go`, not the
 example tag above, after versions change.
 
 Check that rootless startup, read-only filesystems, `ffmpeg`, Git certificate
@@ -187,7 +187,7 @@ Update:
 - the four global ROCm/PyTorch version arguments;
 - the shared runtime and llama.cpp SDK using the same `ROCM_VERSION`;
 - device extras if AMD renamed them;
-- every default image tag in `src/rocmplete/config.py`;
+- every default image tag in `internal/config/config.go`;
 - ROCm/PyTorch OCI labels if their structure changes;
 - README requirements or kernel notes;
 - tests that assert image tags or command contents.
@@ -440,7 +440,7 @@ separate model-native reasoning controls or their server compatibility bridge.
 Inspect `llama-bench --help`, `--list-devices`, and JSON output as well.
 Changes to option names, backend device names, result shape, or progress
 streams require coordinated updates to
-`runtime/llama.py`, `llama_benchmark.py`, its benchmark and comparison schema
+`internal/runtime/llama.go`, `internal/benchmark/`, its benchmark and comparison schema
 versions, and tests.
 
 ## Upgrade DwarfStar
@@ -452,7 +452,7 @@ model, and acceptance case form one reviewed compatibility unit:
 ```text
 DWARFSTAR_COMMIT
 ROCM_VERSION
-APPLICATIONS["dwarfstar"].image
+the dwarfstar image in internal/config/config.go
 dwarfstar-deepseek-v4-flash-0731-q2-imatrix
 dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark
 applications/dwarfstar/entrypoint.sh
@@ -539,7 +539,7 @@ podman build --target rocm-base \
 ```
 
 Normal ROCmplete builds tag this target using `ROCM_BASE_IMAGE` from
-`src/rocmplete/config.py`, then build application targets from that local
+`internal/config/config.go`, then build application targets from that local
 image with pulling disabled. When changing Ubuntu, ROCm, PyTorch, or the base
 dependency set, update the managed base tag so its visible version remains
 honest.
@@ -654,7 +654,7 @@ requires both dependency lists to remain empty. If rgthree gains a dependency,
 pin its complete closure deliberately rather than deleting that guard.
 
 Update `RGTHREE_COMMIT`, bump the ComfyUI image revision in
-`src/rocmplete/config.py`, and build:
+`internal/config/config.go`, and build:
 
 ```bash
 ./rocmplete build comfyui --no-layer-cache
@@ -707,7 +707,7 @@ ComfyUI may use different Hugging Face generations because their
 responsibilities and upstream compatibility ranges differ.
 
 When changing the content-tools `huggingface-hub` pin, verify the exact command
-shapes constructed by `src/rocmplete/bundles.py`:
+shapes constructed by `internal/content/`:
 
 ```text
 hf download REPOSITORY PATH --revision COMMIT --local-dir DIRECTORY
@@ -742,15 +742,12 @@ material base, application source, or application dependency pin changes. A
 short `rN` suffix is the packaging revision for dependency or image-assembly
 changes made without changing the upstream application revision:
 
-```python
-APPLICATIONS = {
-    "comfyui": ApplicationSpec(
-        identifier="comfyui",
-        image="localhost/rocmplete:comfyui-ubuntuX.Y-rocmX.Y-COMFY_VERSION",
-        # Keep the remaining established fields unchanged.
-    ),
-    # Other applications...
-}
+```go
+"comfyui": {
+    ID: "comfyui",
+    Image: "localhost/rocmplete:comfyui-ubuntuX.Y-rocmX.Y-COMFY_VERSION",
+    // Keep the remaining established fields unchanged.
+},
 ```
 
 Search for stale tags:

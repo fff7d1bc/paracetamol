@@ -798,8 +798,8 @@ conditions; no model-quality conclusion is carried forward.
 Start acceptance on a new or updated host with:
 
 ```bash
-./rocmplete acceptance run --dry-run
-./rocmplete acceptance run
+./rocmplete acceptance --dry-run
+./rocmplete acceptance
 ```
 
 The checkpointed suite covers exact GPU/CPU device isolation, short ComfyUI

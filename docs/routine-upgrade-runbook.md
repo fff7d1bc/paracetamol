@@ -25,7 +25,7 @@ not prose snapshots:
 
 ```bash
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-rg -n 'localhost/rocmplete:' src/rocmplete/config.py
+rg -n 'localhost/rocmplete:' internal/config/config.go
 cat containers/content_tools/requirements.txt
 cat applications/comfyui/constraints.txt
 ```

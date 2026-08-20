@@ -23,18 +23,24 @@ successful image build or CPU startup as GPU inference acceptance.
 
 ## Validation
 
-ROCmplete's host launcher uses the Python standard library. Run these checks for
-every change:
+ROCmplete's host control plane is Go and the checkout launcher builds into the
+ignored `build/` tree. Run these checks for every change:
 
 ```bash
-python3 -m compileall -q applications containers src/rocmplete tests tools
+make check
+make test
+make static
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
-python3 -m json.tool catalog/catalog.json >/dev/null
-PYTHONPATH=src python3 -m unittest discover -s tests
+find catalog -type f -name '*.json' -print0 | \
+  xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check
 ```
+
+Python in this check validates container-owned scripts and fixtures; it is not
+a host runtime dependency. Go tests live beside their packages as `*_test.go`.
 
 Then follow the higher validation tier in
 [`docs/testing-and-release.md`](docs/testing-and-release.md) for the part of the

@@ -70,11 +70,15 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
    ```bash
    git status --short
-   python3 -m compileall -q applications containers src/rocmplete tests tools
+   make check
+   make test
+   make static
+   PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
    bash -n applications/comfyui/entrypoint.sh \
      applications/llama-cpp/entrypoint.sh \
      applications/dwarfstar/entrypoint.sh
-   PYTHONPATH=src python3 -m unittest discover -s tests
+   find catalog -type f -name '*.json' -print0 | \
+     xargs -0 -n1 python3 -m json.tool >/dev/null
    git diff --check
    ```
 
@@ -103,36 +107,34 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Concern | Authoritative files |
 | --- | --- |
 | Runtime/base images, ROCm/PyTorch, application commits | `Containerfile` |
-| Application defaults and profile validation | `src/rocmplete/config.py` |
-| GPU profile and architecture identities | `src/rocmplete/hardware_profiles.py` |
-| Offline managed image archives | `src/rocmplete/image_archive.py` |
-| Public command tree and usage examples | `src/rocmplete/cli_parser.py` |
-| Command validation and orchestration | `src/rocmplete/cli.py` |
-| Terminal styling and measured columns | `src/rocmplete/ui.py` |
-| Repository-root discovery | `src/rocmplete/project.py` |
-| Small runnable content recipes | `src/rocmplete/recipes.py` |
-| Built-in application walkthroughs | `src/rocmplete/application_guides.py` |
-| Local image build commands | `src/rocmplete/build.py` |
-| Podman isolation and device arguments | `src/rocmplete/runtime/` |
+| Product name and durable namespace identities | `internal/identity/identity.go`, `Makefile` |
+| Application defaults, images, ports, and registry | `internal/config/config.go` |
+| GPU profile discovery and platform boundary | `internal/platform/` |
+| Offline managed image archives | `internal/imagearchive/` |
+| Public command tree, validation, and orchestration | `internal/cli/` |
+| Repository-root discovery | `internal/project/` |
+| Small runnable content recipes | `internal/recipes/` |
+| Built-in application walkthroughs | `internal/cli/commands_basic.go` |
+| Local image build commands | `internal/buildplan/` |
+| Podman process boundary and runtime command construction | `internal/podman/`, `internal/runtime/` |
 | In-container GPU/profile validation | `containers/common/profile.py` |
 | Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
-| Remote URL resolution and generated local packs | `src/rocmplete/remote_import.py` |
-| Read-only source, archive, and workflow research | `tools/*_probe.py` |
+| Remote URL resolution and generated local packs | `internal/remoteimport/` |
 | Application build and runtime policy | `applications/<application>/` |
 | Content metadata and relationships | `catalog/catalog.json` |
-| Workflow transformation and provenance | `src/rocmplete/workflows.py` |
-| ComfyUI benchmark preparation and results | `src/rocmplete/benchmark.py` |
+| Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |
+| ComfyUI benchmark preparation and results | `internal/benchmark/` |
 | PATH launchers | `bin/rocmplete`, `bin/pi`, `bin/maki` |
-| Agent model policy and sandbox | `src/rocmplete/agent_models.py`, `src/rocmplete/agent_sandbox.py` |
-| Runtime client configuration | `src/rocmplete/pi_agent.py`, `src/rocmplete/maki_agent.py` |
-| Managed Pi installation | `agent-clients/pi/`, `src/rocmplete/pi_runtime.py` |
-| Read-only local GGUF inventory | `src/rocmplete/model_inventory.py` |
-| Native llama.cpp benchmark results | `src/rocmplete/llama_benchmark.py` |
-| Server-side llama.cpp speculative-depth screens | `src/rocmplete/llama_speculative_benchmark.py` |
-| Frozen coding-agent tasks and results | `evaluations/coding/`, `src/rocmplete/agent_evaluation.py` |
-| Checkpointed target-hardware smoke acceptance | `src/rocmplete/acceptance.py` |
+| Agent model policy and sandbox | `internal/agent/models.go`, `internal/agent/sandbox.go` |
+| Runtime client configuration | `internal/agent/pi.go`, `internal/agent/maki.go` |
+| Managed Pi installation | `agent-clients/pi/`, `internal/agent/piruntime.go` |
+| Read-only local GGUF inventory | `internal/agent/models.go` |
+| Native llama.cpp benchmark results | `internal/benchmark/` |
+| Server-side llama.cpp speculative-depth screens | `internal/benchmark/` |
+| Frozen coding-agent tasks and results | `evaluations/coding/`, `internal/evaluation/` |
+| Checkpointed target-hardware smoke acceptance | `internal/cli/commands_acceptance.go` |
 | Third-party provenance summary | `THIRD_PARTY_NOTICES.md` |
-| Enforced behavior | `tests/` |
+| Enforced host behavior | package-local `internal/**/*_test.go` files |
 
 The files above are authoritative. When their counts, versions, commands, or
 behavior change, update the corresponding prose in the same change rather than

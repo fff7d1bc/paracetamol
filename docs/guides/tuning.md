@@ -268,9 +268,9 @@ Managed ComfyUI benchmark results record image, content pins, profile, render
 node, seed, cache mode, and both runtime policies:
 
 ```bash
-./rocmplete benchmark run qwen-image-2512-bf16-base --dry-run
-./rocmplete benchmark run qwen-image-2512-bf16-base
-./rocmplete benchmark run qwen-image-2512-bf16-base \
+./rocmplete benchmark comfyui qwen-image-2512-bf16-base --dry-run
+./rocmplete benchmark comfyui qwen-image-2512-bf16-base
+./rocmplete benchmark comfyui qwen-image-2512-bf16-base \
   --cache-mode isolated
 
 ./rocmplete benchmark suite --family qwen --accept-license

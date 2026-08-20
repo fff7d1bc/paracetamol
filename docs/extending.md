@@ -24,17 +24,9 @@ top-level command.
 
 ## Extend human-facing output
 
-Keep output structure useful without color first. Use the semantic helpers in
-`src/rocmplete/ui.py` for headings, copyable commands, states, warnings,
-errors, prompts, and next actions. Do not add raw ANSI sequences or use color
-as the only way to communicate a state.
-
-Formatting must remain terminal-aware: redirected stdout/stderr and
-`NO_COLOR` output are plain. Preserve established stream placement when
-styling an existing message. When a state is column-aligned, pad the plain
-text before applying styling so escape sequences do not shift later columns.
-Cover new roles or output behavior in `tests/test_ui.py` and keep command
-content assertions independent of ANSI where possible.
+Keep output compact, plain-text friendly, and useful when copied into an issue.
+Preserve established stream placement and do not make color the only way to
+communicate state. Cover new output behavior in the owning package's Go test.
 
 ## Add a web application
 
@@ -75,7 +67,7 @@ FROM ${ROCM_BASE_IMAGE} AS new-application
 
 Add every copied file to the `.containerignore` allowlist.
 
-Register the application target through `ApplicationSpec`. The common build
+Register the application target through `config.Application`. The common build
 orchestrator will ensure the tagged base first and pass `ROCM_BASE_IMAGE` with
 pulling disabled. Do not add a separate remote or application-specific ROCm
 base.
@@ -92,7 +84,7 @@ final image from `ROCM_RUNTIME_IMAGE`, as llama.cpp does, rather than carrying
 the higher PyTorch base. In that case:
 
 - reuse the project runtime's pinned OS and native ROCm package tuple;
-- set `ApplicationSpec.shared_pytorch_base=False`;
+- leave `SharedPyTorchBase` false;
 - pass `ROCM_RUNTIME_IMAGE` as an exact local prerequisite with pulling
   disabled;
 - build upstream source at a full immutable commit for every supported GPU
@@ -144,34 +136,34 @@ in it.
 
 ### 4. Register the application on the host
 
-Add one `ApplicationSpec` to the `APPLICATIONS` registry in
-`src/rocmplete/config.py`. Declare its image, container, build target,
+Add one `config.Application` to the application registry in
+`internal/config/config.go`. Declare its image, container, build target,
 optional web port, supported shell/log capabilities, and lifecycle guidance.
 The application-name and capability tuples are derived from this registry.
 
 Add its writable host partition and any managed-content partitions to
-`src/rocmplete/layout.py`. Update the owning module in
-`src/rocmplete/runtime/` so `/data` mounts
+`internal/storage/`. Update the owning module in
+`internal/runtime/` so `/data` mounts
 only that application's directory and `/content` exposes only the managed
 content it needs. Shared SELinux labels must remain shared (`z`) for
 read-only content; application state keeps a private label (`Z`).
 
-Update the parser in `src/rocmplete/cli_parser.py`:
+Update parsing and dispatch in `internal/cli/`:
 
-- an application subparser below `run`, using `_add_web_run_arguments()` when
-  the generic web contract applies;
+- an application branch below `run`, reusing the common web flags when the
+  generic web contract applies;
 - any genuinely application-specific arguments or dispatch.
 
 Build, shell, logs, stop, cleanup, status, and lifecycle hints derive their
 generic choices from registry capabilities. Their tests still need updated
 expectations for a new application.
 
-Add a focused entry to `src/rocmplete/application_guides.py`. Keep it to the
+Add a focused entry to `internal/cli/`. Keep it to the
 working setup, run modes, network behavior, and routine operations that a new
 user needs. Guide commands are parser-tested, but the application-specific
 explanations and any new mode still need direct output assertions.
 
-The generic `RunOptions` and `run_command()` should remain usable. If the
+The generic `runtime.WebOptions` and command builder should remain usable. If the
 application needs a genuinely different isolation model, add a dedicated
 options type and command builder rather than accumulating application-specific
 conditionals in the generic path.
@@ -255,8 +247,8 @@ acceptance belongs on all target hardware classes.
 
 A managed foreground or batch application needs:
 
-- dedicated immutable options dataclass in the owning
-  `src/rocmplete/runtime/` module;
+- dedicated immutable options struct in the owning
+  `internal/runtime/` module;
 - dedicated Podman command builder;
 - dedicated application/mode parser subtree below `run` and command handler;
 - application-specific input validation before Podman;
@@ -285,7 +277,7 @@ is more than a CLI label.
 
 Update all of the following:
 
-1. `PROFILE_ARCHITECTURES` in `src/rocmplete/hardware_profiles.py`. Add an
+1. The profile registry in `internal/platform/`. Add an
    architecture to an existing profile tuple when it needs the same runtime
    policy, or add a profile only when the policy itself differs.
 2. AMD wheel extras in `Containerfile`, if the architecture needs another
@@ -305,7 +297,7 @@ Decide explicitly whether the new architecture is:
 
 The detector inspects every PyTorch device visible through the selected
 render-node set and requires one supported architecture. An application must
-opt into `ApplicationSpec.multi_gpu` before the launcher will expose more than
+opt into the registry's `MultiGPU` capability before the launcher will expose more than
 one node to a workload. That capability means only that its runtime has a
 deliberate way to use the devices; document the application-specific
 placement or splitting behavior.
@@ -330,9 +322,9 @@ only when it represents a reusable behavior callers may select.
 
 Update:
 
-- accepted values and validators in `config.py`;
-- parser choices in `cli_parser.py` and environment fallback in `cli.py`;
-- environment propagation in the owning `runtime/` module;
+- accepted values and defaults in `internal/config/`;
+- parser choices and environment fallback in `internal/cli/`;
+- environment propagation in the owning `internal/runtime/` package;
 - application entrypoints that implement it;
 - benchmark result metadata if it affects performance;
 - documentation and tests.
