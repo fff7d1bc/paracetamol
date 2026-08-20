@@ -45,6 +45,28 @@ type LlamaOptions struct {
 	ContainerName                string
 	ContainerRole                string
 	AutoRemove                   bool
+	Arguments                    []string
+	Environment                  []string
+}
+
+type LlamaBenchmarkOptions struct {
+	Image            string
+	Profile          string
+	DataDir          string
+	Backend          string
+	Model            string
+	ManagedModel     string
+	RenderNodes      []string
+	Repetitions      int
+	PromptTokens     int
+	GenerationTokens int
+	ContextDepth     int
+	BatchSize        int
+	UBatchSize       int
+	CacheTypeK       string
+	CacheTypeV       string
+	FlashAttention   string
+	Unconfined       bool
 }
 
 func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
@@ -132,6 +154,9 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	if options.Unconfined {
 		command = append(command, "--security-opt", "seccomp=unconfined")
 	}
+	for _, value := range options.Environment {
+		command = append(command, "--env", value)
+	}
 	if options.Detach {
 		command = append(command, "--detach")
 	}
@@ -148,5 +173,56 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	if options.Prompt != nil {
 		command = append(command, "--prompt", *options.Prompt, "--single-turn")
 	}
+	command = append(command, options.Arguments...)
 	return command, nil
+}
+
+// LlamaBenchmarkCommand deliberately bypasses the interactive/server policy
+// surface and exposes only the bounded llama-bench measurements maintained by
+// the control plane.
+func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) []string {
+	layout := storage.Layout{Root: options.DataDir}
+	readOnly := readOnlySharedSuffix(volumeSuffix)
+	modelRoot := layout.LlamaModels()
+	containerModel := "/content/models/" + options.ManagedModel
+	if options.Model != "" {
+		modelRoot = filepath.Dir(options.Model)
+		containerModel = "/content/models/" + filepath.Base(options.Model)
+	}
+	command := []string{
+		"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(),
+		"--name", "rocmplete-llama-cpp-benchmark",
+	}
+	command = append(command, podman.ManagedArguments("llama-cpp", "benchmark")...)
+	command = append(command,
+		"--network", "none", "--read-only", "--cap-drop", "all",
+		"--security-opt", "no-new-privileges", "--pids-limit", "2048",
+		"--ulimit", "core=0:0", "--shm-size", "8g",
+		"--tmpfs", "/tmp:rw,nosuid,nodev,size=1g",
+		"--volume", modelRoot+":/content/models"+readOnly,
+		"--env", "HOME=/tmp",
+	)
+	command = env(command, "ROCMLETE_PROFILE", options.Profile)
+	command = env(command, "ROCMLETE_LLAMA_BACKEND", options.Backend)
+	command = env(command, "ROCMLETE_LLAMA_MODE", "bench")
+	command = env(command, "ROCMLETE_LLAMA_MODEL", containerModel)
+	command = env(command, "ROCMLETE_GPU_COUNT", len(options.RenderNodes))
+	if options.Profile != "cpu" {
+		command = append(command, gpuDeviceArguments(options.RenderNodes)...)
+	}
+	if options.Unconfined {
+		command = append(command, "--security-opt", "seccomp=unconfined")
+	}
+	return append(command, options.Image,
+		"--repetitions", fmt.Sprint(options.Repetitions),
+		"--n-prompt", fmt.Sprint(options.PromptTokens),
+		"--n-gen", fmt.Sprint(options.GenerationTokens),
+		"--n-depth", fmt.Sprint(options.ContextDepth),
+		"--batch-size", fmt.Sprint(options.BatchSize),
+		"--ubatch-size", fmt.Sprint(options.UBatchSize),
+		"--cache-type-k", options.CacheTypeK,
+		"--cache-type-v", options.CacheTypeV,
+		"--flash-attn", options.FlashAttention,
+		"--output", "json", "--progress",
+	)
 }

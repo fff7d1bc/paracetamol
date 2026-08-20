@@ -3,44 +3,56 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
 
+	"rocmplete/internal/controlerr"
 	"rocmplete/internal/identity"
+	"rocmplete/internal/process"
 	"rocmplete/internal/project"
 )
 
 // Main executes the host control plane and returns a process exit status.
-func Main(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	_ = ctx
-	parser := flag.NewFlagSet(identity.CommandName, flag.ContinueOnError)
-	parser.SetOutput(stderr)
-	parser.Usage = func() { writeRootHelp(stderr) }
-	showVersion := parser.Bool("version", false, "show version and exit")
-	if err := parser.Parse(args); err != nil {
-		return 2
-	}
-	if *showVersion {
+func Main(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 1 && args[0] == "--version" {
 		fmt.Fprintf(stdout, "%s %s\n", identity.DisplayName, identity.Version)
 		return 0
 	}
-	remaining := parser.Args()
-	if len(remaining) == 0 {
+	if len(args) == 0 {
+		writeRootHelp(stdout)
+		return 2
+	}
+	if len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
 		writeRootHelp(stdout)
 		return 0
 	}
-	if remaining[0] == "help" || remaining[0] == "-h" || remaining[0] == "--help" {
-		writeRootHelp(stdout)
-		return 0
-	}
-	if _, err := project.Root(); err != nil {
+	root, err := project.Root()
+	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stderr, "error: command %q has not been ported to Go yet\n", remaining[0])
-	return 2
+	app := App{Context: ctx, Root: root, Environment: environment(), Stdin: stdin, Stdout: stdout, Stderr: stderr, Runner: process.OSRunner{}}
+	err = app.Dispatch(args)
+	if err == nil {
+		return 0
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	var controlled *controlerr.Error
+	if errors.As(err, &controlled) {
+		fmt.Fprintf(stderr, "error: %s\n", controlled.Message)
+		return controlled.Status
+	}
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(stderr, "error: interrupted")
+		return 130
+	}
+	fmt.Fprintf(stderr, "error: %v\n", err)
+	return 1
 }
 
 func writeRootHelp(output io.Writer) {
@@ -69,7 +81,7 @@ func writeRootHelp(output io.Writer) {
 			width = len(command.name)
 		}
 	}
-	fmt.Fprintf(output, "Usage: ./%s [--version] COMMAND [OPTIONS]\n\n", identity.CommandName)
+	fmt.Fprintf(output, "Usage: ./%s COMMAND [OPTIONS]\n\n", identity.CommandName)
 	fmt.Fprintf(output, "%s builds and runs locally pinned AI applications in constrained containers.\n\n", identity.DisplayName)
 	fmt.Fprintln(output, "Commands:")
 	for _, command := range commands {

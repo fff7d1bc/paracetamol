@@ -30,6 +30,13 @@ type DwarfStarOptions struct {
 }
 
 func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, error) {
+	application, _ := config.ApplicationByID("dwarfstar")
+	if options.Listen == "" {
+		options.Listen = config.DefaultListen
+	}
+	if options.Port == 0 {
+		options.Port = application.Port
+	}
 	if options.DSpark && options.SupportModel == "" {
 		return nil, fmt.Errorf("DSpark requires one support GGUF")
 	}
@@ -42,7 +49,6 @@ func DwarfStarCommand(options DwarfStarOptions, volumeSuffix string) ([]string, 
 	}
 	layout := storage.Layout{Root: options.DataDir}
 	readOnly := readOnlySharedSuffix(volumeSuffix)
-	application, _ := config.ApplicationByID("dwarfstar")
 	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", application.ContainerName}
 	command = append(command, podman.ManagedArguments("dwarfstar", "application")...)
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("dwarfstar")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)

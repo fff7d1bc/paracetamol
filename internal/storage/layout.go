@@ -22,6 +22,12 @@ func (layout Layout) LlamaModels() string {
 func (layout Layout) DwarfStarModels() string {
 	return filepath.Join(layout.Root, "content", "dwarfstar", "models")
 }
+func (layout Layout) CuratedWorkflows() string {
+	return filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "curated")
+}
+func (layout Layout) ImportedWorkflows() string {
+	return filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "imported")
+}
 func (layout Layout) VerificationReceipt() string {
 	return filepath.Join(layout.Root, "content", ".rocmplete", "verification.json")
 }
@@ -31,6 +37,9 @@ func (layout Layout) PiRuntime() string {
 }
 func (layout Layout) LlamaBenchmarks() string {
 	return filepath.Join(layout.Application("llama-cpp"), "benchmarks")
+}
+func (layout Layout) ComfyBenchmarks() string {
+	return filepath.Join(layout.Application("comfyui"), "benchmarks")
 }
 func (layout Layout) AgentEvaluations() string {
 	return layout.Application("agent-evaluation")

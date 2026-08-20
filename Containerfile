@@ -174,15 +174,11 @@ RUN git init /opt/rocmplete/custom_nodes/rgthree-comfy && \
 
 COPY applications/comfyui/entrypoint.sh /usr/local/bin/rocmplete-entrypoint
 COPY containers/common/profile.py /opt/rocmplete/container_profile.py
-COPY src/rocmplete/__init__.py src/rocmplete/hardware_profiles.py \
-    /opt/rocmplete/rocmplete/
 COPY applications/comfyui/extra-model-paths.yaml \
     /opt/rocmplete/extra_model_paths.yaml
 RUN chmod 0755 /usr/local/bin/rocmplete-entrypoint && \
     chmod 0644 \
         /opt/rocmplete/container_profile.py \
-        /opt/rocmplete/rocmplete/__init__.py \
-        /opt/rocmplete/rocmplete/hardware_profiles.py \
         /opt/rocmplete/patch_comfyui_manager.py \
         /opt/rocmplete/extra_model_paths.yaml && \
     mkdir -p /data /tmp/comfy && \

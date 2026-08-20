@@ -5,11 +5,20 @@ from __future__ import annotations
 import sys
 from typing import Any, NamedTuple
 
-from rocmplete.hardware_profiles import (
-    ARCHITECTURE_PROFILES,
-    PROFILES,
-    SUPPORTED_ARCHITECTURES,
+PROFILE_ARCHITECTURES = (
+    ("rdna4", ("gfx1200", "gfx1201")),
+    ("strix-halo", ("gfx1151",)),
+    ("strix-point", ("gfx1150",)),
 )
+ARCHITECTURE_PROFILES = {
+    architecture: profile
+    for profile, architectures in PROFILE_ARCHITECTURES
+    for architecture in architectures
+}
+SUPPORTED_ARCHITECTURES = tuple(sorted(ARCHITECTURE_PROFILES))
+PROFILES = ("auto",) + tuple(
+    profile for profile, _ in PROFILE_ARCHITECTURES
+) + ("cpu",)
 
 
 class ProfileInfo(NamedTuple):
