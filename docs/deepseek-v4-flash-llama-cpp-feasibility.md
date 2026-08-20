@@ -230,7 +230,7 @@ For a future retest with a local model path, the equivalent benchmark shape
 is:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --model /ABSOLUTE/PATH/TO/DeepSeek-V4-Flash-0731-UD-IQ3_XXS-00001-of-00004.gguf \
   --profile strix-halo \
   --backend vulkan \

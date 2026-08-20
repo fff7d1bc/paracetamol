@@ -268,13 +268,13 @@ Managed ComfyUI benchmark results record image, content pins, profile, render
 node, seed, cache mode, and both runtime policies:
 
 ```bash
-./rocmplete benchmark comfyui qwen-image-2512-bf16-base --dry-run
-./rocmplete benchmark comfyui qwen-image-2512-bf16-base
-./rocmplete benchmark comfyui qwen-image-2512-bf16-base \
+./rocmplete benchmark comfyui run qwen-image-2512-bf16-base --dry-run
+./rocmplete benchmark comfyui run qwen-image-2512-bf16-base
+./rocmplete benchmark comfyui run qwen-image-2512-bf16-base \
   --cache-mode isolated
 
-./rocmplete benchmark suite --family qwen --accept-license
-./rocmplete benchmark suite --family qwen --accept-license \
+./rocmplete benchmark comfyui suite --family qwen --accept-license
+./rocmplete benchmark comfyui suite --family qwen --accept-license \
   --resume ~/.local/share/rocmplete/apps/comfyui/benchmarks/suites/SUITE.json
 ./rocmplete benchmark report \
   ~/.local/share/rocmplete/apps/comfyui/benchmarks/suites/SUITE.json
@@ -291,9 +291,9 @@ fresh per-run directory and removes it afterward.
 llama.cpp uses its native `llama-bench`:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 --dry-run
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3-0.6b-q8-0 \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
@@ -311,10 +311,10 @@ runtime. Select a non-speculative control for a native `llama-bench`
 comparison, or use the separate managed server sweep:
 
 ```bash
-./rocmplete benchmark llama-cpp-speculative \
+./rocmplete benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
-./rocmplete benchmark llama-cpp-speculative \
+./rocmplete benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium
 ```
@@ -354,7 +354,7 @@ output divergence but is not model-quality acceptance.
 Resume with the same options and the printed checkpoint path:
 
 ```bash
-./rocmplete benchmark llama-cpp-speculative \
+./rocmplete benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --resume RESULT.json
 ```
@@ -366,7 +366,7 @@ or prompt policy is rejected instead of silently mixing conditions.
 The llama.cpp image contains both ROCm and Vulkan. Compare them unattended:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
@@ -391,7 +391,7 @@ do not describe an agent session after its context has grown. Populate the KV
 cache before each measured prompt and generation run with `--context-depth`:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends \
   --context-depth 32768 \
@@ -419,7 +419,7 @@ combination before starting the container. Treat q4 cache measurements as
 experimental and check task output as well as throughput. These flags affect
 only the one-shot benchmark. A managed application preset changes cache type
 only when its catalog entry contains an explicit profile-specific `kv_cache`
-policy; inspect that policy with `content list --models --details`.
+policy; inspect that policy with `content list models --details`.
 
 Treat the result as specific to that non-MTP preset too. Nearby variants are
 not interchangeable performance evidence. Quantization, dense or

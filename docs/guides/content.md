@@ -86,7 +86,7 @@ strengths; high is the family default and off is not advertised. Managed agent
 launchers instead prefer Qwen3.8 27B MTP at medium when it is installed.
 
 Catalog pruning does not delete GGUFs installed by an older checkout. Retired
-files remain visible as local model rows in `content list --models`; remove
+files remain visible as local model rows in `content list models`; remove
 their exact files deliberately only when they are no longer needed.
 
 If a recipe is not specific enough, choose the exact-bundle browser in the
@@ -114,9 +114,9 @@ unverified-license acknowledgments are collected once for the complete plan.
 Use the advanced inventory directly when a recipe is insufficient:
 
 ```bash
-./rocmplete content list --bundles
-./rocmplete content list --bundles --application comfyui
-./rocmplete content list --families
+./rocmplete content list bundles
+./rocmplete content list bundles --application comfyui
+./rocmplete content list families
 ./rocmplete content install qwen-image-2512-bf16-base --dry-run
 ```
 
@@ -216,10 +216,10 @@ practical question of what can be run, list the managed llama.cpp and
 DwarfStar choices alongside local llama.cpp GGUFs found on disk:
 
 ```bash
-./rocmplete content list --models
-./rocmplete content list --models --application llama-cpp
-./rocmplete content list --models --application dwarfstar
-./rocmplete content list --models --details
+./rocmplete content list models
+./rocmplete content list models --application llama-cpp
+./rocmplete content list models --application dwarfstar
+./rocmplete content list models --details
 ```
 
 Every managed model is shown even when it is not installed. Missing rows use
@@ -244,7 +244,7 @@ locations explicitly; `--scan` is repeatable and accepts one GGUF or a
 directory:
 
 ```bash
-./rocmplete content list --models \
+./rocmplete content list models \
   --scan ~/models \
   --scan /mnt/shared/ggufs
 ```

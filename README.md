@@ -87,16 +87,19 @@ with a launcher.
 The Go cutover preserves the existing data directory, installed content,
 verification receipts, resumable download staging, application state, managed
 Pi state, image tags, and Podman ownership labels. Two pre-release command
-shapes changed deliberately: `acceptance run` is now `acceptance`, and the
-ComfyUI-specific `benchmark run` is now `benchmark comfyui`. Python-era
-benchmark and acceptance JSON remains historical evidence but cannot be used
-as a Go resume checkpoint; start a new run under the current schema.
+shapes changed deliberately: `acceptance run` is now `acceptance`, agent
+clients live below `agent run`, and benchmarks use explicit `comfyui run`,
+`comfyui suite`, `llama-cpp throughput`, and `llama-cpp speculative` modes.
+Python-era benchmark and acceptance JSON remains historical evidence but
+cannot be used as a Go resume checkpoint; start a new run under the current
+schema.
 
 ## Quick start
 
 Clone the source and inspect the host. ROCmplete's host control plane is Go;
-Python remains only inside Python application images and frozen evaluation
-fixtures. ROCmplete does not publish prebuilt application images.
+Python remains appropriate for Python container code, its focused tests, and
+frozen evaluation fixtures. ROCmplete does not publish prebuilt application
+images.
 
 ```bash
 git clone https://github.com/fff7d1bc/rocmplete.git
@@ -199,7 +202,7 @@ target/DFlash pair:
 The Qwen3.6 recipe prints dense 27B MTP as its next step; sparse 35B-A3B MTP
 is an optional installed comparison and does not change the Qwen3.8
 managed-client default. Qwen3.6 MTP and non-MTP variants use distinct GGUFs
-and therefore appear on separate `content list --models` rows. Each Qwen3.8
+and therefore appear on separate `content list models` rows. Each Qwen3.8
 quantization shares one GGUF between its base and MTP presets, so the list
 prints each pair of preset aliases on one comma-separated row. Muse's three
 presets similarly share one artifact pair.
@@ -394,9 +397,9 @@ Content discovery starts with practical recipes and expands only when asked:
 
 ```bash
 ./rocmplete content list
-./rocmplete content list --bundles
-./rocmplete content list --families
-./rocmplete content list --models --details
+./rocmplete content list bundles
+./rocmplete content list families
+./rocmplete content list models --details
 ./rocmplete content import
 ```
 
@@ -439,7 +442,7 @@ mean.
 Compare llama.cpp's ROCm and Vulkan backends on the exact model you use:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends
 ```
@@ -453,7 +456,7 @@ managed chat template, reasoning, sampling, cache, and speculative policy that
 native `llama-bench` cannot exercise:
 
 ```bash
-./rocmplete benchmark llama-cpp-speculative \
+./rocmplete benchmark llama-cpp speculative \
   --preset qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
@@ -524,6 +527,15 @@ rsync -a -v --progress --delete --exclude=/build/ \
 
 The anchored exclusion keeps the destination's own `build/` cache while
 `--delete` still removes obsolete source files. Do not add `--delete-excluded`.
+
+The pre-release product identity is centralized rather than scattered through
+Go packages. `make PRODUCT_ID=new-name DISPLAY_NAME='New Name'` changes the
+built command, host-configuration environment prefix (`NEW_NAME_*`),
+persistent namespace, local image namespace, container names, and
+ownership-label namespace together.
+Set `ENV_PREFIX` explicitly only when a renamed command needs another spelling.
+Changing that identity deliberately selects new state and image ownership; it
+is not an automatic migration of an existing ROCmplete data directory.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [catalog/README.md](catalog/README.md) for provenance and catalog policy.

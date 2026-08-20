@@ -30,7 +30,7 @@ ignored `build/` tree. Run these checks for every change:
 make check
 make test
 make static
-PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh

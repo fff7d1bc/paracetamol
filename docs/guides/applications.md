@@ -372,7 +372,7 @@ the gain. MTP does not accelerate prompt ingestion, and the client's
 
 For an MTP comparison, use the server API and measure complete response wall
 time, output validity, and draft acceptance on the same prompts. The native
-`benchmark llama-cpp` path deliberately rejects managed speculative presets
+`benchmark llama-cpp throughput` path deliberately rejects managed speculative presets
 because `llama-bench` does not apply their MTP or DFlash policy. A matching
 non-speculative preset remains the useful control.
 
@@ -380,7 +380,7 @@ See the launch policy and catalog footprint for every installed managed
 preset:
 
 ```bash
-./rocmplete content list --models --details
+./rocmplete content list models --details
 ```
 
 ROCmplete presets do not store a general system prompt or persona. Ordinary
@@ -437,7 +437,7 @@ List the exact managed variants and their launch policy before installing a
 large model:
 
 ```bash
-./rocmplete content list --models --details
+./rocmplete content list models --details
 
 # Install every managed llama.cpp model in one resumable operation.
 ./rocmplete content install llama-cpp all
@@ -552,7 +552,7 @@ ROCMLETE_PI_LLAMA_URL=http://gpu-host.local:8080/v1 pi
 ```
 
 The equivalent direct form is
-`./rocmplete agent pi --llama-url URL --`. Remote mode performs a bounded
+`./rocmplete agent run pi --llama-url URL --`. Remote mode performs a bounded
 `GET /v1/models` probe before starting Pi, intersects the advertised IDs with
 the reviewed ROCmplete agent catalog, and applies the normal recommended-model
 order. It therefore needs no local GGUF installation or verification receipt
@@ -610,7 +610,7 @@ Maki's native named selector carries the model's reasoning control but no
 sampling tuple, so the server also supplies its mode-aware policy. Explicit
 sampling remains higher precedence field by field in every client.
 
-`bin/pi` delegates to `./rocmplete agent pi` and executes the exact Pi release
+`bin/pi` delegates to `./rocmplete agent run pi` and executes the exact Pi release
 installed by `./rocmplete agent install pi`; it never searches `PATH` for
 another Pi. The repository's package manifest and lockfile pin the complete
 npm dependency tree, while system Node.js remains the only runtime. The
@@ -636,7 +636,7 @@ writable project and host network inside the sandbox, so review them before
 installation. A local `pi install -l` still requires explicit project approval
 before its project resources can load.
 
-`bin/maki` delegates to `./rocmplete agent maki`. It atomically refreshes two
+`bin/maki` delegates to `./rocmplete agent run maki`. It atomically refreshes two
 executable provider descriptions and a small generated `init.lua` inside
 Maki's ROCmplete-owned XDG directories. The providers inherit Maki's native
 llama.cpp Chat Completions adapter and publish the exact context, output, and
@@ -705,8 +705,8 @@ writable path before the client starts.
 Use the direct command for the explicit escape hatch:
 
 ```bash
-./rocmplete agent pi --no-sandbox --
-./rocmplete agent maki --no-sandbox --
+./rocmplete agent run pi --no-sandbox --
+./rocmplete agent run maki --no-sandbox --
 ```
 
 This restores ordinary host filesystem access and should be reserved for a
@@ -920,7 +920,7 @@ Vulkan, so a server, terminal session, or benchmark can select it explicitly:
 If you do not know which one to use, run them back to back:
 
 ```bash
-./rocmplete benchmark llama-cpp \
+./rocmplete benchmark llama-cpp throughput \
   --preset qwen3.6-27b-q8-0 \
   --compare-backends
 ```
@@ -954,7 +954,7 @@ the option once per card:
 
 ROCmplete enables llama.cpp's compatible layer split automatically whenever
 more than one card is selected. The same selection works with `cli`, the
-managed router, and `benchmark llama-cpp`. It is still worth leaving capacity
+managed router, and `benchmark llama-cpp throughput`. It is still worth leaving capacity
 on every card for the KV cache and runtime buffers. ROCmplete does not enable
 the experimental tensor split or add an RCCL dependency.
 
@@ -970,7 +970,7 @@ Both Qwen3.6 MTP presets use three draft tokens. On Strix Halo, dense 27B
 combines that depth with Q8_0 target K/V and Flash Attention based on the
 project's 37K- and 94K-context acceptance. Sparse 35B-A3B retains F16 target
 K/V and the default Flash Attention policy because its controlled cache test
-was neutral. Inspect the resolved policy with `content list --models
+was neutral. Inspect the resolved policy with `content list models
 --details` instead of assuming one setting applies to every Qwen model.
 
 ### Muse Glimmer and DFlash
@@ -1082,7 +1082,7 @@ curl -sS http://127.0.0.1:8080/v1/chat/completions \
 Any local regular `.gguf` file can also be used:
 
 ```bash
-./rocmplete content list --models --scan /path/to/model-directory
+./rocmplete content list models --scan /path/to/model-directory
 ./rocmplete build llama-cpp
 ./rocmplete run llama-cpp server --model /path/to/model.gguf
 
@@ -1247,7 +1247,7 @@ maps low, medium, and high to the same mode below its much larger Think Max
 context threshold, so ROCmplete does not expose three misleading labels. The
 managed 128K server also cannot activate the 384K-minimum Think Max mode. If
 the DwarfStar server uses another port, pass
-`./rocmplete agent pi --dwarfstar-port PORT --` or set
+`./rocmplete agent run pi --dwarfstar-port PORT --` or set
 `ROCMLETE_PI_DWARFSTAR_PORT` for its provider. Maki exposes the same off and
 high behaviors through `/thinking`; adaptive selects high. Set
 `ROCMLETE_MAKI_DWARFSTAR_PORT` when its
