@@ -50,9 +50,9 @@ function modelFamily(model: AnyModel): string {
 		if (model.id.startsWith("muse-glimmer-")) return "Muse Glimmer";
 		if (model.id.startsWith("kat-coder-")) return "KAT-Coder";
 		if (model.id.startsWith("gemma4-")) return "Gemma 4";
+		if (model.id.startsWith("deepseek-v4-flash-")) return "DeepSeek V4 Flash";
 		return "Other Paracetamol";
 	}
-	if (model.provider === "dwarfstar") return "DeepSeek V4 Flash";
 	return `Provider: ${model.provider}`;
 }
 

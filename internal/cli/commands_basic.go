@@ -19,6 +19,7 @@ import (
 
 	"paracetamol/internal/application"
 	"paracetamol/internal/buildplan"
+	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
@@ -208,9 +209,10 @@ func (app *App) commandGuide(args []string) error {
 }
 
 func (app *App) commandStatus(args []string) error {
-	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]"))
+	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]", "[--gateway-url URL]"))
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
+	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -222,10 +224,19 @@ func (app *App) commandStatus(args []string) error {
 	if len(positionals) > 0 {
 		return controlerr.Usage("status accepts at most one application")
 	}
-	if application != "" {
+	if application != "" && application != "gateway" {
 		if _, ok := config.ApplicationByID(application); !ok {
 			return controlerr.Usage("unknown status application %q", application)
 		}
+	}
+	if application == "gateway" {
+		if *model != "" || *dataFlag != "" {
+			return controlerr.Usage("status gateway does not accept --model or --data-dir")
+		}
+		return app.gatewayStatus(*gatewayURL)
+	}
+	if *gatewayURL != "" {
+		return controlerr.Usage("--gateway-url requires 'status gateway'")
 	}
 	if *model != "" && application != "llama-cpp" {
 		return controlerr.Usage("--model requires 'status llama-cpp'")
@@ -359,7 +370,8 @@ func (app *App) applicationStatus(spec config.Application, dataFlag string) erro
 
 func (app *App) commandRun(args []string) error {
 	if groupHelpRequested(args) {
-		commands := make([][2]string, 0, len(config.Applications()))
+		commands := make([][2]string, 0, len(config.Applications())+1)
+		commands = append(commands, [2]string{"gateway", "lazy one-port text inference across selected backends"})
 		for _, spec := range config.Applications() {
 			commands = append(commands, [2]string{spec.ID, spec.Summary})
 		}
@@ -371,6 +383,8 @@ func (app *App) commandRun(args []string) error {
 	}
 	application := args[0]
 	switch application {
+	case "gateway":
+		return app.runGateway(args[1:])
 	case "comfyui":
 		return app.runComfyUI(args[1:])
 	case "llama-cpp":
@@ -659,8 +673,8 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 	set.Var(&nodes, "render-node", "exact render node")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "override image")
-	contextSize := set.Int64("context", 131072, "context tokens")
-	outputTokens := set.Int64("output-tokens", 16000, "maximum output tokens")
+	contextSize := set.Int64("context", -1, "context tokens")
+	outputTokens := set.Int64("output-tokens", -1, "maximum output tokens")
 	dspark := set.Bool("dspark", false, "enable managed DSpark pair")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print resolved command")
@@ -681,12 +695,6 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 	}
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run dwarfstar %s does not accept positional arguments", mode)
-	}
-	if *contextSize < 4096 || *contextSize > 1048576 {
-		return controlerr.Usage("--context must be between 4096 and 1048576")
-	}
-	if *outputTokens < 1 || *outputTokens >= *contextSize {
-		return controlerr.Usage("--output-tokens must be positive and smaller than --context")
 	}
 	profileValue := firstNonEmpty(*profileFlag, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
 	if profileValue == "cpu" {
@@ -715,6 +723,25 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
+	if len(managed.DwarfStarPresets) != 1 {
+		return fmt.Errorf("catalog must define exactly one default DwarfStar preset")
+	}
+	var preset catalog.DwarfStarPreset
+	for _, candidate := range managed.DwarfStarPresets {
+		preset = candidate
+	}
+	if *contextSize == -1 {
+		*contextSize = preset.DefaultContext
+	}
+	if *outputTokens == -1 {
+		*outputTokens = preset.MaxOutputTokens
+	}
+	if *contextSize < 4096 || *contextSize > 1048576 {
+		return controlerr.Usage("--context must be between 4096 and 1048576")
+	}
+	if *outputTokens < 1 || *outputTokens >= *contextSize {
+		return controlerr.Usage("--output-tokens must be positive and smaller than --context")
+	}
 	model := ""
 	support := ""
 	if *dspark && *modelFlag != "" {
@@ -726,9 +753,9 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 			return err
 		}
 	} else {
-		bundleID := "dwarfstar-deepseek-v4-flash-0731-q2-imatrix"
+		bundleID := preset.Bundle
 		if *dspark {
-			bundleID = "dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark"
+			bundleID = preset.DSparkBundle
 		}
 		bundle, ok := managed.Bundles[bundleID]
 		if !ok {
@@ -900,12 +927,19 @@ func (app *App) startManaged(application config.Application, image string, comma
 	if !present {
 		return controlerr.New("image not found: %s\n  Build image: %s", image, identity.Command("build", application.ID))
 	}
+	managed, err := app.podman().ManagedContainerNames(app.Context, application.ID)
+	if err != nil {
+		return err
+	}
+	if len(managed) > 0 {
+		return controlerr.New("managed %s container already exists: %s; stop its owning command first", application.ID, strings.Join(managed, ", "))
+	}
 	exists, err := app.podman().Exists(app.Context, "container", application.ContainerName)
 	if err != nil {
 		return err
 	}
 	if exists {
-		return controlerr.New("container %q already exists; use logs or stop", application.ContainerName)
+		return controlerr.New("container name is already occupied: %s", application.ContainerName)
 	}
 	if application.Port != 0 {
 		fmt.Fprintf(app.Stdout, "Logs: %s\nStop: %s\n", identity.Command("logs", application.ID), identity.Command("stop", application.ID))

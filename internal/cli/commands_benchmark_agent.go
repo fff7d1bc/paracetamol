@@ -23,6 +23,7 @@ import (
 	"paracetamol/internal/process"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/textmodel"
 )
 
 func (app *App) benchmarkAgent(args []string) (returned error) {
@@ -95,7 +96,8 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 	if err != nil {
 		return err
 	}
-	model := agent.DwarfStarModel
+	model := ""
+	var modelPolicy textmodel.Model
 	level := *thinking
 	if !*dwarfstar {
 		preset, ok := managed.LlamaPresets[*presetID]
@@ -110,11 +112,16 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 			return controlerr.Usage("thinking level %q is not supported by %s", level, *presetID)
 		}
 	} else {
-		if level == "" {
-			level = "high"
+		modelPolicy, err = agent.DwarfStarModel(managed)
+		if err != nil {
+			return err
 		}
-		if level != "off" && level != "high" {
-			return controlerr.Usage("DwarfStar supports thinking off or high")
+		model = modelPolicy.ID
+		if level == "" {
+			level = textmodel.ReasoningDefault(modelPolicy)
+		}
+		if !containsString(textmodel.ReasoningLevels(modelPolicy), level) {
+			return controlerr.Usage("thinking level %q is not supported by %s", level, model)
 		}
 	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
@@ -223,7 +230,7 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 		attemptResults := []evaluation.AttemptResult{}
 		for repetition := 1; repetition <= *repetitions; repetition++ {
 			attempt := prepared[fmt.Sprintf("%s-%d", task.Identifier, repetition)]
-			harness, runErr := app.runEvaluationPi(managed, runtimePi, dataRoot, port, task, attempt, model, level, *dwarfstar, environment, evaluationRoot)
+			harness, runErr := app.runEvaluationPi(managed, runtimePi, dataRoot, port, task, attempt, model, level, environment, evaluationRoot)
 			grade := evaluation.GradeResult{Outcome: "infrastructure-failed"}
 			if runErr == nil {
 				grade, runErr = evaluation.Grade(app.Context, app.Runner, app.Root, attempt, mapEnvironment(environment))
@@ -267,7 +274,11 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 func (app *App) agentEvaluationServer(managed catalog.Catalog, dataRoot, profile, backend string, nodes []string, port int, contextSize int64, presetID string, dwarfstar bool) ([]string, string, error) {
 	volume := app.podman().SELinuxVolumeSuffix(app.Context)
 	if dwarfstar {
-		bundle := managed.Bundles["dwarfstar-deepseek-v4-flash-0731-q2-imatrix"]
+		modelPolicy, err := agent.DwarfStarModel(managed)
+		if err != nil {
+			return nil, "", err
+		}
+		bundle := managed.Bundles[modelPolicy.Bundle]
 		if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
 			return nil, "", err
 		}
@@ -295,14 +306,10 @@ func (app *App) agentEvaluationServer(managed catalog.Catalog, dataRoot, profile
 	return command, application.ContainerName, err
 }
 
-func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRuntime, dataRoot string, port int, task evaluation.Task, attempt evaluation.Attempt, model, thinking string, dwarfstar bool, environment map[string]string, evaluationRoot string) (evaluation.HarnessResult, error) {
-	provider := agent.ProviderID
-	llamaPort, dwarfPort := port, 8000
-	if dwarfstar {
-		provider, llamaPort, dwarfPort = agent.DwarfStarProviderID, 8187, port
-	}
-	arguments := []string{"--provider", provider, "--model", model, "--thinking", thinking, "--print", "--mode", "json", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--tools", "read,bash,edit,write", task.Prompt}
-	plan, err := agent.CreatePiPlan(app.Context, managed, dataRoot, app.Root, llamaPort, dwarfPort, "", arguments, piRuntime)
+func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRuntime, dataRoot string, port int, task evaluation.Task, attempt evaluation.Attempt, model, thinking string, environment map[string]string, evaluationRoot string) (evaluation.HarnessResult, error) {
+	arguments := []string{"--provider", agent.ProviderID, "--model", model, "--thinking", thinking, "--print", "--mode", "json", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--tools", "read,bash,edit,write", task.Prompt}
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
+	plan, err := agent.CreatePiPlanForModels(app.Context, managed, app.Root, endpoint, arguments, piRuntime, []string{model})
 	if err != nil {
 		return evaluation.HarnessResult{}, err
 	}

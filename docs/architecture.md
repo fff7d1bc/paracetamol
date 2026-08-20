@@ -701,14 +701,29 @@ reasoning budget. Muse declares no off choice because its model always
 reasons; the reviewed template maps clients' unavoidable generic off value to
 Muse low without changing other model families.
 
+`internal/textmodel/` derives backend-neutral model capabilities from the
+application-specific llama.cpp and DwarfStar preset collections. The catalog
+therefore remains the only owner of public model IDs, starting context, output
+limits, agent-tool eligibility, and reasoning choices.
+
+`internal/gateway/` owns a frozen receipt-backed model registry, the bounded
+FIFO allocation scheduler, the OpenAI-compatible proxy, and exact backend
+lifecycle. The foreground host process listens publicly; a lazily started
+llama.cpp router or DwarfStar server remains in its normal constrained
+container and publishes only one ephemeral loopback port. The gateway owns no
+Podman socket and keeps only one application allocation resident. It reclaims
+only an exact stale container with all gateway ownership labels and refuses
+direct, benchmark, or foreign collisions. See `docs/gateway.md` for the public
+surface and v1 limits.
+
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream
 command names. The generated model maps contain only the reviewed agent set,
 advertise each preset's managed starting context, and prefer Qwen3.8 27B MTP
-Q8 at native medium effort when it is installed. A launcher otherwise selects
-the first installed agent-capable preset and refuses a normal session when no
-maintained model is available.
+Q8 at native medium effort when the running gateway exposes it. A launcher
+otherwise selects the first exposed agent-capable model and refuses a normal
+session when the gateway advertises no maintained model.
 
 `agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
 and transitive runtime dependency graph. `internal/agent/piruntime.go` requires
@@ -723,7 +738,8 @@ Those remain explicit inputs to configuration rendering and launch planning,
 so a later remote or non-bubblewrap client path can reuse the reviewed model
 profile without pretending that it is a local Linux sandbox.
 
-`internal/agent/pi.go` renders the reviewed model set into Pi's
+`internal/agent/pi.go` queries the gateway's `/v1/models` endpoint for normal
+sessions, intersects it with the reviewed catalog, and renders that set into Pi's
 `models.json` schema with the `openai-completions` API. `bin/pi` delegates to
 the host launcher, which resolves only the runtime matching the current lock,
 mounts that complete tree read-only, and atomically refreshes `models.json`
@@ -777,10 +793,10 @@ upstream, the bare, `self`, `pi`, `--self`, and `--all` forms are refused with
 the repository-managed update command; package-only update forms use the
 private state.
 
-`internal/agent/maki.go` publishes the same reviewed model catalog as two
-executable dynamic providers below Maki's private XDG configuration. Both use
-Maki's native `llama-cpp` provider as their protocol base, so the exact
-loopback `/v1` URL comes from the generated provider while Chat Completions,
+`internal/agent/maki.go` publishes the same live reviewed model catalog as one
+executable dynamic provider below Maki's private XDG configuration. It uses
+Maki's native `llama-cpp` provider as its protocol base, so the exact gateway
+`/v1` URL comes from the generated provider while Chat Completions,
 tool calls, and session reasoning state remain owned by Maki. Each model entry
 maps Maki's generic selector onto direct native JSON request fragments. A
 generated `init.lua` selects the recommended installed model, adaptive
@@ -803,8 +819,8 @@ ceilings and are not decoded into model-native labels. The schema does not
 carry per-model sampling parameters; those retain Paracetamol's server-side
 mode-aware defaults and normal per-request override precedence.
 
-DwarfStar is a separate provider at its own loopback endpoint, with the one
-reviewed `deepseek-v4-flash-0731-q2-imatrix` model advertising the same
+DwarfStar appears in that same provider only when the gateway exposes it. The
+reviewed `deepseek-v4-flash-0731-q2-imatrix` model advertises the same
 131072-token runtime allocation and 16000-token output ceiling as the managed
 server. This public model ID follows the exact managed release and bundle
 identity. It deliberately does not copy the pinned server's generic
@@ -817,8 +833,9 @@ high to the same normal thinking mode; Think Max needs a substantially larger
 context and is not advertised. Pi maps the same behavior to `off` and `high`
 while hiding unsupported intermediate levels. Maki maps `/thinking off` and
 `/thinking high` directly to the same
-`reasoning_effort` values, with adaptive selecting high. A generated provider
-does not imply that the DwarfStar server or model is installed or running.
+`reasoning_effort` values, with adaptive selecting high. The frozen gateway
+inventory is evidence that the content had a current verification receipt at
+gateway startup; it does not imply that DwarfStar is currently resident.
 
 `internal/agent/sandbox.go` owns the common client boundary. Both
 launchers use bubblewrap by default and refuse to fall back silently when

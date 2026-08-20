@@ -18,7 +18,7 @@ import (
 	"paracetamol/internal/platform"
 )
 
-const SchemaVersion = 24
+const SchemaVersion = 25
 
 var (
 	identifierPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -137,6 +137,19 @@ type LlamaPreset struct {
 	KVCache                      map[string]string
 }
 
+type DwarfStarPreset struct {
+	ID               string
+	Bundle           string
+	DSparkBundle     string
+	DefaultContext   int64
+	MaxOutputTokens  int64
+	AgentTools       bool
+	ReasoningControl string
+	ReasoningLevels  []string
+	ReasoningDefault string
+	ReasoningOff     bool
+}
+
 func (preset LlamaPreset) DraftTokensForBackend(backend string) int64 {
 	if value, ok := preset.DraftTokensByBackend[backend]; ok {
 		return value
@@ -152,6 +165,7 @@ type Catalog struct {
 	Benchmarks       map[string]Benchmark
 	SamplingPolicies map[string]SamplingPolicy
 	LlamaPresets     map[string]LlamaPreset
+	DwarfStarPresets map[string]DwarfStarPreset
 }
 
 func (catalog Catalog) BundleSize(bundle Bundle) int64 {
@@ -191,6 +205,7 @@ type document struct {
 	Benchmarks       map[string]json.RawMessage `json:"benchmarks"`
 	SamplingPolicies map[string]json.RawMessage `json:"llama_sampling_policies"`
 	LlamaPresets     map[string]json.RawMessage `json:"llama_presets"`
+	DwarfStarPresets map[string]json.RawMessage `json:"dwarfstar_presets"`
 }
 
 type rawAgreement struct {
@@ -314,6 +329,18 @@ type rawLlamaPreset struct {
 	KVCache                      map[string]string `json:"kv_cache"`
 }
 
+type rawDwarfStarPreset struct {
+	Bundle           string   `json:"bundle"`
+	DSparkBundle     string   `json:"dspark_bundle"`
+	DefaultContext   int64    `json:"default_context"`
+	MaxOutputTokens  int64    `json:"max_output_tokens"`
+	AgentTools       bool     `json:"agent_tools"`
+	ReasoningControl string   `json:"reasoning_control"`
+	ReasoningLevels  []string `json:"reasoning_levels"`
+	ReasoningDefault string   `json:"reasoning_default"`
+	ReasoningOff     bool     `json:"reasoning_off"`
+}
+
 func Load(file string) (Catalog, error) {
 	contents, err := os.ReadFile(file)
 	if err != nil {
@@ -326,7 +353,7 @@ func Load(file string) (Catalog, error) {
 	if raw.SchemaVersion != SchemaVersion {
 		return Catalog{}, fmt.Errorf("unsupported catalog schema %d", raw.SchemaVersion)
 	}
-	collections := []any{raw.Agreements, raw.Artifacts, raw.ArchiveGroups, raw.Bundles, raw.Workflows, raw.Benchmarks, raw.SamplingPolicies, raw.LlamaPresets}
+	collections := []any{raw.Agreements, raw.Artifacts, raw.ArchiveGroups, raw.Bundles, raw.Workflows, raw.Benchmarks, raw.SamplingPolicies, raw.LlamaPresets, raw.DwarfStarPresets}
 	for _, collection := range collections {
 		if collection == nil {
 			return Catalog{}, fmt.Errorf("catalog collections must be objects")
@@ -336,7 +363,7 @@ func Load(file string) (Catalog, error) {
 		Agreements: make(map[string]Agreement), Artifacts: make(map[string]Artifact),
 		Bundles: make(map[string]Bundle), Workflows: make(map[string]Workflow),
 		Benchmarks: make(map[string]Benchmark), SamplingPolicies: make(map[string]SamplingPolicy),
-		LlamaPresets: make(map[string]LlamaPreset),
+		LlamaPresets: make(map[string]LlamaPreset), DwarfStarPresets: make(map[string]DwarfStarPreset),
 	}
 	for id, value := range raw.Agreements {
 		if err := validIdentifier(id, "agreement"); err != nil {
@@ -404,6 +431,13 @@ func Load(file string) (Catalog, error) {
 			return Catalog{}, err
 		}
 		catalog.LlamaPresets[id] = preset
+	}
+	for id, value := range raw.DwarfStarPresets {
+		preset, err := loadDwarfStarPreset(id, value)
+		if err != nil {
+			return Catalog{}, err
+		}
+		catalog.DwarfStarPresets[id] = preset
 	}
 	if err := catalog.validateRelationships(); err != nil {
 		return Catalog{}, err
@@ -765,6 +799,38 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 	return LlamaPreset{ID: id, Bundle: raw.Bundle, Artifact: raw.Artifact, DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType, DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend), DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...), Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl, ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault, ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve, ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy, FlashAttention: cloneMap(raw.FlashAttention), KVCache: cloneMap(raw.KVCache)}, nil
 }
 
+func loadDwarfStarPreset(id string, value json.RawMessage) (DwarfStarPreset, error) {
+	if err := validIdentifier(id, "DwarfStar preset"); err != nil {
+		return DwarfStarPreset{}, err
+	}
+	var raw rawDwarfStarPreset
+	if err := decodeStrict(value, &raw); err != nil {
+		return DwarfStarPreset{}, fmt.Errorf("DwarfStar preset %s: %w", id, err)
+	}
+	if raw.DefaultContext < 4096 || raw.DefaultContext > 1048576 || raw.DefaultContext%1024 != 0 {
+		return DwarfStarPreset{}, fmt.Errorf("DwarfStar preset %s default_context must be a multiple of 1024 between 4096 and 1048576", id)
+	}
+	if raw.MaxOutputTokens < 1 || raw.MaxOutputTokens >= raw.DefaultContext {
+		return DwarfStarPreset{}, fmt.Errorf("DwarfStar preset %s max_output_tokens must be positive and smaller than default_context", id)
+	}
+	if raw.ReasoningControl != "effort" || !raw.ReasoningOff {
+		return DwarfStarPreset{}, fmt.Errorf("DwarfStar preset %s must expose effort reasoning with an off mode", id)
+	}
+	if err := uniqueIdentifiers(raw.ReasoningLevels, id+" reasoning levels"); err != nil {
+		return DwarfStarPreset{}, err
+	}
+	if len(raw.ReasoningLevels) == 0 || !contains(raw.ReasoningLevels, raw.ReasoningDefault) {
+		return DwarfStarPreset{}, fmt.Errorf("DwarfStar preset %s has invalid reasoning settings", id)
+	}
+	return DwarfStarPreset{
+		ID: id, Bundle: raw.Bundle, DSparkBundle: raw.DSparkBundle,
+		DefaultContext: raw.DefaultContext, MaxOutputTokens: raw.MaxOutputTokens,
+		AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl,
+		ReasoningLevels:  append([]string(nil), raw.ReasoningLevels...),
+		ReasoningDefault: raw.ReasoningDefault, ReasoningOff: raw.ReasoningOff,
+	}, nil
+}
+
 func (catalog Catalog) validateRelationships() error {
 	destinations := make(map[string]string)
 	blobs := make(map[string]int64)
@@ -838,6 +904,19 @@ func (catalog Catalog) validateRelationships() error {
 			if _, ok := catalog.SamplingPolicies[preset.SamplingPolicy]; !ok {
 				return fmt.Errorf("llama.cpp preset %s references unknown sampling policy %s", id, preset.SamplingPolicy)
 			}
+		}
+	}
+	for id, preset := range catalog.DwarfStarPresets {
+		if _, duplicate := catalog.LlamaPresets[id]; duplicate {
+			return fmt.Errorf("text model identifier %s is shared by llama.cpp and DwarfStar", id)
+		}
+		bundle, ok := catalog.Bundles[preset.Bundle]
+		if !ok || bundle.Application != "dwarfstar" || len(bundle.Artifacts) != 1 {
+			return fmt.Errorf("DwarfStar preset %s references an invalid bundle", id)
+		}
+		dspark, ok := catalog.Bundles[preset.DSparkBundle]
+		if !ok || dspark.Application != "dwarfstar" || len(dspark.Artifacts) != 2 || dspark.Artifacts[0] != bundle.Artifacts[0] {
+			return fmt.Errorf("DwarfStar preset %s references an invalid DSpark bundle", id)
 		}
 	}
 	return nil

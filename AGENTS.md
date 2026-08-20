@@ -58,6 +58,9 @@ in the same change. Important ownership boundaries are:
 - `internal/buildplan/`: validated local image build planning and dependency
   closure.
 - `internal/runtime/`: constrained application Podman commands.
+- `internal/gateway/` and `internal/textmodel/`: the receipt-backed frozen
+  text-model inventory, one-pool lazy scheduler, OpenAI-compatible proxy,
+  exact backend lifecycle, and shared client capabilities.
 - `internal/storage/`: host application/content/staging partitions.
 - `internal/verification/`: durable managed-content verification
   receipts and filesystem-identity invalidation.
@@ -131,6 +134,11 @@ them:
 - Web applications use private rootless networking and publish exactly one
   TCP port. The default host address is `127.0.0.1`. An explicit non-loopback
   address has no authentication and must remain visibly warned about.
+- The foreground inference gateway exposes only explicitly selected
+  applications and a frozen receipt-verified startup inventory. It eagerly
+  loads no backend, keeps one application allocation resident, publishes
+  backend containers only on ephemeral loopback ports, and reclaims only an
+  exact container bearing all gateway ownership labels.
 - Downloads use full Hugging Face revisions or exact Civitai model-version
   IDs, plus exact byte sizes and SHA-256 hashes. Applications must not
   silently fetch unpinned model content.

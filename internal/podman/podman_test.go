@@ -68,6 +68,31 @@ func TestTypedLifecycleCommands(t *testing.T) {
 	}
 }
 
+func TestContainerLabelsAndDynamicLoopbackPort(t *testing.T) {
+	runner := &fakeRunner{}
+	client := Client{Runner: runner}
+	runner.result.Stdout = []byte(`{"io.github.test.role":"gateway-backend"}`)
+	labels, err := client.ContainerLabels(context.Background(), "gateway")
+	if err != nil || labels["io.github.test.role"] != "gateway-backend" {
+		t.Fatalf("labels=%v err=%v", labels, err)
+	}
+	runner.result.Stdout = []byte("127.0.0.1:49152\n")
+	port, err := client.PublishedLoopbackPort(context.Background(), "gateway", 8080)
+	if err != nil || port != 49152 {
+		t.Fatalf("port=%d err=%v", port, err)
+	}
+	if got := runner.commands[1].Args; !reflect.DeepEqual(got, []string{"port", "gateway", "8080/tcp"}) {
+		t.Fatalf("arguments=%v", got)
+	}
+}
+
+func TestPublishedLoopbackPortRejectsBroadPublication(t *testing.T) {
+	runner := &fakeRunner{result: process.Result{Stdout: []byte("0.0.0.0:49152\n")}}
+	if _, err := (Client{Runner: runner}).PublishedLoopbackPort(context.Background(), "gateway", 8080); err == nil {
+		t.Fatal("broad dynamic publication was accepted")
+	}
+}
+
 type missingRunner struct{}
 
 func (missingRunner) Run(context.Context, process.Command) (process.Result, error) {

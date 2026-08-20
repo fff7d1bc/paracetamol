@@ -25,7 +25,10 @@ var (
 	ContentToolsImage = mustBuildUnit(application.BuildContentTools).Image
 )
 
-const DefaultListen = "127.0.0.1"
+const (
+	DefaultListen     = "127.0.0.1"
+	DefaultGatewayURL = "http://127.0.0.1:8080/v1"
+)
 
 func ApplicationByID(identifier string) (Application, bool) { return application.ByID(identifier) }
 func Applications() []Application                           { return application.All() }

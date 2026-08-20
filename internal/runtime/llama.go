@@ -48,6 +48,7 @@ type LlamaOptions struct {
 	AutoRemove                   bool
 	Arguments                    []string
 	Environment                  []string
+	DynamicHostPort              bool
 }
 
 type LlamaBenchmarkOptions struct {
@@ -146,7 +147,11 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	}
 	if options.Mode == "server" {
 		command = append(command, publicationNetwork(options.Listen)...)
-		command = append(command, "--publish", publishedPort(options.Listen, options.Port))
+		publication := publishedPort(options.Listen, options.Port)
+		if options.DynamicHostPort {
+			publication = dynamicallyPublishedPort(options.Listen, options.Port)
+		}
+		command = append(command, "--publish", publication)
 	}
 	if options.Profile != "cpu" {
 		command = append(command, gpuDeviceArguments(options.RenderNodes)...)

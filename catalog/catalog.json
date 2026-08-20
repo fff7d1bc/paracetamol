@@ -1,5 +1,5 @@
 {
-  "schema_version": 24,
+  "schema_version": 25,
   "agreements": {
     "ltx-2-community-license": {
       "name": "LTX-2 Community License",
@@ -2531,6 +2531,21 @@
         "presence_penalty": 1.5,
         "repeat_penalty": 1.0
       }
+    }
+  },
+  "dwarfstar_presets": {
+    "deepseek-v4-flash-0731-q2-imatrix": {
+      "bundle": "dwarfstar-deepseek-v4-flash-0731-q2-imatrix",
+      "dspark_bundle": "dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark",
+      "default_context": 131072,
+      "max_output_tokens": 16000,
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "high"
+      ],
+      "reasoning_default": "high",
+      "reasoning_off": true
     }
   },
   "llama_presets": {

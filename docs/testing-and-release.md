@@ -257,13 +257,21 @@ The pinned upstream router may also advertise its reserved empty `default`
 preset; that is not managed content and should not be selected during the
 smoke test.
 
-For DwarfStar agent-client integration, start the managed 128K DwarfStar
-server, select the matching `dwarfstar/deepseek-v4-flash-0731-q2-imatrix`
-provider/model in Pi and Maki, then complete one read plus function-tool round
-trip in each. Confirm Pi's off and high choices and Maki's off and high paths.
-Confirm the generated providers follow
-`--dwarfstar-port`. Do not claim agent
-compatibility from `/v1/models` or a plain text response alone.
+For gateway changes, first run the unit and race tests for `internal/gateway`,
+then start `run gateway --application llama-cpp --profile cpu`. Confirm startup
+loads no backend, `/v1/models` contains only the receipt-verified frozen
+snapshot, `status gateway` reports `unloaded`, and Ctrl-C removes an exact
+backend container if one was started. GPU acceptance must additionally cover
+lazy llama.cpp start, a streamed request, client cancellation, FIFO draining,
+and an application switch.
+
+For DwarfStar agent-client integration, start the gateway with both
+applications, select
+`paracetamol/deepseek-v4-flash-0731-q2-imatrix` in Pi and Maki, then complete
+one read plus function-tool round trip in each. Confirm Pi's off and high
+choices and Maki's off and high paths. Confirm both generated clients follow
+their one `--gateway-url`. Do not claim agent compatibility from `/v1/models`
+or a plain text response alone.
 
 For the maintained llama.cpp reasoning matrix, exercise each native choice
 through Pi: Qwen3.6 off/on; Qwen3.8 off, low, medium, and xhigh; and Muse low,
