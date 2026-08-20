@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -66,4 +67,36 @@ func TestInspectRejectsTraversal(t *testing.T) {
 	if _, err := Inspect(writeArchive(t, true)); err == nil {
 		t.Fatal("accepted unsafe archive member")
 	}
+}
+
+func TestSelectedReferencesUseBuildClosure(t *testing.T) {
+	references, err := SelectedReferences("llama-cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{config.ROCmRuntimeImage, mustApplicationImage(t, "llama-cpp")}
+	if !reflect.DeepEqual(references, want) {
+		t.Fatalf("references=%q want=%q", references, want)
+	}
+	if _, err := SelectedReferences("base"); err == nil {
+		t.Fatal("retired base target still accepted")
+	}
+}
+
+func TestValidateManagedAcceptsIndependentBuildUnits(t *testing.T) {
+	for _, reference := range []string{config.ContentToolsImage, config.ROCmRuntimeImage} {
+		archive := Archive{Images: []Image{{Reference: reference, OperatingSystem: "linux", Architecture: runtime.GOARCH}}}
+		if err := ValidateManaged(archive, []string{reference}); err != nil {
+			t.Fatalf("independent image %s was rejected: %v", reference, err)
+		}
+	}
+}
+
+func mustApplicationImage(t *testing.T, identifier string) string {
+	t.Helper()
+	application, ok := config.ApplicationByID(identifier)
+	if !ok {
+		t.Fatalf("missing application %s", identifier)
+	}
+	return application.Image
 }

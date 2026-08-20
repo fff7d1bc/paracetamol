@@ -13,18 +13,22 @@ import (
 
 	"rocmplete/internal/config"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
 	runtimeplan "rocmplete/internal/runtime"
 )
 
 func (app *App) commandDoctor(args []string) error {
-	set := app.flags("doctor", "Usage: ./rocmplete doctor [--render-node PATH] [--data-dir PATH] [--image TAG]")
+	set := app.flags("doctor", usage("doctor", "[--render-node PATH]", "[--data-dir PATH]", "[--image TAG]"))
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "managed PyTorch diagnostic image")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("doctor accepts no positional arguments")
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
@@ -78,7 +82,7 @@ func (app *App) commandDoctor(args []string) error {
 		}
 	}
 	if image == "" {
-		fmt.Fprintln(app.Stdout, "\nGPU probe\n  Image          not built\n  Operation      skipped\n\nNext: ./rocmplete build base")
+		fmt.Fprintf(app.Stdout, "\nGPU probe\n  Image          not built\n  Operation      skipped\n\nNext: %s\n", identity.Command("build", "pytorch-base"))
 		return nil
 	}
 	present, err := app.podman().Exists(app.Context, "image", image)

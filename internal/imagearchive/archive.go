@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"rocmplete/internal/application"
 	"rocmplete/internal/config"
 )
 
@@ -59,21 +60,19 @@ func ManagedReferences() []string {
 }
 
 func SelectedReferences(target string) ([]string, error) {
+	targets := []application.BuildID{application.BuildID(target)}
 	if target == "all" {
-		return ManagedReferences(), nil
+		targets = []application.BuildID{application.BuildContentTools, application.BuildComfyUI, application.BuildLlamaCPP, application.BuildDwarfStar}
 	}
-	if target == "base" {
-		return []string{config.ContentToolsImage, config.ROCmRuntimeImage, config.ROCmBaseImage}, nil
-	}
-	application, ok := config.ApplicationByID(target)
-	if !ok {
+	units, err := application.BuildClosure(targets)
+	if err != nil {
 		return nil, fmt.Errorf("unknown image export target %q", target)
 	}
-	result := []string{config.ContentToolsImage, config.ROCmRuntimeImage}
-	if application.SharedPyTorchBase {
-		result = append(result, config.ROCmBaseImage)
+	result := make([]string, 0, len(units))
+	for _, unit := range units {
+		result = append(result, unit.Image)
 	}
-	return append(result, application.Image), nil
+	return result, nil
 }
 
 func Inspect(file string) (Archive, error) {
@@ -210,14 +209,14 @@ func ValidateManaged(archive Archive, expected []string) error {
 			return fmt.Errorf("image %s targets %s/%s, not linux/%s", image.Reference, image.OperatingSystem, image.Architecture, runtime.GOARCH)
 		}
 	}
-	if len(actual) == 0 || !actual[config.ContentToolsImage] {
-		return fmt.Errorf("image archive is empty or missing the content-tools image")
+	if len(actual) == 0 {
+		return fmt.Errorf("image archive is empty")
 	}
 	if (actual[config.ROCmBaseImage] || containsApplicationImage(actual)) && !actual[config.ROCmRuntimeImage] {
 		return fmt.Errorf("image archive is missing the managed ROCm runtime tag")
 	}
 	for _, application := range config.Applications() {
-		if application.SharedPyTorchBase && actual[application.Image] && !actual[config.ROCmBaseImage] {
+		if application.PyTorchBase && actual[application.Image] && !actual[config.ROCmBaseImage] {
 			return fmt.Errorf("image archive is missing the managed ROCm/PyTorch base tag")
 		}
 	}

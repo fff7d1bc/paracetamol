@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"rocmplete/internal/catalog"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/storage"
 )
 
@@ -135,7 +136,7 @@ func PiConfig(managed catalog.Catalog, endpoint, dwarfstarEndpoint string) ([]by
 		models = append(models, model)
 	}
 	dwarfstar := map[string]any{"id": DwarfStarModel, "name": "DeepSeek V4 Flash 0731", "reasoning": true, "thinkingLevelMap": map[string]any{"off": "none", "minimal": nil, "low": nil, "medium": nil, "high": "high", "xhigh": nil, "max": nil}, "input": []string{"text"}, "contextWindow": DwarfStarContext, "maxTokens": DwarfStarOutput, "cost": zeroCost()}
-	document := map[string]any{"providers": map[string]any{ProviderID: piProvider("ROCmplete llama.cpp", endpoint, models), DwarfStarProviderID: piProvider("ROCmplete DwarfStar", dwarfstarEndpoint, []map[string]any{dwarfstar})}}
+	document := map[string]any{"providers": map[string]any{ProviderID: piProvider(identity.DisplayName+" llama.cpp", endpoint, models), DwarfStarProviderID: piProvider(identity.DisplayName+" DwarfStar", dwarfstarEndpoint, []map[string]any{dwarfstar})}}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	return append(encoded, '\n'), err
 }
@@ -175,7 +176,7 @@ func CreatePiPlan(ctx context.Context, managed catalog.Catalog, dataRoot, projec
 		arguments = arguments[1:]
 	}
 	if len(arguments) > 0 && arguments[0] == "update" && (len(arguments) == 1 || contains(arguments[1:], "--self") || contains(arguments[1:], "--all") || contains(arguments[1:], "self") || contains(arguments[1:], "pi")) {
-		return PiPlan{}, fmt.Errorf("Pi is managed by ROCmplete; update the checkout and run ./rocmplete agent install pi")
+		return PiPlan{}, fmt.Errorf("Pi is managed by %s; update the checkout and run %s", identity.DisplayName, identity.Command("agent", "install", "pi"))
 	}
 	prefix := []string{runtime.Node, runtime.Entrypoint}
 	mode := "session"
@@ -227,27 +228,27 @@ func CreatePiPlan(ctx context.Context, managed catalog.Catalog, dataRoot, projec
 	return plan, nil
 }
 
-func PreparePiState(plan PiPlan, dataRoot string) (SandboxPaths, string, error) {
+func PreparePiState(plan PiPlan, dataRoot string) (string, error) {
 	paths, err := PrepareSandboxPaths(dataRoot, "pi")
 	if err != nil {
-		return SandboxPaths{}, "", err
+		return "", err
 	}
 	agentDir := filepath.Join(paths.Data, "pi", "agent")
 	extensions := filepath.Join(agentDir, "extensions")
 	for _, path := range []string{filepath.Join(paths.Data, "pi"), agentDir, extensions} {
 		if err := secureDirectory(path, true); err != nil {
-			return SandboxPaths{}, "", err
+			return "", err
 		}
 	}
 	if err := storage.ValidateManagedParent(filepath.Join(agentDir, "models.json"), paths.Root, dataRoot, "Pi model config"); err != nil {
-		return SandboxPaths{}, "", err
+		return "", err
 	}
 	for path, contents := range map[string][]byte{filepath.Join(agentDir, "models.json"): plan.Config, filepath.Join(extensions, "rocmplete-model-picker.ts"): plan.ModelPicker, filepath.Join(extensions, "rocmplete-completion-divider.ts"): plan.CompletionDivider} {
 		if err := writeAtomic(path, contents, 0o600, false); err != nil {
-			return SandboxPaths{}, "", err
+			return "", err
 		}
 	}
-	return paths, agentDir, nil
+	return agentDir, nil
 }
 
 func PiEnvironment(base map[string]string, agentDir string, offline bool) map[string]string {

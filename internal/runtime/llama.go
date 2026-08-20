@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"rocmplete/internal/config"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
 	"rocmplete/internal/podman"
 	"rocmplete/internal/storage"
@@ -68,6 +69,8 @@ type LlamaBenchmarkOptions struct {
 	FlashAttention   string
 	Unconfined       bool
 }
+
+var LlamaBenchmarkContainer = identity.Container("llama-cpp-benchmark")
 
 func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	layout := storage.Layout{Root: options.DataDir}
@@ -191,7 +194,7 @@ func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) [
 	}
 	command := []string{
 		"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(),
-		"--name", "rocmplete-llama-cpp-benchmark",
+		"--name", LlamaBenchmarkContainer,
 	}
 	command = append(command, podman.ManagedArguments("llama-cpp", "benchmark")...)
 	command = append(command,

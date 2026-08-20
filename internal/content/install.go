@@ -12,11 +12,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/podman"
 	"rocmplete/internal/process"
 	"rocmplete/internal/storage"
@@ -44,6 +46,8 @@ type InstallPlan struct {
 	Ready         int
 	Risky         []catalog.Artifact
 }
+
+var downloaderSequence atomic.Uint64
 
 func UniqueArtifacts(managed catalog.Catalog, bundles []catalog.Bundle) []catalog.Artifact {
 	seen := make(map[string]bool)
@@ -153,7 +157,7 @@ func Install(options InstallOptions) error {
 			return err
 		}
 		if !present {
-			return controlerr.New("content tools image not found: %s\n  Build it with: ./rocmplete build content-tools", options.Image)
+			return controlerr.New("content tools image not found: %s\n  Build it with: %s", options.Image, identity.Command("build", "content-tools"))
 		}
 	}
 	completedStaging := make(map[string]bool)
@@ -228,16 +232,27 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 					return err
 				}
 				fmt.Fprintf(options.Output, "Downloading [%d/%d] %s (%s)\n", index, len(options.Artifacts), artifact.Destination, humanBytes(downloadSize(artifact)))
-				command, err := downloadCommand(options, client, artifact)
+				containerName := identity.Container(fmt.Sprintf("download-%d-%d", os.Getpid(), downloaderSequence.Add(1)))
+				command, err := downloadCommand(options, client, artifact, containerName)
 				if err != nil {
 					return err
 				}
 				result, err := options.Runner.Run(options.Context, process.Command{Name: command[0], Args: command[1:], Stdin: nil, Stdout: options.Output, Stderr: options.Output})
+				cleanupErr := client.RemoveContainer(context.WithoutCancel(options.Context), containerName, 0, podman.Streams{})
 				if err != nil {
+					if cleanupErr != nil {
+						return fmt.Errorf("download process failed: %w; additionally could not remove %s: %v", err, containerName, cleanupErr)
+					}
 					return err
 				}
 				if result.Status != 0 {
+					if cleanupErr != nil {
+						return controlerr.New("download failed for %s (exit status %d); additionally could not remove %s: %v", artifact.Source.Path, result.Status, containerName, cleanupErr)
+					}
 					return controlerr.New("download failed for %s (exit status %d)", artifact.Source.Path, result.Status)
+				}
+				if cleanupErr != nil {
+					return cleanupErr
 				}
 			}
 			if artifact.Source.ArchiveMember != "" {
@@ -313,13 +328,13 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	return nil
 }
 
-func downloadCommand(options InstallOptions, client podman.Client, artifact catalog.Artifact) ([]string, error) {
+func downloadCommand(options InstallOptions, client podman.Client, artifact catalog.Artifact, containerName string) ([]string, error) {
 	relative, err := filepath.Rel(options.DataRoot, stagingRoot(options.DataRoot, artifact))
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return nil, fmt.Errorf("artifact staging escapes data directory")
 	}
 	local := "/storage/" + filepath.ToSlash(relative)
-	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "512", "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g", "--volume", options.DataRoot + ":/storage" + client.SharedSELinuxVolumeSuffix(options.Context), "--env", "HOME=/storage/staging/.home", "--env", "XDG_CACHE_HOME=/storage/staging/.cache", "--env", "HF_HOME=/storage/staging/.cache/huggingface", "--env", "HF_HUB_DISABLE_TELEMETRY=1", "--env", "HF_HUB_DISABLE_PROGRESS_BARS=1", "--env", "HF_HUB_DISABLE_UPDATE_CHECK=1"}
+	command := []string{"podman", "run", "--rm", "--name", containerName, "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "512", "--tmpfs", "/tmp:rw,nosuid,nodev,size=2g", "--volume", options.DataRoot + ":/storage" + client.SharedSELinuxVolumeSuffix(options.Context), "--env", "HOME=/storage/staging/.home", "--env", "XDG_CACHE_HOME=/storage/staging/.cache", "--env", "HF_HOME=/storage/staging/.cache/huggingface", "--env", "HF_HUB_DISABLE_TELEMETRY=1", "--env", "HF_HUB_DISABLE_PROGRESS_BARS=1", "--env", "HF_HUB_DISABLE_UPDATE_CHECK=1"}
 	if options.Environment["HF_TOKEN"] != "" {
 		command = append(command, "--env", "HF_TOKEN")
 	}
@@ -577,12 +592,12 @@ func withinPath(candidate, root string) bool {
 func acquireInstallLock(dataRoot string, environment map[string]string) (*os.File, error) {
 	runtimeRoot := environment["XDG_RUNTIME_DIR"]
 	if runtimeRoot == "" {
-		runtimeRoot = filepath.Join(os.TempDir(), fmt.Sprintf("rocmplete-runtime-%d", os.Geteuid()))
+		runtimeRoot = filepath.Join(os.TempDir(), fmt.Sprintf("%s-runtime-%d", identity.StateNamespace, os.Geteuid()))
 	}
 	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
 		return nil, err
 	}
-	locks := filepath.Join(runtimeRoot, "rocmplete-locks")
+	locks := filepath.Join(runtimeRoot, identity.StateNamespace+"-locks")
 	if err := os.MkdirAll(locks, 0o700); err != nil {
 		return nil, err
 	}

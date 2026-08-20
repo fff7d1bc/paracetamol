@@ -7,11 +7,13 @@ import (
 
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/content"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/verification"
 )
 
+var ProviderID = identity.StateNamespace
+
 const (
-	ProviderID          = "rocmplete"
 	DwarfStarProviderID = "dwarfstar"
 	DwarfStarModel      = "deepseek-v4-flash-0731-q2-imatrix"
 	RecommendedModel    = "qwen3.8-27b-mtp-ud-q8-k-xl"
@@ -108,7 +110,7 @@ func DefaultModel(managed catalog.Catalog, dataRoot, client string) (string, str
 			return DwarfStarProviderID, DwarfStarModel, "high", nil
 		}
 	}
-	return "", "", "", fmt.Errorf("no installed model is maintained for %s\n  llama.cpp: ./rocmplete content install llama-cpp qwen3.8\n  DwarfStar: ./rocmplete content install dwarfstar flash-0731-q2-imatrix", client)
+	return "", "", "", fmt.Errorf("no installed model is maintained for %s\n  llama.cpp: %s\n  DwarfStar: %s", client, identity.Command("content", "install", "llama-cpp", "qwen3.8"), identity.Command("content", "install", "dwarfstar", "flash-0731-q2-imatrix"))
 }
 
 func ClientSampling(managed catalog.Catalog, identifier string) map[string]any {

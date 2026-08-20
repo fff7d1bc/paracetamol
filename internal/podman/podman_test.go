@@ -44,6 +44,30 @@ func TestRequireRootlessNeedsPodman(t *testing.T) {
 	}
 }
 
+func TestTypedLifecycleCommands(t *testing.T) {
+	runner := &fakeRunner{}
+	client := Client{Runner: runner}
+	if err := client.RemoveContainer(context.Background(), "managed", 2, Streams{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Logs(context.Background(), LogOptions{Container: "managed", Follow: true, Tail: 50}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RemoveImage(context.Background(), "localhost/image:test", Streams{}); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"rm", "--force", "--time", "2", "--ignore", "managed"},
+		{"logs", "--follow", "--tail", "50", "managed"},
+		{"image", "rm", "localhost/image:test"},
+	}
+	for index := range want {
+		if !reflect.DeepEqual(runner.commands[index].Args, want[index]) {
+			t.Fatalf("command %d = %v, want %v", index, runner.commands[index].Args, want[index])
+		}
+	}
+}
+
 type missingRunner struct{}
 
 func (missingRunner) Run(context.Context, process.Command) (process.Result, error) {

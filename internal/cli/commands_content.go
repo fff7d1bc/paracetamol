@@ -11,11 +11,13 @@ import (
 	"strconv"
 	"strings"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/contentpack"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/recipes"
 	"rocmplete/internal/remoteimport"
 	"rocmplete/internal/storage"
@@ -24,8 +26,8 @@ import (
 
 func (app *App) commandContent(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete content COMMAND [OPTIONS]",
-			[2]string{"list", "list recipes, bundles, families, or models"},
+		writeGroupHelp(app.Stdout, usage("content", "COMMAND", "[OPTIONS]"),
+			[2]string{"list [VIEW]", "list recipes, bundles, families, or models"},
 			[2]string{"status", "inspect managed-content readiness"},
 			[2]string{"install", "install verified managed content"},
 			[2]string{"import", "resolve a reviewed remote file into a local pack"},
@@ -52,29 +54,37 @@ func (app *App) commandContent(args []string) error {
 }
 
 func (app *App) contentList(args []string) error {
-	set := app.flags("content list", "Usage: ./rocmplete content list [--bundles | --families | --models] [OPTIONS]")
-	bundlesView := set.Bool("bundles", false, "list exact bundles")
-	familiesView := set.Bool("families", false, "list aggregate families")
-	modelsView := set.Bool("models", false, "list runnable llama.cpp models")
+	set := app.flags("content list", usage("content", "list", "[recipes|bundles|families|models]", "[OPTIONS]"))
 	application := set.String("application", "", "filter exact bundles or models")
 	details := set.Bool("details", false, "show model policy")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	var scans stringList
 	set.Var(&scans, "scan", "additional GGUF file or directory")
-	if err := set.Parse(args); err != nil {
+	view, remaining := leadingPositional(args)
+	if err := parseFlags(set, remaining); err != nil {
 		return err
 	}
-	if boolCount(*bundlesView, *familiesView, *modelsView) > 1 {
-		return controlerr.Usage("choose only one of --bundles, --families, or --models")
+	extras := set.Args()
+	if view == "" && len(extras) > 0 {
+		view, extras = extras[0], extras[1:]
 	}
-	if (*details || *dataFlag != "" || len(scans) > 0) && !*modelsView {
-		return controlerr.Usage("--details, --data-dir, and --scan require --models")
+	if len(extras) > 0 {
+		return controlerr.Usage("content list accepts at most one view")
+	}
+	if view == "" {
+		view = "recipes"
+	}
+	if err := requireChoice(view, "content list view", "recipes", "bundles", "families", "models"); err != nil {
+		return err
+	}
+	if (*details || *dataFlag != "" || len(scans) > 0) && view != "models" {
+		return controlerr.Usage("--details, --data-dir, and --scan require the models view")
 	}
 	managed, err := app.managedCatalog()
 	if err != nil {
 		return err
 	}
-	if *modelsView {
+	if view == "models" {
 		if *application != "" && *application != "llama-cpp" {
 			return controlerr.Usage("--models supports only --application llama-cpp")
 		}
@@ -84,10 +94,10 @@ func (app *App) contentList(args []string) error {
 		}
 		return app.printModelInventory(managed, dataRoot, scans, *details)
 	}
-	if *application != "" && !*bundlesView {
-		return controlerr.Usage("--application requires --bundles or --models")
+	if *application != "" && view != "bundles" {
+		return controlerr.Usage("--application requires the bundles or models view")
 	}
-	if *bundlesView {
+	if view == "bundles" {
 		identifiers := sortedBundleIDs(managed)
 		fmt.Fprintln(app.Stdout, "Exact bundles:")
 		for _, identifier := range identifiers {
@@ -113,7 +123,7 @@ func (app *App) contentList(args []string) error {
 		}
 		return nil
 	}
-	if *familiesView {
+	if view == "families" {
 		fmt.Fprintln(app.Stdout, "Model families:")
 		for _, family := range []string{"qwen", "wan"} {
 			selected, _ := selectBundles(managed, "family", family)
@@ -130,19 +140,29 @@ func (app *App) contentList(args []string) error {
 			fmt.Fprintf(app.Stdout, "    %-24s %d bundle(s)  %s\n", applicationID+" "+recipe.ID, len(recipe.Bundles), recipe.Description)
 		}
 	}
-	fmt.Fprintln(app.Stdout, "\nUse --models for runnable models, --bundles for exact content, or --families for aggregates.")
+	fmt.Fprintln(app.Stdout, "\nUse 'content list models' for runnable models, 'bundles' for exact content, or 'families' for aggregates.")
 	return nil
 }
 
 func (app *App) contentStatus(args []string) error {
-	set := app.flags("content status", "Usage: ./rocmplete content status [TARGET [SELECTION]] [--details] [--verify] [--data-dir PATH]")
+	set := app.flags("content status", usage("content", "status", "[TARGET [SELECTION]]", "[--details]", "[--verify]", "[--data-dir PATH]"))
 	details := set.Bool("details", false, "show every artifact")
 	verifyHash := set.Bool("verify", false, "hash installed artifacts")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	target, remaining := leadingPositional(args)
 	selection, remaining := leadingPositional(remaining)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	positionals := set.Args()
+	if target == "" && len(positionals) > 0 {
+		target, positionals = positionals[0], positionals[1:]
+	}
+	if selection == "" && len(positionals) > 0 {
+		selection, positionals = positionals[0], positionals[1:]
+	}
+	if len(positionals) > 0 {
+		return controlerr.Usage("content status accepts at most a target and selection")
 	}
 	managed, err := app.managedCatalog()
 	if err != nil {
@@ -221,14 +241,7 @@ func (app *App) contentStatus(args []string) error {
 }
 
 func (app *App) contentInstall(args []string) error {
-	if len(args) == 0 {
-		selected, err := app.guidedContentSelection()
-		if err != nil {
-			return err
-		}
-		args = []string{selected.Application, selected.ID}
-	}
-	set := app.flags("content install", "Usage: ./rocmplete content install TARGET [SELECTION] [OPTIONS]")
+	set := app.flags("content install", usage("content", "install", "TARGET", "[SELECTION]", "[OPTIONS]"))
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "content-tools image")
 	dryRun := set.Bool("dry-run", false, "print the validated plan")
@@ -242,12 +255,28 @@ func (app *App) contentInstall(args []string) error {
 	set.Var(&packFiles, "from-file", "ignored local content pack; repeatable")
 	target, remaining := leadingPositional(args)
 	selection, remaining := leadingPositional(remaining)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
 	}
-	_ = nonInteractive
+	extras := set.Args()
+	if target == "" && len(extras) > 0 {
+		target, extras = extras[0], extras[1:]
+	}
+	if selection == "" && len(extras) > 0 {
+		selection, extras = extras[0], extras[1:]
+	}
+	if len(extras) > 0 {
+		return controlerr.Usage("content install accepts at most a target and selection")
+	}
+	if target == "" && len(packFiles) == 0 && !*nonInteractive && terminalReader(app.Stdin) {
+		selected, err := app.guidedContentSelection()
+		if err != nil {
+			return err
+		}
+		target, selection = selected.Application, selected.ID
+	}
 	if target == "" && len(packFiles) == 0 {
-		return controlerr.Usage("content install requires a complete target; use 'content list'")
+		return controlerr.Usage("content install requires a complete target; use 'content list recipes'")
 	}
 	if len(packFiles) > 0 && (target != "" || selection != "") {
 		return controlerr.Usage("--from-file cannot be combined with an explicit target")
@@ -318,7 +347,7 @@ func (app *App) contentInstall(args []string) error {
 	fmt.Fprintln(app.Stdout, "All selected content is verified and ready.")
 	if target == "comfyui" || target == "llama-cpp" || target == "dwarfstar" {
 		if recipe, recipeErr := recipes.Find(target, selection); recipeErr == nil {
-			fmt.Fprintf(app.Stdout, "Next: %s\n", recipe.NextCommand)
+			fmt.Fprintf(app.Stdout, "Next: %s\n", recipe.NextCommand())
 		}
 	}
 	return nil
@@ -572,7 +601,7 @@ func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, sc
 
 func (app *App) contentWorkflows(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete content workflows COMMAND [OPTIONS]",
+		writeGroupHelp(app.Stdout, usage("content", "workflows", "COMMAND", "[OPTIONS]"),
 			[2]string{"list", "list curated workflows"},
 			[2]string{"status", "inspect installed curated workflows"},
 			[2]string{"install", "install one exact curated workflow"})
@@ -592,9 +621,12 @@ func (app *App) contentWorkflows(args []string) error {
 	sort.Strings(ids)
 	switch args[0] {
 	case "list":
-		set := app.flags("content workflows list", "Usage: ./rocmplete content workflows list")
-		if err := set.Parse(args[1:]); err != nil {
+		set := app.flags("content workflows list", usage("content", "workflows", "list"))
+		if err := parseFlags(set, args[1:]); err != nil {
 			return err
+		}
+		if len(set.Args()) > 0 {
+			return controlerr.Usage("content workflows list accepts no positional arguments")
 		}
 		for _, id := range ids {
 			workflow := managed.Workflows[id]
@@ -602,11 +634,19 @@ func (app *App) contentWorkflows(args []string) error {
 		}
 		return nil
 	case "status":
-		set := app.flags("content workflows status", "Usage: ./rocmplete content workflows status [WORKFLOW] [--data-dir PATH]")
+		set := app.flags("content workflows status", usage("content", "workflows", "status", "[WORKFLOW]", "[--data-dir PATH]"))
 		dataFlag := set.String("data-dir", "", "persistent data directory")
 		id, remaining := leadingPositional(args[1:])
-		if err := set.Parse(remaining); err != nil {
+		if err := parseFlags(set, remaining); err != nil {
 			return err
+		}
+		if id == "" && len(set.Args()) > 0 {
+			id = set.Args()[0]
+			if len(set.Args()) > 1 {
+				return controlerr.Usage("workflow status accepts at most one workflow")
+			}
+		} else if len(set.Args()) > 0 {
+			return controlerr.Usage("workflow status accepts at most one workflow")
 		}
 		if id != "" {
 			if _, ok := managed.Workflows[id]; !ok {
@@ -639,12 +679,20 @@ func (app *App) contentWorkflows(args []string) error {
 		}
 		return nil
 	case "install":
-		set := app.flags("content workflows install", "Usage: ./rocmplete content workflows install WORKFLOW [--force] [--data-dir PATH]")
+		set := app.flags("content workflows install", usage("content", "workflows", "install", "WORKFLOW", "[--force]", "[--data-dir PATH]"))
 		dataFlag := set.String("data-dir", "", "persistent data directory")
 		force := set.Bool("force", false, "replace a differing workflow")
 		id, remaining := leadingPositional(args[1:])
-		if err := set.Parse(remaining); err != nil {
+		if err := parseFlags(set, remaining); err != nil {
 			return err
+		}
+		if id == "" && len(set.Args()) > 0 {
+			id = set.Args()[0]
+			if len(set.Args()) > 1 {
+				return controlerr.Usage("workflow install accepts exactly one workflow")
+			}
+		} else if len(set.Args()) > 0 {
+			return controlerr.Usage("workflow install accepts exactly one workflow")
 		}
 		workflow, ok := managed.Workflows[id]
 		if id == "" || !ok {
@@ -661,7 +709,7 @@ func (app *App) contentWorkflows(args []string) error {
 }
 
 func (app *App) contentImport(args []string) error {
-	set := app.flags("content import", "Usage: ./rocmplete content import URL [OPTIONS]")
+	set := app.flags("content import", usage("content", "import", "URL", "[OPTIONS]"))
 	version := set.Int64("version", 0, "exact Civitai model-version ID")
 	fileSelector := set.String("file", "", "provider file ID, name, or path")
 	kindSelector := set.String("as", "", "explicit destination type")
@@ -672,8 +720,16 @@ func (app *App) contentImport(args []string) error {
 	nonInteractive := set.Bool("non-interactive", false, "require explicit ambiguous choices")
 	acknowledge := set.Bool("acknowledge-license-risk", false, "allow NOASSERTION content")
 	rawURL, remaining := leadingPositional(args)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	if rawURL == "" && len(set.Args()) > 0 {
+		rawURL = set.Args()[0]
+		if len(set.Args()) > 1 {
+			return controlerr.Usage("content import accepts exactly one URL")
+		}
+	} else if len(set.Args()) > 0 {
+		return controlerr.Usage("content import accepts exactly one URL")
 	}
 	if *version < 0 {
 		return controlerr.Usage("--version must be positive")
@@ -816,9 +872,9 @@ func (app *App) contentImport(args []string) error {
 		return err
 	}
 	if kind.Application == "llama-cpp" {
-		fmt.Fprintf(app.Stdout, "Next: ./rocmplete run llama-cpp server --model %s\n", content.ArtifactPath(dataRoot, plan.Artifact))
+		fmt.Fprintf(app.Stdout, "Next: %s\n", identity.Command("run", "llama-cpp", "server", "--model", content.ArtifactPath(dataRoot, plan.Artifact)))
 	} else {
-		fmt.Fprintf(app.Stdout, "Next: ./rocmplete run %s\n", kind.Application)
+		fmt.Fprintf(app.Stdout, "Next: %s\n", identity.Command("run", kind.Application))
 	}
 	return nil
 }
@@ -849,28 +905,7 @@ func saveImportPack(path string, contents []byte) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	name := temporary.Name()
-	defer os.Remove(name)
-	if err := temporary.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(contents); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
+	return atomicfile.Write(path, contents, 0o600, atomicfile.Create)
 }
 
 func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, force bool) error {
@@ -883,6 +918,7 @@ func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, forc
 		fmt.Fprintf(app.Stdout, "Workflow already installed: %s\n", destination)
 		return nil
 	}
+	replace := false
 	if info, err := os.Lstat(destination); err == nil {
 		if !info.Mode().IsRegular() {
 			return controlerr.New("workflow path is not a regular file: %s", destination)
@@ -890,6 +926,7 @@ func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, forc
 		if !force {
 			return controlerr.New("workflow differs from the curated version: %s; use --force to replace it", destination)
 		}
+		replace = true
 	} else if !os.IsNotExist(err) {
 		return err
 	}
@@ -902,40 +939,16 @@ func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, forc
 	if digest != workflow.RenderedSHA256 {
 		return controlerr.New("curated workflow resource does not match catalog: %s", workflow.ID)
 	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return err
-	}
 	if err := storage.ValidateManagedParent(destination, managedRoot, dataRoot, "curated workflow"); err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(destination), "."+filepath.Base(destination)+".*.tmp")
-	if err != nil {
+	policy := atomicfile.Create
+	if replace {
+		policy = atomicfile.ReplaceRegular
+	}
+	if err := atomicfile.Write(destination, contents, 0o644, policy); err != nil {
 		return err
 	}
-	name := temporary.Name()
-	committed := false
-	defer func() {
-		_ = temporary.Close()
-		if !committed {
-			_ = os.Remove(name)
-		}
-	}()
-	if err := temporary.Chmod(0o644); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(contents); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(name, destination); err != nil {
-		return err
-	}
-	committed = true
 	fmt.Fprintf(app.Stdout, "Installed workflow: %s\n", destination)
 	return nil
 }

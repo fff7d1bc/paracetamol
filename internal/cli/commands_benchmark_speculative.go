@@ -8,20 +8,88 @@ import (
 	"math"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"rocmplete/internal/agent"
 	"rocmplete/internal/benchmark"
+	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
 )
 
 type intList []int
+
+type speculativeThinking struct {
+	Client string `json:"client"`
+	Native string `json:"native"`
+}
+
+type speculativeProfileSetting struct {
+	Profile string `json:"profile"`
+	Value   string `json:"value"`
+}
+
+type speculativeDefinition struct {
+	SourceIdentity       string                      `json:"source_identity"`
+	Image                benchmark.ImageIdentity     `json:"image"`
+	Model                benchmark.ModelIdentity     `json:"model"`
+	DraftModel           *benchmark.ModelIdentity    `json:"draft_model,omitempty"`
+	Profile              string                      `json:"profile"`
+	Backend              string                      `json:"backend"`
+	RenderNodes          []string                    `json:"render_nodes"`
+	Preset               string                      `json:"preset"`
+	SpeculativeType      string                      `json:"speculative_type"`
+	IncumbentDepth       int64                       `json:"incumbent_depth"`
+	Depths               []int                       `json:"depths"`
+	ContextDepths        []int                       `json:"context_depths"`
+	Repetitions          int                         `json:"repetitions"`
+	GenerationTokens     int                         `json:"generation_tokens"`
+	Seed                 int                         `json:"seed"`
+	ServerContext        int                         `json:"server_context"`
+	Thinking             speculativeThinking         `json:"thinking"`
+	Jinja                bool                        `json:"jinja"`
+	ReasoningPreserve    bool                        `json:"reasoning_preserve"`
+	ReasoningControl     string                      `json:"reasoning_control"`
+	ChatTemplate         string                      `json:"chat_template"`
+	SamplingPolicy       string                      `json:"sampling_policy"`
+	SamplingDefaults     json.RawMessage             `json:"sampling_defaults,omitempty"`
+	FlashPolicy          []speculativeProfileSetting `json:"flash_policy"`
+	KVCachePolicy        []speculativeProfileSetting `json:"kv_cache_policy"`
+	DraftProbabilityMin  float64                     `json:"draft_probability_min"`
+	DraftBackendSampling string                      `json:"draft_backend_sampling"`
+	NgramSimple          bool                        `json:"ngram_simple"`
+	GraphOptimization    bool                        `json:"graph_optimization"`
+	DisableGraphs        bool                        `json:"disable_graphs"`
+	Poll                 int                         `json:"poll"`
+	NoHost               bool                        `json:"no_host"`
+	FlashAttention       string                      `json:"flash_attention"`
+	CacheTypeK           string                      `json:"cache_type_k"`
+	CacheTypeV           string                      `json:"cache_type_v"`
+	BatchSize            int                         `json:"batch_size"`
+	UBatchSize           int                         `json:"ubatch_size"`
+}
+
+type speculativeResult struct {
+	Schema      string                             `json:"schema"`
+	SuiteID     string                             `json:"suite_id"`
+	Fingerprint string                             `json:"fingerprint"`
+	Definition  speculativeDefinition              `json:"definition"`
+	Status      string                             `json:"status"`
+	StartedAt   string                             `json:"started_at"`
+	FinishedAt  string                             `json:"finished_at,omitempty"`
+	Trials      []benchmark.SpeculativeTrial       `json:"trials"`
+	Summary     benchmark.SpeculativeSummaryResult `json:"summary"`
+}
+
+var speculativeBenchmarkContainer = identity.Container("llama-cpp-speculative-benchmark")
 
 func (values *intList) String() string {
 	parts := make([]string, len(*values))
@@ -31,8 +99,8 @@ func (values *intList) String() string {
 	return strings.Join(parts, ",")
 }
 func (values *intList) Set(value string) error {
-	var parsed int
-	if _, err := fmt.Sscan(value, &parsed); err != nil {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
 		return err
 	}
 	*values = append(*values, parsed)
@@ -40,7 +108,7 @@ func (values *intList) Set(value string) error {
 }
 
 func (app *App) benchmarkSpeculative(args []string) error {
-	set := app.flags("benchmark llama-cpp-speculative", "Usage: ./rocmplete benchmark llama-cpp-speculative --preset PRESET [OPTIONS]")
+	set := app.flags("benchmark llama-cpp speculative", usage("benchmark", "llama-cpp", "speculative", "--preset PRESET", "[OPTIONS]"))
 	presetID := set.String("preset", "", "installed speculative preset")
 	var depths, contexts intList
 	set.Var(&depths, "draft-depth", "draft depth; repeatable")
@@ -74,14 +142,40 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	keepGoing := set.Bool("keep-going", false, "continue after failed trial")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print the complete sweep")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("speculative benchmark accepts no positional arguments")
 	}
 	if *presetID == "" {
 		return controlerr.Usage("--preset is required")
 	}
 	if *output != "" && *resume != "" {
 		return controlerr.Usage("--output and --resume are mutually exclusive")
+	}
+	if *dryRun && *resume != "" {
+		return controlerr.Usage("--resume cannot be combined with --dry-run")
+	}
+	var err error
+	var result speculativeResult
+	resultPath := ""
+	if *resume != "" {
+		resultPath, err = filepath.Abs(*resume)
+		if err != nil {
+			return err
+		}
+		if err := benchmark.ReadJSON(resultPath, &result, true); err != nil {
+			return err
+		}
+		if err := validateSpeculativeEnvelope(result); err != nil {
+			return err
+		}
+	} else if *output != "" {
+		resultPath, err = absoluteNewPath(*output)
+		if err != nil {
+			return err
+		}
 	}
 	managed, err := app.managedCatalog()
 	if err != nil {
@@ -177,9 +271,14 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return controlerr.New("preset %q is not installed: %v", *presetID, err)
 	}
 	artifact := managed.Artifacts[preset.Artifact]
+	modelIdentity := managedModelIdentity(dataRoot, *presetID, artifact)
 	managedDraft := ""
+	var draftIdentity *benchmark.ModelIdentity
 	if preset.DraftArtifact != "" {
-		managedDraft = managed.Artifacts[preset.DraftArtifact].Destination
+		draftArtifact := managed.Artifacts[preset.DraftArtifact]
+		managedDraft = draftArtifact.Destination
+		identity := managedModelIdentity(dataRoot, "", draftArtifact)
+		draftIdentity = &identity
 	}
 	application, _ := config.ApplicationByID("llama-cpp")
 	image := firstNonEmpty(*imageFlag, application.Image)
@@ -198,9 +297,15 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		}
 	}
 	samplingDefaults := map[string]any{}
+	var samplingJSON json.RawMessage
 	if preset.SamplingPolicy != "" {
 		policy := managed.SamplingPolicies[preset.SamplingPolicy]
 		samplingDefaults = map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
+		encoded, err := json.Marshal(samplingDefaults)
+		if err != nil {
+			return fmt.Errorf("encode sampling policy: %w", err)
+		}
+		samplingJSON = encoded
 	}
 	commands := map[int][]string{}
 	for _, depth := range depths {
@@ -224,7 +329,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		if *disableGraphs {
 			environment = append(environment, "GGML_CUDA_DISABLE_GRAPHS=1")
 		}
-		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, SamplingDefaults: samplingDefaults, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: "rocmplete-llama-cpp-speculative-benchmark", ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
+		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, SamplingDefaults: samplingDefaults, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
 		if err != nil {
 			return err
 		}
@@ -252,87 +357,77 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if err := benchmark.PortAvailable(port); err != nil {
 		return err
 	}
-	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
-		return err
-	}
 	imageID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", image}, "cannot inspect benchmark image")
 	if err != nil {
 		return err
 	}
-	definition := map[string]any{"image": map[string]any{"reference": image, "id": imageID}, "profile": profile, "backend": *backend, "render_nodes": selectedNodes, "preset": *presetID, "speculative_type": preset.SpeculativeType, "incumbent_depth": preset.DraftTokensForBackend(*backend), "depths": []int(depths), "context_depths": []int(contexts), "repetitions": *repetitions, "generation_tokens": *generation, "seed": *seed, "server_context": *contextSize, "thinking": map[string]any{"client": level, "native": nativeReasoning}, "draft_probability_min": *draftProbability, "draft_backend_sampling": *draftSampling, "ngram_simple": *ngram, "graph_optimization": *graphOptimization, "disable_graphs": *disableGraphs, "poll": *poll, "no_host": *noHost, "flash_attention": *flash, "cache_type_k": *cacheK, "cache_type_v": *cacheV, "batch_size": *batch, "ubatch_size": *ubatch}
+	sourceIdentity, err := app.projectSourceIdentity()
+	if err != nil {
+		return err
+	}
+	definition := speculativeDefinition{
+		SourceIdentity: sourceIdentity, Image: benchmark.ImageIdentity{Reference: image, ID: imageID},
+		Model: modelIdentity, DraftModel: draftIdentity, Profile: profile, Backend: *backend,
+		RenderNodes: selectedNodes, Preset: *presetID, SpeculativeType: preset.SpeculativeType,
+		IncumbentDepth: preset.DraftTokensForBackend(*backend), Depths: []int(depths), ContextDepths: []int(contexts),
+		Repetitions: *repetitions, GenerationTokens: *generation, Seed: *seed, ServerContext: *contextSize,
+		Thinking: speculativeThinking{Client: level, Native: nativeReasoning}, Jinja: preset.Jinja,
+		ReasoningPreserve: preset.ReasoningPreserve, ReasoningControl: preset.ReasoningControl,
+		ChatTemplate: preset.ChatTemplate, SamplingPolicy: preset.SamplingPolicy, SamplingDefaults: samplingJSON,
+		FlashPolicy: profileSettings(flashPolicy), KVCachePolicy: profileSettings(kvPolicy), DraftProbabilityMin: *draftProbability,
+		DraftBackendSampling: *draftSampling, NgramSimple: *ngram, GraphOptimization: *graphOptimization,
+		DisableGraphs: *disableGraphs, Poll: *poll, NoHost: *noHost, FlashAttention: *flash,
+		CacheTypeK: *cacheK, CacheTypeV: *cacheV, BatchSize: *batch, UBatchSize: *ubatch,
+	}
 	fingerprint, err := jsonDigest(definition)
 	if err != nil {
 		return err
 	}
-	resultPath := benchmark.DefaultPath((storage.Layout{Root: dataRoot}).LlamaBenchmarks(), "-speculative-depth-sweep.json")
-	var result map[string]any
+	plannedTrials := makeSpeculativeTrials(depths, contexts, *repetitions, *seed)
 	if *resume != "" {
-		resultPath, err = filepath.Abs(*resume)
-		if err != nil {
-			return err
-		}
-		result, err = benchmark.ReadObject(resultPath)
-		if err != nil {
-			return err
-		}
-		if result["schema"] != benchmark.SpeculativeSchema || result["fingerprint"] != fingerprint {
+		if result.Fingerprint != fingerprint {
 			return controlerr.New("speculative benchmark checkpoint does not match this definition")
 		}
-	} else {
-		if *output != "" {
-			resultPath, err = absoluteNewPath(*output)
-			if err != nil {
-				return err
-			}
-		}
-		trials := []any{}
-		for repetition := 1; repetition <= *repetitions; repetition++ {
-			for _, contextDepth := range contexts {
-				for _, depth := range depths {
-					trials = append(trials, map[string]any{"identifier": fmt.Sprintf("d%d-c%d-s%d-r%d", depth, contextDepth, *seed+repetition-1, repetition), "depth": depth, "context_depth": contextDepth, "seed": *seed + repetition - 1, "repetition": repetition, "status": "pending"})
-				}
-			}
-		}
-		sort.Slice(trials, func(i, j int) bool {
-			left := sha256.Sum256([]byte("schedule-v1:" + fmt.Sprint(trials[i].(map[string]any)["identifier"])))
-			right := sha256.Sum256([]byte("schedule-v1:" + fmt.Sprint(trials[j].(map[string]any)["identifier"])))
-			return strings.Compare(string(left[:]), string(right[:])) < 0
-		})
-		result = map[string]any{"schema": benchmark.SpeculativeSchema, "suite_id": time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier(), "fingerprint": fingerprint, "definition": definition, "status": "preparing", "started_at": benchmark.Timestamp(), "trials": trials, "summary": map[string]any{}}
-		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+		if err := validateSpeculativeResume(result, plannedTrials); err != nil {
 			return err
 		}
 	}
-	trials, ok := result["trials"].([]any)
-	if !ok {
-		return controlerr.New("speculative benchmark checkpoint has no trial list")
+	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
+		return err
 	}
-	result["status"] = "running"
+	if *resume == "" {
+		if resultPath == "" {
+			resultPath = benchmark.DefaultPath((storage.Layout{Root: dataRoot}).LlamaBenchmarks(), "-speculative-depth-sweep.json")
+		}
+		result = speculativeResult{Schema: benchmark.SpeculativeSchema, SuiteID: time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier(), Fingerprint: fingerprint, Definition: definition, Status: "preparing", StartedAt: benchmark.Timestamp(), Trials: plannedTrials, Summary: benchmark.SpeculativeSummaryResult{Depths: map[string]benchmark.SpeculativeDepthSummary{}}}
+		if err := benchmark.WriteNewCheckpoint(resultPath, result); err != nil {
+			return err
+		}
+	}
+	result.Summary = benchmark.SpeculativeSummary(result.Trials, int(preset.DraftTokensForBackend(*backend)))
+	result.Status = "running"
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
 	}
 	failed := false
-	for index, raw := range trials {
-		trial, ok := raw.(map[string]any)
-		if !ok {
-			return controlerr.New("speculative benchmark has an invalid trial")
-		}
-		if trial["status"] == "complete" {
+	for index := range result.Trials {
+		trial := &result.Trials[index]
+		if trial.Status == "complete" {
 			continue
 		}
-		depth := int(numberAsInt64(trial["depth"]))
-		contextDepth := int(numberAsInt64(trial["context_depth"]))
-		requestSeed := int(numberAsInt64(trial["seed"]))
-		fmt.Fprintf(app.Stdout, "[%d/%d] depth %d, target %d, seed %d\n", index+1, len(trials), depth, contextDepth, requestSeed)
-		trial["status"], trial["started_at"] = "running", benchmark.Timestamp()
-		_ = benchmark.WriteCheckpoint(resultPath, result)
+		depth, contextDepth, requestSeed := trial.Depth, trial.ContextDepth, trial.Seed
+		fmt.Fprintf(app.Stdout, "[%d/%d] depth %d, target %d, seed %d\n", index+1, len(result.Trials), depth, contextDepth, requestSeed)
+		trial.Status, trial.StartedAt, trial.Error, trial.Metrics = "running", benchmark.Timestamp(), "", nil
+		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+			return err
+		}
 		startup := time.Now()
 		_, startErr := app.run(commands[depth], true)
 		if startErr == nil {
 			startErr = benchmark.WaitForHealth(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port))
 		}
 		startupSeconds := time.Since(startup).Seconds()
-		var metrics map[string]any
+		var metrics benchmark.SpeculativeMetrics
 		if startErr == nil {
 			payload := map[string]any{"model": *presetID, "messages": benchmark.SpeculativeMessages(contextDepth, requestSeed), "max_tokens": *generation, "seed": requestSeed, "stream": false}
 			if nativeReasoning == "off" {
@@ -348,30 +443,26 @@ func (app *App) benchmarkSpeculative(args []string) error {
 				metrics, startErr = benchmark.ParseSpeculativeResponse(response, time.Since(started).Seconds(), startupSeconds)
 			}
 		}
-		_, _ = app.run([]string{"podman", "rm", "--force", "--time", "10", "--ignore", "rocmplete-llama-cpp-speculative-benchmark"}, true)
+		startErr = withCleanupFailure(startErr, "clean up speculative benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), speculativeBenchmarkContainer, 10, podman.Streams{}))
 		if startErr != nil {
-			trial["status"], trial["error"], trial["finished_at"] = "failed", startErr.Error(), benchmark.Timestamp()
+			trial.Status, trial.Error, trial.FinishedAt = "failed", startErr.Error(), benchmark.Timestamp()
 			failed = true
 		} else {
-			for key, value := range metrics {
-				trial[key] = value
-			}
-			trial["status"], trial["finished_at"] = "complete", benchmark.Timestamp()
-			fmt.Fprintf(app.Stdout, "  %.2f t/s, accepted %v/%v (%.1f%%)\n", metrics["generation_tokens_per_second"], metrics["accepted_draft_tokens"], metrics["drafted_tokens"], metrics["acceptance_percent"])
+			trial.Status, trial.FinishedAt, trial.Metrics = "complete", benchmark.Timestamp(), &metrics
+			fmt.Fprintf(app.Stdout, "  %.2f t/s, accepted %d/%d (%.1f%%)\n", metrics.GenerationTokensPerSecond, metrics.AcceptedDraftTokens, metrics.DraftedTokens, metrics.AcceptancePercent)
 		}
-		result["summary"] = benchmark.SpeculativeSummary(trials, int(preset.DraftTokensForBackend(*backend)))
+		result.Summary = benchmark.SpeculativeSummary(result.Trials, int(preset.DraftTokensForBackend(*backend)))
 		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 			return err
 		}
 		if startErr != nil && !*keepGoing {
-			result["status"] = "failed"
-			_ = benchmark.WriteCheckpoint(resultPath, result)
-			return startErr
+			result.Status = "failed"
+			return checkpointThenReturn(resultPath, result, startErr)
 		}
 	}
-	result["status"], result["finished_at"] = "complete", benchmark.Timestamp()
+	result.Status, result.FinishedAt = "complete", benchmark.Timestamp()
 	if failed {
-		result["status"] = "failed"
+		result.Status = "failed"
 	}
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
@@ -381,6 +472,108 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return controlerr.New("speculative benchmark completed with failed trials")
 	}
 	return nil
+}
+
+func makeSpeculativeTrials(depths, contexts []int, repetitions, seed int) []benchmark.SpeculativeTrial {
+	trials := make([]benchmark.SpeculativeTrial, 0, len(depths)*len(contexts)*repetitions)
+	for repetition := 1; repetition <= repetitions; repetition++ {
+		for _, contextDepth := range contexts {
+			for _, depth := range depths {
+				trials = append(trials, benchmark.SpeculativeTrial{Identifier: fmt.Sprintf("d%d-c%d-s%d-r%d", depth, contextDepth, seed+repetition-1, repetition), Depth: depth, ContextDepth: contextDepth, Seed: seed + repetition - 1, Repetition: repetition, Status: "pending"})
+			}
+		}
+	}
+	sort.Slice(trials, func(i, j int) bool {
+		left := sha256.Sum256([]byte("schedule-v1:" + trials[i].Identifier))
+		right := sha256.Sum256([]byte("schedule-v1:" + trials[j].Identifier))
+		return strings.Compare(string(left[:]), string(right[:])) < 0
+	})
+	return trials
+}
+
+func validateSpeculativeResume(result speculativeResult, planned []benchmark.SpeculativeTrial) error {
+	if err := validateSpeculativeEnvelope(result); err != nil {
+		return err
+	}
+	if len(result.Trials) != len(planned) {
+		return controlerr.New("speculative benchmark checkpoint has an unexpected trial count")
+	}
+	for index, trial := range result.Trials {
+		expected := planned[index]
+		if trial.Identifier != expected.Identifier || trial.Depth != expected.Depth || trial.ContextDepth != expected.ContextDepth || trial.Seed != expected.Seed || trial.Repetition != expected.Repetition {
+			return controlerr.New("speculative benchmark trial %d has invalid metadata", index+1)
+		}
+	}
+	return nil
+}
+
+func validateSpeculativeEnvelope(result speculativeResult) error {
+	if result.Schema != benchmark.SpeculativeSchema || !managedRunID.MatchString(result.SuiteID) || result.StartedAt == "" {
+		return controlerr.New("speculative benchmark checkpoint has invalid root metadata")
+	}
+	if !map[string]bool{"preparing": true, "running": true, "failed": true, "complete": true}[result.Status] {
+		return controlerr.New("speculative benchmark checkpoint has invalid status %q", result.Status)
+	}
+	if (result.Status == "complete" || result.Status == "failed") && result.FinishedAt == "" {
+		return controlerr.New("finished speculative benchmark checkpoint has no completion timestamp")
+	}
+	digest, err := jsonDigest(result.Definition)
+	if err != nil || digest != result.Fingerprint {
+		return controlerr.New("speculative benchmark definition does not match its fingerprint")
+	}
+	seen := map[string]bool{}
+	for index, trial := range result.Trials {
+		if trial.Identifier == "" || seen[trial.Identifier] {
+			return controlerr.New("speculative benchmark trial %d has an invalid identifier", index+1)
+		}
+		seen[trial.Identifier] = true
+		switch trial.Status {
+		case "pending":
+			if trial.StartedAt != "" || trial.FinishedAt != "" || trial.Error != "" || trial.Metrics != nil {
+				return controlerr.New("pending speculative benchmark trial %q contains result data", trial.Identifier)
+			}
+		case "running":
+			if trial.StartedAt == "" || trial.FinishedAt != "" || trial.Error != "" || trial.Metrics != nil {
+				return controlerr.New("running speculative benchmark trial %q has inconsistent state", trial.Identifier)
+			}
+		case "complete":
+			if trial.StartedAt == "" || trial.FinishedAt == "" || trial.Error != "" || trial.Metrics == nil || !validSpeculativeMetrics(*trial.Metrics) {
+				return controlerr.New("completed speculative benchmark trial %q has invalid metrics", trial.Identifier)
+			}
+		case "failed":
+			if trial.StartedAt == "" || trial.FinishedAt == "" || trial.Error == "" || trial.Metrics != nil {
+				return controlerr.New("failed speculative benchmark trial %q has inconsistent state", trial.Identifier)
+			}
+		default:
+			return controlerr.New("speculative benchmark trial %q has invalid status %q", trial.Identifier, trial.Status)
+		}
+	}
+	return nil
+}
+
+func validSpeculativeMetrics(metrics benchmark.SpeculativeMetrics) bool {
+	finite := func(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+	if !finite(metrics.RequestSeconds) || metrics.RequestSeconds <= 0 || !finite(metrics.StartupSeconds) || metrics.StartupSeconds < 0 ||
+		metrics.PromptTokens < 0 || metrics.CompletionTokens < 0 || metrics.DraftedTokens < 0 || metrics.AcceptedDraftTokens < 0 || metrics.AcceptedDraftTokens > metrics.DraftedTokens ||
+		!finite(metrics.GenerationTokensPerSecond) || metrics.GenerationTokensPerSecond <= 0 || !finite(metrics.PromptTokensPerSecond) || metrics.PromptTokensPerSecond <= 0 ||
+		!finite(metrics.PredictedMS) || metrics.PredictedMS <= 0 || !finite(metrics.PromptMS) || metrics.PromptMS <= 0 || !finite(metrics.AcceptancePercent) || metrics.AcceptancePercent < 0 || metrics.AcceptancePercent > 100 ||
+		!json.Valid(metrics.Message) {
+		return false
+	}
+	decoded, err := hex.DecodeString(metrics.ResponseSHA256)
+	return err == nil && len(decoded) == sha256.Size
+}
+
+func managedModelIdentity(dataRoot, preset string, artifact catalog.Artifact) benchmark.ModelIdentity {
+	return benchmark.ModelIdentity{Kind: "catalog", Preset: preset, Path: content.ArtifactPath(dataRoot, artifact), Repository: artifact.Source.Repository, Revision: artifact.Source.Revision, SourcePath: artifact.Source.Path, Size: artifact.Size, SHA256: artifact.SHA256}
+}
+
+func profileSettings(values map[string]string) []speculativeProfileSetting {
+	settings := make([]speculativeProfileSetting, 0, len(values))
+	for _, profile := range sortedMapKeys(values) {
+		settings = append(settings, speculativeProfileSetting{Profile: profile, Value: values[profile]})
+	}
+	return settings
 }
 
 func validateUniqueRange(values []int, minimum, maximum int, name string) error {
@@ -404,19 +597,4 @@ func jsonDigest(value any) (string, error) {
 	}
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
-}
-
-func numberAsInt64(value any) int64 {
-	switch typed := value.(type) {
-	case json.Number:
-		parsed, _ := typed.Int64()
-		return parsed
-	case float64:
-		return int64(typed)
-	case int:
-		return int64(typed)
-	case int64:
-		return typed
-	}
-	return 0
 }

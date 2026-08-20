@@ -3,8 +3,9 @@ package agent
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
+
+	"rocmplete/internal/atomicfile"
 )
 
 func secureDirectory(path string, private bool) error {
@@ -42,35 +43,7 @@ func writeAtomic(path string, contents []byte, mode os.FileMode, preserve bool) 
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	name := temporary.Name()
-	committed := false
-	defer func() {
-		_ = temporary.Close()
-		if !committed {
-			_ = os.Remove(name)
-		}
-	}()
-	if err := temporary.Chmod(mode); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(contents); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(name, path); err != nil {
-		return err
-	}
-	committed = true
-	return nil
+	return atomicfile.Write(path, contents, mode, atomicfile.ReplaceRegular)
 }
 
 func regularFile(path, description string) ([]byte, error) {

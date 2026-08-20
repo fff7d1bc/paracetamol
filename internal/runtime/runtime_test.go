@@ -35,6 +35,54 @@ func TestLlamaBenchmarkCommandIsOfflineAndConstrained(t *testing.T) {
 	}
 }
 
+func TestLlamaServerExposesOnlySelectedGPUAndOnePort(t *testing.T) {
+	command, err := LlamaCommand(LlamaOptions{
+		Image: "image", Profile: "strix-halo", Mode: "server", Backend: "rocm",
+		DataDir: "/data", ManagedModel: "model.gguf", RenderNodes: []string{"/dev/dri/renderD129"},
+		Listen: "127.0.0.1", Port: 8080, AutoRemove: true,
+	}, ":rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(command, " ")
+	for _, required := range []string{"--read-only", "--cap-drop all", "no-new-privileges", "--device /dev/kfd", "--device /dev/dri/renderD129", "--publish 127.0.0.1:8080:8080/tcp", "/data/content/llama-cpp/models:/content/models:ro"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("server command lacks %q: %s", required, joined)
+		}
+	}
+	for _, forbidden := range []string{"/dev/dri/renderD128", "--privileged", "--network host"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("server command contains %q: %s", forbidden, joined)
+		}
+	}
+}
+
+func TestLlamaCPUCLIIsOfflineAndHasNoGPUDevices(t *testing.T) {
+	prompt := "hello"
+	command, err := LlamaCommand(LlamaOptions{
+		Image: "image", Profile: "cpu", Mode: "cli", Backend: "rocm",
+		DataDir: "/data", ManagedModel: "model.gguf", Prompt: &prompt, AutoRemove: true,
+	}, ":rw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(command, " ")
+	if !strings.Contains(joined, "--network none") || !strings.Contains(joined, "--single-turn") {
+		t.Fatalf("CLI command is not an offline single turn: %s", joined)
+	}
+	for _, forbidden := range []string{"--publish", "/dev/kfd", "/dev/dri/render"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("CPU CLI command contains %q: %s", forbidden, joined)
+		}
+	}
+}
+
+func TestReadOnlySharedMountUsesSharedSELinuxCategory(t *testing.T) {
+	if got := readOnlySharedSuffix(":rw,Z"); got != ":ro,z" {
+		t.Fatalf("suffix=%q", got)
+	}
+}
+
 func TestDwarfStarCLIAppliesPrivateServerDefaultsWithoutPublishing(t *testing.T) {
 	prompt := "test"
 	command, err := DwarfStarCommand(DwarfStarOptions{

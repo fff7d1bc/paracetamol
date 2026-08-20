@@ -10,20 +10,23 @@ import (
 	"time"
 
 	"rocmplete/internal/agent"
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/benchmark"
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
 	"rocmplete/internal/evaluation"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/process"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
 )
 
-func (app *App) benchmarkAgent(args []string) error {
-	set := app.flags("benchmark agent", "Usage: ./rocmplete benchmark agent (--preset PRESET | --dwarfstar) [OPTIONS]")
+func (app *App) benchmarkAgent(args []string) (returned error) {
+	set := app.flags("benchmark agent", usage("benchmark", "agent", "(--preset PRESET | --dwarfstar)", "[OPTIONS]"))
 	presetID := set.String("preset", "", "installed agent-capable preset")
 	dwarfstar := set.Bool("dwarfstar", false, "evaluate DwarfStar")
 	var taskIDs stringList
@@ -41,8 +44,11 @@ func (app *App) benchmarkAgent(args []string) error {
 	output := set.String("output", "", "new result JSON below evaluation storage")
 	keepGoing := set.Bool("keep-going", false, "continue after infrastructure failure")
 	dryRun := set.Bool("dry-run", false, "print the frozen suite")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("benchmark agent accepts no positional arguments")
 	}
 	suite, err := evaluation.Load(filepath.Join(app.Root, "evaluations", "coding", "tasks.json"))
 	if err != nil {
@@ -111,24 +117,65 @@ func (app *App) benchmarkAgent(args []string) error {
 			return controlerr.Usage("DwarfStar supports thinking off or high")
 		}
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
-		return err
-	}
-	if _, err := agent.ResolvePiRuntime(app.Context, app.Runner, dataRoot, app.Root); err != nil && !*dryRun {
 		return err
 	}
 	server, containerName, err := app.agentEvaluationServer(managed, dataRoot, profile, *backend, selectedNodes, port, *contextSize, *presetID, *dwarfstar)
 	if err != nil {
 		return err
 	}
+	evaluationRoot := (storage.Layout{Root: dataRoot}).AgentEvaluations()
+	runID := time.Now().UTC().Format("20060102T150405Z") + "-" + evaluation.Identifier()
+	runRoot := filepath.Join(evaluationRoot, "runs", runID)
+	resultPath := benchmark.DefaultPath(filepath.Join(evaluationRoot, "results"), "-"+model+".json")
+	if *output != "" {
+		resultPath, err = absoluteNewPath(*output)
+		if err != nil {
+			return err
+		}
+		if err := storage.ValidateManagedParent(resultPath, evaluationRoot, dataRoot, "coding evaluation result"); err != nil {
+			return err
+		}
+	}
 	if *dryRun {
 		fmt.Fprintf(app.Stdout, "Coding-agent evaluation\n  Suite       %s (%s)\n  Model       %s\n  Harness     Pi\n  Context     %d\n  Thinking    %s\n  Tasks       %s\n  Repetitions %d\n  Server      %s\n", suite.Identifier, suite.Fingerprint, model, *contextSize, level, joinTaskIDs(selectedTasks), *repetitions, shellJoin(server))
 		return nil
 	}
-	evaluationRoot := (storage.Layout{Root: dataRoot}).AgentEvaluations()
-	runID := time.Now().UTC().Format("20060102T150405Z") + "-" + evaluation.Identifier()
-	runRoot := filepath.Join(evaluationRoot, "runs", runID)
+	if err := app.podman().RequireRootless(app.Context); err != nil {
+		return err
+	}
+	image := configApplicationImage("llama-cpp")
+	if *dwarfstar {
+		image = configApplicationImage("dwarfstar")
+	}
+	present, err := app.podman().Exists(app.Context, "image", image)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return controlerr.New("image not found: %s", image)
+	}
+	if exists, err := app.podman().Exists(app.Context, "container", containerName); err != nil || exists {
+		if err != nil {
+			return err
+		}
+		return controlerr.New("coding evaluation requires stopped container %q", containerName)
+	}
+	if err := benchmark.PortAvailable(port); err != nil {
+		return err
+	}
+	applicationID := "llama-cpp"
+	if *dwarfstar {
+		applicationID = "dwarfstar"
+	}
+	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime(applicationID); err != nil {
+		return err
+	}
+	runtimePi, err := agent.ResolvePiRuntime(app.Context, app.Runner, dataRoot, app.Root)
+	if err != nil {
+		return err
+	}
 	for _, path := range []string{runRoot, filepath.Join(evaluationRoot, "results"), filepath.Join(evaluationRoot, "cache", "go-mod"), filepath.Join(evaluationRoot, "cache", "go-build")} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			return err
@@ -139,7 +186,7 @@ func (app *App) benchmarkAgent(args []string) error {
 	environment["GOCACHE"] = filepath.Join(evaluationRoot, "cache", "go-build")
 	environment["GOFLAGS"] = "-buildvcs=false"
 	environment["PYTHONDONTWRITEBYTECODE"] = "1"
-	environment["GIT_AUTHOR_NAME"], environment["GIT_COMMITTER_NAME"] = "ROCmplete Evaluation", "ROCmplete Evaluation"
+	environment["GIT_AUTHOR_NAME"], environment["GIT_COMMITTER_NAME"] = identity.DisplayName+" Evaluation", identity.DisplayName+" Evaluation"
 	environment["GIT_AUTHOR_EMAIL"], environment["GIT_COMMITTER_EMAIL"] = "evaluation@invalid.local", "evaluation@invalid.local"
 	prepared := map[string]evaluation.Attempt{}
 	for _, task := range selectedTasks {
@@ -151,85 +198,63 @@ func (app *App) benchmarkAgent(args []string) error {
 			prepared[fmt.Sprintf("%s-%d", task.Identifier, repetition)] = attempt
 		}
 	}
-	resultPath := benchmark.DefaultPath(filepath.Join(evaluationRoot, "results"), "-"+model+".json")
-	if *output != "" {
-		resultPath, err = filepath.Abs(*output)
-		if err != nil {
-			return err
-		}
-		if err := storage.ValidateManagedParent(resultPath, evaluationRoot, dataRoot, "coding evaluation result"); err != nil {
-			return err
-		}
-	}
-	result := map[string]any{"schema": evaluation.ResultSchema, "suite": suite.Identifier, "suite_fingerprint": suite.Fingerprint, "run_id": runID, "status": "running", "started_at": benchmark.Timestamp(), "model": map[string]any{"identifier": model, "context": *contextSize, "thinking": level, "backend": *backend}, "harness": map[string]any{"name": "Pi"}, "tasks": []any{}}
-	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
-		return err
-	}
-	if err := app.podman().RequireRootless(app.Context); err != nil {
-		return err
-	}
-	if exists, err := app.podman().Exists(app.Context, "container", containerName); err != nil || exists {
-		if err != nil {
-			return err
-		}
-		return controlerr.New("coding evaluation requires stopped container %q", containerName)
-	}
-	if _, err := app.run(server, true); err != nil {
+	result := evaluation.Result{Schema: evaluation.ResultSchema, Suite: suite.Identifier, SuiteFingerprint: suite.Fingerprint, RunID: runID, Status: "running", StartedAt: benchmark.Timestamp(), Model: evaluation.ModelResult{Identifier: model, Context: *contextSize, Thinking: level, Backend: *backend}, Harness: "Pi", Tasks: []evaluation.TaskResult{}}
+	if err := benchmark.WriteNewCheckpoint(resultPath, result); err != nil {
 		return err
 	}
 	defer func() {
-		_, _ = app.run([]string{"podman", "rm", "--force", "--time", "10", "--ignore", containerName}, true)
+		returned = withCleanupFailure(returned, "clean up coding-evaluation model container", app.podman().RemoveContainer(contextWithoutCancel(), containerName, 10, podman.Streams{}))
 	}()
+	if _, err := app.run(server, true); err != nil {
+		result.Status, result.FinishedAt, result.Error = "infrastructure-failed", benchmark.Timestamp(), err.Error()
+		return checkpointThenReturn(resultPath, result, err)
+	}
 	health := fmt.Sprintf("http://127.0.0.1:%d/health", port)
 	if *dwarfstar {
 		health = fmt.Sprintf("http://127.0.0.1:%d/v1/models", port)
 	}
 	if err := benchmark.WaitForURL(app.Context, health); err != nil {
-		return err
-	}
-	runtimePi, err := agent.ResolvePiRuntime(app.Context, app.Runner, dataRoot, app.Root)
-	if err != nil {
-		return err
+		result.Status, result.FinishedAt, result.Error = "infrastructure-failed", benchmark.Timestamp(), err.Error()
+		return checkpointThenReturn(resultPath, result, err)
 	}
 	failed := false
-	taskResults := []any{}
+	taskResults := []evaluation.TaskResult{}
 	for _, task := range selectedTasks {
-		attemptResults := []any{}
+		attemptResults := []evaluation.AttemptResult{}
 		for repetition := 1; repetition <= *repetitions; repetition++ {
 			attempt := prepared[fmt.Sprintf("%s-%d", task.Identifier, repetition)]
 			harness, runErr := app.runEvaluationPi(managed, runtimePi, dataRoot, port, task, attempt, model, level, *dwarfstar, environment, evaluationRoot)
-			grade := map[string]any{"outcome": "infrastructure-failed"}
+			grade := evaluation.GradeResult{Outcome: "infrastructure-failed"}
 			if runErr == nil {
 				grade, runErr = evaluation.Grade(app.Context, app.Runner, app.Root, attempt, mapEnvironment(environment))
 			}
-			entry := map[string]any{"repetition": repetition, "harness": harness, "grade": grade}
+			entry := evaluation.AttemptResult{Repetition: repetition, Harness: harness, Grade: grade}
 			if runErr != nil {
-				entry["error"] = runErr.Error()
+				entry.Error = runErr.Error()
 				failed = true
 			}
 			attemptResults = append(attemptResults, entry)
 			if runErr != nil && !*keepGoing {
-				taskResults = append(taskResults, map[string]any{"identifier": task.Identifier, "kind": task.Kind, "difficulty": task.Difficulty, "attempts": attemptResults})
-				result["tasks"], result["status"], result["error"] = taskResults, "infrastructure-failed", runErr.Error()
-				_ = benchmark.WriteCheckpoint(resultPath, result)
-				return runErr
+				taskResults = append(taskResults, evaluation.TaskResult{Identifier: task.Identifier, Kind: task.Kind, Difficulty: task.Difficulty, Attempts: attemptResults})
+				result.Tasks, result.Status, result.Error = taskResults, "infrastructure-failed", runErr.Error()
+				return checkpointThenReturn(resultPath, result, runErr)
 			}
 		}
-		taskResults = append(taskResults, map[string]any{"identifier": task.Identifier, "kind": task.Kind, "difficulty": task.Difficulty, "attempts": attemptResults})
-		result["tasks"] = taskResults
+		taskResults = append(taskResults, evaluation.TaskResult{Identifier: task.Identifier, Kind: task.Kind, Difficulty: task.Difficulty, Attempts: attemptResults})
+		result.Tasks = taskResults
 		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 			return err
 		}
 	}
-	result["status"], result["finished_at"] = "complete", benchmark.Timestamp()
+	result.Status, result.FinishedAt = "complete", benchmark.Timestamp()
 	if failed {
-		result["status"] = "completed-with-infrastructure-failures"
+		result.Status = "completed-with-infrastructure-failures"
 	}
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
 	}
 	report := strings.TrimSuffix(resultPath, filepath.Ext(resultPath)) + ".md"
-	if err := os.WriteFile(report, []byte(renderAgentReport(result)), 0o644); err != nil {
+	if err := atomicfile.Write(report, []byte(renderAgentReport(result)), 0o644, atomicfile.Create); err != nil {
 		return err
 	}
 	fmt.Fprintf(app.Stdout, "Coding-agent evaluation complete: %s\nReport: %s\n", resultPath, report)
@@ -270,7 +295,7 @@ func (app *App) agentEvaluationServer(managed catalog.Catalog, dataRoot, profile
 	return command, application.ContainerName, err
 }
 
-func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRuntime, dataRoot string, port int, task evaluation.Task, attempt evaluation.Attempt, model, thinking string, dwarfstar bool, environment map[string]string, evaluationRoot string) (map[string]any, error) {
+func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRuntime, dataRoot string, port int, task evaluation.Task, attempt evaluation.Attempt, model, thinking string, dwarfstar bool, environment map[string]string, evaluationRoot string) (evaluation.HarnessResult, error) {
 	provider := agent.ProviderID
 	llamaPort, dwarfPort := port, 8000
 	if dwarfstar {
@@ -279,13 +304,12 @@ func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRunti
 	arguments := []string{"--provider", provider, "--model", model, "--thinking", thinking, "--print", "--mode", "json", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--tools", "read,bash,edit,write", task.Prompt}
 	plan, err := agent.CreatePiPlan(app.Context, managed, dataRoot, app.Root, llamaPort, dwarfPort, "", arguments, piRuntime)
 	if err != nil {
-		return nil, err
+		return evaluation.HarnessResult{}, err
 	}
-	_, agentDir, err := agent.PreparePiState(plan, dataRoot)
-	if err != nil {
-		return nil, err
+	if _, err := agent.PreparePiState(plan, dataRoot); err != nil {
+		return evaluation.HarnessResult{}, err
 	}
-	child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0", "PI_OFFLINE": "1", "TERM": "dumb", "GIT_AUTHOR_NAME": "ROCmplete Evaluation", "GIT_AUTHOR_EMAIL": "evaluation@invalid.local"}
+	child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0", "PI_OFFLINE": "1", "TERM": "dumb", "GIT_AUTHOR_NAME": identity.DisplayName + " Evaluation", "GIT_AUTHOR_EMAIL": "evaluation@invalid.local"}
 	readOnly := []agent.Mount{{Source: piRuntime.Root, Destination: piRuntime.Root}}
 	if task.Toolchain == "go" {
 		readOnly = append(readOnly, agent.Mount{Source: filepath.Join(evaluationRoot, "cache", "go-mod"), Destination: filepath.Join(agent.SandboxRuntime, "go-mod")})
@@ -293,25 +317,24 @@ func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRunti
 	} else {
 		child["PYTHONDONTWRITEBYTECODE"], child["PYTHONPATH"] = "1", filepath.Join(attempt.Fixture, "src")
 	}
-	_ = agentDir
 	sandbox, err := agent.CreateSandboxPlan(app.Context, app.Runner, plan.Command, dataRoot, attempt.Fixture, "pi", child, environment, readOnly)
 	if err != nil {
-		return nil, err
+		return evaluation.HarnessResult{}, err
 	}
 	stdoutPath, stderrPath := filepath.Join(attempt.Root, "pi.jsonl"), filepath.Join(attempt.Root, "pi.stderr.log")
 	stdout, err := os.OpenFile(stdoutPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, err
+		return evaluation.HarnessResult{}, err
 	}
 	defer stdout.Close()
 	stderr, err := os.OpenFile(stderrPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return nil, err
+		return evaluation.HarnessResult{}, err
 	}
 	defer stderr.Close()
 	started := time.Now()
 	result, runErr := app.Runner.Run(app.Context, process.Command{Name: sandbox.Command[0], Args: sandbox.Command[1:], Dir: attempt.Fixture, Env: sandbox.Environment, Stdout: stdout, Stderr: stderr})
-	harness := map[string]any{"exit": result.Status, "wall_seconds": time.Since(started).Seconds(), "usage": transcriptUsage(stdoutPath)}
+	harness := evaluation.HarnessResult{Exit: result.Status, WallSeconds: time.Since(started).Seconds(), Usage: transcriptUsage(stdoutPath)}
 	if runErr != nil {
 		return harness, runErr
 	}
@@ -321,8 +344,8 @@ func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRunti
 	return harness, nil
 }
 
-func transcriptUsage(path string) map[string]int64 {
-	totals := map[string]int64{"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+func transcriptUsage(path string) evaluation.Usage {
+	totals := evaluation.Usage{}
 	handle, err := os.Open(path)
 	if err != nil {
 		return totals
@@ -338,26 +361,21 @@ func transcriptUsage(path string) map[string]int64 {
 		}
 		message, _ := value["message"].(map[string]any)
 		usage, _ := message["usage"].(map[string]any)
-		for source, target := range map[string]string{"input": "input", "output": "output", "reasoning": "reasoning", "cacheRead": "cache_read", "cacheWrite": "cache_write"} {
+		for source, target := range map[string]*int64{"input": &totals.Input, "output": &totals.Output, "reasoning": &totals.Reasoning, "cacheRead": &totals.CacheRead, "cacheWrite": &totals.CacheWrite} {
 			if amount, ok := usage[source].(float64); ok && amount >= 0 {
-				totals[target] += int64(amount)
+				*target += int64(amount)
 			}
 		}
 	}
 	return totals
 }
 
-func renderAgentReport(result map[string]any) string {
+func renderAgentReport(result evaluation.Result) string {
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "# Coding-agent evaluation\n\n- Suite: `%v`\n- Status: `%v`\n\n| Task | Kind | Difficulty | Outcome | Wall time | Output tokens |\n|---|---|---:|---|---:|---:|\n", result["suite"], result["status"])
-	for _, rawTask := range result["tasks"].([]any) {
-		task := rawTask.(map[string]any)
-		for _, rawAttempt := range task["attempts"].([]any) {
-			attempt := rawAttempt.(map[string]any)
-			grade, _ := attempt["grade"].(map[string]any)
-			harness, _ := attempt["harness"].(map[string]any)
-			usage, _ := harness["usage"].(map[string]int64)
-			fmt.Fprintf(&builder, "| `%v` | %v | %v | **%v** | %.1fs | %d |\n", task["identifier"], task["kind"], task["difficulty"], grade["outcome"], harness["wall_seconds"], usage["output"])
+	fmt.Fprintf(&builder, "# Coding-agent evaluation\n\n- Suite: `%s`\n- Status: `%s`\n\n| Task | Kind | Difficulty | Outcome | Wall time | Output tokens |\n|---|---|---:|---|---:|---:|\n", result.Suite, result.Status)
+	for _, task := range result.Tasks {
+		for _, attempt := range task.Attempts {
+			fmt.Fprintf(&builder, "| `%s` | %s | %s | **%s** | %.1fs | %d |\n", task.Identifier, task.Kind, task.Difficulty, attempt.Grade.Outcome, attempt.Harness.WallSeconds, attempt.Harness.Usage.Output)
 		}
 	}
 	return builder.String()

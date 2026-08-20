@@ -14,6 +14,7 @@ import (
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
 	"rocmplete/internal/process"
 )
@@ -229,10 +230,10 @@ func (app *App) llamaStatus(requested string) error {
 		}
 	}
 
-	fmt.Fprintln(app.Stdout, "ROCmplete llama.cpp runtime")
+	fmt.Fprintf(app.Stdout, "%s llama.cpp runtime\n", identity.DisplayName)
 	writeStatusRows(app.Stdout, [][2]string{
 		{"State", state},
-		{"ROCmplete", firstNonEmpty(environment["ROCMLETE_SOURCE_REVISION"], app.projectRevision())},
+		{identity.DisplayName, firstNonEmpty(environment["ROCMLETE_SOURCE_REVISION"], app.projectRevision())},
 		{"Image", image}, {"Image ID", imageID},
 		{"llama.cpp", firstNonEmpty(labels["org.opencontainers.image.revision"], "unknown")},
 		{"ROCm", firstNonEmpty(labels["io.github.fff7d1bc.rocmplete.rocm.version"], "unknown")},
@@ -277,7 +278,7 @@ func (app *App) llamaStatus(requested string) error {
 		for _, identifier := range identifiers {
 			fmt.Fprintf(app.Stdout, "  %s\n", identifier)
 		}
-		fmt.Fprintln(app.Stdout, "\nDetails: ./rocmplete status llama-cpp --model MODEL")
+		fmt.Fprintf(app.Stdout, "\nDetails: %s\n", identity.Command("status", "llama-cpp", "--model", "MODEL"))
 	} else {
 		modelRows, rowErr := llamaModelStatusRows(managed, preset, selected, environment, runtimeReport)
 		if rowErr != nil {
@@ -285,12 +286,12 @@ func (app *App) llamaStatus(requested string) error {
 		}
 		writeStatusSection(app.Stdout, "Model policy", modelRows)
 	}
-	writeStatusSection(app.Stdout, "ROCmplete behavior", [][2]string{
+	writeStatusSection(app.Stdout, identity.DisplayName+" behavior", [][2]string{
 		{"Downstream patches", firstNonEmpty(labels["io.github.fff7d1bc.rocmplete.llama-cpp.patches"], "unknown")},
 		{"Policy boundary", "catalog defaults are selected after reasoning mode resolution"},
 		{"Secrets", "API-key values and host secret paths are never printed"},
 	})
-	fmt.Fprintf(app.Stdout, "\nReproduce effective ROCmplete launch\n  %s\n", shellJoin(llamaReproductionCommand(environment, runtimeReport, preset)))
+	fmt.Fprintf(app.Stdout, "\nReproduce effective %s launch\n  %s\n", identity.DisplayName, shellJoin(llamaReproductionCommand(environment, runtimeReport, preset)))
 	fmt.Fprintf(app.Stdout, "\nExact running llama.cpp command\n  %s\n", shellJoin(processCommand))
 	return nil
 }
@@ -480,7 +481,7 @@ func llamaSamplingRows(managed catalog.Catalog, preset *catalog.LlamaPreset, raw
 }
 
 func llamaReproductionCommand(environment, runtimeReport map[string]string, preset *catalog.LlamaPreset) []string {
-	command := []string{"./rocmplete", "run", "llama-cpp", "server"}
+	command := []string{"./" + identity.CommandName, "run", "llama-cpp", "server"}
 	if runtimeReport["router"] == "1" {
 		command = append(command, "--router", "--models-max", runtimeReport["models_max"])
 	} else if preset != nil {

@@ -10,6 +10,9 @@ import (
 	"rocmplete/internal/buildplan"
 	"rocmplete/internal/config"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
+	"rocmplete/internal/podman"
+	"rocmplete/internal/runtime"
 )
 
 type cleanupTarget struct {
@@ -20,8 +23,8 @@ type cleanupTarget struct {
 
 func (app *App) commandCleanup(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete cleanup SCOPE [OPTIONS]",
-			[2]string{"containers", "remove ROCmplete-owned containers"},
+		writeGroupHelp(app.Stdout, usage("cleanup", "SCOPE", "[OPTIONS]"),
+			[2]string{"containers", "remove " + identity.DisplayName + "-owned containers"},
 			[2]string{"caches", "remove application runtime caches"},
 			[2]string{"build-cache", "remove the host package-download cache"},
 			[2]string{"downloads", "remove resumable download staging"},
@@ -36,17 +39,19 @@ func (app *App) commandCleanup(args []string) error {
 	if err := requireChoice(scope, "cleanup scope", "containers", "caches", "build-cache", "downloads", "images", "data"); err != nil {
 		return err
 	}
-	set := app.flags("cleanup "+scope, "Usage: ./rocmplete cleanup "+scope+" [OPTIONS]")
+	set := app.flags("cleanup "+scope, usage("cleanup", scope, "[OPTIONS]"))
 	yes := set.Bool("yes", false, "confirm the complete plan")
 	nonInteractive := set.Bool("non-interactive", false, "never prompt")
 	application := set.String("application", "all", "application scope")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageTag := set.String("image-tag", "", "one exact image tag")
-	if err := set.Parse(args[1:]); err != nil {
+	if err := parseFlags(set, args[1:]); err != nil {
 		return err
 	}
-	if err := requireChoice(*application, "application", "all", "comfyui", "llama-cpp", "dwarfstar"); err != nil {
-		return err
+	if *application != "all" {
+		if _, ok := config.ApplicationByID(*application); !ok {
+			return controlerr.Usage("unknown application %q", *application)
+		}
 	}
 	if scope == "containers" {
 		return app.cleanupContainers(*application, *yes, *nonInteractive)
@@ -89,8 +94,8 @@ func (app *App) commandCleanup(args []string) error {
 	if scope == "downloads" {
 		paths = []string{filepath.Join(dataRoot, "staging"), filepath.Join(dataRoot, "apps", "comfyui", "benchmarks", ".cache")}
 	} else {
-		for _, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
-			base := filepath.Join(dataRoot, "apps", applicationID)
+		for _, spec := range config.Applications() {
+			base := filepath.Join(dataRoot, "apps", spec.ID)
 			paths = append(paths, filepath.Join(base, "cache"), filepath.Join(base, "home", ".cache"), filepath.Join(base, "home", ".miopen"), filepath.Join(base, "home", ".triton"))
 		}
 	}
@@ -116,7 +121,7 @@ func (app *App) cleanupContainers(application string, yes, nonInteractive bool) 
 		return err
 	}
 	for _, name := range names {
-		if _, err := app.run([]string{"podman", "rm", "--force", "--time", "0", "--ignore", name}, false); err != nil {
+		if err := app.podman().RemoveContainer(app.Context, name, 0, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
 			present, inspectErr := app.podman().Exists(app.Context, "container", name)
 			if inspectErr != nil || present {
 				return err
@@ -159,7 +164,7 @@ func (app *App) managedContainers(application string) ([]string, error) {
 			}
 		}
 	}
-	transient := map[string]string{"rocmplete-comfyui-benchmark": "comfyui", "rocmplete-llama-cpp-benchmark": "llama-cpp", "rocmplete-llama-cpp-speculative-benchmark": "llama-cpp"}
+	transient := map[string]string{comfyBenchmarkContainer: "comfyui", runtime.LlamaBenchmarkContainer: "llama-cpp", speculativeBenchmarkContainer: "llama-cpp"}
 	for name, owner := range transient {
 		if application == "all" || application == owner {
 			if err := add(name); err != nil {
@@ -226,7 +231,7 @@ func (app *App) cleanupImages(application, exact string, yes, nonInteractive boo
 		return err
 	}
 	for _, image := range present {
-		if _, err := app.run([]string{"podman", "image", "rm", image}, false); err != nil {
+		if err := app.podman().RemoveImage(app.Context, image, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
 			exists, inspectErr := app.podman().Exists(app.Context, "image", image)
 			if inspectErr != nil || exists {
 				return err

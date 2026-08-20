@@ -1,19 +1,59 @@
 // Package identity owns product names and persistent namespace identities.
 package identity
 
-// CommandName and DisplayName are variables so the build can select the final
-// product name without scattering it through the Go control plane. Persistent
-// namespaces remain explicit: changing one requires a deliberate state and
-// container migration rather than an innocuous binary rename.
-var (
-	CommandName = "rocmplete"
-	DisplayName = "ROCmplete"
+import (
+	"strings"
+	"unicode"
 )
 
-const (
+// Product is the one deliberate rename boundary. Build-time selection of a
+// persistent namespace intentionally selects separate state and ownership;
+// it does not silently migrate an earlier namespace.
+type Product struct {
+	CommandName    string
+	DisplayName    string
+	StateNamespace string
+	EnvPrefix      string
+	ImageNamespace string
+	LabelNamespace string
+	Version        string
+}
+
+var (
+	CommandName    = "rocmplete"
+	DisplayName    = "ROCmplete"
 	StateNamespace = "rocmplete"
+	// An empty EnvPrefix derives it from CommandName. Builds can still set an
+	// explicit prefix when a rename needs a spelling other than the normalized
+	// command name.
 	EnvPrefix      = "ROCMLETE"
 	ImageNamespace = "localhost/rocmplete"
 	LabelNamespace = "io.github.fff7d1bc.rocmplete"
-	Version        = "0.1.0-dev"
 )
+
+const Version = "0.1.0-dev"
+
+func Current() Product {
+	return Product{CommandName: CommandName, DisplayName: DisplayName, StateNamespace: StateNamespace, EnvPrefix: EnvironmentPrefix(), ImageNamespace: ImageNamespace, LabelNamespace: LabelNamespace, Version: Version}
+}
+
+func EnvironmentPrefix() string {
+	if EnvPrefix != "" {
+		return EnvPrefix
+	}
+	return strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToUpper(character)
+		}
+		return '_'
+	}, CommandName)
+}
+
+func Command(arguments ...string) string {
+	parts := append([]string{"./" + CommandName}, arguments...)
+	return strings.Join(parts, " ")
+}
+
+func Image(tag string) string { return ImageNamespace + ":" + tag }
+
+func Container(suffix string) string { return StateNamespace + "-" + suffix }

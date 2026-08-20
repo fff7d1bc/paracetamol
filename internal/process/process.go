@@ -6,8 +6,8 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"os/exec"
+	"syscall"
 )
 
 type Command struct {
@@ -29,6 +29,16 @@ type Result struct {
 type Runner interface {
 	Run(context.Context, Command) (Result, error)
 	LookPath(string) (string, error)
+}
+
+type Executor interface {
+	Exec(path string, arguments, environment []string) error
+}
+
+type OSExecutor struct{}
+
+func (OSExecutor) Exec(path string, arguments, environment []string) error {
+	return syscall.Exec(path, arguments, environment)
 }
 
 type OSRunner struct{}
@@ -65,12 +75,4 @@ func (OSRunner) Run(ctx context.Context, command Command) (Result, error) {
 		return result, nil
 	}
 	return Result{}, err
-}
-
-func Attached(ctx context.Context, name string, arguments []string) error {
-	child := exec.CommandContext(ctx, name, arguments...)
-	child.Stdin = os.Stdin
-	child.Stdout = os.Stdout
-	child.Stderr = os.Stderr
-	return child.Run()
 }

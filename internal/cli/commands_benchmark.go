@@ -12,35 +12,54 @@ import (
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
 	"rocmplete/internal/platform"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
 )
 
 func (app *App) commandBenchmark(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete benchmark COMMAND [OPTIONS]",
-			[2]string{"comfyui", "run one managed ComfyUI benchmark"},
-			[2]string{"suite", "run or resume an ordered ComfyUI suite"},
+		writeGroupHelp(app.Stdout, usage("benchmark", "COMMAND", "[OPTIONS]"),
+			[2]string{"comfyui run", "run one managed ComfyUI benchmark"},
+			[2]string{"comfyui suite", "run or resume an ordered ComfyUI suite"},
 			[2]string{"agent", "evaluate a model on frozen coding tasks"},
-			[2]string{"llama-cpp", "measure llama-bench or compare backends"},
-			[2]string{"llama-cpp-speculative", "screen speculative-decoding depths"},
+			[2]string{"llama-cpp throughput", "measure llama-bench or compare backends"},
+			[2]string{"llama-cpp speculative", "screen speculative-decoding depths"},
 			[2]string{"report", "render a stored ComfyUI result"})
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
-		return controlerr.Usage("choose benchmark comfyui, suite, agent, llama-cpp, llama-cpp-speculative, or report")
+		return controlerr.Usage("choose benchmark comfyui, llama-cpp, agent, or report")
 	}
 	switch args[0] {
 	case "comfyui":
-		return app.benchmarkComfyUI(args[1:])
-	case "suite":
-		return app.benchmarkSuite(args[1:])
+		if len(args) == 1 || groupHelpRequested(args[1:]) {
+			writeGroupHelp(app.Stdout, usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
+			return nil
+		}
+		switch args[1] {
+		case "run":
+			return app.benchmarkComfyUI(args[2:])
+		case "suite":
+			return app.benchmarkSuite(args[2:])
+		default:
+			return controlerr.Usage("unknown ComfyUI benchmark command %q", args[1])
+		}
 	case "agent":
 		return app.benchmarkAgent(args[1:])
 	case "llama-cpp":
-		return app.benchmarkLlama(args[1:])
-	case "llama-cpp-speculative":
-		return app.benchmarkSpeculative(args[1:])
+		if len(args) == 1 || groupHelpRequested(args[1:]) {
+			writeGroupHelp(app.Stdout, usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
+			return nil
+		}
+		switch args[1] {
+		case "throughput":
+			return app.benchmarkLlama(args[2:])
+		case "speculative":
+			return app.benchmarkSpeculative(args[2:])
+		default:
+			return controlerr.Usage("unknown llama.cpp benchmark command %q", args[1])
+		}
 	case "report":
 		return app.benchmarkReport(args[1:])
 	default:
@@ -49,7 +68,7 @@ func (app *App) commandBenchmark(args []string) error {
 }
 
 func (app *App) benchmarkLlama(args []string) error {
-	set := app.flags("benchmark llama-cpp", "Usage: ./rocmplete benchmark llama-cpp (--model FILE | --preset NAME) [OPTIONS]")
+	set := app.flags("benchmark llama-cpp throughput", usage("benchmark", "llama-cpp", "throughput", "(--model FILE | --preset NAME)", "[OPTIONS]"))
 	modelFlag := set.String("model", "", "exact local GGUF file")
 	presetFlag := set.String("preset", "", "installed catalog preset")
 	profileFlag := set.String("profile", "", "execution profile")
@@ -71,11 +90,22 @@ func (app *App) benchmarkLlama(args []string) error {
 	output := set.String("output", "", "new result or comparison JSON")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print resolved command")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("llama.cpp throughput accepts no positional arguments")
 	}
 	if boolCount(*modelFlag != "", *presetFlag != "") != 1 {
 		return controlerr.Usage("choose exactly one of --model or --preset")
+	}
+	selectedOutput := ""
+	if *output != "" {
+		var err error
+		selectedOutput, err = absoluteNewPath(*output)
+		if err != nil {
+			return err
+		}
 	}
 	for name, value := range map[string]int{"--repetitions": *repetitions, "--prompt-tokens": *promptTokens, "--generation-tokens": *generationTokens, "--batch-size": *batch, "--ubatch-size": *ubatch} {
 		if value < 1 {
@@ -115,17 +145,12 @@ func (app *App) benchmarkLlama(args []string) error {
 	if err != nil {
 		return err
 	}
-	if !*dryRun {
-		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
-			return err
-		}
-	}
 	managed, err := app.managedCatalog()
 	if err != nil {
 		return err
 	}
 	model, managedModel := "", ""
-	modelMetadata := map[string]any{}
+	modelMetadata := benchmark.ModelIdentity{}
 	if *modelFlag != "" {
 		model, err = regularFile(*modelFlag, "GGUF model")
 		if err != nil {
@@ -152,7 +177,7 @@ func (app *App) benchmarkLlama(args []string) error {
 		}
 		artifact := managed.Artifacts[preset.Artifact]
 		managedModel = artifact.Destination
-		modelMetadata = map[string]any{"kind": "catalog", "preset": *presetFlag, "path": content.ArtifactPath(dataRoot, artifact), "repository": artifact.Source.Repository, "revision": artifact.Source.Revision, "source_path": artifact.Source.Path, "size": artifact.Size, "sha256": artifact.SHA256}
+		modelMetadata = benchmark.ModelIdentity{Kind: "catalog", Preset: *presetFlag, Path: content.ArtifactPath(dataRoot, artifact), Repository: artifact.Source.Repository, Revision: artifact.Source.Revision, SourcePath: artifact.Source.Path, Size: artifact.Size, SHA256: artifact.SHA256}
 	}
 	application, _ := config.ApplicationByID("llama-cpp")
 	image := firstNonEmpty(*imageFlag, application.Image)
@@ -160,18 +185,21 @@ func (app *App) benchmarkLlama(args []string) error {
 	if *compare {
 		backends = []string{"rocm", "vulkan"}
 	}
-	parameters := map[string]any{"repetitions": *repetitions, "prompt_tokens": *promptTokens, "generation_tokens": *generationTokens, "context_depth": *contextDepth, "batch_size": *batch, "ubatch_size": *ubatch, "cache_type_k": *cacheK, "cache_type_v": *cacheV, "flash_attention": *flash}
+	parameters := benchmark.LlamaParameters{Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash}
 	commands := make(map[string][]string)
 	for _, candidate := range backends {
 		commands[candidate] = runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: image, Profile: profile, DataDir: dataRoot, Backend: candidate, Model: model, ManagedModel: managedModel, RenderNodes: selectedNodes, Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash, Unconfined: *unconfined}, app.podman().SELinuxVolumeSuffix(app.Context))
 	}
-	fmt.Fprintf(app.Stdout, "Model: %s\nParameters: depth %d, pp%d, tg%d, batch %d/%d, KV %s/%s, FA %s, %d repetitions\n", modelMetadata["path"], *contextDepth, *promptTokens, *generationTokens, *batch, *ubatch, *cacheK, *cacheV, *flash, *repetitions)
+	fmt.Fprintf(app.Stdout, "Model: %s\nParameters: depth %d, pp%d, tg%d, batch %d/%d, KV %s/%s, FA %s, %d repetitions\n", modelMetadata.Path, *contextDepth, *promptTokens, *generationTokens, *batch, *ubatch, *cacheK, *cacheV, *flash, *repetitions)
 	if *dryRun {
 		for _, candidate := range backends {
 			fmt.Fprintf(app.Stdout, "\nBackend: %s\nResolved command:\n  %s\n", candidate, shellJoin(commands[candidate]))
 		}
 		fmt.Fprintln(app.Stdout, "No container was started.")
 		return nil
+	}
+	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
+		return err
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
@@ -187,11 +215,11 @@ func (app *App) benchmarkLlama(args []string) error {
 	if err != nil {
 		return err
 	}
-	results := make(map[string]map[string]any)
+	results := make(map[string]benchmark.LlamaBackendResult)
 	errorsByBackend := make(map[string]string)
 	for _, candidate := range backends {
 		rows, runErr := benchmark.RunLlama(app.Context, app.Runner, commands[candidate])
-		_, _ = app.run([]string{"podman", "rm", "--force", "--time", "0", "--ignore", "rocmplete-llama-cpp-benchmark"}, true)
+		runErr = withCleanupFailure(runErr, "clean up llama.cpp benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), runtime.LlamaBenchmarkContainer, 0, podman.Streams{}))
 		if runErr != nil {
 			errorsByBackend[candidate] = runErr.Error()
 			if !*compare {
@@ -200,13 +228,10 @@ func (app *App) benchmarkLlama(args []string) error {
 			continue
 		}
 		path := benchmark.DefaultPath((storage.Layout{Root: dataRoot}).LlamaBenchmarks(), "-"+candidate+".json")
-		if !*compare && *output != "" {
-			path, err = absoluteNewPath(*output)
-			if err != nil {
-				return err
-			}
+		if !*compare && selectedOutput != "" {
+			path = selectedOutput
 		}
-		run := benchmark.LlamaRun{Image: map[string]any{"reference": image, "id": imageID}, Profile: profile, Backend: candidate, RenderNodes: selectedNodes, Model: modelMetadata, Parameters: parameters, Results: rows}
+		run := benchmark.LlamaRun{Image: benchmark.ImageIdentity{Reference: image, ID: imageID}, Profile: profile, Backend: candidate, RenderNodes: selectedNodes, Model: modelMetadata, Parameters: parameters, Results: rows}
 		if err := benchmark.WriteLlama(path, run); err != nil {
 			return err
 		}
@@ -218,20 +243,17 @@ func (app *App) benchmarkLlama(args []string) error {
 		if err != nil {
 			return err
 		}
-		results[candidate] = map[string]any{"status": "pass", "result": path, "rates": rates}
+		results[candidate] = benchmark.LlamaBackendResult{Status: "pass", Result: path, Rates: rates}
 		fmt.Fprintf(app.Stdout, "Benchmark complete (%s): %s\n", candidate, path)
 	}
 	if !*compare {
 		return nil
 	}
 	comparisonPath := benchmark.DefaultPath((storage.Layout{Root: dataRoot}).LlamaBenchmarks(), "-backend-comparison.json")
-	if *output != "" {
-		comparisonPath, err = absoluteNewPath(*output)
-		if err != nil {
-			return err
-		}
+	if selectedOutput != "" {
+		comparisonPath = selectedOutput
 	}
-	comparison := map[string]any{"schema": "rocmplete.llama-backend-comparison.v1", "created_at": benchmark.Timestamp(), "image": map[string]any{"reference": image, "id": imageID}, "profile": profile, "render_nodes": selectedNodes, "model": modelMetadata, "parameters": parameters, "backends": results, "errors": errorsByBackend}
+	comparison := benchmark.LlamaComparison{Schema: benchmark.LlamaComparisonSchema, CreatedAt: benchmark.Timestamp(), Image: benchmark.ImageIdentity{Reference: image, ID: imageID}, Profile: profile, RenderNodes: selectedNodes, Model: modelMetadata, Parameters: parameters, Backends: results, Errors: errorsByBackend}
 	if err := benchmark.WriteJSON(comparisonPath, comparison); err != nil {
 		return err
 	}
@@ -243,12 +265,20 @@ func (app *App) benchmarkLlama(args []string) error {
 }
 
 func (app *App) benchmarkReport(args []string) error {
-	set := app.flags("benchmark report", "Usage: ./rocmplete benchmark report SUITE.json [--report-format markdown|html|both] [--output PATH]")
+	set := app.flags("benchmark report", usage("benchmark", "report", "SUITE.json", "[--report-format markdown|html|both]", "[--output PATH]"))
 	format := set.String("report-format", "both", "markdown, html, or both")
 	output := set.String("output", "", "single report output path")
 	subject, remaining := leadingPositional(args)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	if subject == "" && len(set.Args()) > 0 {
+		subject = set.Args()[0]
+		if len(set.Args()) > 1 {
+			return controlerr.Usage("benchmark report accepts exactly one suite")
+		}
+	} else if len(set.Args()) > 0 {
+		return controlerr.Usage("benchmark report accepts exactly one suite")
 	}
 	if subject == "" {
 		return controlerr.Usage("choose a suite JSON")
@@ -259,14 +289,14 @@ func (app *App) benchmarkReport(args []string) error {
 	if *output != "" && *format == "both" {
 		return controlerr.Usage("--output requires one report format")
 	}
-	value, err := benchmark.ReadObject(subject)
-	if err != nil {
+	var value benchmark.ComfySuite
+	if err := benchmark.ReadJSON(subject, &value, true); err != nil {
 		return err
 	}
-	if value["schema"] != benchmark.ComfySuiteSchema {
+	if value.Schema != benchmark.ComfySuiteSchema {
 		return controlerr.New("unsupported benchmark suite: %s", subject)
 	}
-	paths, err := benchmark.WriteSuiteReports(subject, value, *format, *output)
+	paths, err := benchmark.WriteSuiteReports(subject, value, *format, *output, false)
 	if err != nil {
 		return err
 	}

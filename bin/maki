@@ -10,4 +10,4 @@ while [ -L "$self" ]; do
     esac
 done
 project_root=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd -P)
-exec "$project_root/rocmplete" agent maki -- "$@"
+exec "$project_root/rocmplete" agent run maki -- "$@"

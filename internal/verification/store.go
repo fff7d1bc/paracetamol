@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/storage"
 )
 
@@ -138,43 +139,8 @@ func (store *Store) Save() error {
 	if err != nil || status.Mode()&os.ModeSymlink != 0 || !status.IsDir() {
 		return fmt.Errorf("content verification directory is not a directory: %s", parent)
 	}
-	encoded, err := json.MarshalIndent(document{Files: store.Records, Schema: SchemaVersion}, "", "  ")
-	if err != nil {
-		return err
-	}
-	encoded = append(encoded, '\n')
-	temporary, err := os.CreateTemp(parent, ".verification-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create verification receipt: %w", err)
-	}
-	temporaryName := temporary.Name()
-	committed := false
-	defer func() {
-		temporary.Close()
-		if !committed {
-			_ = os.Remove(temporaryName)
-		}
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(encoded); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryName, store.Path); err != nil {
+	if err := atomicfile.JSON(store.Path, document{Files: store.Records, Schema: SchemaVersion}, 0o600, atomicfile.ReplaceRegular); err != nil {
 		return fmt.Errorf("replace verification receipt: %w", err)
-	}
-	committed = true
-	directory, err := os.Open(parent)
-	if err == nil {
-		_ = directory.Sync()
-		_ = directory.Close()
 	}
 	store.Changed = false
 	return nil
