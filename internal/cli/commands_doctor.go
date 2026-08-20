@@ -41,23 +41,27 @@ func (app *App) commandDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Host\n  Podman         %s (rootless)\n  Kernel         %s/%s\n  Data           %s (%s)\n", strings.TrimPrefix(podmanVersion, "podman version "), runtime.GOOS, runtime.GOARCH, dataRoot, writableState(dataRoot))
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Host"))
+	fmt.Fprintf(app.Stdout, "  %s  %s (rootless)\n", terminal.Label(fmt.Sprintf("%-14s", "Podman")), strings.TrimPrefix(podmanVersion, "podman version "))
+	fmt.Fprintf(app.Stdout, "  %s  %s/%s\n", terminal.Label(fmt.Sprintf("%-14s", "Kernel")), runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(app.Stdout, "  %s  %s (%s)\n", terminal.Label(fmt.Sprintf("%-14s", "Data")), dataRoot, terminal.State(writableState(dataRoot)))
 	if restriction, readErr := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); readErr == nil && strings.TrimSpace(string(restriction)) != "0" {
-		fmt.Fprintln(app.Stdout, "  AppArmor       restricts unprivileged user namespaces; bubblewrap may need host policy")
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Warning(fmt.Sprintf("%-14s", "AppArmor")), "restricts unprivileged user namespaces; bubblewrap may need host policy")
 	}
-	fmt.Fprintln(app.Stdout, "\nGPU access")
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("GPU access"))
 	reportDevice := func(path string) {
 		state := "read/write"
 		if err := platform.CheckDeviceAccess(path); err != nil {
 			state = err.Error()
 		}
-		fmt.Fprintf(app.Stdout, "  %-14s %s\n", path, state)
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", path)), terminal.State(state))
 	}
 	reportDevice("/dev/kfd")
 	discovered, _ := filepath.Glob("/dev/dri/renderD*")
 	sort.Strings(discovered)
 	if len(discovered) == 0 {
-		fmt.Fprintln(app.Stdout, "  /dev/dri/renderD* missing")
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "/dev/dri/renderD*")), terminal.State("missing"))
 	}
 	for _, node := range discovered {
 		reportDevice(node)
@@ -67,8 +71,8 @@ func (app *App) commandDoctor(args []string) error {
 		return err
 	}
 	if allowed != nil && !*allowed {
-		fmt.Fprintln(app.Stdout, "  SELinux        blocked (container_use_devices is off)")
-		fmt.Fprintln(app.Stdout, "  Host action    sudo setsebool -P container_use_devices 1")
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "SELinux")), terminal.State("blocked")+" (container_use_devices is off)")
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "Host action")), terminal.Command("sudo setsebool -P container_use_devices 1"))
 		return controlerr.New("SELinux blocks GPU device access")
 	}
 	image := *imageFlag
@@ -82,7 +86,8 @@ func (app *App) commandDoctor(args []string) error {
 		}
 	}
 	if image == "" {
-		fmt.Fprintf(app.Stdout, "\nGPU probe\n  Image          not built\n  Operation      skipped\n\nNext: %s\n", identity.Command("build", "pytorch-base"))
+		fmt.Fprintf(app.Stdout, "\n%s\n  %s  %s\n  %s  %s\n", terminal.Heading("GPU probe"), terminal.Label(fmt.Sprintf("%-14s", "Image")), terminal.State("not built"), terminal.Label(fmt.Sprintf("%-14s", "Operation")), terminal.State("skipped"))
+		terminal.Next(identity.Command("build", "pytorch-base"))
 		return nil
 	}
 	present, err := app.podman().Exists(app.Context, "image", image)
@@ -104,9 +109,9 @@ func (app *App) commandDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "\nGPU probe\n  Image          %s\n  Render nodes   %s\n", image, strings.Join(selected, ", "))
+	fmt.Fprintf(app.Stdout, "\n%s\n  %s  %s\n  %s  %s\n", terminal.Heading("GPU probe"), terminal.Label(fmt.Sprintf("%-14s", "Image")), image, terminal.Label(fmt.Sprintf("%-14s", "Render nodes")), strings.Join(selected, ", "))
 	for _, label := range []string{"PyTorch", "ROCm/HIP", "Device", "Architecture", "GPU operation", "GPU devices"} {
-		fmt.Fprintf(app.Stdout, "  %-14s %s\n", label, fields[label])
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", label)), fields[label])
 	}
 	if fields["Architecture"] == "gfx1150" || fields["Architecture"] == "gfx1151" {
 		reportTTMMemory(app.Stdout, selected[0])

@@ -1,6 +1,8 @@
 package content
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,5 +34,24 @@ func TestInspectArtifactUsesCompatibleReceipt(t *testing.T) {
 	}
 	if status.State != Verified {
 		t.Fatalf("state = %s", status.State)
+	}
+}
+
+func TestVerifyArtifactHonorsCancellation(t *testing.T) {
+	root := t.TempDir()
+	contents := []byte("model")
+	artifact := testArtifact(contents)
+	file := ArtifactPath(root, artifact)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, contents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := VerifyArtifact(ctx, nil, root, artifact, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
 	}
 }

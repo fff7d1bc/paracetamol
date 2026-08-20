@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,7 +22,7 @@ type cleanupTarget struct {
 
 func (app *App) commandCleanup(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, usage("cleanup", "SCOPE", "[OPTIONS]"),
+		app.writeGroupHelp(usage("cleanup", "SCOPE", "[OPTIONS]"),
 			[2]string{"containers", "remove " + identity.DisplayName + "-owned containers"},
 			[2]string{"caches", "remove application runtime caches"},
 			[2]string{"build-cache", "remove the host package-download cache"},
@@ -74,7 +73,8 @@ func (app *App) commandCleanup(args []string) error {
 		return err
 	}
 	if _, err := os.Lstat(dataRoot); os.IsNotExist(err) {
-		fmt.Fprintf(app.Stdout, "Data not present: %s\n", dataRoot)
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Muted("Data not present:"), dataRoot)
 		return nil
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
@@ -111,11 +111,13 @@ func (app *App) cleanupContainers(application string, yes, nonInteractive bool) 
 		return err
 	}
 	if len(names) == 0 {
-		fmt.Fprintln(app.Stdout, "No managed containers are present.")
+		fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Muted("No managed containers are present."))
 		return nil
 	}
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Cleanup plan:"))
 	for _, name := range names {
-		fmt.Fprintf(app.Stdout, "  container: %s\n", name)
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Label("container:"), name)
 	}
 	if err := app.confirmCleanup("containers", yes, nonInteractive); err != nil {
 		return err
@@ -127,7 +129,7 @@ func (app *App) cleanupContainers(application string, yes, nonInteractive bool) 
 				return err
 			}
 		}
-		fmt.Fprintf(app.Stdout, "Removed container: %s\n", name)
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Removed container:"), name)
 	}
 	return nil
 }
@@ -218,14 +220,16 @@ func (app *App) cleanupImages(application, exact string, yes, nonInteractive boo
 		if exists {
 			present = append(present, image)
 		} else {
-			fmt.Fprintf(app.Stdout, "Image not present: %s\n", image)
+			fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Muted("Image not present:"), image)
 		}
 	}
 	if len(present) == 0 {
 		return nil
 	}
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Cleanup plan:"))
 	for _, image := range present {
-		fmt.Fprintf(app.Stdout, "  image: %s\n", image)
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Label("image:"), image)
 	}
 	if err := app.confirmCleanup("images", yes, nonInteractive); err != nil {
 		return err
@@ -237,7 +241,7 @@ func (app *App) cleanupImages(application, exact string, yes, nonInteractive boo
 				return err
 			}
 		}
-		fmt.Fprintf(app.Stdout, "Removed image: %s\n", image)
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Removed image:"), image)
 	}
 	return nil
 }
@@ -247,7 +251,7 @@ func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, 
 	for _, path := range paths {
 		info, err := os.Lstat(path)
 		if os.IsNotExist(err) {
-			fmt.Fprintf(app.Stdout, "Not present: %s\n", path)
+			fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Muted("Not present:"), path)
 			continue
 		}
 		if err != nil {
@@ -265,9 +269,10 @@ func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, 
 	if len(targets) == 0 {
 		return nil
 	}
-	fmt.Fprintln(app.Stdout, "Cleanup plan:")
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Cleanup plan:"))
 	for _, target := range targets {
-		fmt.Fprintf(app.Stdout, "  %s: %s (%s)\n", target.kind, target.path, humanSize(target.size))
+		fmt.Fprintf(app.Stdout, "  %s %s (%s)\n", terminal.Label(target.kind+":"), target.path, humanSize(target.size))
 	}
 	if err := app.confirmCleanup(scope, yes, nonInteractive); err != nil {
 		return err
@@ -281,7 +286,7 @@ func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, 
 		if err := os.RemoveAll(target.path); err != nil {
 			return fmt.Errorf("remove %s: %w", target.path, err)
 		}
-		fmt.Fprintf(app.Stdout, "Removed: %s (%s)\n", target.path, humanSize(target.size))
+		fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Success("Removed:"), target.path, humanSize(target.size))
 	}
 	return nil
 }
@@ -313,9 +318,11 @@ func (app *App) confirmCleanup(scope string, yes, nonInteractive bool) error {
 	if nonInteractive || !terminalReader(app.Stdin) {
 		return controlerr.New("%s cleanup requires confirmation; repeat with --yes", scope)
 	}
-	fmt.Fprintf(app.Stdout, "Proceed with %s cleanup? [y/N] ", scope)
-	line, _ := bufio.NewReader(app.Stdin).ReadString('\n')
-	if normalized := strings.ToLower(strings.TrimSpace(line)); normalized != "y" && normalized != "yes" {
+	line, err := app.promptLine(fmt.Sprintf("Proceed with %s cleanup? [y/N] ", scope), true)
+	if err != nil {
+		return err
+	}
+	if normalized := strings.ToLower(line); normalized != "y" && normalized != "yes" {
 		return controlerr.New("%s cleanup declined", scope)
 	}
 	return nil

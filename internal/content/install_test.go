@@ -96,8 +96,17 @@ func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(mirror, "model.gguf"), contents, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Install(InstallOptions{Context: context.Background(), DataRoot: dataRoot, Artifacts: []catalog.Artifact{artifact}, LocalMirror: mirror, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}}); err != nil {
+	var output bytes.Buffer
+	if err := Install(InstallOptions{Context: context.Background(), DataRoot: dataRoot, Artifacts: []catalog.Artifact{artifact}, LocalMirror: mirror, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}, Output: &output}); err != nil {
 		t.Fatal(err)
+	}
+	if count := strings.Count(output.String(), "Checking local mirror candidate"); count != 1 {
+		t.Fatalf("mirror candidate was checked %d times:\n%s", count, output.String())
+	}
+	for _, expected := range []string{"Verifying", "100.0%", "Installed"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("install output lacks %q:\n%s", expected, output.String())
+		}
 	}
 	status, err := os.ReadFile(ArtifactPath(dataRoot, artifact))
 	if err != nil {
@@ -112,6 +121,42 @@ func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 	}
 	if plan.Ready != 1 {
 		t.Fatalf("ready = %d", plan.Ready)
+	}
+}
+
+func TestDownloadMeasurementIgnoresStaleHFPartialsAndTracksActiveFile(t *testing.T) {
+	root := t.TempDir()
+	contents := bytes.Repeat([]byte("x"), 100)
+	artifact := testArtifact(contents)
+	artifact.Source.Provider = "huggingface"
+	artifact.Source.Path = "weights/model.gguf"
+	target := filepath.Join(root, artifact.Source.Path)
+	cache := filepath.Join(root, ".cache", "huggingface", "download", "weights")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	partial := filepath.Join(cache, ".model."+artifact.SHA256+".fixture.incomplete")
+	if err := os.WriteFile(partial, contents[:20], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	measurement := newDownloadMeasurement(root, target, artifact)
+	if got := measurement.bytes(); got != 0 {
+		t.Fatalf("stale partial counted as %d bytes", got)
+	}
+	if err := os.WriteFile(partial, contents[:40], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := measurement.bytes(); got != 40 {
+		t.Fatalf("active partial = %d bytes", got)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, contents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := measurement.bytes(); got != 100 {
+		t.Fatalf("completed payload = %d bytes", got)
 	}
 }
 

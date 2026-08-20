@@ -19,7 +19,7 @@ import (
 
 func (app *App) commandBenchmark(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, usage("benchmark", "COMMAND", "[OPTIONS]"),
+		app.writeGroupHelp(usage("benchmark", "COMMAND", "[OPTIONS]"),
 			[2]string{"comfyui run", "run one managed ComfyUI benchmark"},
 			[2]string{"comfyui suite", "run or resume an ordered ComfyUI suite"},
 			[2]string{"agent", "evaluate a model on frozen coding tasks"},
@@ -34,7 +34,7 @@ func (app *App) commandBenchmark(args []string) error {
 	switch args[0] {
 	case "comfyui":
 		if len(args) == 1 || groupHelpRequested(args[1:]) {
-			writeGroupHelp(app.Stdout, usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
+			app.writeGroupHelp(usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
 			return nil
 		}
 		switch args[1] {
@@ -49,7 +49,7 @@ func (app *App) commandBenchmark(args []string) error {
 		return app.benchmarkAgent(args[1:])
 	case "llama-cpp":
 		if len(args) == 1 || groupHelpRequested(args[1:]) {
-			writeGroupHelp(app.Stdout, usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
+			app.writeGroupHelp(usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
 			return nil
 		}
 		switch args[1] {
@@ -190,12 +190,13 @@ func (app *App) benchmarkLlama(args []string) error {
 	for _, candidate := range backends {
 		commands[candidate] = runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: image, Profile: profile, DataDir: dataRoot, Backend: candidate, Model: model, ManagedModel: managedModel, RenderNodes: selectedNodes, Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash, Unconfined: *unconfined}, app.podman().SELinuxVolumeSuffix(app.Context))
 	}
-	fmt.Fprintf(app.Stdout, "Model: %s\nParameters: depth %d, pp%d, tg%d, batch %d/%d, KV %s/%s, FA %s, %d repetitions\n", modelMetadata.Path, *contextDepth, *promptTokens, *generationTokens, *batch, *ubatch, *cacheK, *cacheV, *flash, *repetitions)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n%s depth %d, pp%d, tg%d, batch %d/%d, KV %s/%s, FA %s, %d repetitions\n", terminal.Label("Model:"), modelMetadata.Path, terminal.Label("Parameters:"), *contextDepth, *promptTokens, *generationTokens, *batch, *ubatch, *cacheK, *cacheV, *flash, *repetitions)
 	if *dryRun {
 		for _, candidate := range backends {
-			fmt.Fprintf(app.Stdout, "\nBackend: %s\nResolved command:\n  %s\n", candidate, shellJoin(commands[candidate]))
+			fmt.Fprintf(app.Stdout, "\n%s %s\n%s\n  %s\n", terminal.Label("Backend:"), candidate, terminal.Heading("Resolved command:"), terminal.Command(shellJoin(commands[candidate])))
 		}
-		fmt.Fprintln(app.Stdout, "No container was started.")
+		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started."))
 		return nil
 	}
 	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
@@ -244,7 +245,7 @@ func (app *App) benchmarkLlama(args []string) error {
 			return err
 		}
 		results[candidate] = benchmark.LlamaBackendResult{Status: "pass", Result: path, Rates: rates}
-		fmt.Fprintf(app.Stdout, "Benchmark complete (%s): %s\n", candidate, path)
+		fmt.Fprintf(app.Stdout, "%s (%s): %s\n", terminal.Success("Benchmark complete"), candidate, path)
 	}
 	if !*compare {
 		return nil
@@ -257,7 +258,7 @@ func (app *App) benchmarkLlama(args []string) error {
 	if err := benchmark.WriteJSON(comparisonPath, comparison); err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Backend comparison: %s\n", comparisonPath)
+	fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Backend comparison:"), comparisonPath)
 	if len(results) != len(backends) {
 		return controlerr.New("one or more backend benchmarks failed; comparison preserved at %s", comparisonPath)
 	}
@@ -301,7 +302,7 @@ func (app *App) benchmarkReport(args []string) error {
 		return err
 	}
 	for _, path := range paths {
-		fmt.Fprintf(app.Stdout, "Wrote report: %s\n", path)
+		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Wrote report:"), path)
 	}
 	return nil
 }

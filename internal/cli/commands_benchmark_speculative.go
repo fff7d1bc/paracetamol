@@ -336,12 +336,13 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		commands[depth] = command
 	}
 	requestCount := len(depths) * len(contexts) * *repetitions
-	fmt.Fprintf(app.Stdout, "Model: %s\nParameters: %s, depths %s, targets %s, %d repetitions (%d requests)\nCondition: %s, seed %d, %d generated tokens, context %d, parallel 1\n", *presetID, preset.SpeculativeType, depths.String(), contexts.String(), *repetitions, requestCount, level, *seed, *generation, *contextSize)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n%s %s, depths %s, targets %s, %d repetitions (%d requests)\n%s %s, seed %d, %d generated tokens, context %d, parallel 1\n", terminal.Label("Model:"), *presetID, terminal.Label("Parameters:"), preset.SpeculativeType, depths.String(), contexts.String(), *repetitions, requestCount, terminal.Label("Condition:"), level, *seed, *generation, *contextSize)
 	if *dryRun {
 		for _, depth := range depths {
-			fmt.Fprintf(app.Stdout, "\nDraft depth: %d\n  %s\n", depth, shellJoin(commands[depth]))
+			fmt.Fprintf(app.Stdout, "\n%s %d\n  %s\n", terminal.Label("Draft depth:"), depth, terminal.Command(shellJoin(commands[depth])))
 		}
-		fmt.Fprintln(app.Stdout, "No container was started and no checkpoint was written.")
+		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started and no checkpoint was written."))
 		return nil
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
@@ -416,7 +417,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 			continue
 		}
 		depth, contextDepth, requestSeed := trial.Depth, trial.ContextDepth, trial.Seed
-		fmt.Fprintf(app.Stdout, "[%d/%d] depth %d, target %d, seed %d\n", index+1, len(result.Trials), depth, contextDepth, requestSeed)
+		fmt.Fprintf(app.Stdout, "%s depth %d, target %d, seed %d\n", app.terminal(app.Stdout).Info(fmt.Sprintf("[%d/%d]", index+1, len(result.Trials))), depth, contextDepth, requestSeed)
 		trial.Status, trial.StartedAt, trial.Error, trial.Metrics = "running", benchmark.Timestamp(), "", nil
 		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 			return err
@@ -449,7 +450,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 			failed = true
 		} else {
 			trial.Status, trial.FinishedAt, trial.Metrics = "complete", benchmark.Timestamp(), &metrics
-			fmt.Fprintf(app.Stdout, "  %.2f t/s, accepted %d/%d (%.1f%%)\n", metrics.GenerationTokensPerSecond, metrics.AcceptedDraftTokens, metrics.DraftedTokens, metrics.AcceptancePercent)
+			fmt.Fprintf(app.Stdout, "  %s, accepted %d/%d (%.1f%%)\n", app.terminal(app.Stdout).Success(fmt.Sprintf("%.2f t/s", metrics.GenerationTokensPerSecond)), metrics.AcceptedDraftTokens, metrics.DraftedTokens, metrics.AcceptancePercent)
 		}
 		result.Summary = benchmark.SpeculativeSummary(result.Trials, int(preset.DraftTokensForBackend(*backend)))
 		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
@@ -467,7 +468,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Speculative benchmark complete: %s\n", resultPath)
+	fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Speculative benchmark complete:"), resultPath)
 	if failed {
 		return controlerr.New("speculative benchmark completed with failed trials")
 	}

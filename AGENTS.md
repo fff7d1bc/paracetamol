@@ -53,6 +53,8 @@ in the same change. Important ownership boundaries are:
   identities.
 - `internal/cli/`: public command tree, leaf parsing, command validation,
   orchestration, usage examples, and human-facing output.
+- `internal/ui/`: semantic terminal styling, prompt separation, and
+  TTY-safe/redirect-safe progress presentation.
 - `internal/project/`: repository-root discovery for source-tree
   resources and build context.
 - `internal/buildplan/`: validated local image build planning and dependency

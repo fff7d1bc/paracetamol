@@ -60,8 +60,10 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 		return err
 	}
 	if *listTasks {
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintln(app.Stdout, terminal.Heading("Coding-agent evaluation tasks:"))
 		for _, task := range suite.Tasks {
-			fmt.Fprintf(app.Stdout, "%-28s %-14s %-8s %s\n", task.Identifier, task.Kind, task.Difficulty, task.Repository)
+			fmt.Fprintf(app.Stdout, "%s %-14s %-8s %s\n", terminal.Command(fmt.Sprintf("%-28s", task.Identifier)), task.Kind, task.Difficulty, task.Repository)
 		}
 		return nil
 	}
@@ -146,7 +148,8 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 		}
 	}
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Coding-agent evaluation\n  Suite       %s (%s)\n  Model       %s\n  Harness     Pi\n  Context     %d\n  Thinking    %s\n  Tasks       %s\n  Repetitions %d\n  Server      %s\n", suite.Identifier, suite.Fingerprint, model, *contextSize, level, joinTaskIDs(selectedTasks), *repetitions, shellJoin(server))
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s\n  %s  %s (%s)\n  %s  %s\n  %s  Pi\n  %s  %d\n  %s  %s\n  %s  %s\n  %s  %d\n  %s  %s\n", terminal.Heading("Coding-agent evaluation"), terminal.Label(fmt.Sprintf("%-11s", "Suite")), suite.Identifier, suite.Fingerprint, terminal.Label(fmt.Sprintf("%-11s", "Model")), model, terminal.Label(fmt.Sprintf("%-11s", "Harness")), terminal.Label(fmt.Sprintf("%-11s", "Context")), *contextSize, terminal.Label(fmt.Sprintf("%-11s", "Thinking")), level, terminal.Label(fmt.Sprintf("%-11s", "Tasks")), joinTaskIDs(selectedTasks), terminal.Label(fmt.Sprintf("%-11s", "Repetitions")), *repetitions, terminal.Label(fmt.Sprintf("%-11s", "Server")), terminal.Command(shellJoin(server)))
 		return nil
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
@@ -264,7 +267,8 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 	if err := atomicfile.Write(report, []byte(renderAgentReport(result)), 0o644, atomicfile.Create); err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Coding-agent evaluation complete: %s\nReport: %s\n", resultPath, report)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Success("Coding-agent evaluation complete:"), resultPath, terminal.Label("Report:"), report)
 	if failed {
 		return controlerr.New("coding evaluation completed with infrastructure failures")
 	}

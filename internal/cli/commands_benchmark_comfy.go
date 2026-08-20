@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strings"
 	"time"
 
 	"paracetamol/internal/benchmark"
@@ -27,7 +26,7 @@ import (
 type comfyBenchmarkOptions struct {
 	profile, dataRoot, image, imageID, renderNode string
 	port, runs, seed                              int
-	unconfined, dryRun                            bool
+	unconfined, dryRun, nonInteractive            bool
 	memoryPolicy, kernelPolicy                    string
 	cacheMode                                     string
 	acceptLicense                                 bool
@@ -49,6 +48,7 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print the validated workload")
 	acceptLicense := set.Bool("accept-license", false, "accept catalog model agreements")
+	nonInteractive := set.Bool("non-interactive", false, "never prompt for model agreements")
 	memory := set.String("memory-policy", "balanced", "balanced or conservative")
 	kernel := set.String("kernel-policy", "default", "default or experimental")
 	cache := set.String("cache-mode", "persistent", "persistent or isolated")
@@ -90,7 +90,7 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 		return nil, nil, err
 	}
 	application, _ := config.ApplicationByID("comfyui")
-	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selected[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, set.Args(), nil
+	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selected[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, set.Args(), nil
 }
 
 func (app *App) benchmarkComfyUI(args []string) error {
@@ -116,7 +116,7 @@ func (app *App) benchmarkComfyUI(args []string) error {
 	if _, ok := managed.Benchmarks[bundleID]; !ok {
 		return controlerr.Usage("bundle %q has no managed benchmark", bundleID)
 	}
-	if err := requireBenchmarkAgreements(managed, []catalog.Bundle{bundle}, options.acceptLicense, options.dryRun); err != nil {
+	if err := app.requireBenchmarkAgreements(managed, []catalog.Bundle{bundle}, options.acceptLicense, options.dryRun, options.nonInteractive); err != nil {
 		return err
 	}
 	path, _, err := app.executeComfyBenchmark(managed, bundle, *options, "")
@@ -124,9 +124,9 @@ func (app *App) benchmarkComfyUI(args []string) error {
 		return err
 	}
 	if options.dryRun {
-		fmt.Fprintln(app.Stdout, "No container was started.")
+		fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Muted("No container was started."))
 	} else {
-		fmt.Fprintf(app.Stdout, "Benchmark complete: %s\n", path)
+		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Benchmark complete:"), path)
 	}
 	return nil
 }
@@ -153,6 +153,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print the validated workload")
 	acceptLicense := set.Bool("accept-license", false, "accept catalog model agreements")
+	nonInteractive := set.Bool("non-interactive", false, "never prompt for model agreements")
 	memory := set.String("memory-policy", "balanced", "balanced or conservative")
 	kernel := set.String("kernel-policy", "default", "default or experimental")
 	cache := set.String("cache-mode", "persistent", "persistent or isolated")
@@ -204,7 +205,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 		return err
 	}
 	application, _ := config.ApplicationByID("comfyui")
-	options := comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selectedNodes[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}
+	options := comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selectedNodes[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}
 	managed, err := app.managedCatalog()
 	if err != nil {
 		return err
@@ -233,7 +234,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	if len(bundles) == 0 {
 		return controlerr.Usage("benchmark suite selection is empty")
 	}
-	if err := requireBenchmarkAgreements(managed, bundles, options.acceptLicense, options.dryRun); err != nil {
+	if err := app.requireBenchmarkAgreements(managed, bundles, options.acceptLicense, options.dryRun, options.nonInteractive); err != nil {
 		return err
 	}
 	if !options.dryRun {
@@ -257,14 +258,15 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 		return err
 	}
 	if options.dryRun {
-		fmt.Fprintf(app.Stdout, "Suite bundles: %d\nSuite signature: %s\n", len(bundles), signature)
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s %d\n%s %s\n", terminal.Label("Suite bundles:"), len(bundles), terminal.Label("Suite signature:"), signature)
 		for _, bundle := range bundles {
-			fmt.Fprintf(app.Stdout, "\n== %s ==\n", bundle.ID)
+			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("== "+bundle.ID+" =="))
 			if _, _, err := app.executeComfyBenchmark(managed, bundle, options, "dry-run"); err != nil {
 				return err
 			}
 		}
-		fmt.Fprintln(app.Stdout, "No container was started.")
+		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started."))
 		return nil
 	}
 	suiteID := time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier()
@@ -335,7 +337,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 			return err
 		}
 	}
-	fmt.Fprintf(app.Stdout, "Benchmark suite complete: %s\n", suitePath)
+	fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Benchmark suite complete:"), suitePath)
 	if failed {
 		return controlerr.New("benchmark suite completed with failures")
 	}
@@ -398,7 +400,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		if !options.dryRun {
 			return "", summary, controlerr.New("bundle %q is not verified and ready: %v", bundle.ID, err)
 		}
-		fmt.Fprintf(app.Stderr, "WARNING: bundle %s is not ready: %v\n", bundle.ID, err)
+		fmt.Fprintf(app.Stderr, "%s bundle %s is not ready: %v\n", app.terminal(app.Stderr).Warning("WARNING:"), bundle.ID, err)
 	}
 	spec := managed.Benchmarks[bundle.ID]
 	source, err := benchmark.LoadPrompt(app.Root, spec)
@@ -428,7 +430,8 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	command := runtime.WebCommand(runtime.WebOptions{Image: options.image, Profile: options.profile, Listen: "127.0.0.1", Port: options.port, DataDir: options.dataRoot, RenderNodes: []string{options.renderNode}, Detach: true, Unconfined: options.unconfined, DisableBundledExtensions: true, Arguments: []string{"--disable-all-custom-nodes"}, ContainerName: comfyBenchmarkContainer, Application: "comfyui", MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, Environment: environment, Publish: true, ContainerRole: "benchmark"}, app.podman().SELinuxVolumeSuffix(app.Context))
 	path = filepath.Join((storage.Layout{Root: options.dataRoot}).ComfyBenchmarks(), runID+"-"+bundle.ID+".json")
 	if options.dryRun {
-		fmt.Fprintf(app.Stdout, "Benchmark source SHA-256: %s\nRuns: %d (cold + %d warm)\nCache mode: %s\nSynthetic input: %t\nResolved command:\n  %s\n", spec.SHA256, options.runs, options.runs-1, options.cacheMode, needsInput, shellJoin(command))
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s %s\n%s %d (cold + %d warm)\n%s %s\n%s %t\n%s\n  %s\n", terminal.Label("Benchmark source SHA-256:"), spec.SHA256, terminal.Label("Runs:"), options.runs, options.runs-1, terminal.Label("Cache mode:"), options.cacheMode, terminal.Label("Synthetic input:"), needsInput, terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return path, summary, nil
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
@@ -544,16 +547,14 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	return path, summary, nil
 }
 
-func requireBenchmarkAgreements(managed catalog.Catalog, bundles []catalog.Bundle, accepted, dryRun bool) error {
+func (app *App) requireBenchmarkAgreements(managed catalog.Catalog, bundles []catalog.Bundle, accepted, dryRun, nonInteractive bool) error {
 	agreements := uniqueAgreements(managed, bundles)
-	if len(agreements) > 0 && !accepted && !dryRun {
-		names := make([]string, 0, len(agreements))
-		for _, agreement := range agreements {
-			names = append(names, agreement.Name)
-		}
-		return controlerr.New("benchmark content is governed by %s; review the catalog URLs and repeat with --accept-license", strings.Join(names, ", "))
+	app.printContentAgreements(agreements)
+	if dryRun || len(agreements) == 0 || accepted {
+		return nil
 	}
-	return nil
+	_, err := app.confirmContentApprovals(agreements, nil, false, true, nonInteractive)
+	return err
 }
 
 func comfyConfiguration(options comfyBenchmarkOptions) benchmark.ComfyConfiguration {

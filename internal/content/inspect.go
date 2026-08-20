@@ -2,7 +2,9 @@
 package content
 
 import (
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,6 +49,14 @@ func ArtifactPath(dataRoot string, artifact catalog.Artifact) string {
 }
 
 func InspectArtifact(store *verification.Store, dataRoot string, artifact catalog.Artifact, verifyHash bool) (ArtifactStatus, error) {
+	return inspectArtifact(context.Background(), store, dataRoot, artifact, verifyHash, nil)
+}
+
+func VerifyArtifact(ctx context.Context, store *verification.Store, dataRoot string, artifact catalog.Artifact, progress func(int64)) (ArtifactStatus, error) {
+	return inspectArtifact(ctx, store, dataRoot, artifact, true, progress)
+}
+
+func inspectArtifact(ctx context.Context, store *verification.Store, dataRoot string, artifact catalog.Artifact, verifyHash bool, progress func(int64)) (ArtifactStatus, error) {
 	file := ArtifactPath(dataRoot, artifact)
 	status := ArtifactStatus{Artifact: artifact, Path: file, State: Missing}
 	info, err := os.Lstat(file)
@@ -73,7 +83,7 @@ func InspectArtifact(store *verification.Store, dataRoot string, artifact catalo
 		return status, nil
 	}
 	fingerprint := fileIdentity(info)
-	digest, err := fileSHA256(file)
+	digest, err := fileSHA256Context(ctx, file, progress)
 	if err != nil {
 		return status, err
 	}
@@ -126,14 +136,40 @@ func RequireBundle(managed catalog.Catalog, bundle catalog.Bundle, dataRoot stri
 }
 
 func fileSHA256(path string) (string, error) {
+	return fileSHA256Context(context.Background(), path, nil)
+}
+
+func fileSHA256Context(ctx context.Context, path string, progress func(int64)) (string, error) {
 	handle, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
 	defer handle.Close()
 	digest := sha256.New()
-	if _, err := io.Copy(digest, handle); err != nil {
-		return "", fmt.Errorf("hash %s: %w", path, err)
+	buffer := make([]byte, 8*1024*1024)
+	var hashed int64
+	for {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		read, readErr := handle.Read(buffer)
+		if read > 0 {
+			if _, err := digest.Write(buffer[:read]); err != nil {
+				return "", fmt.Errorf("hash %s: %w", path, err)
+			}
+			hashed += int64(read)
+			if progress != nil {
+				progress(hashed)
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return "", fmt.Errorf("hash %s: %w", path, readErr)
+		}
 	}
 	return fmt.Sprintf("%x", digest.Sum(nil)), nil
 }

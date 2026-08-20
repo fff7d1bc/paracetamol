@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -29,7 +28,6 @@ import (
 	"paracetamol/internal/process"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
-	"paracetamol/internal/ui"
 )
 
 func (app *App) commandBuild(args []string) error {
@@ -105,6 +103,7 @@ func (app *App) commandBuild(args []string) error {
 	outcomes := make([]outcome, 0, len(steps))
 	states := make(map[application.BuildID]string, len(steps))
 	failed := false
+	terminal := app.terminal(app.Stdout)
 	for _, step := range steps {
 		blockedBy := ""
 		for _, prerequisite := range step.Unit.Prerequisites {
@@ -118,7 +117,7 @@ func (app *App) commandBuild(args []string) error {
 			outcomes = append(outcomes, outcome{step: step, state: "skipped", reason: "prerequisite " + blockedBy + " did not build"})
 			continue
 		}
-		fmt.Fprintf(app.Stdout, "Building %s (%s)\n", step.Unit.DisplayName, step.Image)
+		fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Heading("Building"), step.Unit.DisplayName, step.Image)
 		if _, runErr := app.run(step.Command, false); runErr != nil {
 			failed = true
 			states[step.Unit.ID] = "failed"
@@ -128,10 +127,9 @@ func (app *App) commandBuild(args []string) error {
 		states[step.Unit.ID] = "built"
 		outcomes = append(outcomes, outcome{step: step, state: "built"})
 	}
-	terminal := ui.New(app.Stdout, app.Environment)
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Build summary"))
 	for _, result := range outcomes {
-		fmt.Fprintf(app.Stdout, "  %-8s %-14s %s", result.state, result.step.Unit.ID, result.step.Image)
+		fmt.Fprintf(app.Stdout, "  %s %s %s", terminal.State(fmt.Sprintf("%-8s", result.state)), terminal.Command(fmt.Sprintf("%-14s", result.step.Unit.ID)), result.step.Image)
 		if result.reason != "" {
 			fmt.Fprintf(app.Stdout, " (%s)", result.reason)
 		}
@@ -148,16 +146,19 @@ func (app *App) guidedBuildTarget() (string, error) {
 	for _, spec := range application.All() {
 		choices = append(choices, spec.ID)
 	}
-	fmt.Fprintln(app.Stdout, "Choose an image target:")
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Choose an image target:"))
 	for index, choice := range choices {
-		fmt.Fprintf(app.Stdout, "  %d. %s\n", index+1, choice)
+		fmt.Fprintf(app.Stdout, "  %2d. %s\n", index+1, terminal.Command(choice))
 	}
-	fmt.Fprint(app.Stdout, "Selection (or q to cancel): ")
-	scanner := bufio.NewScanner(app.Stdin)
-	if !scanner.Scan() || strings.EqualFold(strings.TrimSpace(scanner.Text()), "q") {
+	answer, err := app.promptLine("Selection (or q to cancel): ", true)
+	if err != nil {
+		return "", err
+	}
+	if strings.EqualFold(answer, "q") {
 		return "", controlerr.New("build selection cancelled")
 	}
-	selected, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+	selected, err := strconv.Atoi(answer)
 	if err != nil || selected < 1 || selected > len(choices) {
 		return "", controlerr.Usage("build selection must be a number from 1 through %d", len(choices))
 	}
@@ -178,33 +179,35 @@ func (app *App) commandGuide(args []string) error {
 		return controlerr.Usage("guide accepts at most one application")
 	}
 	if application == "" {
-		fmt.Fprintln(app.Stdout, "Applications:")
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintln(app.Stdout, terminal.Heading("Applications:"))
 		for _, spec := range config.Applications() {
-			fmt.Fprintf(app.Stdout, "  %-12s %s\n", spec.ID, spec.Summary)
+			fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Command(fmt.Sprintf("%-12s", spec.ID)), spec.Summary)
 		}
-		fmt.Fprintf(app.Stdout, "\nDetails: %s\n", identity.Command("guide", "APPLICATION"))
+		terminal.Next(identity.Command("guide", "APPLICATION"))
 		return nil
 	}
 	spec, ok := config.ApplicationByID(application)
 	if !ok {
 		return controlerr.Usage("unknown application %q", application)
 	}
-	fmt.Fprintf(app.Stdout, "%s\n%s\n\nManaged image: %s\nDefault port:  %d\nModes:         %s\n\n", spec.DisplayName, spec.Summary, spec.Image, spec.Port, strings.Join(spec.Modes, ", "))
-	fmt.Fprintf(app.Stdout, "Walkthrough\n  Build:   %s\n", identity.Command("build", spec.ID))
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n%s\n\n%s %s\n%s %d\n%s %s\n\n", terminal.Heading(spec.DisplayName), spec.Summary, terminal.Label("Managed image:"), spec.Image, terminal.Label("Default port:"), spec.Port, terminal.Label("Modes:"), strings.Join(spec.Modes, ", "))
+	fmt.Fprintf(app.Stdout, "%s\n  %s   %s\n", terminal.Heading("Walkthrough"), terminal.Label("Build:"), terminal.Command(identity.Command("build", spec.ID)))
 	for _, action := range spec.AfterBuild {
-		fmt.Fprintf(app.Stdout, "  Content: %s\n           %s\n", action.Command(), action.Description)
+		fmt.Fprintf(app.Stdout, "  %s %s\n           %s\n", terminal.Label("Content:"), terminal.Command(action.Command()), terminal.Muted(action.Description))
 	}
 	for _, action := range spec.AfterContent {
-		fmt.Fprintf(app.Stdout, "  Run:     %s\n           %s\n", action.Command(), action.Description)
+		fmt.Fprintf(app.Stdout, "  %s     %s\n           %s\n", terminal.Label("Run:"), terminal.Command(action.Command()), terminal.Muted(action.Description))
 	}
-	fmt.Fprintf(app.Stdout, "  Status:  %s\n", identity.Command("status", spec.ID))
+	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label("Status:"), terminal.Command(identity.Command("status", spec.ID)))
 	if spec.Logs {
-		fmt.Fprintf(app.Stdout, "  Logs:    %s\n", identity.Command("logs", spec.ID))
+		fmt.Fprintf(app.Stdout, "  %s    %s\n", terminal.Label("Logs:"), terminal.Command(identity.Command("logs", spec.ID)))
 	}
 	if spec.Shell {
-		fmt.Fprintf(app.Stdout, "  Shell:   %s\n", identity.Command("shell", spec.ID))
+		fmt.Fprintf(app.Stdout, "  %s   %s\n", terminal.Label("Shell:"), terminal.Command(identity.Command("shell", spec.ID)))
 	}
-	fmt.Fprintf(app.Stdout, "  Stop:    %s\n", identity.Command("stop", spec.ID))
+	fmt.Fprintf(app.Stdout, "  %s    %s\n", terminal.Label("Stop:"), terminal.Command(identity.Command("stop", spec.ID)))
 	return nil
 }
 
@@ -268,8 +271,9 @@ func (app *App) commandStatus(args []string) error {
 	if status, statErr := os.Stat(dataRoot); statErr == nil && status.IsDir() {
 		state = "ready"
 	}
-	fmt.Fprintf(app.Stdout, "Persistent data\n  %-12s %s (%s free)\n\n", state, dataRoot, humanSize(int64(free)))
-	fmt.Fprintln(app.Stdout, "GPU devices")
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n  %s %s (%s free)\n\n", terminal.Heading("Persistent data"), terminal.State(fmt.Sprintf("%-12s", state)), dataRoot, humanSize(int64(free)))
+	fmt.Fprintln(app.Stdout, terminal.Heading("GPU devices"))
 	devices := []string{"/dev/kfd"}
 	nodes, _ := filepath.Glob("/dev/dri/renderD*")
 	sort.Strings(nodes)
@@ -283,9 +287,9 @@ func (app *App) commandStatus(args []string) error {
 				deviceState = "no access"
 			}
 		}
-		fmt.Fprintf(app.Stdout, "  %-12s %s\n", deviceState, device)
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-12s", deviceState)), device)
 	}
-	fmt.Fprintln(app.Stdout, "\nImages")
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Images"))
 	images := []struct{ label, image string }{{"content", config.ContentToolsImage}, {"runtime", config.ROCmRuntimeImage}, {"base", config.ROCmBaseImage}}
 	for _, application := range config.Applications() {
 		images = append(images, struct{ label, image string }{application.ID, application.Image})
@@ -299,9 +303,9 @@ func (app *App) commandStatus(args []string) error {
 		if present {
 			imageState = "ready"
 		}
-		fmt.Fprintf(app.Stdout, "  %-12s %-12s %s\n", imageState, item.label, item.image)
+		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", imageState)), terminal.Label(fmt.Sprintf("%-12s", item.label)), item.image)
 	}
-	fmt.Fprintln(app.Stdout, "\nManaged containers")
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Managed containers"))
 	for _, application := range config.Applications() {
 		present, existsErr := app.podman().Exists(app.Context, "container", application.ContainerName)
 		if existsErr != nil {
@@ -314,7 +318,7 @@ func (app *App) commandStatus(args []string) error {
 				return existsErr
 			}
 		}
-		fmt.Fprintf(app.Stdout, "  %-12s %-12s %s\n", containerState, application.ID, application.ContainerName)
+		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", containerState)), terminal.Command(fmt.Sprintf("%-12s", application.ID)), application.ContainerName)
 	}
 	return nil
 }
@@ -358,8 +362,9 @@ func (app *App) applicationStatus(spec config.Application, dataFlag string) erro
 			ready++
 		}
 	}
-	fmt.Fprintf(app.Stdout, "%s\n", spec.DisplayName)
-	writeStatusRows(app.Stdout, [][2]string{
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n", terminal.Heading(spec.DisplayName))
+	writeStatusRows(app.Stdout, terminal, [][2]string{
 		{"Image", imageState + " — " + spec.Image},
 		{"Container", containerState + " — " + spec.ContainerName},
 		{"Data", dataState + " — " + applicationData},
@@ -375,7 +380,7 @@ func (app *App) commandRun(args []string) error {
 		for _, spec := range config.Applications() {
 			commands = append(commands, [2]string{spec.ID, spec.Summary})
 		}
-		writeGroupHelp(app.Stdout, usage("run", "APPLICATION", "[MODE]", "[OPTIONS]"), commands...)
+		app.writeGroupHelp(usage("run", "APPLICATION", "[MODE]", "[OPTIONS]"), commands...)
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
@@ -468,11 +473,12 @@ func (app *App) runComfyUI(args []string) error {
 	imageValue := firstNonEmpty(*image, config.EnvironmentValue(app.Environment, "IMAGE", application.Image))
 	command := runtime.WebCommand(runtime.WebOptions{Image: imageValue, Profile: profileValue, Listen: listenValue, Port: portValue, DataDir: dataRoot, RenderNodes: selected, Detach: *detach, Unconfined: *unconfined, DisableBundledExtensions: *disableExtensions, Arguments: upstreamArgs, ContainerName: application.ContainerName, Application: "comfyui", MemoryPolicy: memoryValue, KernelPolicy: kernelValue, Publish: true}, app.podman().SELinuxVolumeSuffix(app.Context))
 	if !isLoopback(listenValue) {
-		fmt.Fprintf(app.Stderr, "WARNING: ComfyUI is published on %s:%d without authentication.\n", listenValue, portValue)
+		fmt.Fprintf(app.Stderr, "%s ComfyUI is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), listenValue, portValue)
 	}
-	fmt.Fprintf(app.Stdout, "Application data: %s\n", (storage.Layout{Root: dataRoot}).Application("comfyui"))
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("comfyui"))
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Resolved command:\n  %s\n", shellJoin(command))
+		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
 	return app.startManaged(application, imageValue, command, *detach)
@@ -652,11 +658,12 @@ func (app *App) runLlama(mode string, args []string) error {
 		return err
 	}
 	if mode == "server" && !isLoopback(options.Listen) && options.APIKeyFile == "" {
-		fmt.Fprintf(app.Stderr, "WARNING: llama.cpp is published on %s:%d without authentication.\n", options.Listen, options.Port)
+		fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
 	}
-	fmt.Fprintf(app.Stdout, "Application data: %s\nBackend: %s\nModel: %s\n", (storage.Layout{Root: dataRoot}).Application("llama-cpp"), options.Backend, displayModel)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("llama-cpp"), terminal.Label("Backend:"), options.Backend, terminal.Label("Model:"), displayModel)
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Resolved command:\n  %s\n", shellJoin(command))
+		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
 	return app.startManaged(application, options.Image, command, detach)
@@ -792,11 +799,12 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 		return err
 	}
 	if mode == "server" && !isLoopback(options.Listen) {
-		fmt.Fprintf(app.Stderr, "WARNING: DwarfStar is published on %s:%d without authentication.\n", options.Listen, options.Port)
+		fmt.Fprintf(app.Stderr, "%s DwarfStar is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
 	}
-	fmt.Fprintf(app.Stdout, "Application data: %s\nModel: %s\n", (storage.Layout{Root: dataRoot}).Application("dwarfstar"), model)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("dwarfstar"), terminal.Label("Model:"), model)
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Resolved command:\n  %s\n", shellJoin(command))
+		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
 	return app.startManaged(application, options.Image, command, detach)
@@ -905,13 +913,13 @@ func (app *App) commandStop(args []string) error {
 			return err
 		}
 		if !present {
-			fmt.Fprintf(app.Stdout, "Container not present: %s\n", application.ContainerName)
+			fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Muted("Container not present:"), application.ContainerName)
 			continue
 		}
 		if err := app.podman().RemoveContainer(app.Context, application.ContainerName, 2, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stdout, "Removed container: %s\n", application.ContainerName)
+		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Removed container:"), application.ContainerName)
 	}
 	return nil
 }
@@ -942,7 +950,8 @@ func (app *App) startManaged(application config.Application, image string, comma
 		return controlerr.New("container name is already occupied: %s", application.ContainerName)
 	}
 	if application.Port != 0 {
-		fmt.Fprintf(app.Stdout, "Logs: %s\nStop: %s\n", identity.Command("logs", application.ID), identity.Command("stop", application.ID))
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Label("Logs:"), terminal.Command(identity.Command("logs", application.ID)), terminal.Label("Stop:"), terminal.Command(identity.Command("stop", application.ID)))
 	}
 	_, runErr := app.run(command, false)
 	if runErr != nil && !detach {
@@ -1113,6 +1122,9 @@ func (value *optionalString) Set(raw string) error {
 }
 
 func terminalReader(reader io.Reader) bool {
+	if marker, ok := reader.(interface{ IsTerminal() bool }); ok {
+		return marker.IsTerminal()
+	}
 	file, ok := reader.(*os.File)
 	if !ok {
 		return false

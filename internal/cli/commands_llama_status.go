@@ -17,6 +17,7 @@ import (
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/process"
+	"paracetamol/internal/ui"
 )
 
 const llamaRuntimeReportPath = "/tmp/paracetamol-llama-runtime"
@@ -230,8 +231,9 @@ func (app *App) llamaStatus(requested string) error {
 		}
 	}
 
-	fmt.Fprintf(app.Stdout, "%s llama.cpp runtime\n", identity.DisplayName)
-	writeStatusRows(app.Stdout, [][2]string{
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n", terminal.Heading(identity.DisplayName+" llama.cpp runtime"))
+	writeStatusRows(app.Stdout, terminal, [][2]string{
 		{"State", state},
 		{identity.DisplayName, firstNonEmpty(environment["PARACETAMOL_SOURCE_REVISION"], app.projectRevision())},
 		{"Image", image}, {"Image ID", imageID},
@@ -245,7 +247,7 @@ func (app *App) llamaStatus(requested string) error {
 	if requestedProfile != "" && requestedProfile != profile {
 		profileDisplay += " (requested " + requestedProfile + ")"
 	}
-	writeStatusSection(app.Stdout, "Hardware", [][2]string{
+	writeStatusSection(app.Stdout, terminal, "Hardware", [][2]string{
 		{"Backend", runtimeReport["backend"]}, {"Profile", profileDisplay},
 		{"Architecture", runtimeReport["architecture"]}, {"Device", runtimeReport["device"]},
 		{"Render nodes", firstNonEmpty(environment["PARACETAMOL_RENDER_NODES"], "none")},
@@ -266,7 +268,7 @@ func (app *App) llamaStatus(requested string) error {
 	if router != nil {
 		serverRows = append(serverRows, [2]string{"Loaded-model limit", runtimeReport["models_max"]}, [2]string{"Configured models", strconv.Itoa(len(router))})
 	}
-	writeStatusSection(app.Stdout, "Server", serverRows)
+	writeStatusSection(app.Stdout, terminal, "Server", serverRows)
 
 	if router != nil && preset == nil {
 		identifiers := make([]string, 0, len(router))
@@ -274,25 +276,25 @@ func (app *App) llamaStatus(requested string) error {
 			identifiers = append(identifiers, identifier)
 		}
 		sort.Strings(identifiers)
-		fmt.Fprintln(app.Stdout, "\nRouter models")
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Router models"))
 		for _, identifier := range identifiers {
-			fmt.Fprintf(app.Stdout, "  %s\n", identifier)
+			fmt.Fprintf(app.Stdout, "  %s\n", terminal.Command(identifier))
 		}
-		fmt.Fprintf(app.Stdout, "\nDetails: %s\n", identity.Command("status", "llama-cpp", "--model", "MODEL"))
+		terminal.Next(identity.Command("status", "llama-cpp", "--model", "MODEL"))
 	} else {
 		modelRows, rowErr := llamaModelStatusRows(managed, preset, selected, environment, runtimeReport)
 		if rowErr != nil {
 			return rowErr
 		}
-		writeStatusSection(app.Stdout, "Model policy", modelRows)
+		writeStatusSection(app.Stdout, terminal, "Model policy", modelRows)
 	}
-	writeStatusSection(app.Stdout, identity.DisplayName+" behavior", [][2]string{
+	writeStatusSection(app.Stdout, terminal, identity.DisplayName+" behavior", [][2]string{
 		{"Downstream patches", firstNonEmpty(labels["io.github.fff7d1bc.paracetamol.llama-cpp.patches"], "unknown")},
 		{"Policy boundary", "catalog defaults are selected after reasoning mode resolution"},
 		{"Secrets", "API-key values and host secret paths are never printed"},
 	})
-	fmt.Fprintf(app.Stdout, "\nReproduce effective %s launch\n  %s\n", identity.DisplayName, shellJoin(llamaReproductionCommand(environment, runtimeReport, preset)))
-	fmt.Fprintf(app.Stdout, "\nExact running llama.cpp command\n  %s\n", shellJoin(processCommand))
+	fmt.Fprintf(app.Stdout, "\n%s\n  %s\n", terminal.Heading("Reproduce effective "+identity.DisplayName+" launch"), terminal.Command(shellJoin(llamaReproductionCommand(environment, runtimeReport, preset))))
+	fmt.Fprintf(app.Stdout, "\n%s\n  %s\n", terminal.Heading("Exact running llama.cpp command"), terminal.Command(shellJoin(processCommand)))
 	return nil
 }
 
@@ -507,12 +509,12 @@ func llamaReproductionCommand(environment, runtimeReport map[string]string, pres
 	return command
 }
 
-func writeStatusSection(output io.Writer, title string, rows [][2]string) {
-	fmt.Fprintf(output, "\n%s\n", title)
-	writeStatusRows(output, rows)
+func writeStatusSection(output io.Writer, terminal ui.Terminal, title string, rows [][2]string) {
+	fmt.Fprintf(output, "\n%s\n", terminal.Heading(title))
+	writeStatusRows(output, terminal, rows)
 }
 
-func writeStatusRows(output io.Writer, rows [][2]string) {
+func writeStatusRows(output io.Writer, terminal ui.Terminal, rows [][2]string) {
 	width := 0
 	for _, row := range rows {
 		if len(row[0]) > width {
@@ -520,7 +522,7 @@ func writeStatusRows(output io.Writer, rows [][2]string) {
 		}
 	}
 	for _, row := range rows {
-		fmt.Fprintf(output, "  %-*s  %s\n", width, row[0], row[1])
+		fmt.Fprintf(output, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-*s", width, row[0])), row[1])
 	}
 }
 
