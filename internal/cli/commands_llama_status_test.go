@@ -1,0 +1,76 @@
+package cli
+
+import (
+	"strings"
+	"testing"
+)
+
+const validLlamaRuntimeReport = `schema=1
+mode=server
+profile=strix-halo
+backend=rocm
+device=AMD Radeon 8060S Graphics
+backend_devices=0
+architecture=gfx1151
+gpu_count=1
+router=0
+models_max=2
+context=262144
+listen=0.0.0.0
+host_listen=127.0.0.1
+port=8080
+api_key=0
+unified_memory=1
+vulkan_f16_kv_contiguize=0
+`
+
+func TestParseLlamaRuntimeReport(t *testing.T) {
+	parsed, err := parseLlamaRuntimeReport(validLlamaRuntimeReport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed["architecture"] != "gfx1151" || parsed["context"] != "262144" {
+		t.Fatalf("unexpected report: %#v", parsed)
+	}
+}
+
+func TestParseLlamaRuntimeReportRejectsUnknownAndDuplicateKeys(t *testing.T) {
+	for _, contents := range []string{
+		validLlamaRuntimeReport + "surprise=value\n",
+		strings.Replace(validLlamaRuntimeReport, "context=262144", "context=\ncontext=262144", 1),
+		strings.Replace(validLlamaRuntimeReport, "host_listen=127.0.0.1", "host_listen=aion.local", 1),
+	} {
+		if _, err := parseLlamaRuntimeReport(contents); err == nil {
+			t.Fatalf("invalid report accepted:\n%s", contents)
+		}
+	}
+}
+
+func TestParseRouterSnapshot(t *testing.T) {
+	parsed, err := parseRouterSnapshot("version = 1\n\n[qwen]\nmodel = /content/models/qwen.gguf\nc = 131072\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed["qwen"]["c"] != "131072" {
+		t.Fatalf("unexpected router snapshot: %#v", parsed)
+	}
+	for _, invalid := range []string{"version = 2\n", "version = 1\nmodel = missing-section\n", "version = 1\n[qwen]\nc = 1\nc = 2\n", "version = 1\n[Qwen 3.8]\nc = 1\n"} {
+		if _, err := parseRouterSnapshot(invalid); err == nil {
+			t.Fatalf("invalid router snapshot accepted: %q", invalid)
+		}
+	}
+}
+
+func TestParseLlamaProcessCommandRedactsSecretPath(t *testing.T) {
+	parsed, err := parseLlamaProcessCommand([]byte("/usr/local/bin/llama-server\x00--api-key-file\x00/run/secrets/key\x00--api-key=secret\x00--port\x008080\x00"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(parsed, " ")
+	if strings.Contains(joined, "/run/secrets/key") || strings.Contains(joined, "secret") || !strings.Contains(joined, "API_KEY_FILE") {
+		t.Fatalf("secret path was not redacted: %q", joined)
+	}
+	if _, err := parseLlamaProcessCommand([]byte{0xff}); err == nil {
+		t.Fatal("invalid UTF-8 process command was accepted")
+	}
+}

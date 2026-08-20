@@ -149,6 +149,31 @@ func (client Client) SharedSELinuxVolumeSuffix(ctx context.Context) string {
 	return strings.Replace(client.SELinuxVolumeSuffix(ctx), ",Z", ",z", 1)
 }
 
+// PrepareSharedContentLabel makes newly materialized model bytes readable by
+// later containers with independent MCS categories. It is a no-op away from
+// enforcing SELinux hosts.
+func (client Client) PrepareSharedContentLabel(ctx context.Context, path string) error {
+	if client.SELinuxVolumeSuffix(ctx) != ":rw,Z" {
+		return nil
+	}
+	chcon, err := client.runner().LookPath("chcon")
+	if err != nil {
+		return controlerr.New("cannot prepare shared SELinux label for %s: chcon is not installed", path)
+	}
+	result, err := client.runner().Run(ctx, process.Command{Name: chcon, Args: []string{"--no-dereference", SharedContentSELinuxContext, "--", path}})
+	if err != nil {
+		return controlerr.New("cannot prepare shared SELinux label for %s: %v", path, err)
+	}
+	if result.Status != 0 {
+		detail := strings.TrimSpace(string(result.Stderr))
+		if detail == "" {
+			detail = fmt.Sprintf("exit status %d", result.Status)
+		}
+		return controlerr.New("cannot prepare shared SELinux label for %s: %s", path, detail)
+	}
+	return nil
+}
+
 // SELinuxContainerDeviceAccess reports the enforcing host's boolean policy.
 // A nil result means the host is not enforcing or the policy is unavailable.
 func (client Client) SELinuxContainerDeviceAccess(ctx context.Context) (*bool, error) {

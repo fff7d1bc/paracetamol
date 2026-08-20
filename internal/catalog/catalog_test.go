@@ -1,7 +1,12 @@
 package catalog
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"rocmplete/internal/project"
@@ -25,10 +30,62 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	}
 }
 
+func TestEveryCuratedWorkflowResourceMatchesCatalog(t *testing.T) {
+	root, err := project.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(filepath.Join(root, "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for identifier, workflow := range loaded.Workflows {
+		t.Run(identifier, func(t *testing.T) {
+			contents, err := os.ReadFile(filepath.Join(root, "catalog", "workflows", identifier+".json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if digest := fmt.Sprintf("%x", sha256.Sum256(contents)); digest != workflow.RenderedSHA256 {
+				t.Fatalf("rendered hash = %s, want %s", digest, workflow.RenderedSHA256)
+			}
+			var document any
+			if err := json.Unmarshal(contents, &document); err != nil {
+				t.Fatalf("invalid workflow JSON: %v", err)
+			}
+		})
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "catalog", "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != len(loaded.Workflows) {
+		t.Fatalf("workflow resource count = %d, want %d", len(entries), len(loaded.Workflows))
+	}
+	for _, entry := range entries {
+		identifier := strings.TrimSuffix(entry.Name(), ".json")
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" || loaded.Workflows[identifier].ID == "" {
+			t.Fatalf("unexpected workflow resource: %s", entry.Name())
+		}
+	}
+}
+
 func TestSafeRelativeRejectsTraversal(t *testing.T) {
 	for _, value := range []string{"", "/absolute", "../outside", "models/../outside", "."} {
 		if _, err := safeRelative(value, "fixture"); err == nil {
 			t.Fatalf("unsafe path %q accepted", value)
 		}
+	}
+}
+
+func TestBundleRequiresSelectorGroupsAndAllMembership(t *testing.T) {
+	for _, groups := range []string{`[]`, `["llama"]`, `["all", "all"]`, `["all", "unknown"]`} {
+		raw := json.RawMessage(`{"description":"fixture","application":"llama-cpp","artifacts":["artifact"],"groups":` + groups + `}`)
+		if _, err := loadBundle("fixture", raw); err == nil {
+			t.Fatalf("accepted invalid bundle groups %s", groups)
+		}
+	}
+	raw := json.RawMessage(`{"description":"fixture","application":"llama-cpp","artifacts":["artifact"],"groups":["all","llama"]}`)
+	if _, err := loadBundle("fixture", raw); err != nil {
+		t.Fatalf("valid bundle rejected: %v", err)
 	}
 }

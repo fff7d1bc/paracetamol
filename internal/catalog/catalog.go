@@ -591,8 +591,8 @@ func loadBundle(id string, value json.RawMessage) (Bundle, error) {
 	if err := decodeStrict(value, &raw); err != nil {
 		return Bundle{}, fmt.Errorf("bundle %s: %w", id, err)
 	}
-	if raw.Description == "" || len(raw.Artifacts) == 0 {
-		return Bundle{}, fmt.Errorf("bundle %s requires description and artifacts", id)
+	if raw.Description == "" || len(raw.Artifacts) == 0 || len(raw.Groups) == 0 {
+		return Bundle{}, fmt.Errorf("bundle %s requires description, artifacts, and selector groups", id)
 	}
 	if _, ok := config.ApplicationByID(raw.Application); !ok {
 		return Bundle{}, fmt.Errorf("bundle %s has unknown application %q", id, raw.Application)
@@ -614,6 +614,9 @@ func loadBundle(id string, value json.RawMessage) (Bundle, error) {
 			return Bundle{}, fmt.Errorf("bundle %s contains duplicate group %q", id, group)
 		}
 		seenGroups[group] = true
+	}
+	if !seenGroups["all"] {
+		return Bundle{}, fmt.Errorf("bundle %s must belong to the all selector group", id)
 	}
 	return Bundle{ID: id, Description: raw.Description, Application: raw.Application, Artifacts: append([]string(nil), raw.Artifacts...), Workflow: raw.Workflow, Groups: append([]string(nil), raw.Groups...)}, nil
 }

@@ -6,10 +6,6 @@
 !containers/content_tools/
 !containers/content_tools/download.py
 !containers/content_tools/requirements.txt
-!src/
-!src/rocmplete/
-!src/rocmplete/__init__.py
-!src/rocmplete/hardware_profiles.py
 !applications/
 !applications/comfyui/
 !applications/comfyui/constraints.txt
