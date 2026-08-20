@@ -26,6 +26,53 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo native gateway (2026-08-20)
+
+Paracetamol commit `ba1cf83` was exercised between the Fedora 44 Strix Halo
+host and a separate Linux Pi client. The GPU host used kernel
+`7.1.7-200.fc44.x86_64`, profile `strix-halo`, ROCm 7.14, and
+`/dev/dri/renderD128`. Its llama.cpp image was
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29` (image ID
+`db4ff8651e1bea7e3d2b805e1738e8a344f0eb1b72dbbbbbe788f7952f006da3`).
+Host-side logs remain outside the repository at
+`/tmp/paracetamol-gateway-ba1cf83.log` and
+`/tmp/paracetamol-gateway-ba1cf83-remote.log` on the GPU host.
+
+Loopback startup advertised exactly 17 receipt-verified llama.cpp presets with
+inventory fingerprint
+`9e70cfd3dee9e2927f747378693850566289e86a73f5542b6c9f611427aee9a1`.
+The versioned status endpoint reported `unloaded`, and no gateway backend
+container existed before the first request. A medium-effort request for
+`qwen3.8-27b-mtp-ud-q8-k-xl` then lazily started the backend on dynamic private
+port 38719 and returned exact content `gateway-ok`. Generation reported 16.86
+tokens/s, with 24 of 30 draft proposals accepted. The 18.21-second first-request
+wall time includes backend and model startup.
+
+With that same backend resident, five alternating gateway/direct requests used
+identical thinking-off, no-prompt-cache, eight-token request bodies. Excluding
+the first connection establishment sample, the four-request mean was 0.538828
+seconds through the gateway and 0.537539 seconds against its private backend:
+1.289 ms or 0.24% measured proxy overhead. The first gateway sample was 83.7 ms
+slower than its direct pair. This is a short latency control, not a sustained
+throughput benchmark.
+
+The gateway was then published on the host's trusted-LAN address. Managed Pi
+on the separate client discovered the live inventory, generated one
+`paracetamol` provider, retained its default sandbox, selected the same Qwen
+preset at medium effort, and returned exact content `remote-pi-ok`. The request
+reported 5,484 input and 20 output tokens. SIGINT removed the dynamic backend
+container and both public listeners after each run. The kernel journal for the
+test window contained no matching AMDGPU fault/reset/timeout, SVM mapping
+failure, general-protection fault, or OOM event.
+
+Starting the same commit with both applications failed before opening a
+listener or creating a backend container because the reviewed DwarfStar model
+had no current local artifact or receipt. This accepts fail-closed inventory,
+lazy llama.cpp lifecycle, transparent proxying, remote Pi integration, and
+cleanup. Cross-engine switching and live DwarfStar forwarding remain
+`BLOCKED` on this host snapshot until that large pinned bundle is installed;
+they are not inferred from unit tests or earlier direct DwarfStar runs.
+
 ### Fedora 44 Strix Halo Maki native reasoning transport (2026-08-18)
 
 Paracetamol commit `cf7e75e` was exercised with a Maki 0.4.8 build containing
