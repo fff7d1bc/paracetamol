@@ -23,11 +23,13 @@ persistent storage
   └── removable download scratch space under staging/
 ```
 
-The host control plane is a Go binary. It does not import ROCm, PyTorch, or
-application dependencies and needs only Go 1.26+, GNU Make, rootless Podman,
-and access to the selected device files. Python remains an implementation
-detail of Python application containers, their focused policy tests, and
-frozen evaluation fixtures; no host command dispatches through Python.
+The host control plane is a Linux Go binary. It does not import ROCm, PyTorch,
+or application dependencies and needs only Go 1.26+, GNU Make, rootless
+Podman, and access to the selected device files. Platform-qualified build
+directories separate local artifacts and caches; they do not define a
+portable non-Linux command surface. Python remains an implementation detail of
+Python application containers, their focused policy tests, and frozen
+evaluation fixtures; no host command dispatches through Python.
 
 Data-path resolution has two explicit modes. Status, inspection, and dry-run
 commands resolve an absent path without creating it. Real installs, shells,
@@ -39,10 +41,13 @@ mounted separately and read-only below `/content`.
 
 `paracetamol` is a small POSIX shell bootstrap. It asks the `Makefile` for the
 current platform binary below `build/<goos>-<goarch>/bin/` and executes it.
-Make rebuilds only when Go inputs are newer. All compiler caches, module state,
-temporary files, and binaries stay below the anchored ignored `build/` tree.
-`internal/project/` owns repository-root discovery for build context, catalog,
-and immutable workflow resources.
+Make rebuilds when its Go module, source, or Makefile inputs are newer. Normal
+targets use the installed toolchain, disable CGO, and keep compiler caches,
+module state, temporary files, telemetry state, and binaries below the
+anchored ignored `build/` tree. The optional race-detector target alone enables
+CGO. `internal/project/` owns repository-root discovery for build context,
+catalog, and immutable workflow resources. Consequently a copied bare binary
+without its source checkout is not a supported installation.
 
 `internal/identity/` and the `Makefile` own the product identity. `PRODUCT_ID`
 derives the command name, host-configuration environment prefix, persistent

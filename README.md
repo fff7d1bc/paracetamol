@@ -66,13 +66,17 @@ Paracetamol tries to cover the whole path.
 
 ## Requirements
 
-The host needs rootless Podman, GNU Make, and Go 1.26 or newer. The checkout
-launcher builds a repository-local binary when its Go sources change; generated
-binaries and Go caches stay below ignored `build/`. The field-tested hosts above
-use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and Ubuntu
-26.04. A minimal installation may not include Podman yet. The optional managed
-Pi client additionally requires distribution-provided Node.js 22.19 or newer
-and npm; Paracetamol installs Pi itself into private application data.
+The host control plane currently supports Linux and needs rootless Podman, GNU
+Make, and Go 1.26 or newer. Platform-qualified directories below `build/`
+separate local build state; they are not a claim that the complete controller
+can run on another operating system. The checkout launcher builds a
+repository-local binary when its Go or Makefile inputs change, and generated
+binaries and Go caches stay below ignored `build/`. The field-tested hosts
+above use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and
+Ubuntu 26.04. A minimal installation may not include Podman yet. The optional
+managed Pi client additionally requires distribution-provided Node.js 22.19
+or newer and npm; Paracetamol installs Pi itself into private application
+data.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -525,9 +529,31 @@ Command-specific help remains the authoritative interface reference:
 ./paracetamol benchmark agent --help
 ```
 
-The host binary can be built explicitly with `make build`, tested with
-`make test`, and statically linked with `make static`. To copy a checkout to a
-test host without transferring repository-local binaries or Go caches, use:
+Host development uses the installed Go toolchain by default and keeps its
+module cache, build cache, temporary files, telemetry state, and binaries
+below `build/`:
+
+```bash
+make check
+make test
+make -B build
+make static
+```
+
+`make build` is the normal incremental path; the forced build is useful before
+finishing Go or Makefile changes. `make clean` removes only the repository's
+ignored `build/` tree. Regular targets default to `CGO_ENABLED=0`. The optional
+native-Linux `make race` check enables CGO for the race detector and therefore
+needs a C compiler, but does not add that requirement to ordinary builds or
+tests.
+
+Normal commands use `GOTOOLCHAIN=local`, so the installed Go toolchain must
+satisfy `go.mod`. Use `make GOTOOLCHAIN=auto -B build` only when automatic
+toolchain selection is intentional; its Go state still remains below
+`build/`.
+
+To copy a checkout to a test host without transferring repository-local
+binaries or Go caches, use:
 
 ```bash
 rsync -a -v --progress --delete \
@@ -542,8 +568,8 @@ out of a deployment. `--delete` still removes obsolete source files. Do not
 add `--delete-excluded`.
 
 The pre-release product identity is centralized rather than scattered through
-Go packages. `make PRODUCT_ID=new-name DISPLAY_NAME='New Name'` changes the
-built command, host-configuration environment prefix (`NEW_NAME_*`),
+Go packages. `make -B PRODUCT_ID=new-name DISPLAY_NAME='New Name' build`
+changes the built command, host-configuration environment prefix (`NEW_NAME_*`),
 persistent namespace, local image namespace, container names, and
 ownership-label namespace together.
 Set `ENV_PREFIX` explicitly only when a renamed command needs another spelling.

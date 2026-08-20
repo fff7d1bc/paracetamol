@@ -12,10 +12,30 @@ The project does not publish or depend on prebuilt Paracetamol application
 images. A successful build or CPU startup is not evidence that GPU inference
 works on any target hardware class.
 
-## Start here
+## Documentation routes
 
-Read `docs/README.md` before a non-trivial change. It routes maintenance work
-to the architecture, upgrading, catalog, extension, and testing guides.
+Read the [documentation index](docs/README.md) before a non-trivial change. It
+routes user guidance, maintainer contracts, and research records without
+making every document mandatory startup reading.
+
+- Read [architecture and invariants](docs/architecture.md) before changing
+  control-plane ownership, images, runtime isolation, storage, or trust
+  boundaries.
+- Read [testing and release](docs/testing-and-release.md) before selecting
+  higher-tier checks, release acceptance, or destructive housekeeping.
+- Read [upgrading](docs/upgrading.md) before changing external pins,
+  dependencies, base images, ROCm, PyTorch, or application sources.
+- Read [content catalog maintenance](docs/content-catalog.md) before changing
+  models, bundles, recipes, workflows, licenses, or benchmark resources.
+- Read [extension points](docs/extending.md) before adding or changing an
+  application, command family, mode, profile, or renderer.
+- Read [coding-agent evaluation maintenance](docs/coding-agent-evaluation.md)
+  before changing frozen tasks, hidden graders, adapters, or result schemas.
+- Read [hardware acceptance](docs/hardware-acceptance.md) before making a new
+  GPU, profile, ROCm, memory-policy, or inference claim.
+
+Research and case-study records remain discoverable through the documentation
+index. Read only the record relevant to the current task.
 
 Source files and tests are authoritative. When a change affects a count,
 version snapshot, command, or behavior described in prose, update that prose
@@ -191,6 +211,30 @@ mutation safety, verification, licensing, isolation, or testing requirements.
 - Update user documentation when commands, flags, defaults, state locations,
   exit behavior, or requirements change. Update maintainer docs when ownership
   or maintenance procedure changes.
+
+## Host build and development commands
+
+The host control plane currently supports Linux. Platform-qualified paths
+below `build/` separate local artifacts and caches; they do not claim that the
+complete controller is portable to another operating system.
+
+- `make build` incrementally builds the checkout binary; use `make -B build`
+  for final verification of Go or Makefile changes.
+- `make check`, `make test`, and `make static` are the routine host checks.
+- `make race` is an optional native-Linux Go race-detector pass. It alone
+  enables CGO and therefore requires a C compiler; regular targets default to
+  `CGO_ENABLED=0`.
+- `make clean` removes only the anchored repository-local `build/` tree.
+
+Normal targets use the installed Go 1.26 toolchain through
+`GOTOOLCHAIN=local`. Use an explicit override such as
+`make GOTOOLCHAIN=auto -B build` only when automatic toolchain selection is
+intentional; Go module, cache, temporary, and telemetry state remains below
+`build/`.
+
+Use `./paracetamol` for normal execution. The binary resolves catalog,
+Containerfile, and other runtime resources from its source checkout, so a bare
+copied binary is not an installation contract.
 
 ## Commit discipline
 

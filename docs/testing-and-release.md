@@ -42,6 +42,25 @@ CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
+For a Go or Makefile change, also force the ordinary checkout binary through
+its atomic publication path rather than relying on an older incremental
+artifact:
+
+```bash
+make -B build
+```
+
+The optional native-Linux race pass is appropriate after changes to process,
+signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
+
+```bash
+make race
+```
+
+This target alone enables CGO and requires a C compiler. It is not part of
+Tier 1 or the ordinary host requirements; `make check`, `make test`, `make
+build`, and `make static` continue to work with CGO disabled.
+
 ### Tier 2: CLI and dry-run checks
 
 Exercise user-visible composition:
