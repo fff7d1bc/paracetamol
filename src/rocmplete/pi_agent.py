@@ -51,6 +51,13 @@ MODEL_PICKER_EXTENSION_SOURCE = (
     / "extensions"
     / "rocmplete-model-picker.ts"
 )
+COMPLETION_DIVIDER_EXTENSION_SOURCE = (
+    PROJECT_ROOT
+    / "agent-clients"
+    / "pi"
+    / "extensions"
+    / "rocmplete-completion-divider.ts"
+)
 SANDBOX_AGENT_DIR = SANDBOX_HOME / ".local" / "share" / "pi" / "agent"
 _THINKING_LEVELS = ("minimal", "low", "medium", "high", "xhigh", "max")
 _DWARFSTAR_REASONING_LEVELS = {
@@ -99,8 +106,27 @@ class PiLaunchPlan:
     dwarfstar_endpoint: str
     config_content: bytes
     model_picker_extension: bytes
+    completion_divider_extension: bytes
     mode: str
     remote_llama: bool
+
+
+def _load_managed_extension(path: Path, description: str) -> bytes:
+    """Read one repository-owned Pi extension from a regular file."""
+
+    try:
+        status = path.lstat()
+        if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
+            raise LauncherError(
+                "{} is not a regular file: {}".format(description, path)
+            )
+        return path.read_bytes()
+    except FileNotFoundError:
+        raise LauncherError("{} is missing: {}".format(description, path))
+    except OSError as error:
+        raise LauncherError(
+            "cannot read {} {}: {}".format(description, path, error)
+        )
 
 
 def load_model_picker_extension(
@@ -108,23 +134,15 @@ def load_model_picker_extension(
 ) -> bytes:
     """Read the repository-owned Pi model-picker extension."""
 
-    try:
-        status = path.lstat()
-        if stat.S_ISLNK(status.st_mode) or not stat.S_ISREG(status.st_mode):
-            raise LauncherError(
-                "Pi model-picker extension is not a regular file: {}".format(
-                    path
-                )
-            )
-        return path.read_bytes()
-    except FileNotFoundError:
-        raise LauncherError(
-            "Pi model-picker extension is missing: {}".format(path)
-        )
-    except OSError as error:
-        raise LauncherError(
-            "cannot read Pi model-picker extension {}: {}".format(path, error)
-        )
+    return _load_managed_extension(path, "Pi model-picker extension")
+
+
+def load_completion_divider_extension(
+    path: Path = COMPLETION_DIVIDER_EXTENSION_SOURCE,
+) -> bytes:
+    """Read the repository-owned Pi completion-divider extension."""
+
+    return _load_managed_extension(path, "Pi completion-divider extension")
 
 
 def normalize_llama_url(value: str) -> str:
@@ -378,6 +396,7 @@ def create_launch_plan(
         forwarded = forwarded[1:]
     managed_runtime = runtime or resolve_pi_runtime(data_dir, env)
     model_picker_extension = load_model_picker_extension()
+    completion_divider_extension = load_completion_divider_extension()
     command_prefix = (
         str(managed_runtime.node),
         str(managed_runtime.entrypoint),
@@ -409,6 +428,7 @@ def create_launch_plan(
                 catalog, endpoint, dwarfstar_endpoint
             ),
             model_picker_extension=model_picker_extension,
+            completion_divider_extension=completion_divider_extension,
             mode="passthrough",
             remote_llama=remote_llama,
         )
@@ -425,6 +445,7 @@ def create_launch_plan(
                 catalog, endpoint, dwarfstar_endpoint
             ),
             model_picker_extension=model_picker_extension,
+            completion_divider_extension=completion_divider_extension,
             mode="management",
             remote_llama=remote_llama,
         )
@@ -456,6 +477,7 @@ def create_launch_plan(
         dwarfstar_endpoint=dwarfstar_endpoint,
         config_content=render_config(catalog, endpoint, dwarfstar_endpoint),
         model_picker_extension=model_picker_extension,
+        completion_divider_extension=completion_divider_extension,
         mode="session",
         remote_llama=remote_llama,
     )
@@ -546,9 +568,16 @@ def prepare_state(
     models = agent_dir / "models.json"
     extensions = agent_dir / "extensions"
     model_picker = extensions / "rocmplete-model-picker.ts"
+    completion_divider = extensions / "rocmplete-completion-divider.ts"
     validate_managed_parent(models, paths.root, data_dir, "Pi model config")
     validate_managed_parent(
         model_picker, paths.root, data_dir, "Pi model-picker extension"
+    )
+    validate_managed_parent(
+        completion_divider,
+        paths.root,
+        data_dir,
+        "Pi completion-divider extension",
     )
     for path in (agent_dir.parent, agent_dir, extensions):
         try:
@@ -586,6 +615,11 @@ def prepare_state(
         model_picker,
         plan.model_picker_extension,
         "Pi model-picker extension",
+    )
+    _refresh_private_file(
+        completion_divider,
+        plan.completion_divider_extension,
+        "Pi completion-divider extension",
     )
     return agent_dir
 
