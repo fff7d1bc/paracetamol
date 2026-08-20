@@ -147,7 +147,7 @@ Choose the ComfyUI destination category intentionally, such as
 `applications/comfyui/extra-model-paths.yaml`.
 
 If a new revision changes bytes while keeping the same destination, existing
-installations will report a size or hash mismatch and ROCmplete will refuse to
+installations will report a size or hash mismatch and Paracetamol will refuse to
 overwrite them. Prefer a versioned upstream filename when practical. Otherwise
 document the explicit user migration: move the old file aside, run
 `content install TARGET`, and remove the backup only after validation.
@@ -179,7 +179,7 @@ instead of overwriting managed content. Never follow a floating branch such as
 `main` at install or runtime.
 
 Runtime readiness also requires a current entry in
-`content/.rocmplete/verification.json`. The installer creates that receipt only
+`content/.paracetamol/verification.json`. The installer creates that receipt only
 after preparing the shared runtime SELinux label, where applicable, and hashing
 the complete file. Labeling before hashing prevents the first container mount
 from invalidating the receipt through a ctime-only change. The receipt's
@@ -236,7 +236,7 @@ DSpark bundle contains that target first and its exact support GGUF second;
 the runtime accepts the pair only through `--dspark` and never treats the
 support file as another user-selectable model.
 
-`default_context` is ROCmplete's reviewed starting context for the preset. It
+`default_context` is Paracetamol's reviewed starting context for the preset. It
 may be the model's native context for agent-focused models or a smaller
 operational default for models aimed at constrained hardware or bounded tasks.
 A user can override it for one launch with `--context`; the preset keeps the
@@ -260,7 +260,7 @@ profiles as backend aliases or infer one backend's optimum from another's
 acceptance ratio.
 
 `context_override_architectures` is an optional built-in-catalog list of exact
-GGUF architecture prefixes. When present, ROCmplete sets each architecture's
+GGUF architecture prefixes. When present, Paracetamol sets each architecture's
 `context_length` metadata to the selected launch context and disables
 llama.cpp automatic fitting. This is a narrow mechanism for reviewed model
 releases whose advertised extended window exceeds their GGUF metadata; it is
@@ -294,7 +294,7 @@ inheriting a nearby architecture's result.
 
 `agent_tools` is an optional, explicit compatibility decision. Set it only
 when the model, pinned GGUF template, and llama.cpp policy are maintained for
-ROCmplete's reviewed Chat Completions function-tool contract. It requires
+Paracetamol's reviewed Chat Completions function-tool contract. It requires
 `jinja: true` and a `default_context` of at least 16384. Do not use it as an
 installation selector or a statement about general model quality. After
 changing preset IDs, contexts, templates, or this flag, regenerate every
@@ -405,7 +405,7 @@ A content pack extends the built-in catalog for one installation without
 committing machine-specific or non-public metadata:
 
 ```bash
-./rocmplete content install \
+./paracetamol content install \
   --from-file local-content/base-models.json \
   --from-file local-content/loras.json \
   --dry-run
@@ -505,7 +505,7 @@ Civitai artifact instead pins an exact model and version:
 }
 ```
 
-Keep Civitai artifacts in user-owned local content packs, not ROCmplete's
+Keep Civitai artifacts in user-owned local content packs, not Paracetamol's
 built-in catalog. A Civitai model-version ID identifies a listing version, but
 does not make its hosted file immutable: a creator can replace that file while
 the version ID and download URL stay unchanged. Exact size and SHA-256 checks
@@ -522,7 +522,7 @@ loader requires the same host and exact `/api/download/models/VERSION` path;
 the catalog hash remains the final identity check.
 
 Set `requires_auth` when anonymous download returns an authorization error.
-ROCmplete reads `CIVITAI_TOKEN` from the host environment, passes only the
+Paracetamol reads `CIVITAI_TOKEN` from the host environment, passes only the
 environment-variable name through the Podman command, and never writes the
 token into the pack, process arguments, or persistent data. Authentication is
 sent only to Civitai's initial download endpoint; it is not forwarded to the
@@ -549,7 +549,7 @@ bounded transport and pin the member:
 "sha256": "extracted-member-sha256"
 ```
 
-Civitai can replace a ZIP behind an unchanged model-version ID. ROCmplete
+Civitai can replace a ZIP behind an unchanged model-version ID. Paracetamol
 therefore does not use the outer ZIP hash as the content identity. It starts
 these small archive downloads from byte zero, stops at `max_size`, requires
 exactly one regular member with the selected path, and verifies the member's
@@ -595,7 +595,7 @@ A downloaded ComfyUI workflow can use the same artifact schema with:
 Workflow targets must end in `.json` and install below
 `apps/comfyui/user/default/workflows/imported/`, separate from the curated,
 rendered workflows under `workflows/curated/`. This installs exact bytes only:
-ROCmplete does not execute
+Paracetamol does not execute
 the JSON, install its custom nodes or extra model dependencies, validate its
 graph, create a benchmark, or claim that it is runnable.
 
@@ -623,7 +623,7 @@ Private Hugging Face and authenticated Civitai downloads use environment
 tokens:
 
 ```bash
-HF_TOKEN=... CIVITAI_TOKEN=... ./rocmplete content install \
+HF_TOKEN=... CIVITAI_TOKEN=... ./paracetamol content install \
   --from-file local-content/models.json \
   --accept-license \
   --acknowledge-license-risk
@@ -637,13 +637,13 @@ model-version IDs.
 
 ## Reuse an existing local model library
 
-`content install` can reuse exact bytes from an old ROCmplete directory or
+`content install` can reuse exact bytes from an old Paracetamol directory or
 another local model collection before falling back to the configured remote
 source:
 
 ```bash
-./rocmplete content install all \
-  --local-mirror /mnt/old-rocmplete \
+./paracetamol content install all \
+  --local-mirror /mnt/old-paracetamol \
   --accept-license --acknowledge-license-risk
 ```
 
@@ -658,8 +658,8 @@ into resumable staging instead. A same-filesystem move needs no second
 full-sized copy, which is useful on ext4:
 
 ```bash
-./rocmplete content install all \
-  --local-mirror /mnt/old-rocmplete \
+./paracetamol content install all \
+  --local-mirror /mnt/old-paracetamol \
   --local-mirror-move \
   --accept-license --acknowledge-license-risk
 ```
@@ -686,7 +686,7 @@ To expose a new recipe:
 - add one `ContentRecipe` below the consuming application in
   `APPLICATION_RECIPES`;
 - select the smallest exact bundle set that produces one useful outcome;
-- describe its launch through one typed `RecipeLaunch`; ROCmplete derives the
+- describe its launch through one typed `RecipeLaunch`; Paracetamol derives the
   copyable next command printed after installation;
 - update content help, the user README, the relevant application guide, and
   focused recipe-resolution tests.
@@ -716,7 +716,7 @@ and globally unique.
 
 ## Add or update a curated workflow
 
-ROCmplete does not store editable UI-format workflows as hand-authored source.
+Paracetamol does not store editable UI-format workflows as hand-authored source.
 It extracts an official workflow resource from the pinned package in the
 ComfyUI image and transforms it deterministically.
 
@@ -801,7 +801,7 @@ for `LoadImage`, and a unique output prefix. It rejects `LoadVideo`.
 Run:
 
 ```bash
-./rocmplete benchmark comfyui run BUNDLE --dry-run
+./paracetamol benchmark comfyui run BUNDLE --dry-run
 ```
 
 Then run both persistent-cache and isolated-cache benchmarks on supported
@@ -814,8 +814,8 @@ llama.cpp presets need no catalog benchmark graph. Run the pinned native
 binary directly:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput --preset PRESET --dry-run
-./rocmplete benchmark llama-cpp throughput --preset PRESET
+./paracetamol benchmark llama-cpp throughput --preset PRESET --dry-run
+./paracetamol benchmark llama-cpp throughput --preset PRESET
 ```
 
 Keep prompt tokens, generation tokens, repetitions, profile, render-node set,
@@ -827,8 +827,8 @@ unless the exact file identity is recorded separately.
 For family-wide validation:
 
 ```bash
-./rocmplete benchmark comfyui suite --family FAMILY --dry-run
-./rocmplete benchmark comfyui suite --family FAMILY --accept-license
+./paracetamol benchmark comfyui suite --family FAMILY --dry-run
+./paracetamol benchmark comfyui suite --family FAMILY --accept-license
 ```
 
 The real suite requires every selected bundle to be installed and never
@@ -845,21 +845,21 @@ Run the cheap validation first:
 ```bash
 python3 -m json.tool catalog/catalog.json >/dev/null
 go test ./internal/catalog ./internal/content ./internal/cli ./internal/benchmark
-./rocmplete content list
-./rocmplete content install NEW_BUNDLE --dry-run
+./paracetamol content list
+./paracetamol content install NEW_BUNDLE --dry-run
 ```
 
 For a selector:
 
 ```bash
-./rocmplete content install SELECTOR --dry-run
-./rocmplete content install all --dry-run
+./paracetamol content install SELECTOR --dry-run
+./paracetamol content install all --dry-run
 ```
 
 Then perform an actual download into a test data directory, followed by:
 
 ```bash
-./rocmplete content status NEW_BUNDLE --verify \
+./paracetamol content status NEW_BUNDLE --verify \
   --data-dir /absolute/test/data
 ```
 

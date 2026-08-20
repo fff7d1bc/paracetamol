@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sort"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/content"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/content"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/verification"
 )
 
 var ProviderID = identity.StateNamespace

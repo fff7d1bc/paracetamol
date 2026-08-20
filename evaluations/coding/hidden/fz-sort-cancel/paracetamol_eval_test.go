@@ -6,22 +6,22 @@ import (
 	"time"
 )
 
-type rocmpleteEvalCancelAfterChecksContext struct {
+type paracetamolEvalCancelAfterChecksContext struct {
 	checks      int
 	cancelAfter int
 }
 
-func (c *rocmpleteEvalCancelAfterChecksContext) Deadline() (time.Time, bool) {
+func (c *paracetamolEvalCancelAfterChecksContext) Deadline() (time.Time, bool) {
 	return time.Time{}, false
 }
 
-func (c *rocmpleteEvalCancelAfterChecksContext) Done() <-chan struct{} {
+func (c *paracetamolEvalCancelAfterChecksContext) Done() <-chan struct{} {
 	return nil
 }
 
-func (c *rocmpleteEvalCancelAfterChecksContext) Value(any) any { return nil }
+func (c *paracetamolEvalCancelAfterChecksContext) Value(any) any { return nil }
 
-func (c *rocmpleteEvalCancelAfterChecksContext) Err() error {
+func (c *paracetamolEvalCancelAfterChecksContext) Err() error {
 	c.checks++
 	if c.checks >= c.cancelAfter {
 		return context.Canceled
@@ -29,12 +29,12 @@ func (c *rocmpleteEvalCancelAfterChecksContext) Err() error {
 	return nil
 }
 
-func TestROCmpleteEvalStableSortCancelsAfterStarting(t *testing.T) {
+func TestParacetamolEvalStableSortCancelsAfterStarting(t *testing.T) {
 	items := make([]int, 256*100)
 	for i := range items {
 		items[i] = len(items) - i
 	}
-	ctx := &rocmpleteEvalCancelAfterChecksContext{cancelAfter: 5}
+	ctx := &paracetamolEvalCancelAfterChecksContext{cancelAfter: 5}
 	if stableSortContext(ctx, items, func(a, b int) bool { return a < b }) {
 		t.Fatal("stableSortContext completed after cancellation")
 	}
@@ -43,7 +43,7 @@ func TestROCmpleteEvalStableSortCancelsAfterStarting(t *testing.T) {
 	}
 }
 
-func TestROCmpleteEvalStableSortPreservesEqualOrder(t *testing.T) {
+func TestParacetamolEvalStableSortPreservesEqualOrder(t *testing.T) {
 	type item struct {
 		key   int
 		order int

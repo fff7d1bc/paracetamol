@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"testing"
 
-	"rocmplete/internal/config"
+	"paracetamol/internal/config"
 )
 
 func writeArchive(t *testing.T, unsafe bool) string {

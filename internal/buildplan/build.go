@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rocmplete/internal/application"
-	"rocmplete/internal/identity"
+	"paracetamol/internal/application"
+	"paracetamol/internal/identity"
 )
 
-const pipCacheContainerPath = "/var/cache/rocmplete/pip"
+const pipCacheContainerPath = "/var/cache/paracetamol/pip"
 
 func CacheDir(environment map[string]string) (string, error) {
 	root := environment["XDG_CACHE_HOME"]

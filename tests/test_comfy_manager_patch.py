@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PATCH_PATH = ROOT / "applications" / "comfyui" / "patch_manager.py"
 SPEC = importlib.util.spec_from_file_location(
-    "rocmplete_comfy_manager_patch", PATCH_PATH
+    "paracetamol_comfy_manager_patch", PATCH_PATH
 )
 PATCH_MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PATCH_MODULE)
@@ -43,9 +43,9 @@ class ComfyManagerPatchTests(unittest.TestCase):
         legacy = (self.root / "legacy" / "manager_server.py").read_text()
         manager_util = (self.root / "common" / "manager_util.py").read_text()
         for text in (common, legacy):
-            self.assertIn('os.environ.get("ROCMLETE_HOST_LISTEN", address)', text)
+            self.assertIn('os.environ.get("PARACETAMOL_HOST_LISTEN", address)', text)
         self.assertIn(
-            'os.environ.get("ROCMLETE_CUSTOM_NODE_ENV") != "1"', manager_util
+            'os.environ.get("PARACETAMOL_CUSTOM_NODE_ENV") != "1"', manager_util
         )
         self.assertIn("get_pip_cmd(force_uv=force_uv)", manager_util)
 

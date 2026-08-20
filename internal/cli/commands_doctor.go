@@ -11,11 +11,11 @@ import (
 	"strings"
 	"syscall"
 
-	"rocmplete/internal/config"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	runtimeplan "rocmplete/internal/runtime"
+	"paracetamol/internal/config"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	runtimeplan "paracetamol/internal/runtime"
 )
 
 func (app *App) commandDoctor(args []string) error {

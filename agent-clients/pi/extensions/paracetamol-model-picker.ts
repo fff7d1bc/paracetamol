@@ -34,7 +34,7 @@ const FAMILY_ORDER = [
 	"KAT-Coder",
 	"Gemma 4",
 	"DeepSeek V4 Flash",
-	"Other ROCmplete",
+	"Other Paracetamol",
 ];
 
 type AnyModel = Model<any>;
@@ -44,13 +44,13 @@ function sameModel(left: AnyModel | undefined, right: AnyModel): boolean {
 }
 
 function modelFamily(model: AnyModel): string {
-	if (model.provider === "rocmplete") {
+	if (model.provider === "paracetamol") {
 		if (model.id.startsWith("qwen3.8-")) return "Qwen 3.8";
 		if (model.id.startsWith("qwen3.6-")) return "Qwen 3.6";
 		if (model.id.startsWith("muse-glimmer-")) return "Muse Glimmer";
 		if (model.id.startsWith("kat-coder-")) return "KAT-Coder";
 		if (model.id.startsWith("gemma4-")) return "Gemma 4";
-		return "Other ROCmplete";
+		return "Other Paracetamol";
 	}
 	if (model.provider === "dwarfstar") return "DeepSeek V4 Flash";
 	return `Provider: ${model.provider}`;
@@ -368,7 +368,7 @@ async function promptForModel(
 	await promptForThinking(pi, ctx, selected);
 }
 
-export default function rocmpleteModelPicker(pi: ExtensionAPI): void {
+export default function paracetamolModelPicker(pi: ExtensionAPI): void {
 	let selectionActive = false;
 	let unsubscribeTerminal: (() => void) | undefined;
 
@@ -379,7 +379,7 @@ export default function rocmpleteModelPicker(pi: ExtensionAPI): void {
 			await promptForModel(pi, ctx);
 		} catch (error) {
 			ctx.ui.notify(
-				`ROCmplete model picker failed: ${error instanceof Error ? error.message : String(error)}`,
+				`Paracetamol model picker failed: ${error instanceof Error ? error.message : String(error)}`,
 				"error",
 			);
 		} finally {
@@ -388,7 +388,7 @@ export default function rocmpleteModelPicker(pi: ExtensionAPI): void {
 	};
 
 	pi.registerCommand("select-model", {
-		description: "Select a ROCmplete model by family, then choose reasoning",
+		description: "Select a Paracetamol model by family, then choose reasoning",
 		handler: async (_arguments, ctx) => runModelPicker(ctx),
 	});
 

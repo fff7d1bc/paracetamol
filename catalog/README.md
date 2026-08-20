@@ -3,7 +3,7 @@
 The catalog describes agreements, downloadable artifacts, shared archive
 collections, installable bundles and selector groups, deterministic UI
 workflows, and managed benchmark graphs. It contains no model weights or sample
-media. Use `./rocmplete content list --bundles` for the current exact inventory.
+media. Use `./paracetamol content list --bundles` for the current exact inventory.
 
 ## Structure
 
@@ -56,9 +56,9 @@ DSpark support artifact. Do not maintain a second inventory in this file.
 Inspect the catalog through the same public commands users run:
 
 ```bash
-./rocmplete content list --bundles
-./rocmplete content list --models --details
-./rocmplete content install all --dry-run
+./paracetamol content list --bundles
+./paracetamol content list --models --details
+./paracetamol content install all --dry-run
 ```
 
 The application and content guides explain how to choose and run these
@@ -74,7 +74,7 @@ verified before catalog entry. A missing or unclear license must be represented
 honestly as `NOASSERTION`; it may never be silently treated as its upstream
 project's license.
 
-Benchmark graphs are independently derived from ROCmplete's pinned
+Benchmark graphs are independently derived from Paracetamol's pinned
 MIT-licensed official templates. Application and extension source is fetched
 directly from the pinned, attributed public repositories documented in
 `THIRD_PARTY_NOTICES.md`.

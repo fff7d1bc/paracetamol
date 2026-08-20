@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"rocmplete/internal/cli"
+	"paracetamol/internal/cli"
 )
 
 func main() {

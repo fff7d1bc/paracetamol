@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"rocmplete/internal/probe"
+	"paracetamol/internal/probe"
 )
 
 func main() {

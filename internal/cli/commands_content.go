@@ -11,17 +11,17 @@ import (
 	"strconv"
 	"strings"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/config"
-	"rocmplete/internal/content"
-	"rocmplete/internal/contentpack"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/recipes"
-	"rocmplete/internal/remoteimport"
-	"rocmplete/internal/storage"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/content"
+	"paracetamol/internal/contentpack"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/recipes"
+	"paracetamol/internal/remoteimport"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/verification"
 )
 
 func (app *App) commandContent(args []string) error {

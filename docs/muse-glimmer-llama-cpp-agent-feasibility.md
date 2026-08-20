@@ -49,16 +49,16 @@ the same guided family without changing the default.
 
 | Component | Tested value |
 | --- | --- |
-| ROCmplete source | `6d59816` before the integration change |
+| Paracetamol source | `6d59816` before the integration change |
 | Project ROCm | `7.14.0` |
 | llama.cpp | `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0` |
-| Normal llama.cpp image | `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r15` |
+| Normal llama.cpp image | `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r15` |
 | Profile and architecture | Strix Halo, `gfx1151`, Radeon 8060S |
 | Host memory | 128 GB LPDDR5X, 112 GiB TTM/GTT policy |
 | Host software | Fedora Linux 44 non-OSTree, kernel `7.1.7-200.fc44.x86_64`, rootless Podman |
 | Agent clients | Maki 0.4.5 and OpenCode 1.18.15 |
 
-The server probes used the normal ROCmplete confinement: rootless Podman,
+The server probes used the normal Paracetamol confinement: rootless Podman,
 read-only root, dropped capabilities, `no-new-privileges`, the selected render
 node, and `/dev/kfd`. No tested run produced a GPU reset, device loss, OOM, or
 kernel fault.
@@ -170,7 +170,7 @@ failures:
   outside Maki's bubblewrap view, so Git objects appeared inaccessible and the
   model spent turns diagnosing a broken checkout. A self-contained
   `git clone --no-local` fixed the fixture. This was not model confusion.
-- Unit-test failures involving `/run/rocmplete/runtime` occurred inside the
+- Unit-test failures involving `/run/paracetamol/runtime` occurred inside the
   agent sandbox and reflected its intentionally restricted runtime view. They
   were not an inference crash.
 
@@ -191,7 +191,7 @@ and draft `context_length` metadata and remained experimental until useful
 prompts beyond 128K pass retrieval, quality, draft-acceptance, latency, and
 memory checks.
 
-The removed Q8 file is managed content from an older catalog, but ROCmplete
+The removed Q8 file is managed content from an older catalog, but Paracetamol
 does not silently delete persistent model bytes during an upgrade. After the
 new bundle installs and verifies successfully, an operator may manually
 remove the obsolete Q8 file if it is no longer needed.
@@ -199,7 +199,7 @@ remove the obsolete Q8 file if it is no longer needed.
 ## Candidate integration verification
 
 The completed integration was synced to the same target host and built as
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16`, image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r16`, image ID
 `15aa29c45b41f011f5edacd9f5fb761db26eae488d447453414e2d1b2a9e07a3`.
 The content installer reused the retained official target through its normal
 local-mirror path, rechecked all 19,653,957,984 bytes against the catalog
@@ -243,9 +243,9 @@ append a second default-high directive.
 
 The selected target GGUF still embeds the original 7,167-byte template from
 the initial base-model release. No GGUF or draft file changed after
-ROCmplete's pinned GGUF revision; later commits in that repository changed
+Paracetamol's pinned GGUF revision; later commits in that repository changed
 only its model card. Updating the model artifact pin would therefore not
-deliver the template correction. ROCmplete instead bundles Meta's exact
+deliver the template correction. Paracetamol instead bundles Meta's exact
 immutable template and selects it through the existing closed managed-template
 policy for all three then-managed dynamic-target Muse presets. The target and
 DFlash artifact revisions, sizes, and hashes remain unchanged.
@@ -261,7 +261,7 @@ The server stopped cleanly, and the host recorded no OOM, GPU reset, page
 fault, ring timeout, or device loss.
 
 The completed integration was built as
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r17`, image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r17`, image ID
 `98369219e680a5e44517ba1955a4fb3ce18fbcbf80cc3d89961e76648ddcb193`.
 The bundled template in the image matched the recorded SHA-256, and
 `pip check` reported no broken requirements. A direct managed server rendered
@@ -298,13 +298,13 @@ after offsets 13073344 and 13076160. Their only changed metadata key is
 matches the aligned tensor-data offset delta. The republished dynamic file's
 full SHA-256 also matched the recorded candidate hash. Meta's commit describes
 the change as a fixed-template update and canonical rename. The embedded
-template is byte-for-byte the same 9,992-byte template that ROCmplete already
+template is byte-for-byte the same 9,992-byte template that Paracetamol already
 bundles and verifies.
 
 The renamed dynamic target and draft are therefore a metadata-only repack,
 not a model update. Moving the catalog pin would download about 19.82 GiB of
 behavior-equivalent content and require an unnecessary managed-content
-migration and cleanup. ROCmplete retains the older immutable target and draft
+migration and cleanup. Paracetamol retains the older immutable target and draft
 plus its exact managed template.
 
 The 17 GB Q4_K_M target is different. It is a smaller quantization candidate,
@@ -330,7 +330,7 @@ the 17 GB target plausible, but this is an inference rather than a disclosed
 AMD setting. The headline is therefore a useful lead, not a directly
 comparable acceptance result.
 
-The ROCmplete follow-up first held the catalog-pinned dynamic target, managed
+The Paracetamol follow-up first held the catalog-pinned dynamic target, managed
 ATEM template, image, sampler, 131072-token allocation, one active slot, and
 512-token output budget fixed. It compared ROCm and Vulkan with no draft,
 DFlash depth 4, and the managed depth 15 at shallow, 32664-token, and
@@ -339,7 +339,7 @@ one seed and a fresh server. Requests that exhausted the budget while still
 reasoning are timing workloads rather than standalone answer-quality tests.
 
 The image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19`, built from
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19`, built from
 llama.cpp revision `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0`. Sampling was
 temperature 1.0, top-p 0.95, top-k 64, min-p 0, presence penalty 0, and
 repeat penalty 1. A slash below separates generated tokens/s from end-to-end
@@ -479,7 +479,7 @@ quality beyond 128K.
 
 A follow-up on the same `gfx1151` host used llama.cpp release `b10430`, commit
 `4c1a0af40d88c7fbb3b15c85bf2e8016d1d5b64c`, through image
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r21`. It retained
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-4c1a0af-r21`. It retained
 the official dynamic target and DFlash bytes, forced 262144 context for both
 architectures, F16 target and draft KV, Flash Attention auto, batch 2048,
 microbatch 512, and the managed Muse sampler. Each timing case used the same
@@ -514,7 +514,7 @@ forced-256K preset uses depth 12 on ROCm, while its 128K preset retains depth
 
 ## 2026-08-17 scoped off fallback
 
-ROCmplete stopped decoding Maki's output-window-dependent numeric budgets as
+Paracetamol stopped decoding Maki's output-window-dependent numeric budgets as
 native model levels. Removing that server-wide compatibility block also
 removed its unsafe generic off-to-low rule, which had changed Qwen off into
 low. Muse still cannot disable reasoning, and OMP cannot hide its generic off
@@ -527,7 +527,7 @@ Meta's 9,992-byte template. The resulting 10,219-byte managed file has
 SHA-256
 `4849b801303b351a82dab37107a665410070cd58315fadccd8f5fde02084bd34`.
 Its immutable source revision and hash remain recorded above so later updates
-can separate Meta changes from ROCmplete's narrow policy.
+can separate Meta changes from Paracetamol's narrow policy.
 
 ## Retest triggers
 

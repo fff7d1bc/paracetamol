@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"rocmplete/internal/application"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
+	"paracetamol/internal/application"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
 )
 
 type Application = application.Spec

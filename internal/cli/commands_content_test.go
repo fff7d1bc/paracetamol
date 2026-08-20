@@ -7,8 +7,8 @@ import (
 	"sort"
 	"testing"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/project"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/project"
 )
 
 func TestInstallWorkflowPreservesAndReplacesUserChangesExplicitly(t *testing.T) {

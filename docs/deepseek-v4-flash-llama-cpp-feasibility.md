@@ -1,7 +1,7 @@
 # DeepSeek V4 Flash llama.cpp feasibility snapshot
 
 This is a dated maintainer research record from 2026-08-09. It captures why
-the Unsloth DeepSeek V4 Flash 0731 GGUF was not added to ROCmplete's llama.cpp
+the Unsloth DeepSeek V4 Flash 0731 GGUF was not added to Paracetamol's llama.cpp
 catalog after target-hardware testing, and what to repeat when the relevant
 backends change.
 
@@ -34,7 +34,7 @@ supported. DwarfStar was not changed, replaced, or removed.
 
 | Component | Tested value |
 | --- | --- |
-| ROCmplete base | `1324069b7aff6bd18d3acee8e6a365c221c6d777` |
+| Paracetamol base | `1324069b7aff6bd18d3acee8e6a365c221c6d777` |
 | Project ROCm | `7.14.0` |
 | Original llama.cpp pin | `ddd4ec1428a6201e18975ea52b07c71e0f9aef26` |
 | Candidate llama.cpp pin | `0ef6e55edb306fcbcf73e6f1f41923cccb9cf7f8` |
@@ -43,10 +43,10 @@ supported. DwarfStar was not changed, replaced, or removed.
 | Host memory | 128 GB installed (122.83 GiB usable), no swap |
 | GPU memory policy | 112 GiB TTM/GTT |
 | Host software | Ubuntu 26.04, kernel `7.0.0-28`, rootless Podman 5.7 |
-| Runtime confinement | Normal ROCmplete read-only, capability-free application container |
+| Runtime confinement | Normal Paracetamol read-only, capability-free application container |
 
 The candidate llama.cpp pin built successfully with HIP and Vulkan. All four
-ROCmplete llama.cpp patches applied cleanly:
+Paracetamol llama.cpp patches applied cleanly:
 
 - `hip-apu-host-buffer.patch`;
 - `reasoning-effort-budget.patch`;
@@ -128,7 +128,7 @@ the same verified GGUF and a fresh server:
 Disabling the fused DeepSeek V4 hyper-connection operations required a
 disposable source patch because the tested llama.cpp revision exposed no CLI,
 environment, or public context parameter for them. That experiment ruled out
-the most obvious new kernels but was not suitable as a carried ROCmplete
+the most obvious new kernels but was not suitable as a carried Paracetamol
 patch.
 
 `ROCBLAS_USE_HIPBLASLT=1` explains how a throughput-only report can show about
@@ -141,7 +141,7 @@ tests but did not repair DeepSeek V4 in this experiment:
 [llama.cpp PR 26544](https://github.com/ggml-org/llama.cpp/pull/26544).
 
 Turning off Flash Attention also failed, so the problem was not reduced to
-ROCmplete's quantized-KV Flash Attention patch. F16 K and V caches were used
+Paracetamol's quantized-KV Flash Attention patch. F16 K and V caches were used
 for the accepted comparison; quantized K is independently known to corrupt
 DeepSeek V4 on affected llama.cpp revisions:
 [llama.cpp issue 25382](https://github.com/ggml-org/llama.cpp/issues/25382).
@@ -230,7 +230,7 @@ For a future retest with a local model path, the equivalent benchmark shape
 is:
 
 ```bash
-./rocmplete benchmark llama-cpp throughput \
+./paracetamol benchmark llama-cpp throughput \
   --model /ABSOLUTE/PATH/TO/DeepSeek-V4-Flash-0731-UD-IQ3_XXS-00001-of-00004.gguf \
   --profile strix-halo \
   --backend vulkan \
@@ -319,7 +319,7 @@ Revisit this candidate when one of these changes materially:
 - the Vulkan device-loss issue is closed with an applicable fix;
 - the tiled-transpose or Vulkan lightning-indexer work lands upstream;
 - ROCm, Mesa/RADV, kernel, or firmware moves; or
-- ROCmplete gains a coherent model-level backend policy.
+- Paracetamol gains a coherent model-level backend policy.
 
 For a retry:
 
@@ -355,6 +355,6 @@ were clean, and no commit was created for the rejected integration.
 
 The verified model, ordinary candidate image, disposable no-fused-kernel
 image, and benchmark JSON were retained in the acceptance host's normal
-ROCmplete storage for a future retry. Their presence is not support evidence.
+Paracetamol storage for a future retry. Their presence is not support evidence.
 Persistent content or images should be removed only through an explicit,
 scoped cleanup decision.

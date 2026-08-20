@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rocmplete/internal/buildplan"
-	"rocmplete/internal/config"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/runtime"
+	"paracetamol/internal/buildplan"
+	"paracetamol/internal/config"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/runtime"
 )
 
 type cleanupTarget struct {

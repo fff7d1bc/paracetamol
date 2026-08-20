@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/catalog"
+	"paracetamol/internal/catalog"
 )
 
 func TestEveryCatalogBenchmarkLoadsAndMatches(t *testing.T) {

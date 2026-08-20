@@ -95,7 +95,7 @@ index 7ed4865..3429f93 100644
 +// Apply data supplied by the model preset only as defaults. This keeps the
 +// template responsible for resolving thinking mode without giving Jinja a
 +// side channel into sampler state, and explicit request fields remain final.
-+static void rocmplete_apply_sampling_defaults(
++static void paracetamol_apply_sampling_defaults(
 +        json & llama_params,
 +        const json & body,
 +        const json & defaults_by_reasoning,
@@ -120,7 +120,7 @@ index 7ed4865..3429f93 100644
          }
      }
  
-+    rocmplete_apply_sampling_defaults(
++    paracetamol_apply_sampling_defaults(
 +        llama_params, body, opt.sampling_defaults_by_reasoning,
 +        inputs.enable_thinking);
 +

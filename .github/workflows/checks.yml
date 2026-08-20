@@ -32,11 +32,11 @@ jobs:
           make static
 
       - name: Compile retained Python resources
-        run: PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
+        run: PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 
       - name: Check shell syntax
         run: |
-          bash -n rocmplete bin/rocmplete bin/pi bin/maki \
+          bash -n paracetamol bin/paracetamol bin/pi bin/maki \
             applications/comfyui/entrypoint.sh \
             applications/llama-cpp/entrypoint.sh \
             applications/dwarfstar/entrypoint.sh
@@ -48,14 +48,14 @@ jobs:
 
       - name: Exercise dependency-free CLI
         run: |
-          ./rocmplete --version
-          ./rocmplete content list
-          ./rocmplete content install comfyui image \
+          ./paracetamol --version
+          ./paracetamol content list
+          ./paracetamol content install comfyui image \
             --dry-run \
             --non-interactive \
             --accept-license \
             --acknowledge-license-risk
-          ./rocmplete content install all \
+          ./paracetamol content install all \
             --dry-run \
             --non-interactive \
             --accept-license \

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestROCmpleteEvalProbeResultColumnStaysAligned(t *testing.T) {
+func TestParacetamolEvalProbeResultColumnStaysAligned(t *testing.T) {
 	opts := defaultProbeOptions()
 	resultColumn := strings.Index(formatProbeAttemptHeader(), "result")
 	tests := []struct {

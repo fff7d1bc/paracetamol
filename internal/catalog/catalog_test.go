@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/project"
+	"paracetamol/internal/project"
 )
 
 func TestLoadRepositoryCatalog(t *testing.T) {

@@ -1,17 +1,11 @@
-PRODUCT_ID ?= rocmplete
-DISPLAY_NAME ?= ROCmplete
+PRODUCT_ID ?= paracetamol
+DISPLAY_NAME ?= Paracetamol
 STATE_NAMESPACE ?= $(PRODUCT_ID)
 IMAGE_NAMESPACE ?= localhost/$(PRODUCT_ID)
 LABEL_NAMESPACE ?= io.github.fff7d1bc.$(PRODUCT_ID)
-ifeq ($(origin ENV_PREFIX),undefined)
-ifeq ($(PRODUCT_ID),rocmplete)
-# Preserve the established pre-release spelling for the default identity.
-ENV_PREFIX := ROCMLETE
-else
-# The Go identity package derives a normalized prefix from a renamed command.
-ENV_PREFIX :=
-endif
-endif
+# Empty means the Go identity package derives the normalized prefix from the
+# command name. A build may still select an explicit spelling when needed.
+ENV_PREFIX ?=
 GO_PACKAGE := .
 BUILD_ROOT := $(CURDIR)/build
 GOTOOLCHAIN ?= local
@@ -33,12 +27,12 @@ GOTMPDIR := $(PLATFORM_BUILD_DIR)/tmp
 GOTELEMETRYDIR := $(PLATFORM_BUILD_DIR)/telemetry
 GOENV := off
 GOFLAGS := -modcacherw -buildvcs=false
-IDENTITY_LDFLAGS := -X 'rocmplete/internal/identity.CommandName=$(PRODUCT_ID)' \
-	-X 'rocmplete/internal/identity.DisplayName=$(DISPLAY_NAME)' \
-	-X 'rocmplete/internal/identity.StateNamespace=$(STATE_NAMESPACE)' \
-	-X 'rocmplete/internal/identity.EnvPrefix=$(ENV_PREFIX)' \
-	-X 'rocmplete/internal/identity.ImageNamespace=$(IMAGE_NAMESPACE)' \
-	-X 'rocmplete/internal/identity.LabelNamespace=$(LABEL_NAMESPACE)'
+IDENTITY_LDFLAGS := -X 'paracetamol/internal/identity.CommandName=$(PRODUCT_ID)' \
+	-X 'paracetamol/internal/identity.DisplayName=$(DISPLAY_NAME)' \
+	-X 'paracetamol/internal/identity.StateNamespace=$(STATE_NAMESPACE)' \
+	-X 'paracetamol/internal/identity.EnvPrefix=$(ENV_PREFIX)' \
+	-X 'paracetamol/internal/identity.ImageNamespace=$(IMAGE_NAMESPACE)' \
+	-X 'paracetamol/internal/identity.LabelNamespace=$(LABEL_NAMESPACE)'
 
 export GOOS
 export GOARCH

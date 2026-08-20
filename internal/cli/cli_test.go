@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 func TestHelpListsCoreCommands(t *testing.T) {
@@ -43,7 +43,7 @@ func TestVersion(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "ROCmplete") {
+	if !strings.Contains(stdout.String(), "Paracetamol") {
 		t.Fatalf("unexpected version output: %q", stdout.String())
 	}
 }
@@ -53,7 +53,7 @@ func TestFlattenedAcceptanceHelp(t *testing.T) {
 	if status := Main(context.Background(), []string{"acceptance", "--help"}, strings.NewReader(""), &stdout, &stderr); status != 0 {
 		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "Usage: ./rocmplete acceptance [OPTIONS]") {
+	if !strings.Contains(stderr.String(), "Usage: ./paracetamol acceptance [OPTIONS]") {
 		t.Fatalf("unexpected acceptance help: %s", stderr.String())
 	}
 	stdout.Reset()
@@ -81,7 +81,7 @@ func TestCommandGroupHelpIsSuccessful(t *testing.T) {
 			if status != 0 {
 				t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 			}
-			if !strings.Contains(stdout.String(), "Usage: ./rocmplete "+command) {
+			if !strings.Contains(stdout.String(), "Usage: ./paracetamol "+command) {
 				t.Fatalf("unexpected group help: %q", stdout.String())
 			}
 		})

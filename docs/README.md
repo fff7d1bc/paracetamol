@@ -1,4 +1,4 @@
-# ROCmplete documentation
+# Paracetamol documentation
 
 This is the complete documentation index. Start with the root
 [`README.md`](../README.md) for installation and the shortest working path,
@@ -22,10 +22,10 @@ For a shorter application walkthrough made of copyable commands, use the
 built-in guide:
 
 ```bash
-./rocmplete guide
-./rocmplete guide comfyui
-./rocmplete guide llama-cpp
-./rocmplete guide dwarfstar
+./paracetamol guide
+./paracetamol guide comfyui
+./paracetamol guide llama-cpp
+./paracetamol guide dwarfstar
 ```
 
 Command-specific `--help` output remains the authoritative interface
@@ -33,7 +33,7 @@ reference.
 
 ## Maintainer documentation
 
-Coming back to ROCmplete after some time away? Start here. These references
+Coming back to Paracetamol after some time away? Start here. These references
 explain how the project fits together, how to change it safely, and how to
 know when an upgrade is genuinely finished. The public contribution path and
 baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
@@ -55,12 +55,12 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 3. Inspect the current CLI and content inventory:
 
    ```bash
-   ./rocmplete --help
-   ./rocmplete guide
-   ./rocmplete run --help
-   ./rocmplete content list
-   ./rocmplete content list bundles
-   ./rocmplete content install all --dry-run
+   ./paracetamol --help
+   ./paracetamol guide
+   ./paracetamol run --help
+   ./paracetamol content list
+   ./paracetamol content list bundles
+   ./paracetamol content install all --dry-run
    ```
 
    Then check that the short path in the root README and the focused
@@ -73,7 +73,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    make check
    make test
    make static
-   PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
+   PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
    bash -n applications/comfyui/entrypoint.sh \
      applications/llama-cpp/entrypoint.sh \
      applications/dwarfstar/entrypoint.sh
@@ -126,7 +126,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Content metadata and relationships | `catalog/catalog.json` |
 | Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |
 | ComfyUI benchmark preparation and results | `internal/benchmark/` |
-| PATH launchers | `bin/rocmplete`, `bin/pi`, `bin/maki` |
+| PATH launchers | `bin/paracetamol`, `bin/pi`, `bin/maki` |
 | Agent model policy and sandbox | `internal/agent/models.go`, `internal/agent/sandbox.go` |
 | Runtime client configuration | `internal/agent/pi.go`, `internal/agent/maki.go` |
 | Managed Pi installation | `agent-clients/pi/`, `internal/agent/piruntime.go` |

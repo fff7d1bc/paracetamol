@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 type HTTPClient interface {

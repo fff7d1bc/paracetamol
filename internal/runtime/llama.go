@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"rocmplete/internal/config"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/podman"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/config"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/podman"
+	"paracetamol/internal/storage"
 )
 
 type LlamaOptions struct {
@@ -97,26 +97,26 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	command = append(command, "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", options.ContainerName)
 	command = append(command, podman.ManagedArguments("llama-cpp", options.ContainerRole)...)
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("llama-cpp")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
-	command = env(command, "ROCMLETE_PROFILE", options.Profile)
-	command = env(command, "ROCMLETE_LLAMA_BACKEND", options.Backend)
-	command = env(command, "ROCMLETE_SOURCE_REVISION", options.SourceRevision)
-	command = env(command, "ROCMLETE_LLAMA_MODE", options.Mode)
-	command = env(command, "ROCMLETE_LLAMA_MODEL", containerModel)
+	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
+	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
+	command = env(command, "PARACETAMOL_SOURCE_REVISION", options.SourceRevision)
+	command = env(command, "PARACETAMOL_LLAMA_MODE", options.Mode)
+	command = env(command, "PARACETAMOL_LLAMA_MODEL", containerModel)
 	draft := ""
 	if options.ManagedDraft != "" {
 		draft = "/content/models/" + options.ManagedDraft
 	}
-	command = env(command, "ROCMLETE_LLAMA_DRAFT_MODEL", draft)
-	command = env(command, "ROCMLETE_LLAMA_SPECULATIVE_TYPE", options.SpeculativeType)
-	command = env(command, "ROCMLETE_LLAMA_DRAFT_TOKENS", options.DraftTokens)
+	command = env(command, "PARACETAMOL_LLAMA_DRAFT_MODEL", draft)
+	command = env(command, "PARACETAMOL_LLAMA_SPECULATIVE_TYPE", options.SpeculativeType)
+	command = env(command, "PARACETAMOL_LLAMA_DRAFT_TOKENS", options.DraftTokens)
 	var overrides []string
 	for _, architecture := range options.ContextOverrideArchitectures {
 		overrides = append(overrides, fmt.Sprintf("%s.context_length=int:%d", architecture, options.Context))
 	}
-	command = env(command, "ROCMLETE_LLAMA_CONTEXT_OVERRIDE", strings.Join(overrides, ","))
-	command = env(command, "ROCMLETE_LLAMA_JINJA", boolInt(options.Jinja))
-	command = env(command, "ROCMLETE_LLAMA_REASONING_PRESERVE", boolInt(options.ReasoningPreserve))
-	command = env(command, "ROCMLETE_LLAMA_CHAT_TEMPLATE", options.ChatTemplate)
+	command = env(command, "PARACETAMOL_LLAMA_CONTEXT_OVERRIDE", strings.Join(overrides, ","))
+	command = env(command, "PARACETAMOL_LLAMA_JINJA", boolInt(options.Jinja))
+	command = env(command, "PARACETAMOL_LLAMA_REASONING_PRESERVE", boolInt(options.ReasoningPreserve))
+	command = env(command, "PARACETAMOL_LLAMA_CHAT_TEMPLATE", options.ChatTemplate)
 	sampling := ""
 	if len(options.SamplingDefaults) > 0 {
 		encoded, err := json.Marshal(options.SamplingDefaults)
@@ -125,24 +125,24 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 		}
 		sampling = string(encoded)
 	}
-	command = env(command, "ROCMLETE_LLAMA_SAMPLING_DEFAULTS", sampling)
-	command = env(command, "ROCMLETE_LISTEN", containerListen(options.Listen))
-	command = env(command, "ROCMLETE_HOST_LISTEN", options.Listen)
-	command = env(command, "ROCMLETE_PORT", options.Port)
-	command = env(command, "ROCMLETE_GPU_COUNT", len(options.RenderNodes))
-	command = env(command, "ROCMLETE_RENDER_NODES", strings.Join(options.RenderNodes, ","))
+	command = env(command, "PARACETAMOL_LLAMA_SAMPLING_DEFAULTS", sampling)
+	command = env(command, "PARACETAMOL_LISTEN", containerListen(options.Listen))
+	command = env(command, "PARACETAMOL_HOST_LISTEN", options.Listen)
+	command = env(command, "PARACETAMOL_PORT", options.Port)
+	command = env(command, "PARACETAMOL_GPU_COUNT", len(options.RenderNodes))
+	command = env(command, "PARACETAMOL_RENDER_NODES", strings.Join(options.RenderNodes, ","))
 	for _, profile := range platform.ProfileIDs() {
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
-		command = env(command, "ROCMLETE_LLAMA_FLASH_ATTN_"+key, options.ProfileFlashAttention[profile])
-		command = env(command, "ROCMLETE_LLAMA_KV_CACHE_"+key, options.ProfileKVCache[profile])
+		command = env(command, "PARACETAMOL_LLAMA_FLASH_ATTN_"+key, options.ProfileFlashAttention[profile])
+		command = env(command, "PARACETAMOL_LLAMA_KV_CACHE_"+key, options.ProfileKVCache[profile])
 	}
 	if options.Mode != "server" {
 		command = append(command, "--network", "none")
 	}
 	if options.RouterPreset != "" {
-		command = append(command, "--volume", options.RouterPreset+":/run/rocmplete/models.ini"+readOnly)
-		command = env(command, "ROCMLETE_LLAMA_ROUTER", 1)
-		command = env(command, "ROCMLETE_LLAMA_MODELS_MAX", options.ModelsMax)
+		command = append(command, "--volume", options.RouterPreset+":/run/paracetamol/models.ini"+readOnly)
+		command = env(command, "PARACETAMOL_LLAMA_ROUTER", 1)
+		command = env(command, "PARACETAMOL_LLAMA_MODELS_MAX", options.ModelsMax)
 	}
 	if options.Mode == "server" {
 		command = append(command, publicationNetwork(options.Listen)...)
@@ -205,11 +205,11 @@ func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) [
 		"--volume", modelRoot+":/content/models"+readOnly,
 		"--env", "HOME=/tmp",
 	)
-	command = env(command, "ROCMLETE_PROFILE", options.Profile)
-	command = env(command, "ROCMLETE_LLAMA_BACKEND", options.Backend)
-	command = env(command, "ROCMLETE_LLAMA_MODE", "bench")
-	command = env(command, "ROCMLETE_LLAMA_MODEL", containerModel)
-	command = env(command, "ROCMLETE_GPU_COUNT", len(options.RenderNodes))
+	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
+	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
+	command = env(command, "PARACETAMOL_LLAMA_MODE", "bench")
+	command = env(command, "PARACETAMOL_LLAMA_MODEL", containerModel)
+	command = env(command, "PARACETAMOL_GPU_COUNT", len(options.RenderNodes))
 	if options.Profile != "cpu" {
 		command = append(command, gpuDeviceArguments(options.RenderNodes)...)
 	}

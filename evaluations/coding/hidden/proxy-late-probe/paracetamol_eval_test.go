@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestROCmpleteClosesSuccessfulProbeReturningAfterSelection(t *testing.T) {
+func TestParacetamolClosesSuccessfulProbeReturningAfterSelection(t *testing.T) {
 	original := probeFunc
 	t.Cleanup(func() {
 		probeFunc = original
@@ -37,14 +37,14 @@ func TestROCmpleteClosesSuccessfulProbeReturningAfterSelection(t *testing.T) {
 	if selected.conn != winnerConn {
 		t.Fatal("waitForTarget did not return the winning connection")
 	}
-	waitForROCmpleteClosedConn(t, lateConn)
+	waitForParacetamolClosedConn(t, lateConn)
 	if winnerConn.closed.Load() != 0 {
 		t.Fatal("waitForTarget closed the winning connection")
 	}
 	closeConn(selected.conn)
 }
 
-func TestROCmpleteClosesSuccessfulProbeReturningAfterTimeout(t *testing.T) {
+func TestParacetamolClosesSuccessfulProbeReturningAfterTimeout(t *testing.T) {
 	original := probeFunc
 	t.Cleanup(func() {
 		probeFunc = original
@@ -71,10 +71,10 @@ func TestROCmpleteClosesSuccessfulProbeReturningAfterTimeout(t *testing.T) {
 	}
 
 	close(release)
-	waitForROCmpleteClosedConn(t, lateConn)
+	waitForParacetamolClosedConn(t, lateConn)
 }
 
-func waitForROCmpleteClosedConn(t *testing.T, conn *fakeConn) {
+func waitForParacetamolClosedConn(t *testing.T, conn *fakeConn) {
 	t.Helper()
 	deadline := time.After(time.Second)
 	ticker := time.NewTicker(time.Millisecond)

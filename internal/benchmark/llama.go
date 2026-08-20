@@ -10,13 +10,13 @@ import (
 	"os"
 	"strings"
 
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/process"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/process"
 )
 
 const (
-	LlamaSchema           = "rocmplete.llama-benchmark.v2"
-	LlamaComparisonSchema = "rocmplete.llama-backend-comparison.v2"
+	LlamaSchema           = "paracetamol.llama-benchmark.v2"
+	LlamaComparisonSchema = "paracetamol.llama-backend-comparison.v2"
 )
 
 type ImageIdentity struct {
@@ -48,9 +48,9 @@ type LlamaParameters struct {
 	FlashAttention   string `json:"flash_attention,omitempty"`
 }
 
-// LlamaResult owns the stable ROCmplete envelope. Results remain RawMessage
+// LlamaResult owns the stable Paracetamol envelope. Results remain RawMessage
 // because llama-bench's evidence object is an upstream format, not a control-
-// plane state machine that ROCmplete should pretend to own.
+// plane state machine that Paracetamol should pretend to own.
 type LlamaResult struct {
 	Schema      string            `json:"schema"`
 	CreatedAt   string            `json:"created_at"`

@@ -8,12 +8,12 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/atomicfile"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/content"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/storage"
-	"rocmplete/internal/verification"
+	"paracetamol/internal/atomicfile"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/content"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/verification"
 )
 
 func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []string, error) {
@@ -63,7 +63,7 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 			section = append(section, "reasoning-preserve = true")
 		}
 		if preset.ChatTemplate != "" {
-			section = append(section, "jinja = true", "chat-template-file = /usr/local/share/rocmplete/llama-chat-templates/"+preset.ChatTemplate+".jinja")
+			section = append(section, "jinja = true", "chat-template-file = /usr/local/share/paracetamol/llama-chat-templates/"+preset.ChatTemplate+".jinja")
 		}
 		if preset.SamplingPolicy != "" {
 			policy := managed.SamplingPolicies[preset.SamplingPolicy]
@@ -75,10 +75,10 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 		}
 		for _, profile := range platform.ProfileIDs() {
 			if value := preset.FlashAttention[profile]; value != "" {
-				section = append(section, "rocmplete-flash-attn-"+profile+" = "+value)
+				section = append(section, "paracetamol-flash-attn-"+profile+" = "+value)
 			}
 			if value := preset.KVCache[profile]; value != "" {
-				section = append(section, "rocmplete-kv-cache-"+profile+" = "+value)
+				section = append(section, "paracetamol-kv-cache-"+profile+" = "+value)
 			}
 		}
 		if preset.SpeculativeType != "" {

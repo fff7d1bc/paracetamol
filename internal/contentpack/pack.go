@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/catalog"
+	"paracetamol/internal/catalog"
 )
 
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/process"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/process"
 )
 
 func projectRoot(t *testing.T) string {

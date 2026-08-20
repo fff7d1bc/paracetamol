@@ -35,9 +35,9 @@ on 2026-08-17 after model templates, reasoning defaults, sampling ownership,
 and harness integrations changed. New comparisons must start from fresh
 results under the current policy.
 
-## Frozen version 5 task set
+## Frozen version 6 task set
 
-Version 5 contains nine implementation tasks and two review tasks:
+Version 6 contains nine implementation tasks and two review tasks:
 
 Implementation tasks:
 
@@ -55,8 +55,9 @@ Implementation tasks:
   destructive source-replacement safety.
 - `proxy-late-probe` uses Go in ssh-host-proxy, from `b8513df` to `03d7624`, to
   test ownership of late asynchronous connections.
-- `rc-selinux-verify` uses standard-library Python in ROCmplete, from
-  `6f866b3` to `a333de2`, to test labeling before hashing and receipts.
+- `rc-selinux-verify` uses the project's historical standard-library Python
+  control plane, from `6f866b3` to `a333de2`, to test labeling before hashing
+  and receipts.
 - `nonet-lifecycle` uses Go and cgo in nonet, from `3f63875` to `374e8be`, to
   test signal relay and parent-death safety.
 
@@ -82,7 +83,7 @@ For every task and repetition the runner:
    tree. Symlinks and special archive members are rejected.
 4. Adds controlled `AGENTS.md` instructions, initializes a new repository,
    and creates exactly one synthetic commit with no remote. The allowlisted
-   ROCmplete source has its existing root instructions replaced so the model
+   Paracetamol source has its existing root instructions replaced so the model
    receives the same evaluation policy as every other task. An unexpected
    instruction file in any other source still fails closed. Later public
    history is not available inside the fixture.
@@ -92,7 +93,7 @@ For every task and repetition the runner:
    task uses the repository's standard-library test suite and receives no
    dependency environment or package installer preparation.
 6. Runs Pi noninteractively with no saved session, extensions, skills, or
-   prompt templates. The normal ROCmplete model catalog still owns endpoint,
+   prompt templates. The normal Paracetamol model catalog still owns endpoint,
    context metadata, output allowance, and sampling policy; Qwen3.8's selected
    mode is resolved by the server and recorded in the result metadata.
 7. Preserves the complete worktree diff and structured Pi transcript.
@@ -114,7 +115,7 @@ file counts, and oversized files or patches are rejected. Hidden tests and
 protected snapshots are siblings of the sandboxed fixture and are not mounted
 into Pi.
 
-Review tasks require only `ROCMLETE_EVAL_ANSWER.md`. Unexpected source changes,
+Review tasks require only `PARACETAMOL_EVAL_ANSWER.md`. Unexpected source changes,
 network-command evidence, missing evidence, or an implausibly short or long
 answer invalidate capture. Valid answers remain `review-pending` for human
 factual grading and never increase the implementation solve rate.
@@ -157,7 +158,7 @@ intentionally unbounded:
 
 ```bash
 timeout --foreground --signal=INT --kill-after=90s 45m \
-  ./rocmplete benchmark agent --preset PRESET \
+  ./paracetamol benchmark agent --preset PRESET \
     --thinking LEVEL --task TASK
 ```
 
@@ -192,7 +193,7 @@ stronger final check.
 
 Changing any prompt, pin, tree, hidden test, or fixture instruction changes
 the suite fingerprint and requires a new named suite version. Do not silently
-rewrite `rocmplete-coding-v5` after results exist. Version 1 was superseded
+rewrite `paracetamol-coding-v6` after results exist. Version 1 was superseded
 during initial calibration because asking the agent to run `go build ./...`
 left an untracked executable in a single-main-package fixture. Version 2 moved
 that build check to the controller. Version 3 makes the grader's existing
@@ -202,9 +203,14 @@ Version 4 makes the fixture's existing no-generated-build-artifacts instruction
 an invalidating grading rule after version 3 calibration captured an ignored
 root-level Go executable. Earlier results remain evidence under their exact
 fingerprint and project revision and are not relabeled under later suite
-versions. Version 5 adds the ssh-host-proxy, ROCmplete, and nonet implementation
-tasks plus a fixed Python standard-library adapter. It does not relabel
-version 4 measurements as version 5 results.
+versions. Version 5 adds the ssh-host-proxy, SELinux-labeling, and nonet
+implementation tasks plus a fixed Python standard-library adapter. It does not
+relabel version 4 measurements as version 5 results. Version 6 applies the
+Paracetamol identity to controller-owned fixture filenames, review-answer
+names, and the suite definition. The pinned pre-rename Python task necessarily
+retains the module imports present at that historical base commit. Version 5
+measurements remain evidence under their recorded fingerprint and are not
+relabeled.
 
 For a new implementation task:
 

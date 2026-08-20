@@ -44,10 +44,10 @@ here for repeating the EPP matrix.
 
 ## Snapshot under test
 
-- ROCmplete source commit:
+- Paracetamol source commit:
   `579739aae340cf094bfb4d73c576f01ba8ce69de`
 - llama.cpp image:
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r25`
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r25`
 - image ID:
   `55b2ed6796687891d18e77b86bf8d1ded883ce3a03c5e97769da92ddb21a803c`
 - llama.cpp commit:

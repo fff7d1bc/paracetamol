@@ -3,19 +3,19 @@ package identity
 import "testing"
 
 func TestDerivedIdentity(t *testing.T) {
-	if got := Command("build", "llama-cpp"); got != "./rocmplete build llama-cpp" {
+	if got := Command("build", "llama-cpp"); got != "./paracetamol build llama-cpp" {
 		t.Fatalf("command=%q", got)
 	}
-	if got := Image("llama-cpp:test"); got != "localhost/rocmplete:llama-cpp:test" {
+	if got := Image("llama-cpp:test"); got != "localhost/paracetamol:llama-cpp:test" {
 		t.Fatalf("image=%q", got)
 	}
-	if got := Container("llama-cpp"); got != "rocmplete-llama-cpp" {
+	if got := Container("llama-cpp"); got != "paracetamol-llama-cpp" {
 		t.Fatalf("container=%q", got)
 	}
-	if got := EnvironmentPrefix(); got != "ROCMLETE" {
+	if got := EnvironmentPrefix(); got != "PARACETAMOL" {
 		t.Fatalf("environment prefix=%q", got)
 	}
-	if got := Current().EnvPrefix; got != "ROCMLETE" {
+	if got := Current().EnvPrefix; got != "PARACETAMOL" {
 		t.Fatalf("current environment prefix=%q", got)
 	}
 }

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"rocmplete/internal/benchmark"
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/storage"
 )
 
 func TestValidateComfySuiteResumeRequiresCompletedEvidence(t *testing.T) {

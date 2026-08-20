@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/storage"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/storage"
 )
 
 type PiPlan struct {
@@ -142,7 +142,7 @@ func PiConfig(managed catalog.Catalog, endpoint, dwarfstarEndpoint string) ([]by
 }
 
 func piProvider(name, endpoint string, models []map[string]any) map[string]any {
-	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": "rocmplete-local", "authHeader": false, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true}, "models": models}
+	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": "paracetamol-local", "authHeader": false, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true}, "models": models}
 }
 
 func zeroCost() map[string]int {
@@ -164,11 +164,11 @@ func CreatePiPlan(ctx context.Context, managed catalog.Catalog, dataRoot, projec
 	if err != nil {
 		return PiPlan{}, err
 	}
-	picker, err := regularFile(filepath.Join(projectRoot, "agent-clients", "pi", "extensions", "rocmplete-model-picker.ts"), "Pi model-picker extension")
+	picker, err := regularFile(filepath.Join(projectRoot, "agent-clients", "pi", "extensions", "paracetamol-model-picker.ts"), "Pi model-picker extension")
 	if err != nil {
 		return PiPlan{}, err
 	}
-	divider, err := regularFile(filepath.Join(projectRoot, "agent-clients", "pi", "extensions", "rocmplete-completion-divider.ts"), "Pi completion-divider extension")
+	divider, err := regularFile(filepath.Join(projectRoot, "agent-clients", "pi", "extensions", "paracetamol-completion-divider.ts"), "Pi completion-divider extension")
 	if err != nil {
 		return PiPlan{}, err
 	}
@@ -243,7 +243,7 @@ func PreparePiState(plan PiPlan, dataRoot string) (string, error) {
 	if err := storage.ValidateManagedParent(filepath.Join(agentDir, "models.json"), paths.Root, dataRoot, "Pi model config"); err != nil {
 		return "", err
 	}
-	for path, contents := range map[string][]byte{filepath.Join(agentDir, "models.json"): plan.Config, filepath.Join(extensions, "rocmplete-model-picker.ts"): plan.ModelPicker, filepath.Join(extensions, "rocmplete-completion-divider.ts"): plan.CompletionDivider} {
+	for path, contents := range map[string][]byte{filepath.Join(agentDir, "models.json"): plan.Config, filepath.Join(extensions, "paracetamol-model-picker.ts"): plan.ModelPicker, filepath.Join(extensions, "paracetamol-completion-divider.ts"): plan.CompletionDivider} {
 		if err := writeAtomic(path, contents, 0o600, false); err != nil {
 			return "", err
 		}

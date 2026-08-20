@@ -1,6 +1,6 @@
 {
   "schema": 2,
-  "identifier": "rocmplete-coding-v5",
+  "identifier": "paracetamol-coding-v6",
   "description": "Frozen Go and Python coding-agent acceptance tasks derived from reviewed repository changes.",
   "fixture_instructions": "# Coding evaluation fixture\n\nThis is a disposable, single-commit evaluation checkout. Work only inside this repository. Do not use the network, inspect parent directories, or look for hidden tests or later repository history. Read the task carefully, inspect the implementation, and make the smallest complete change. For Go, format changed sources with gofmt and run `go test ./...`. For Python, preserve Python 3.12 compatibility, use only the existing standard-library environment, and run `PYTHONPATH=src python3 -m unittest discover -s tests`. The controller performs independent tests and a build or compilation check after your work, so do not leave generated executables or other build artifacts in the repository. Do not weaken existing tests or dependency pins.\n",
   "tasks": [
@@ -17,9 +17,9 @@
       "safety_critical": false,
       "prompt": "The human probe-attempt table loses column alignment when a predicted output size grows from three-digit MiB to four-digit MiB, and the result column moves again around the GiB rollover. Make the header and every attempt row use one shared width policy so the result column remains fixed for ordinary MiB, 1000+ MiB, 1023.9 MiB, and 1.0 GiB values. Preserve the existing wording and numeric formatting.",
       "hidden": {
-        "resource": "hidden/re-align/rocmplete_eval_test.go",
-        "sha256": "4eeea50b48df400af9b700151e4181602028a0e442211ab36e253ad18163fe29",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/re-align/paracetamol_eval_test.go",
+        "sha256": "c7021cb6189cde3a4b60c786497891a36fbd6d23a45469fe3bc24623bed716c7",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -35,9 +35,9 @@
       "safety_critical": false,
       "prompt": "The scanner calls raw x/sys Unix directory-open functions, which can return EINTR instead of applying the retry behavior users expect from Go's os helpers. Make both no-follow directory-open paths retry only EINTR until they succeed or return a different error. Introduce a small generic `retryEINTR` helper so the behavior is directly testable, and preserve all existing no-follow and error-classification behavior.",
       "hidden": {
-        "resource": "hidden/fz-eintr/rocmplete_eval_test.go",
-        "sha256": "0bda6e3f6bc12832f6ac77957c8b08b4c19f14e1255d94bfb306db321ef56195",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/fz-eintr/paracetamol_eval_test.go",
+        "sha256": "05e4514a881b153188da94777e3651e12c839d3a0deabb8b6bbe95a9bf9135c7",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -53,9 +53,9 @@
       "safety_critical": false,
       "prompt": "When --follow-symlinks is active, scanned entries describe symlink targets, but interactive Ctrl-Space recency sorting lazily reads the link's own mtime. Carry follow-mode into the picker model so lazy mtime lookup follows the target in that mode while the default mode continues to use the link itself. Preserve caching, error handling, and all other sorting behavior. Document the user-visible follow-mode recency behavior.",
       "hidden": {
-        "resource": "hidden/fz-symlink/rocmplete_eval_test.go",
-        "sha256": "d727277efa2dc5d324b925cbe42e4868f22b18aa02cfa3d889cd60d52b5cb897",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/fz-symlink/paracetamol_eval_test.go",
+        "sha256": "180e6a44fa0e557b9e659f18d120c7cb4f7c4d7212e29ac87f03e203568691d8",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -71,9 +71,9 @@
       "safety_critical": true,
       "prompt": "Cancellation is not propagated consistently through grouped encoding. An already-canceled group command can report a normal failure, cache preparation can launch context-free external probes, and a failed group probe may begin fallback encoding after cancellation. Thread the caller context through cache and external-tool inspection, make grouped command interruption return status 130, and ensure every group loop and fallback boundary stops before starting additional work when the context is canceled. Preserve partial probe-cache persistence for genuine non-cancellation failures.",
       "hidden": {
-        "resource": "hidden/re-cancel/rocmplete_eval_test.go",
-        "sha256": "d58cd9cce7745b4bed20384deac173bbdf66150a40c2665d920003f3ccdff65d",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/re-cancel/paracetamol_eval_test.go",
+        "sha256": "d9e27a846099df32ff6b8fb0d21810570b800e13e48863a63f6daeac6b78bd39",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -89,9 +89,9 @@
       "safety_critical": false,
       "prompt": "Large asynchronous ranking jobs poll cancellation while scoring entries but can still block on stable result sorting and natural near-tie sorting after the query has changed. Add a reusable generic `stableSortContext` helper that can stop an in-progress stable sort, then propagate cancellation through every ranking sort and output-copy phase. Preserve stable ordering, natural near-tie behavior, the background-context convenience wrappers, and the contract that canceled work returns no partial result.",
       "hidden": {
-        "resource": "hidden/fz-sort-cancel/rocmplete_eval_test.go",
-        "sha256": "212e5a603a90449f09791cf22085aabe8dd7bed07e148e6f9a27a9859e92e3d2",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/fz-sort-cancel/paracetamol_eval_test.go",
+        "sha256": "a169d49f64c8f1a079fa14ce4e806d0480aea0c266f39006fa9a631f25301073",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -107,9 +107,9 @@
       "safety_critical": true,
       "prompt": "A source file can be modified or replaced after eligibility checking and before final publication. The encoder must never remove that changed or replacement file. Capture a `sourceSnapshot` during path validation, verify it before probing and encoding boundaries, and use `verifySourceSnapshot`, `quarantineSource`, and `restoreQuarantinedSource` helpers around final publication so a mismatched replacement is restored in place and a matching source can be recovered if later publication or logging fails. Keep source-size logging correct after quarantine and apply the same contract to grouped encoding.",
       "hidden": {
-        "resource": "hidden/re-source-race/rocmplete_eval_test.go",
-        "sha256": "bb31603e3a3303fadfa5d18c8db0f565ce8c2fdedc8dca47492a44c71990ae1e",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/re-source-race/paracetamol_eval_test.go",
+        "sha256": "5b486a2ca8eda81e243dfe13f54bc2da1a5b30bdb8c7ec2586b98e226119605d",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -125,17 +125,17 @@
       "safety_critical": false,
       "prompt": "Parallel target selection can return as soon as one target wins or the selection deadline expires, while a canceled probe may still return a successful live connection afterward. Ensure that every successful probe connection that arrives after selection is closed without delaying the winner or timeout path. Preserve the selected connection, existing target-state reporting, priority behavior, and prompt return when a probe is slow to unwind.",
       "hidden": {
-        "resource": "hidden/proxy-late-probe/rocmplete_eval_test.go",
-        "sha256": "fff6210323ee6f6514454f2e3dcdd67129bb329836fff7873d6e3a97210d09b5",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/proxy-late-probe/paracetamol_eval_test.go",
+        "sha256": "5ac321a5660cb7093a91a50c904cfdd44d5e3a139247e63197495cb678241ef6",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
       "identifier": "rc-selinux-verify",
       "kind": "implementation",
       "toolchain": "python-stdlib",
-      "repository": "rocmplete",
-      "remote": "https://github.com/fff7d1bc/rocmplete.git",
+      "repository": "paracetamol",
+      "remote": "https://github.com/fff7d1bc/paracetamol.git",
       "base_commit": "6f866b3c3c7108ebf60cf6afb99e39163538c06b",
       "base_tree": "d821dcf90adb0b615c8a55d46ad47594bfb55cb0",
       "reference_commit": "a333de212e0dbbc20386d5578815e6a70b952deb",
@@ -143,9 +143,9 @@
       "safety_critical": true,
       "prompt": "On an enforcing SELinux host, the first shared container bind mount can relabel managed model content after it was hashed and receipted, changing filesystem identity and making the new receipt stale. Add a `prepare_shared_content_label` host helper that applies the exact shared container-file label without following links only when the existing SELinux volume policy requires it. Invoke it before hashing both installed and staged artifacts for the shared model targets, while leaving non-shared targets unchanged. Fail closed when the required labeling tool is unavailable or fails, and preserve download staging, verification, receipt, and dry-run behavior.",
       "hidden": {
-        "resource": "hidden/rc-selinux-verify/test_rocmplete_eval_runtime_label.py",
+        "resource": "hidden/rc-selinux-verify/test_paracetamol_eval_runtime_label.py",
         "sha256": "cfa8733603fbd3c7a64cb66a997ece5818cdaf1bbc9896b3d9a2f001e21f25fe",
-        "destination": "tests/test_rocmplete_eval_runtime_label.py"
+        "destination": "tests/test_paracetamol_eval_runtime_label.py"
       }
     },
     {
@@ -161,9 +161,9 @@
       "safety_critical": true,
       "prompt": "Tie the final command lifecycle to its nonet wrapper. While a target is running, relay wrapper SIGTERM to the direct child and wait for the child's real status through a directly testable `waitForTargetSignal` helper. In the clone child, use the Linux parent-death facility so an abruptly lost Go parent cannot leave the target detached, and close the race where the parent dies before that policy is installed. Preserve setup-failure handling, forwarding cleanup, and the target's exit or signal semantics.",
       "hidden": {
-        "resource": "hidden/nonet-lifecycle/rocmplete_eval_test.go",
-        "sha256": "668cd420365078f19e0dbc7167c8a737e7cf4484c80a3ac1f60936d97f942b01",
-        "destination": "rocmplete_eval_test.go"
+        "resource": "hidden/nonet-lifecycle/paracetamol_eval_test.go",
+        "sha256": "1797a152927954a0f7898ccfd0bd07d00b52918ecc42c9f7b7af8ba27f7227a8",
+        "destination": "paracetamol_eval_test.go"
       }
     },
     {
@@ -177,8 +177,8 @@
       "reference_commit": "7f1f6005c64595438602e5bbe757e2730875198a",
       "difficulty": "review",
       "safety_critical": true,
-      "prompt": "Perform a focused safety review of the destructive encode lifecycle. Trace one successful input from eligibility through temporary output creation, media validation, destination publication, logging, and source removal. Then explain what protects the source and destination from path aliasing, replacement races, concurrent publishers, validation failure, cancellation, and failures after the source is quarantined. Cite concrete files and function names. Keep the complete answer between 200 and 2,000 words, write it to `ROCMLETE_EVAL_ANSWER.md`, and do not modify source code.",
-      "answer": "ROCMLETE_EVAL_ANSWER.md"
+      "prompt": "Perform a focused safety review of the destructive encode lifecycle. Trace one successful input from eligibility through temporary output creation, media validation, destination publication, logging, and source removal. Then explain what protects the source and destination from path aliasing, replacement races, concurrent publishers, validation failure, cancellation, and failures after the source is quarantined. Cite concrete files and function names. Keep the complete answer between 200 and 2,000 words, write it to `PARACETAMOL_EVAL_ANSWER.md`, and do not modify source code.",
+      "answer": "PARACETAMOL_EVAL_ANSWER.md"
     },
     {
       "identifier": "review-fzr-concurrency",
@@ -191,8 +191,8 @@
       "reference_commit": "a349035985a0f7c8c91bd0f3fe35e2a9c7bc3de1",
       "difficulty": "review",
       "safety_critical": false,
-      "prompt": "Review how the interactive picker stays responsive while filesystem scanning and query ranking happen concurrently. Trace scan batches, pending-entry flushing, query debounce and generations, cancellation of stale ranking work, Enter during stale refresh, and terminal restoration on normal exit and signals. Explain which snapshot may be selected at each boundary and cite concrete files and function names. Keep the complete answer between 200 and 2,000 words, write it to `ROCMLETE_EVAL_ANSWER.md`, and do not modify source code.",
-      "answer": "ROCMLETE_EVAL_ANSWER.md"
+      "prompt": "Review how the interactive picker stays responsive while filesystem scanning and query ranking happen concurrently. Trace scan batches, pending-entry flushing, query debounce and generations, cancellation of stale ranking work, Enter during stale refresh, and terminal restoration on normal exit and signals. Explain which snapshot may be selected at each boundary and cite concrete files and function names. Keep the complete answer between 200 and 2,000 words, write it to `PARACETAMOL_EVAL_ANSWER.md`, and do not modify source code.",
+      "answer": "PARACETAMOL_EVAL_ANSWER.md"
     }
   ]
 }

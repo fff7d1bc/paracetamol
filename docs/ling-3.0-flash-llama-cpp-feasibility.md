@@ -1,7 +1,7 @@
 # Ling 3.0 Flash llama.cpp feasibility snapshot
 
 This is a dated maintainer research record from 2026-08-11. It explains why
-ROCmplete did not add Ling 3.0 Flash after testing two AtomicChat GGUF
+Paracetamol did not add Ling 3.0 Flash after testing two AtomicChat GGUF
 quantizations on a 128 GB Strix Halo host.
 
 This document is evidence, not a current support declaration. Inspect the
@@ -25,14 +25,14 @@ BailingMoE3 support and the ROCm correctness path are still moving. Retain
 the results and retest after those boundaries converge.
 
 Laguna XS 2.1 was tested in the same investigation and worked correctly in
-ROCmplete's ordinary pinned llama.cpp image. It became the practical model to
+Paracetamol's ordinary pinned llama.cpp image. It became the practical model to
 integrate instead.
 
 ## Snapshot under test
 
 | Component | Tested value |
 | --- | --- |
-| ROCmplete source | `b1587ce` before the catalog integration |
+| Paracetamol source | `b1587ce` before the catalog integration |
 | Project ROCm | `7.14.0` |
 | Normal llama.cpp | `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0` |
 | Atomic TurboQuant fork | `cd560939087c95b93a1f30a95603d6b079436952` from release `b10269-1.5.1` |
@@ -40,7 +40,7 @@ integrate instead.
 | Host memory policy | 128 GB system RAM with a 112 GiB TTM/GTT ceiling |
 | Host software | Fedora Linux 44, kernel `7.1.7-200.fc44.x86_64`, rootless Podman |
 
-The project image used ROCmplete's usual rootless confinement and
+The project image used Paracetamol's usual rootless confinement and
 unified-memory policy. Tests used one selected render node and `/dev/kfd`.
 The final accepted controls left no running container and no recent GPU fault
 in the kernel log.
@@ -77,29 +77,29 @@ The Atomic release archives used for controls were also hashed locally:
 
 ## Support boundary
 
-ROCmplete's pinned upstream llama.cpp rejects the GGUF cleanly with unknown
+Paracetamol's pinned upstream llama.cpp rejects the GGUF cleanly with unknown
 architecture `bailingmoe3`. The relevant upstream work was still open in
 [`llama.cpp` PR 26608](https://github.com/ggml-org/llama.cpp/pull/26608) at
 the time of the experiment.
 
 Atomic's release contained BailingMoE3 and TurboQuant support, but its ROCm
-binary did not contain ROCmplete's integrated-APU host-buffer correction. A
+binary did not contain Paracetamol's integrated-APU host-buffer correction. A
 normal memory-mapped attempt emitted SVM mapping failures and could hang. A
 direct-I/O attempt instead produced a `gfx1151` page fault in
 `k_get_rows_float`. These were backend integration failures, not model-quality
 results.
 
 A disposable image was therefore built from exact Atomic commit
-`cd560939087c95b93a1f30a95603d6b079436952` with two existing ROCmplete
+`cd560939087c95b93a1f30a95603d6b079436952` with two existing Paracetamol
 patches:
 
 - the integrated-APU host-buffer correction; and
 - the reasoning-effort budget compatibility patch used by maintained agent
   clients.
 
-Unrelated ROCmplete Vulkan patches were omitted. The patches applied and the
+Unrelated Paracetamol Vulkan patches were omitted. The patches applied and the
 fork compiled cleanly. The resulting temporary image was approximately
-5.59 GB. No source or patch from that experiment was added to ROCmplete.
+5.59 GB. No source or patch from that experiment was added to Paracetamol.
 
 That patched image eliminated the SVM mapping, hang, and page-fault failure
 under the normal Strix policy. Flash Attention still rejected the model's
@@ -157,10 +157,10 @@ These controls establish three useful facts:
 3. the tested TurboQuant ROCm path is numerically wrong on `gfx1151` even
    after its memory-boundary failures are fixed.
 
-A Laguna XS 2.1 Q4_K_M control in ROCmplete's normal llama.cpp image also
+A Laguna XS 2.1 Q4_K_M control in Paracetamol's normal llama.cpp image also
 returned exact arithmetic, clean separated response content, a valid
 `get_weather({"location":"Warsaw"})` call, and a correct tool-result follow-up
-on ROCm. This makes a general host, ROCmplete confinement, or API-client fault
+on ROCm. This makes a general host, Paracetamol confinement, or API-client fault
 unlikely.
 
 ## Context and memory caveats
@@ -192,6 +192,6 @@ Revisit Ling only when all of the following are practical:
    faults, or unbounded repetition.
 
 If only Atomic's fork remains viable, first isolate its required source
-changes and prove compatibility with ROCmplete's existing upstream GGUF
+changes and prove compatibility with Paracetamol's existing upstream GGUF
 catalog. Do not adopt the fork wholesale or add a Vulkan-only application
 merely because the model loads.

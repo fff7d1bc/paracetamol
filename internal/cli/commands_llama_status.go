@@ -11,15 +11,15 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"rocmplete/internal/catalog"
-	"rocmplete/internal/config"
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
-	"rocmplete/internal/process"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/platform"
+	"paracetamol/internal/process"
 )
 
-const llamaRuntimeReportPath = "/tmp/rocmplete-llama-runtime"
+const llamaRuntimeReportPath = "/tmp/paracetamol-llama-runtime"
 
 var llamaRuntimeKeys = map[string]bool{
 	"schema": true, "mode": true, "profile": true, "backend": true,
@@ -207,7 +207,7 @@ func (app *App) llamaStatus(requested string) error {
 	var selected map[string]string
 	var router map[string]map[string]string
 	if runtimeReport["router"] == "1" {
-		rawRouter, captureErr := app.capturePodman([]string{"exec", application.ContainerName, "cat", "/run/rocmplete/models.ini"}, "cannot read the running llama.cpp router preset")
+		rawRouter, captureErr := app.capturePodman([]string{"exec", application.ContainerName, "cat", "/run/paracetamol/models.ini"}, "cannot read the running llama.cpp router preset")
 		if captureErr != nil {
 			return captureErr
 		}
@@ -233,14 +233,14 @@ func (app *App) llamaStatus(requested string) error {
 	fmt.Fprintf(app.Stdout, "%s llama.cpp runtime\n", identity.DisplayName)
 	writeStatusRows(app.Stdout, [][2]string{
 		{"State", state},
-		{identity.DisplayName, firstNonEmpty(environment["ROCMLETE_SOURCE_REVISION"], app.projectRevision())},
+		{identity.DisplayName, firstNonEmpty(environment["PARACETAMOL_SOURCE_REVISION"], app.projectRevision())},
 		{"Image", image}, {"Image ID", imageID},
 		{"llama.cpp", firstNonEmpty(labels["org.opencontainers.image.revision"], "unknown")},
-		{"ROCm", firstNonEmpty(labels["io.github.fff7d1bc.rocmplete.rocm.version"], "unknown")},
+		{"ROCm", firstNonEmpty(labels["io.github.fff7d1bc.paracetamol.rocm.version"], "unknown")},
 	})
 
 	profile := runtimeReport["profile"]
-	requestedProfile := environment["ROCMLETE_PROFILE"]
+	requestedProfile := environment["PARACETAMOL_PROFILE"]
 	profileDisplay := profile
 	if requestedProfile != "" && requestedProfile != profile {
 		profileDisplay += " (requested " + requestedProfile + ")"
@@ -248,7 +248,7 @@ func (app *App) llamaStatus(requested string) error {
 	writeStatusSection(app.Stdout, "Hardware", [][2]string{
 		{"Backend", runtimeReport["backend"]}, {"Profile", profileDisplay},
 		{"Architecture", runtimeReport["architecture"]}, {"Device", runtimeReport["device"]},
-		{"Render nodes", firstNonEmpty(environment["ROCMLETE_RENDER_NODES"], "none")},
+		{"Render nodes", firstNonEmpty(environment["PARACETAMOL_RENDER_NODES"], "none")},
 	})
 	mode := "direct model"
 	if runtimeReport["router"] == "1" {
@@ -287,7 +287,7 @@ func (app *App) llamaStatus(requested string) error {
 		writeStatusSection(app.Stdout, "Model policy", modelRows)
 	}
 	writeStatusSection(app.Stdout, identity.DisplayName+" behavior", [][2]string{
-		{"Downstream patches", firstNonEmpty(labels["io.github.fff7d1bc.rocmplete.llama-cpp.patches"], "unknown")},
+		{"Downstream patches", firstNonEmpty(labels["io.github.fff7d1bc.paracetamol.llama-cpp.patches"], "unknown")},
 		{"Policy boundary", "catalog defaults are selected after reasoning mode resolution"},
 		{"Secrets", "API-key values and host secret paths are never printed"},
 	})
@@ -334,10 +334,10 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 		if candidate.DraftArtifact != "" {
 			draft = "/content/models/" + managed.Artifacts[candidate.DraftArtifact].Destination
 		}
-		if environment["ROCMLETE_LLAMA_MODEL"] == "/content/models/"+artifact.Destination &&
-			environment["ROCMLETE_LLAMA_DRAFT_MODEL"] == draft &&
-			environment["ROCMLETE_LLAMA_SPECULATIVE_TYPE"] == candidate.SpeculativeType &&
-			environment["ROCMLETE_LLAMA_DRAFT_TOKENS"] == strconv.FormatInt(candidate.DraftTokensForBackend(backend), 10) {
+		if environment["PARACETAMOL_LLAMA_MODEL"] == "/content/models/"+artifact.Destination &&
+			environment["PARACETAMOL_LLAMA_DRAFT_MODEL"] == draft &&
+			environment["PARACETAMOL_LLAMA_SPECULATIVE_TYPE"] == candidate.SpeculativeType &&
+			environment["PARACETAMOL_LLAMA_DRAFT_TOKENS"] == strconv.FormatInt(candidate.DraftTokensForBackend(backend), 10) {
 			candidates = append(candidates, candidate)
 		}
 	}
@@ -377,20 +377,20 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 			reasoningOutput = "preserved in the API response"
 		}
 		speculativeType, draftTokens = section["spec-type"], firstNonEmpty(section["spec-draft-n-max"], "0")
-		flashAttention, kvCache = section["rocmplete-flash-attn-"+profile], section["rocmplete-kv-cache-"+profile]
+		flashAttention, kvCache = section["paracetamol-flash-attn-"+profile], section["paracetamol-kv-cache-"+profile]
 		sampling = section["sampling-defaults-by-reasoning"]
 	} else {
-		modelPath = environment["ROCMLETE_LLAMA_MODEL"]
-		if value := environment["ROCMLETE_LLAMA_CHAT_TEMPLATE"]; value != "" {
+		modelPath = environment["PARACETAMOL_LLAMA_MODEL"]
+		if value := environment["PARACETAMOL_LLAMA_CHAT_TEMPLATE"]; value != "" {
 			template = "managed " + value
 		}
-		if environment["ROCMLETE_LLAMA_REASONING_PRESERVE"] == "1" {
+		if environment["PARACETAMOL_LLAMA_REASONING_PRESERVE"] == "1" {
 			reasoningOutput = "preserved in the API response"
 		}
-		speculativeType, draftTokens = environment["ROCMLETE_LLAMA_SPECULATIVE_TYPE"], firstNonEmpty(environment["ROCMLETE_LLAMA_DRAFT_TOKENS"], "0")
+		speculativeType, draftTokens = environment["PARACETAMOL_LLAMA_SPECULATIVE_TYPE"], firstNonEmpty(environment["PARACETAMOL_LLAMA_DRAFT_TOKENS"], "0")
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
-		flashAttention, kvCache = environment["ROCMLETE_LLAMA_FLASH_ATTN_"+key], environment["ROCMLETE_LLAMA_KV_CACHE_"+key]
-		sampling = environment["ROCMLETE_LLAMA_SAMPLING_DEFAULTS"]
+		flashAttention, kvCache = environment["PARACETAMOL_LLAMA_FLASH_ATTN_"+key], environment["PARACETAMOL_LLAMA_KV_CACHE_"+key]
+		sampling = environment["PARACETAMOL_LLAMA_SAMPLING_DEFAULTS"]
 	}
 	rows := make([][2]string, 0, 20)
 	contextPolicy, reasoning := "model metadata", "not catalog-managed"
@@ -490,7 +490,7 @@ func llamaReproductionCommand(environment, runtimeReport map[string]string, pres
 		command = append(command, "--model", "GGUF_PATH")
 	}
 	command = append(command, "--backend", runtimeReport["backend"], "--profile", runtimeReport["profile"])
-	for _, node := range strings.Split(environment["ROCMLETE_RENDER_NODES"], ",") {
+	for _, node := range strings.Split(environment["PARACETAMOL_RENDER_NODES"], ",") {
 		if node != "" {
 			command = append(command, "--render-node", node)
 		}

@@ -9,11 +9,11 @@ import (
 	"io"
 	"strings"
 
-	"rocmplete/internal/controlerr"
-	"rocmplete/internal/identity"
-	"rocmplete/internal/process"
-	"rocmplete/internal/project"
-	"rocmplete/internal/ui"
+	"paracetamol/internal/controlerr"
+	"paracetamol/internal/identity"
+	"paracetamol/internal/process"
+	"paracetamol/internal/project"
+	"paracetamol/internal/ui"
 )
 
 // Main executes the host control plane and returns a process exit status.

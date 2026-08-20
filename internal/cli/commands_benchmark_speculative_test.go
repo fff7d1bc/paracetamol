@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"rocmplete/internal/benchmark"
+	"paracetamol/internal/benchmark"
 )
 
 func TestValidateSpeculativeResumeBindsDefinitionAndSchedule(t *testing.T) {

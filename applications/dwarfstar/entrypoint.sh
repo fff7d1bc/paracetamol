@@ -6,18 +6,18 @@ die() {
     exit 1
 }
 
-profile="${ROCMLETE_PROFILE:-auto}"
-mode="${ROCMLETE_DWARFSTAR_MODE:-server}"
-model="${ROCMLETE_DWARFSTAR_MODEL:-}"
-listen="${ROCMLETE_LISTEN:-0.0.0.0}"
-host_listen="${ROCMLETE_HOST_LISTEN:-unknown}"
-port="${ROCMLETE_PORT:-8000}"
-context="${ROCMLETE_DWARFSTAR_CONTEXT:-131072}"
-output_tokens="${ROCMLETE_DWARFSTAR_OUTPUT_TOKENS:-16000}"
-prompt="${ROCMLETE_DWARFSTAR_PROMPT:-}"
-no_thinking="${ROCMLETE_DWARFSTAR_NO_THINKING:-0}"
-dspark="${ROCMLETE_DWARFSTAR_DSPARK:-0}"
-dspark_model="${ROCMLETE_DWARFSTAR_DSPARK_MODEL:-}"
+profile="${PARACETAMOL_PROFILE:-auto}"
+mode="${PARACETAMOL_DWARFSTAR_MODE:-server}"
+model="${PARACETAMOL_DWARFSTAR_MODEL:-}"
+listen="${PARACETAMOL_LISTEN:-0.0.0.0}"
+host_listen="${PARACETAMOL_HOST_LISTEN:-unknown}"
+port="${PARACETAMOL_PORT:-8000}"
+context="${PARACETAMOL_DWARFSTAR_CONTEXT:-131072}"
+output_tokens="${PARACETAMOL_DWARFSTAR_OUTPUT_TOKENS:-16000}"
+prompt="${PARACETAMOL_DWARFSTAR_PROMPT:-}"
+no_thinking="${PARACETAMOL_DWARFSTAR_NO_THINKING:-0}"
+dspark="${PARACETAMOL_DWARFSTAR_DSPARK:-0}"
+dspark_model="${PARACETAMOL_DWARFSTAR_DSPARK_MODEL:-}"
 
 case "$profile" in
     auto|rdna4|strix-halo|strix-point) ;;
@@ -73,7 +73,7 @@ profile="$detected_profile"
 
 mkdir -p /data/home
 
-printf '\nROCmplete: DwarfStar %s\n' "$mode"
+printf '\nParacetamol: DwarfStar %s\n' "$mode"
 printf '  profile:        %s\n' "$profile"
 printf '  architecture:   %s\n' "$architecture"
 printf '  model:          %s\n' "$model"

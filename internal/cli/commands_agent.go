@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"rocmplete/internal/agent"
-	"rocmplete/internal/config"
-	"rocmplete/internal/controlerr"
+	"paracetamol/internal/agent"
+	"paracetamol/internal/config"
+	"paracetamol/internal/controlerr"
 )
 
 func (app *App) commandAgent(args []string) error {

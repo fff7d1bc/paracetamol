@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-const internalRootEnvironment = "ROCMLETE_INTERNAL_PROJECT_ROOT"
+const internalRootEnvironment = "PARACETAMOL_INTERNAL_PROJECT_ROOT"
 
 // Root returns the validated source checkout containing runtime resources.
 // The private environment override is set by the eventual checkout launcher;

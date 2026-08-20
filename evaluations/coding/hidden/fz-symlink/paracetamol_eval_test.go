@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestROCmpleteEvalLazyMtimeMatchesFollowMode(t *testing.T) {
+func TestParacetamolEvalLazyMtimeMatchesFollowMode(t *testing.T) {
 	root := t.TempDir()
 	targetPath := filepath.Join(root, "target.jpg")
 	if err := os.WriteFile(targetPath, nil, 0o600); err != nil {

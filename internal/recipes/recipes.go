@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"rocmplete/internal/identity"
+	"paracetamol/internal/identity"
 )
 
 type Recipe struct {

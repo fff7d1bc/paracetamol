@@ -2,7 +2,7 @@
 
 This maintainer research record began on 2026-08-13 and was extended on
 2026-08-14. It evaluates a small set of current llama.cpp tuning and template
-claims against ROCmplete's managed Qwen3.6 models on Strix Halo. It records
+claims against Paracetamol's managed Qwen3.6 models on Strix Halo. It records
 which settings reproduced, which did not, and what remains to be accepted
 before changing managed defaults.
 
@@ -58,7 +58,7 @@ a quantized K/V declaration unless the same profile explicitly enables Flash
 Attention, and direct and router startup derive equivalent llama.cpp policy.
 
 The exact candidate bytes were built as
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19`, image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19`, image ID
 `d4b7065b465a85efbfc5ff0aa10895283bdc5e79b2aae5b528f9f1b6e9647147`, on
 the Fedora 44 Strix Halo host. Package verification passed. Direct ROCm
 startup at the preset's default 262144 context resolved
@@ -77,8 +77,8 @@ performance evidence.
 
 ## Snapshot under test
 
-- ROCmplete llama.cpp image:
-  `localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r18`
+- Paracetamol llama.cpp image:
+  `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r18`
 - llama.cpp commit: `62bf73d25c53b8161f8a22894d4f90c4aebbd7d0`
 - ROCm: 7.14
 - profile and architecture: Strix Halo, `gfx1151`, Radeon 8060S
@@ -89,7 +89,7 @@ performance evidence.
 - target models: the verified managed Q8 Qwen3.6 27B MTP artifact and managed
   UD-Q8-K-XL Qwen3.6 35B-A3B MTP artifact
 
-The normal ROCmplete rootless confinement, exact device exposure, unified
+The normal Paracetamol rootless confinement, exact device exposure, unified
 memory policy, and `--load-mode none` policy remained active. The test left no
 managed container running.
 
@@ -147,7 +147,7 @@ identical for the same seeds.
 
 This does not reproduce older reports of a large recurrent-MTP penalty merely
 from initialized idle slots. Concurrent load remains a different workload,
-but there is no basis here for reducing ROCmplete's server capacity globally.
+but there is no basis here for reducing Paracetamol's server capacity globally.
 
 ### MTP depth three won
 
@@ -174,7 +174,7 @@ averaged 16.78 tokens/s.
 
 The `0.75` case raised aggregate reported acceptance to approximately 91%,
 but suppressed enough useful draft opportunities to reduce final throughput
-by 16.4%. ROCmplete should retain llama.cpp's zero threshold for this preset.
+by 16.4%. Paracetamol should retain llama.cpp's zero threshold for this preset.
 
 ### Q8 K/V helped the dense model at depth
 
@@ -231,7 +231,7 @@ generation phase and remains the appropriate managed default.
 ## Preserved reasoning control
 
 The official Qwen3.6 card recommends preserving thinking for agent scenarios.
-ROCmplete's managed template and pinned llama.cpp already support the relevant
+Paracetamol's managed template and pinned llama.cpp already support the relevant
 `--reasoning-preserve` behavior, but the Qwen presets do not currently enable
 it.
 
@@ -294,7 +294,7 @@ tokens, and expanded the completed-turn history to 34 tokens. Exact v22 also
 injects an `xhigh` instruction when the client supplies no template-level
 effort value, rewrites the tool protocol, adds heuristic tool-error warnings,
 and supports prompt-time truncation. Those are policy changes, not required
-compatibility fixes. ROCmplete's current server patch maps top-level effort to
+compatibility fixes. Paracetamol's current server patch maps top-level effort to
 bounded generation but does not pass that value into template kwargs, so exact
 v22 would silently select its own `xhigh` prompt for ordinary clients.
 
@@ -323,7 +323,7 @@ keeps the compatibility gain independently reviewable and avoids importing
 v22's unrelated agent policy.
 
 The final integration image was
-`localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r20`, image ID
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r20`, image ID
 `ad6d419895b89e050c5e813e6cb0e2ed82261d2887bea27b0a92734fd1774992`.
 Its installed template matched the final hash above and `pip check` reported
 no broken requirements. Direct ROCm startup on `gfx1151` rendered a later
