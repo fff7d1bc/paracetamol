@@ -36,25 +36,15 @@ be answered.
 
 ## Obtain immutable Hugging Face metadata
 
-`tools/huggingface_probe.py` queries Hugging Face's official API using only
-the Python standard library. Use a named ref for discovery:
+Query Hugging Face's official API or use its official client for discovery.
+Store the returned full commit, then repeat all file inspection at that
+immutable revision. Record the LFS object size and SHA-256 for every selected
+file and independently verify downloaded bytes before editing the catalog.
 
-```bash
-tools/huggingface_probe.py repository REPOSITORY
-```
-
-Store the returned full revision, then repeat the query at that immutable
-revision. Inspect either its complete file inventory or one exact file:
-
-```bash
-tools/huggingface_probe.py revision REPOSITORY REVISION
-tools/huggingface_probe.py file REPOSITORY REVISION PATH
-```
-
-The stable JSON output distinguishes the Git blob ID from the Git LFS
-SHA-256. For an LFS file, `sha256` is the content digest. Never use `blob_id`
-as the catalog SHA-256. If `lfs` is false and `sha256` is null, download the
-exact file at the pinned revision and compute:
+The API distinguishes the Git blob ID from the Git LFS SHA-256. For an LFS
+file, the LFS object ID is the content digest. Never use the Git blob ID as the
+catalog SHA-256. If no content digest is available, download the exact file at
+the pinned revision and compute:
 
 ```bash
 sha256sum DOWNLOADED_FILE
@@ -62,9 +52,8 @@ stat --format '%s' DOWNLOADED_FILE
 ```
 
 For gated or private repositories, export `HF_TOKEN` and ensure the account
-has accepted any upstream terms. The probe sends the token only as an
-authorization header and never prints it. Never write tokens into the catalog,
-image, command output, or documentation.
+has accepted any upstream terms. Never write tokens into the catalog, image,
+command output, or documentation.
 
 Metadata is necessary but not sufficient. Read the model card, repository
 license file, upstream lineage, and conversion notes at the exact revision.
@@ -183,7 +172,7 @@ this as verification work without reading or writing the file.
 
 If the artifact filename appears in curated workflow metadata, update
 `_MODEL_SOURCES` and, if necessary, `_MODEL_ALIASES` in
-`src/rocmplete/workflows.py`.
+`internal/cli/commands_content.go`.
 
 Managed GGUF files use `"target": "llama-models"` and a destination relative
 to `content/llama-cpp/models`. Add a bundle using application `llama-cpp` and
@@ -317,7 +306,7 @@ when the model's multi-turn template should retain parsed reasoning; it does
 not imply that the model accepts a client-selectable reasoning control.
 Keep this distinction visible in agent metadata and user documentation.
 
-Agent sampling is normally caller policy. `src/rocmplete/agent_models.py` owns
+Agent sampling is normally caller policy. `internal/agent/models.go` owns
 the reviewed coding defaults used by generated clients and evaluation
 metadata. A model whose authoritative sampling changes with a server-resolved
 control instead references one entry from the catalog's closed
@@ -409,7 +398,7 @@ recommended location for packs and their companion manifests.
 
 `content import URL` generates one of these packs for a single supported
 Civitai or Hugging Face file. The resolver lives in
-`src/rocmplete/remote_import.py`; it is an authoring convenience, not a second
+`internal/remoteimport/`; it is an authoring convenience, not a second
 catalog or downloader. It must continue to emit schema-valid definitions and
 then use the normal `content install --from-file` orchestration.
 
@@ -439,8 +428,8 @@ extra model paths, and the workflow destination policy. Adding an archive,
 multi-file application recipe, custom node, or llama preset is a
 catalog/integration feature rather than another import-kind entry.
 
-`--from-file` is repeatable and cannot be combined with a positional target or
-`--interactive`. Every bundle declared by the supplied packs is selected.
+`--from-file` is repeatable and cannot be combined with a positional target.
+Every bundle declared by the supplied packs is selected.
 Multiple packs are composed before validation, so a bundle may reference a
 built-in artifact or a definition from another supplied pack.
 
@@ -552,20 +541,13 @@ the member and keeps the archive for review. This transport support is for
 reviewed user-owned packs; it does not make mutable ZIP members suitable for
 the built-in catalog.
 
-After downloading a candidate ZIP to a temporary location, inspect it without
-extracting:
-
-```bash
-tools/archive_probe.py ARCHIVE.zip
-tools/archive_probe.py ARCHIVE.zip --member "folder/workflow.json"
-```
-
-The stable JSON contains archive and member sizes and SHA-256 hashes, member
-types, unsafe-path flags, and duplicate names. Use it to choose a conservative
-archive `max_size` and to pin the selected member. A selected member must occur
-exactly once. Symlinks and non-regular entries are identified and are never
-followed. The archive hash is useful research evidence, but it is not a
-durable identity for an extracted workflow.
+After downloading a candidate ZIP to a temporary location, inspect its central
+directory without extracting it. Check member types, unsafe paths, duplicates,
+compressed and uncompressed sizes, and the selected member's SHA-256. Use that
+evidence to choose a conservative archive `max_size` and pin the selected
+member. A selected member must occur exactly once. Symlinks and non-regular
+entries are never followed. The archive hash is useful research evidence, but
+it is not a durable identity for an extracted workflow.
 
 When several required files are members of the same archive, declare an
 `archive_collections` entry instead of repeating its source and archive
@@ -578,18 +560,10 @@ The staging key is derived from the provider, version, and filename, so one
 download can serve every selected member. Staging is pruned only after all
 selected members are installed.
 
-For repeatable metadata research, `tools/civitai_probe.py` queries a model,
-model version, file hash, or search term and prints stable JSON:
-
-```bash
-tools/civitai_probe.py model MODEL_ID
-tools/civitai_probe.py version MODEL_VERSION_ID
-tools/civitai_probe.py search "MODEL NAME"
-tools/civitai_probe.py hash SHA256
-```
-
-It reads `CIVITAI_TOKEN` from the environment, sends it only as a bearer
-header, and never prints it.
+For Civitai, query the official API for the exact model version and file.
+Record the immutable version ID, filename, reported size, and SHA-256, then
+verify the downloaded bytes. If authentication is required, send
+`CIVITAI_TOKEN` only as a bearer header and never print it.
 
 A downloaded ComfyUI workflow can use the same artifact schema with:
 
@@ -608,19 +582,10 @@ the JSON, install its custom nodes or extra model dependencies, validate its
 graph, create a benchmark, or claim that it is runnable.
 
 Inspect downloaded UI-format or API-format graphs before deciding what can be
-supported:
-
-```bash
-tools/workflow_probe.py WORKFLOW.json
-tools/workflow_probe.py WORKFLOW-A.json WORKFLOW-B.json
-```
-
-For UI workflows, the output inventories registry and repository package
-declarations, recorded versions or commits, active/bypassed node counts,
-recognized model-like asset references, core-declared node types, and
-unattributed node types. “Unattributed” is intentionally not classified as
-core or custom. The helper performs no network access and does not install or
-resolve dependencies.
+supported. Inventory registry and repository package declarations, recorded
+versions or commits, active and bypassed node counts, model-like asset
+references, core node types, and unattributed node types. Do this without
+executing the graph or resolving its dependencies.
 
 Composition is additive and fail-closed:
 
@@ -693,7 +658,7 @@ worst-case. This keeps planning fast even for several hundred GiB.
 ## Add a content recipe
 
 Public installation is application-first. Small runnable recipes live in
-`src/rocmplete/recipes.py` and resolve directly to exact catalog bundle IDs.
+`internal/recipes/` and resolve directly to exact catalog bundle IDs.
 The same definitions drive guided `content install`, `content list`, and the
 application guides, so those interfaces cannot silently select different
 content.
@@ -724,7 +689,7 @@ Application aggregates, families, and the literal global aggregate remain
 absent from the guided installer.
 
 The guided exact-bundle browser is categorized separately from recipes.
-`_exact_bundle_category()` in `src/rocmplete/cli.py` maps every bundle to
+`_exact_bundle_category()` in `internal/cli/` maps every bundle to
 exactly one presentation category using its owning application and existing
 family groups. When adding a new application or ComfyUI family, update that
 mapping and its exhaustive coverage test. Category-local display names may
@@ -743,7 +708,7 @@ Add a `workflows` entry containing:
 
 - source package and installed package version;
 - full upstream source revision;
-- resource path within the Python package;
+- original resource path within the upstream package;
 - source SHA-256;
 - deterministic renderer name;
 - destination;
@@ -753,33 +718,16 @@ Add a `workflows` entry containing:
 For a new entry, a temporary 64-zero hash may be used only while calculating
 the real value; never commit the placeholder.
 
-To calculate the packaged source hash after the catalog entry loads:
-
-```bash
-PYTHONPATH=src python3 - <<'PY'
-import hashlib
-import subprocess
-
-from rocmplete.catalog import load_catalog
-from rocmplete.config import APPLICATIONS
-from rocmplete.workflows import source_command
-
-workflow_id = "WORKFLOW_ID"
-pack = load_catalog().workflow(workflow_id)
-source = subprocess.check_output(
-    source_command(APPLICATIONS["comfyui"].image, pack)
-)
-print(hashlib.sha256(source).hexdigest())
-PY
-```
-
-The extraction container has no network or data mount and checks the installed
-package version.
+Extract the exact upstream resource from the pinned ComfyUI image in a
+network-free temporary container and calculate `sha256sum` over those bytes.
+The package version, upstream revision, resource path, and source hash remain
+provenance even though runtime installation uses a reviewed repository
+resource.
 
 ### 2. Implement the renderer
 
-Add a narrowly scoped `_configure_*` function and dispatch name in
-`render_workflow()`:
+Apply a narrowly scoped, reviewable transformation when producing the
+repository resource:
 
 - assert expected node types and counts;
 - change exact model filenames and sampler values;
@@ -789,38 +737,20 @@ Add a narrowly scoped `_configure_*` function and dispatch name in
 - reject unexpected custom nodes;
 - retain automatic provenance injection.
 
-Update `_MODEL_SOURCES` for every model filename left in workflow metadata.
-Write unit tests around a minimal representative graph and the properties that
-matter: model selection, steps, CFG, LoRAs, input clearing, and graph links.
+Retain provenance for every model filename left in workflow metadata. Write Go
+tests around the exact stored resource and the properties that matter: model
+selection, steps, CFG, LoRAs, input clearing, and graph links.
 
 Do not make the transform tolerant of arbitrary upstream graph changes. A
 shape mismatch should request maintainer review.
 
 ### 3. Calculate the rendered hash
 
-After setting the real source hash:
-
-```bash
-PYTHONPATH=src python3 - <<'PY'
-import hashlib
-
-from rocmplete.catalog import load_catalog
-from rocmplete.config import APPLICATIONS
-from rocmplete.workflows import fetch_source, render_workflow
-
-workflow_id = "WORKFLOW_ID"
-pack = load_catalog().workflow(workflow_id)
-rendered = render_workflow(
-    pack,
-    fetch_source(pack, APPLICATIONS["comfyui"].image),
-)
-print(hashlib.sha256(rendered).hexdigest())
-PY
-```
-
-Put that value in `rendered_sha256`, rerun the calculation, and require an
-exact match. Install into a disposable data directory and visually inspect the
-workflow before creating a benchmark.
+Store the reviewed rendered bytes as
+`catalog/workflows/<workflow-id>.json`, calculate `sha256sum`, and put that
+value in `rendered_sha256`. The Go catalog tests require every workflow entry
+to have one exact resource with the matching hash. Install into a disposable
+data directory and visually inspect it before creating a benchmark.
 
 ## Add or update a benchmark graph
 
@@ -843,8 +773,8 @@ When one reviewed upstream graph is the exact structural basis for multiple
 model variants, a benchmark entry may name a small allowlisted renderer and a
 `rendered_sha256`. The source hash still pins the exported upstream graph; the
 rendered hash pins the deterministic task/resolution/model transformation.
-Add renderer names in `catalog.py`, implement them fail-closed in
-`benchmark.py`, and test all changed node values. Do not use a renderer to
+Add renderer names in `internal/benchmark/`, implement them fail-closed, and
+test all changed node values. Do not use a renderer to
 paper over a substantially different workflow.
 
 `prepare_prompt()` supplies deterministic seeds, a generated 768×768 input
@@ -853,7 +783,7 @@ for `LoadImage`, and a unique output prefix. It rejects `LoadVideo`.
 Run:
 
 ```bash
-./rocmplete benchmark run BUNDLE --dry-run
+./rocmplete benchmark comfyui BUNDLE --dry-run
 ```
 
 Then run both persistent-cache and isolated-cache benchmarks on supported
@@ -896,7 +826,7 @@ Run the cheap validation first:
 
 ```bash
 python3 -m json.tool catalog/catalog.json >/dev/null
-PYTHONPATH=src python3 -m unittest discover -s tests
+go test ./internal/catalog ./internal/content ./internal/cli ./internal/benchmark
 ./rocmplete content list
 ./rocmplete content install NEW_BUNDLE --dry-run
 ```

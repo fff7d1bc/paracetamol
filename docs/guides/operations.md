@@ -13,8 +13,8 @@ After onboarding a GPU host or updating software, dry-run the acceptance suite
 and then let it work:
 
 ```bash
-./rocmplete acceptance run --dry-run
-./rocmplete acceptance run
+./rocmplete acceptance --dry-run
+./rocmplete acceptance
 ```
 
 The default suite first checks a real PyTorch GPU operation, exact render-node
@@ -36,8 +36,8 @@ art contest. Reviews can be passed, failed, or deferred independently.
 Limit a diagnostic run with a repeatable `--application`:
 
 ```bash
-./rocmplete acceptance run --application llama-cpp
-./rocmplete acceptance run --application dwarfstar
+./rocmplete acceptance --application llama-cpp
+./rocmplete acceptance --application dwarfstar
 ```
 
 If images or exact content bundles are missing, terminal use shows the
@@ -45,7 +45,7 @@ preparation plan and asks once before building or downloading. For unattended
 preparation, authorize it explicitly:
 
 ```bash
-./rocmplete acceptance run --prepare --non-interactive \
+./rocmplete acceptance --prepare --non-interactive \
   --accept-license
 ```
 
@@ -54,7 +54,7 @@ generated paths and criteria in the Markdown report, then resume in a terminal
 to record the visual decision:
 
 ```bash
-./rocmplete acceptance run --resume RESULT.json
+./rocmplete acceptance --resume RESULT.json
 ```
 
 Each run is checkpointed below

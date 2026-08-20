@@ -25,54 +25,53 @@ in the same change. Important ownership boundaries are:
   application commits, and final image stages.
 - `containers/content_tools/requirements.txt`: complete pinned content-tools
   dependency set.
-- `src/rocmplete/config.py`: image tags, ports, container names, profiles, and
+- `internal/config/config.go`: image tags, ports, container names, profiles, and
   the application registry, capabilities, and runtime defaults.
-- `src/rocmplete/hardware_profiles.py`: canonical GPU profile and architecture
+- `internal/platform/`: canonical GPU profile and architecture
   identities.
-- `src/rocmplete/cli_parser.py`: public command tree, usage examples, and
+- `internal/cli/`: public command tree, usage examples, and
   parser defaults.
-- `src/rocmplete/cli.py`: command validation, orchestration, and human-facing
+- `internal/cli/`: command validation, orchestration, and human-facing
   output.
-- `src/rocmplete/project.py`: repository-root discovery for source-tree
+- `internal/project/`: repository-root discovery for source-tree
   resources and build context.
-- `src/rocmplete/ui.py`: TTY detection and semantic terminal styling.
-- `src/rocmplete/build.py`: local image build command construction.
-- `src/rocmplete/runtime/`: constrained application Podman commands.
-- `src/rocmplete/layout.py`: host application/content/staging partitions.
-- `src/rocmplete/content_verification.py`: durable managed-content verification
+- `internal/buildplan/`: local image build command construction.
+- `internal/runtime/`: constrained application Podman commands.
+- `internal/storage/`: host application/content/staging partitions.
+- `internal/verification/`: durable managed-content verification
   receipts and filesystem-identity invalidation.
-- `src/rocmplete/podman.py`: the host process boundary.
-- `src/rocmplete/image_archive.py`: validated offline transfer of managed
+- `internal/podman/`: the host process boundary.
+- `internal/imagearchive/`: validated offline transfer of managed
   build outputs.
-- `src/rocmplete/catalog.py` and `catalog/`: catalog schema, pinned content,
+- `internal/catalog/` and `catalog/`: catalog schema, pinned content,
   relationships, and benchmark resources.
-- `src/rocmplete/recipes.py`: small runnable application recipes shared by
+- `internal/recipes/`: small runnable application recipes shared by
   guided content installation and application guides, including recipe bundle
   validation.
-- `src/rocmplete/bundles.py`: download staging, verification, and installation.
-- `src/rocmplete/remote_import.py`: allowlisted remote metadata resolution,
+- `internal/content/`: download staging, verification, and installation.
+- `internal/remoteimport/`: allowlisted remote metadata resolution,
   destination inference, and verified ignored local-pack generation.
-- `tools/*_probe.py`: read-only source, archive, and workflow catalog research.
-- `src/rocmplete/workflows.py`: deterministic workflow transformation and
-  provenance.
-- `src/rocmplete/benchmark.py`: benchmark preparation, execution, results,
+- `catalog/workflows/` and `internal/cli/commands_content.go`: immutable
+  workflow resources, deterministic transformation, and provenance.
+- `internal/benchmark/`: benchmark preparation, execution, results,
   suite resume, and cleanup.
-- `src/rocmplete/llama_benchmark.py`: native llama-bench result capture,
+- `internal/benchmark/`: native llama-bench result capture,
   metadata, atomic writes, and cleanup.
 - `bin/rocmplete`: PATH-friendly delegation to the checkout launcher.
-- `src/rocmplete/agent_models.py` and `src/rocmplete/agent_sandbox.py`: shared
+- `internal/agent/models.go` and `internal/agent/sandbox.go`: shared
   agent-client model policy and bubblewrap boundary.
-- `agent-clients/pi/` and `src/rocmplete/pi_runtime.py`: pinned managed Pi npm
+- `agent-clients/pi/` and `internal/agent/piruntime.go`: pinned managed Pi npm
   runtime, system Node.js requirement, installation, and receipts.
-- `bin/pi`, `bin/maki`, `src/rocmplete/pi_agent.py`, and
-  `src/rocmplete/maki_agent.py`: runtime
+- `bin/pi`, `bin/maki`, `internal/agent/pi.go`, and
+  `internal/agent/maki.go`: runtime
   client launch and local model-catalog generation below the public `agent`
   command group.
 - `containers/common/profile.py` and application entrypoints: container-side
   profile enforcement and application policy.
 - `applications/<application>/`: application-owned dependency pins,
   entrypoints, and strict, reviewable deviations from pinned upstream sources.
-- `tests/`: enforced behavior and expected command shapes.
+- package-local `*_test.go` files: enforced behavior and expected command
+  shapes.
 
 Keep `README.md` and `docs/guides/` user-facing. `docs/README.md` is the shared
 documentation index, while the other pages directly below `docs/` are
@@ -103,10 +102,9 @@ them:
   mode exposes neither. Multiple render nodes are never guessed, and an
   application must explicitly declare support before one workload may receive
   more than one.
-- Forced profiles are checked against the architecture PyTorch sees.
-  Python profile identities come from `src/rocmplete/hardware_profiles.py`;
-  Containerfile target lists and shell-only entrypoint mappings must agree
-  with it.
+- Forced profiles are checked against the architecture applications see.
+  Host profile identities come from `internal/platform/`; Containerfile target
+  lists and container-side Python or shell mappings must agree with it.
 - Web applications use private rootless networking and publish exactly one
   TCP port. The default host address is `127.0.0.1`. An explicit non-loopback
   address has no authentication and must remain visibly warned about.
@@ -174,9 +172,13 @@ mutation safety, verification, licensing, isolation, or testing requirements.
   machinery for possible future use.
 - Fix a shared invariant at its owning boundary rather than duplicating
   defensive checks at callers.
-- Preserve Python 3.12 compatibility. The host launcher intentionally uses the
-  standard library; add a host dependency only for a concrete need that cannot
-  be met cleanly by existing facilities.
+- Preserve Go 1.26 compatibility. The host control plane should prefer the Go
+  standard library; add a module dependency only for a concrete need that
+  cannot be met cleanly by existing facilities. Python is allowed for
+  container-owned application logic, PyTorch checks, and frozen evaluation
+  fixtures, not for the host control plane.
+- Keep all generated Go binaries, caches, module state, and temporary build
+  files below the anchored ignored `/build/` directory.
 - Container dependencies must be pinned and consistent. Do not loosen pins,
   add `--no-deps`, or weaken `pip check` merely to make an image build.
 - New build-context inputs must be added to the `.containerignore` allowlist.
@@ -249,19 +251,22 @@ stderr as incidental cleanup; define and test such a contract deliberately.
 
 ## Testing and verification
 
-Test behavior and failure paths in proportion to risk. Prefer existing
-`unittest` style, temporary directories, small fixtures, and fakes at network,
-Podman, process, clock, and filesystem boundaries.
+Test behavior and failure paths in proportion to risk. Prefer package-local Go
+tests, `t.TempDir`, small fixtures, and fakes at network, Podman, process,
+clock, and filesystem boundaries.
 
 For every change, run the applicable Tier 1 checks:
 
 ```sh
-python3 -m compileall -q applications containers src/rocmplete tests tools
+make check
+make test
+make static
+PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
   applications/dwarfstar/entrypoint.sh
-python3 -m json.tool catalog/catalog.json >/dev/null
-PYTHONPATH=src python3 -m unittest discover -s tests
+find catalog -type f -name '*.json' -print0 | \
+  xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check
 ```
 

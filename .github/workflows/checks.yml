@@ -10,14 +10,8 @@ permissions:
 
 jobs:
   tier-1:
-    name: Python ${{ matrix.python-version }}
+    name: Go 1.26 and container resources
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version:
-          - "3.12"
-          - "3.14"
 
     steps:
       - name: Check out source
@@ -25,34 +19,32 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          python-version: ${{ matrix.python-version }}
+          go-version-file: go.mod
+          cache: false
 
-      - name: Compile Python
-        run: >-
-          python -m compileall -q
-          applications
-          containers
-          src/rocmplete
-          tests
-          tools
+      - name: Check and test Go control plane
+        run: |
+          make check
+          make test
+          make static
+
+      - name: Compile container-owned Python
+        run: PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
 
       - name: Check shell syntax
         run: |
-          bash -n \
+          bash -n rocmplete bin/rocmplete bin/pi bin/maki \
             applications/comfyui/entrypoint.sh \
             applications/llama-cpp/entrypoint.sh \
             applications/dwarfstar/entrypoint.sh
 
-      - name: Validate JSON
+      - name: Validate catalog JSON
         run: |
           find catalog -type f -name '*.json' -print0 |
-            xargs -0 -n1 python -m json.tool >/dev/null
-
-      - name: Run unit tests
-        run: PYTHONPATH=src python -m unittest discover -s tests
+            xargs -0 -n1 python3 -m json.tool >/dev/null
 
       - name: Exercise dependency-free CLI
         run: |

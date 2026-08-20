@@ -57,16 +57,18 @@ ROCmplete tries to cover the whole path.
   selected GPU devices. Web applications publish on loopback by default.
 - Optional Pi and Maki launchers add a bubblewrap filesystem
   boundary around local coding-agent work.
-- `acceptance run` checks more than startup. It runs small real workloads,
+- `acceptance` checks more than startup. It runs small real workloads,
   checkpoints progress, and collects visual review after unattended work.
 
 ## Requirements
 
-The host needs rootless Podman and Python 3.12 or newer. The field-tested hosts
-above use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and
-Ubuntu 26.04. A minimal installation may not include Podman yet. The optional
-managed Pi client additionally requires distribution-provided Node.js 22.19
-or newer and npm; ROCmplete installs Pi itself into private application data.
+The host needs rootless Podman, GNU Make, and Go 1.26 or newer. The checkout
+launcher builds a repository-local binary when its Go sources change; generated
+binaries and Go caches stay below ignored `build/`. The field-tested hosts above
+use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and Ubuntu
+26.04. A minimal installation may not include Podman yet. The optional managed
+Pi client additionally requires distribution-provided Node.js 22.19 or newer
+and npm; ROCmplete installs Pi itself into private application data.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -80,10 +82,21 @@ distribution `bubblewrap` package from `apt`, `dnf`, or `pacman` when possible.
 Doctor reports Ubuntu's AppArmor user-namespace policy when it can interfere
 with a launcher.
 
+### Go control-plane transition
+
+The Go cutover preserves the existing data directory, installed content,
+verification receipts, resumable download staging, application state, managed
+Pi state, image tags, and Podman ownership labels. Two pre-release command
+shapes changed deliberately: `acceptance run` is now `acceptance`, and the
+ComfyUI-specific `benchmark run` is now `benchmark comfyui`. Python-era
+benchmark and acceptance JSON remains historical evidence but cannot be used
+as a Go resume checkpoint; start a new run under the current schema.
+
 ## Quick start
 
-Clone the source and inspect the host. ROCmplete has no host-side Python
-dependencies and does not publish prebuilt application images.
+Clone the source and inspect the host. ROCmplete's host control plane is Go;
+Python remains only inside Python application images and frozen evaluation
+fixtures. ROCmplete does not publish prebuilt application images.
 
 ```bash
 git clone https://github.com/fff7d1bc/rocmplete.git
@@ -241,7 +254,7 @@ path; it does not replace the default model or improve its quality:
 
 The [DwarfStar guide](docs/guides/applications.md#dwarfstar) covers its 128K
 managed context, memory setup, optional DSpark path, API, agent-client
-providers, and bounded acceptance run.
+providers, and bounded acceptance.
 
 ## Everyday use
 
@@ -413,8 +426,8 @@ After onboarding a host or updating software, run the bounded checkpointed
 smoke suite:
 
 ```bash
-./rocmplete acceptance run --dry-run
-./rocmplete acceptance run
+./rocmplete acceptance --dry-run
+./rocmplete acceptance
 ```
 
 Automated workloads finish before the visual review pass, so the run can be
@@ -500,8 +513,17 @@ Command-specific help remains the authoritative interface reference:
 ./rocmplete benchmark agent --help
 ```
 
-Human-facing output uses semantic colors on terminals. Redirected output stays
-plain, and `NO_COLOR=1` disables styling.
+The host binary can be built explicitly with `make build`, tested with
+`make test`, and statically linked with `make static`. To copy a checkout to a
+test host without transferring repository-local binaries or Go caches, use:
+
+```bash
+rsync -a -v --progress --delete --exclude=/build/ \
+  ~/src/rocmplete/ aion.local:src/rocmplete
+```
+
+The anchored exclusion keeps the destination's own `build/` cache while
+`--delete` still removes obsolete source files. Do not add `--delete-excluded`.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [catalog/README.md](catalog/README.md) for provenance and catalog policy.
