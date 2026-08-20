@@ -15,5 +15,8 @@ venv/
 
 .DS_Store
 
+# Repository-local Go binaries, caches, module state, and temporary files.
+/build/
+
 # Local content-pack definitions and companion manifests.
 /local-content/
