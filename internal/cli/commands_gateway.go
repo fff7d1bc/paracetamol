@@ -85,14 +85,15 @@ func (app *App) runGateway(args []string) error {
 		return err
 	}
 	registry, diagnostics, err := gateway.BuildRegistry(managed, dataRoot, applications, profile, selectedNodes)
+	errorTerminal := app.terminal(app.Stderr)
 	if err != nil {
 		for _, diagnostic := range diagnostics {
-			fmt.Fprintf(app.Stderr, "Unavailable: %s/%s: %s\n", diagnostic.Application, diagnostic.Model, diagnostic.Reason)
+			fmt.Fprintf(app.Stderr, "%s %s/%s: %s\n", errorTerminal.Warning("Unavailable:"), diagnostic.Application, diagnostic.Model, diagnostic.Reason)
 		}
 		return err
 	}
 	for _, diagnostic := range diagnostics {
-		fmt.Fprintf(app.Stderr, "Unavailable: %s/%s: %s\n", diagnostic.Application, diagnostic.Model, diagnostic.Reason)
+		fmt.Fprintf(app.Stderr, "%s %s/%s: %s\n", errorTerminal.Warning("Unavailable:"), diagnostic.Application, diagnostic.Model, diagnostic.Reason)
 	}
 	allocations := make([]gateway.Allocation, 0, len(applications))
 	seen := map[string]bool{}
@@ -156,10 +157,11 @@ func (app *App) runGateway(args []string) error {
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
 	if !isLoopback(listen) {
-		fmt.Fprintf(app.Stderr, "WARNING: gateway is published on %s:%d without authentication.\n", listen, port)
+		fmt.Fprintf(app.Stderr, "%s gateway is published on %s:%d without authentication.\n", errorTerminal.Warning("WARNING:"), listen, port)
 	}
-	fmt.Fprintf(app.Stdout, "%s gateway\n  listen:       http://%s/v1\n  applications: %s\n  models:       %s\n  inventory:    %s\n\nNo backend is loaded until its first request. Press Ctrl-C to stop.\n",
-		identity.DisplayName, net.JoinHostPort(listen, fmt.Sprint(port)), strings.Join(applications, ", "), strings.Join(registry.IDs(""), ", "), registry.Fingerprint)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n  %s  http://%s/v1\n  %s  %s\n  %s  %s\n  %s  %s\n\n%s\n",
+		terminal.Heading(identity.DisplayName+" gateway"), terminal.Label(fmt.Sprintf("%-13s", "listen:")), net.JoinHostPort(listen, fmt.Sprint(port)), terminal.Label(fmt.Sprintf("%-13s", "applications:")), strings.Join(applications, ", "), terminal.Label(fmt.Sprintf("%-13s", "models:")), strings.Join(registry.IDs(""), ", "), terminal.Label(fmt.Sprintf("%-13s", "inventory:")), registry.Fingerprint, terminal.Muted("No backend is loaded until its first request. Press Ctrl-C to stop."))
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	select {
@@ -208,8 +210,9 @@ func (app *App) gatewayStatus(rawURL string) error {
 	if status.Schema != gateway.StatusSchema {
 		return controlerr.New("gateway returned unsupported status schema %q", status.Schema)
 	}
-	fmt.Fprintf(app.Stdout, "%s gateway\n", identity.DisplayName)
-	writeStatusRows(app.Stdout, [][2]string{
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n", terminal.Heading(identity.DisplayName+" gateway"))
+	writeStatusRows(app.Stdout, terminal, [][2]string{
 		{"State", status.Gateway},
 		{"Started", status.StartedAt},
 		{"Applications", strings.Join(status.Applications, ", ")},
@@ -219,7 +222,7 @@ func (app *App) gatewayStatus(rawURL string) error {
 		{"Inventory", status.InventoryFingerprint},
 	})
 	for _, model := range status.Models {
-		fmt.Fprintf(app.Stdout, "  %-12s %-10s %s\n", model.State, model.Application, model.ID)
+		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", model.State)), terminal.Label(fmt.Sprintf("%-10s", model.Application)), terminal.Command(model.ID))
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -17,6 +18,7 @@ import (
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
 	"paracetamol/internal/process"
+	"paracetamol/internal/ui"
 )
 
 type App struct {
@@ -29,6 +31,7 @@ type App struct {
 	Runner      process.Runner
 	Executor    process.Executor
 	catalog     *catalog.Catalog
+	promptInput *bufio.Reader
 }
 
 var managedRunID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$`)
@@ -118,10 +121,85 @@ func (app *App) Dispatch(args []string) error {
 }
 
 func (app *App) flags(name, usage string) *flag.FlagSet {
+	return app.flagsWithExamples(name, usage, nil)
+}
+
+func (app *App) flagsWithExamples(name, synopsis string, examples []string) *flag.FlagSet {
 	set := flag.NewFlagSet(name, flag.ContinueOnError)
 	set.SetOutput(app.Stderr)
-	set.Usage = func() { fmt.Fprintln(app.Stderr, usage) }
+	set.Usage = func() {
+		terminal := ui.New(app.Stderr, app.Environment)
+		fmt.Fprintln(app.Stderr, terminal.Heading(synopsis))
+		count, width := 0, 0
+		set.VisitAll(func(option *flag.Flag) {
+			count++
+			if candidate := len(flagSyntax(option)); candidate > width {
+				width = candidate
+			}
+		})
+		if count > 0 {
+			fmt.Fprintf(app.Stderr, "\n%s\n", terminal.Heading("Options:"))
+			set.VisitAll(func(option *flag.Flag) {
+				syntax := flagSyntax(option)
+				description := option.Usage
+				if option.DefValue != "" && option.DefValue != "false" && option.DefValue != "0" {
+					description += " (default " + option.DefValue + ")"
+				}
+				fmt.Fprintf(app.Stderr, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, syntax)), description)
+			})
+		}
+		if len(examples) > 0 {
+			fmt.Fprintf(app.Stderr, "\n%s\n", terminal.Heading("Examples:"))
+			for _, example := range examples {
+				fmt.Fprintf(app.Stderr, "  %s\n", terminal.Command(example))
+			}
+		}
+	}
 	return set
+}
+
+func flagSyntax(option *flag.Flag) string {
+	value := "--" + option.Name
+	if !isBooleanFlag(option.Value) {
+		value += " VALUE"
+	}
+	return value
+}
+
+func (app *App) terminal(writer io.Writer) ui.Terminal {
+	return ui.New(writer, app.Environment)
+}
+
+func (app *App) promptLine(message string, leadingBlank bool) (string, error) {
+	fmt.Fprint(app.Stdout, app.terminal(app.Stdout).PromptText(message, leadingBlank))
+	if app.promptInput == nil {
+		app.promptInput = bufio.NewReader(app.Stdin)
+	}
+	type result struct {
+		line string
+		err  error
+	}
+	completed := make(chan result, 1)
+	go func() {
+		line, err := app.promptInput.ReadString('\n')
+		completed <- result{line: line, err: err}
+	}()
+	ctx := app.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-ctx.Done():
+		if terminalReader(app.Stdin) {
+			fmt.Fprintln(app.Stdout)
+		}
+		return "", ctx.Err()
+	case read := <-completed:
+		if read.err != nil && (read.err != io.EOF || read.line == "") {
+			return "", read.err
+		}
+		return strings.TrimSpace(read.line), nil
+	}
 }
 
 func (app *App) run(command []string, capture bool) (process.Result, error) {
@@ -165,12 +243,13 @@ func groupHelpRequested(args []string) bool {
 	return len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help")
 }
 
-func writeGroupHelp(output io.Writer, usage string, commands ...[2]string) {
-	fmt.Fprintln(output, usage)
+func (app *App) writeGroupHelp(synopsis string, commands ...[2]string) {
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading(synopsis))
 	if len(commands) == 0 {
 		return
 	}
-	fmt.Fprintln(output, "\nCommands:")
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Commands:"))
 	width := 0
 	for _, command := range commands {
 		if len(command[0]) > width {
@@ -178,7 +257,7 @@ func writeGroupHelp(output io.Writer, usage string, commands ...[2]string) {
 		}
 	}
 	for _, command := range commands {
-		fmt.Fprintf(output, "  %-*s  %s\n", width, command[0], command[1])
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, command[0])), command[1])
 	}
 }
 

@@ -115,6 +115,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | GPU profile discovery and platform boundary | `internal/platform/` |
 | Offline managed image archives | `internal/imagearchive/` |
 | Public command tree, validation, and orchestration | `internal/cli/` |
+| Semantic terminal styling, prompts, and progress rendering | `internal/ui/` |
 | Repository-root discovery | `internal/project/` |
 | Small runnable content recipes | `internal/recipes/` |
 | Built-in application walkthroughs | `internal/cli/commands_basic.go` |

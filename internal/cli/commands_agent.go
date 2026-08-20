@@ -14,7 +14,7 @@ import (
 
 func (app *App) commandAgent(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, usage("agent", "COMMAND", "[OPTIONS]"),
+		app.writeGroupHelp(usage("agent", "COMMAND", "[OPTIONS]"),
 			[2]string{"install", "install the pinned managed Pi runtime"},
 			[2]string{"run", "run managed Pi or Maki"})
 		return nil
@@ -72,7 +72,8 @@ func (app *App) agentInstall(args []string) error {
 	if installed {
 		state = "Installed"
 	}
-	fmt.Fprintf(app.Stdout, "%s: Pi %s\nRuntime: %s\nSystem Node.js: %s (%s)\n", state, runtime.PackageVersion, runtime.Root, runtime.NodeVersion, runtime.Node)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s Pi %s\n%s %s\n%s %s (%s)\n", terminal.Success(state+":"), runtime.PackageVersion, terminal.Label("Runtime:"), runtime.Root, terminal.Label("System Node.js:"), runtime.NodeVersion, runtime.Node)
 	return nil
 }
 
@@ -126,7 +127,8 @@ func (app *App) agentPi(args []string) error {
 	command := plan.Command
 	environment := agent.PiEnvironment(app.Environment, agentDir, plan.Mode == "session")
 	if plan.Remote {
-		fmt.Fprintf(app.Stderr, "Pi remote gateway\n  endpoint          %s\nWARNING: prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", plan.Endpoint)
+		terminal := app.terminal(app.Stderr)
+		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Heading("Pi remote gateway"), terminal.Label(fmt.Sprintf("%-16s", "endpoint")), plan.Endpoint, terminal.Warning("WARNING:"))
 	}
 	if *sandbox {
 		child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
@@ -137,7 +139,8 @@ func (app *App) agentPi(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stderr, "Pi sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint)
+		terminal := app.terminal(app.Stderr)
+		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n  %s  %s\n  %s  host network retained for %s\n", terminal.Heading("Pi sandbox"), terminal.Label(fmt.Sprintf("%-17s", "Writable project")), sandboxPlan.Workdir, terminal.Label(fmt.Sprintf("%-17s", "Private state")), sandboxPlan.StateRoot, terminal.Label(fmt.Sprintf("%-17s", "Network")), plan.Endpoint)
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}
@@ -193,14 +196,16 @@ func (app *App) agentMaki(args []string) error {
 		return err
 	}
 	if plan.Remote {
-		fmt.Fprintf(app.Stderr, "Maki remote gateway\n  endpoint          %s\nWARNING: prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", plan.Endpoint)
+		terminal := app.terminal(app.Stderr)
+		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Heading("Maki remote gateway"), terminal.Label(fmt.Sprintf("%-16s", "endpoint")), plan.Endpoint, terminal.Warning("WARNING:"))
 	}
 	if *sandbox {
 		sandboxPlan, err := agent.CreateSandboxPlan(app.Context, app.Runner, command, dataRoot, mustWorkingDirectory(), "maki", map[string]string{}, app.Environment, nil)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stderr, "Maki sandbox\n  Writable project  %s\n  Private state     %s\n  Network           host network retained for %s\n", sandboxPlan.Workdir, sandboxPlan.StateRoot, plan.Endpoint)
+		terminal := app.terminal(app.Stderr)
+		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n  %s  %s\n  %s  host network retained for %s\n", terminal.Heading("Maki sandbox"), terminal.Label(fmt.Sprintf("%-17s", "Writable project")), sandboxPlan.Workdir, terminal.Label(fmt.Sprintf("%-17s", "Private state")), sandboxPlan.StateRoot, terminal.Label(fmt.Sprintf("%-17s", "Network")), plan.Endpoint)
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}

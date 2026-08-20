@@ -72,6 +72,15 @@ can honor: for example, llama.cpp and DwarfStar CLI mode do not accept server
 publication or detach controls. Agent arguments must follow `--`; the `bin/pi`
 and `bin/maki` shims add that separator automatically.
 
+`internal/ui/` owns semantic terminal presentation. Interactive output uses
+color to distinguish headings, commands, states, warnings, and success while
+`NO_COLOR`, `TERM=dumb`, and redirected streams retain stable plain text.
+Leaf help includes its option descriptions and copyable examples. Interactive
+questions are separated from the preceding plan and wait on both input and the
+application context, so Ctrl-C exits promptly instead of leaving a blocked
+read behind. Exact SHA-256 progress and approximate downloader progress rewrite
+one TTY line; redirected logs receive bounded line-delimited milestones.
+
 The Go migration preserved persistent application state, managed content paths
 and receipts, staging, image references, and Podman labels within its original
 identity. The later pre-release Paracetamol identity cutover deliberately

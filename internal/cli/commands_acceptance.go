@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -190,29 +189,30 @@ func (app *App) commandAcceptance(args []string) error {
 	cases := selectedAcceptanceCases(applications)
 	if *dryRun {
 		requiredBundles := acceptanceBundles(managed, cases)
-		if err := requireBenchmarkAgreements(managed, requiredBundles, *acceptLicense, true); err != nil {
+		if err := app.requireBenchmarkAgreements(managed, requiredBundles, *acceptLicense, true, *nonInteractive); err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stdout, "Hardware acceptance\n  Profile      %s\n  Render node  %s\n  Data         %s\n", *profileFlag, selectedNodes[0], dataRoot)
+		terminal := app.terminal(app.Stdout)
+		fmt.Fprintf(app.Stdout, "%s\n  %s  %s\n  %s  %s\n  %s  %s\n", terminal.Heading("Hardware acceptance"), terminal.Label(fmt.Sprintf("%-12s", "Profile")), *profileFlag, terminal.Label(fmt.Sprintf("%-12s", "Render node")), selectedNodes[0], terminal.Label(fmt.Sprintf("%-12s", "Data")), dataRoot)
 		for _, image := range acceptanceImages(cases) {
 			present, _ := app.podman().Exists(app.Context, "image", image.image)
-			fmt.Fprintf(app.Stdout, "  Image        %-10s %s (%s)\n", image.target, image.image, map[bool]string{true: "ready", false: "build required"}[present])
+			fmt.Fprintf(app.Stdout, "  %s  %s %s (%s)\n", terminal.Label(fmt.Sprintf("%-12s", "Image")), terminal.Command(fmt.Sprintf("%-10s", image.target)), image.image, terminal.State(map[bool]string{true: "ready", false: "build required"}[present]))
 		}
 		for _, bundle := range requiredBundles {
 			state := "ready"
 			if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
 				state = "install required"
 			}
-			fmt.Fprintf(app.Stdout, "  Content      %-54s %s\n", bundle.ID, state)
+			fmt.Fprintf(app.Stdout, "  %s  %s %s\n", terminal.Label(fmt.Sprintf("%-12s", "Content")), terminal.Command(fmt.Sprintf("%-54s", bundle.ID)), terminal.State(state))
 		}
-		fmt.Fprintln(app.Stdout, "\nCases:")
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Cases:"))
 		for _, candidate := range cases {
-			fmt.Fprintf(app.Stdout, "  %-16s %s\n", candidate.id, candidate.description)
+			fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Command(fmt.Sprintf("%-16s", candidate.id)), candidate.description)
 		}
 		if *prepare {
-			fmt.Fprintln(app.Stdout, "\nPreparation was planned but no image was built and no content was installed.")
+			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Preparation was planned but no image was built and no content was installed."))
 		} else {
-			fmt.Fprintln(app.Stdout, "\nNo workload was started.")
+			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("No workload was started."))
 		}
 		return nil
 	}
@@ -266,7 +266,7 @@ func (app *App) commandAcceptance(args []string) error {
 		cases = filtered
 	}
 	requiredBundles := acceptanceBundles(managed, cases)
-	if err := requireBenchmarkAgreements(managed, requiredBundles, *acceptLicense, false); err != nil {
+	if err := app.requireBenchmarkAgreements(managed, requiredBundles, *acceptLicense, false, *nonInteractive); err != nil {
 		return err
 	}
 	images := acceptanceImages(cases)
@@ -404,7 +404,15 @@ func (app *App) commandAcceptance(args []string) error {
 			continue
 		}
 		candidate, _ := findAcceptanceCase(cases, entry.Identifier)
-		if *nonInteractive || !app.confirmVisual(candidate, entry.Artifacts) {
+		accepted := false
+		if !*nonInteractive {
+			var promptErr error
+			accepted, promptErr = app.confirmVisual(candidate, entry.Artifacts)
+			if promptErr != nil {
+				return checkpointThenReturn(resultPath, result, promptErr)
+			}
+		}
+		if !accepted {
 			entry.Status, entry.Reason = "blocked", "generated artifact requires successful visual review"
 		} else {
 			entry.Status, entry.Reason = "pass", ""
@@ -434,7 +442,8 @@ func (app *App) commandAcceptance(args []string) error {
 	if err := atomicfile.Write(reportPath, []byte(renderAcceptanceReport(result)), 0o644, reportPolicy); err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Acceptance complete: %s (%s)\nReport: %s\n", resultPath, result.Status, reportPath)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s %s (%s)\n%s %s\n", terminal.Success("Acceptance complete:"), resultPath, terminal.State(result.Status), terminal.Label("Report:"), reportPath)
 	if result.Status != "pass" {
 		status := 1
 		if result.Status == "blocked" {
@@ -689,18 +698,18 @@ func validateMedia(path, extension string) error {
 	return nil
 }
 
-func (app *App) confirmVisual(candidate acceptanceCase, artifacts []acceptanceArtifact) bool {
-	fmt.Fprintf(app.Stdout, "Visual review required for %s:\n", candidate.id)
+func (app *App) confirmVisual(candidate acceptanceCase, artifacts []acceptanceArtifact) (bool, error) {
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "%s\n", terminal.Heading("Visual review required for "+candidate.id+":"))
 	for _, artifact := range artifacts {
 		fmt.Fprintf(app.Stdout, "  %s\n", artifact.Path)
 	}
-	fmt.Fprint(app.Stdout, "Does the generated artifact pass the documented smoke criteria? [y/N] ")
-	scanner := bufio.NewScanner(app.Stdin)
-	if !scanner.Scan() {
-		return false
+	answer, err := app.promptLine("Does the generated artifact pass the documented smoke criteria? [y/N] ", true)
+	if err != nil {
+		return false, err
 	}
-	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
-	return answer == "y" || answer == "yes"
+	answer = strings.ToLower(answer)
+	return answer == "y" || answer == "yes", nil
 }
 
 func readAcceptanceResult(path string, result *acceptanceResult) error {

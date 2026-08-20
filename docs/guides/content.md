@@ -173,6 +173,13 @@ persistent data.
 If a download is interrupted, run the same command again. Completed files are
 reused, and the active file resumes or restarts safely.
 
+While network transfer is active, the installer reports the staged byte count;
+the percentage is exact for fixed-size files and a hard byte limit is shown for
+source archives whose final compressed size is not pinned. SHA-256 checks show
+separate exact-byte verification progress for local-mirror candidates, existing
+managed files, and newly staged payloads. A terminal updates one line, while
+redirected output emits periodic newline-delimited milestones.
+
 One content installation may mutate a given data directory at a time. A second
 installer fails immediately with a clear message instead of sharing staging,
 verification, or final moves with the active command. The lock is released on

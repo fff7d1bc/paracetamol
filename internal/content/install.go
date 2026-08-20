@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
@@ -22,6 +23,7 @@ import (
 	"paracetamol/internal/podman"
 	"paracetamol/internal/process"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/ui"
 	"paracetamol/internal/verification"
 )
 
@@ -96,6 +98,9 @@ func Plan(dataRoot string, artifacts []catalog.Artifact) (InstallPlan, error) {
 }
 
 func Install(options InstallOptions) error {
+	if options.Context == nil {
+		options.Context = context.Background()
+	}
 	if options.Runner == nil {
 		options.Runner = process.OSRunner{}
 	}
@@ -115,7 +120,7 @@ func Install(options InstallOptions) error {
 		}
 	}
 	if len(plan.Risky) > 0 && !options.AcceptRisk {
-		return controlerr.New("selected missing content has unverified licensing; pass --accept-license after reviewing its catalog warnings")
+		return controlerr.New("selected missing content has unverified licensing; pass --acknowledge-license-risk after reviewing its catalog warnings")
 	}
 	if options.DryRun {
 		return nil
@@ -139,13 +144,21 @@ func Install(options InstallOptions) error {
 	}
 	client := podman.Client{Runner: options.Runner}
 	needsNetwork := false
+	mirrorMatches := make(map[string]string)
 	for _, artifact := range options.Artifacts {
 		status, inspectErr := InspectArtifact(store, options.DataRoot, artifact, false)
 		if inspectErr != nil {
 			return inspectErr
 		}
-		if status.State == Missing && !stagedPayloadReady(options.DataRoot, artifact) && mirror.find(artifact) == "" && !stagedDownloadReady(options.DataRoot, artifact) {
-			needsNetwork = true
+		if status.State == Missing && !stagedPayloadReady(options.DataRoot, artifact) {
+			candidate, findErr := mirror.find(options.Context, artifact, options.Output, options.Environment)
+			if findErr != nil {
+				return findErr
+			}
+			mirrorMatches[artifact.ID] = candidate
+			if candidate == "" && !stagedDownloadReady(options.DataRoot, artifact) {
+				needsNetwork = true
+			}
 		}
 	}
 	if needsNetwork {
@@ -170,14 +183,24 @@ func Install(options InstallOptions) error {
 			continue
 		}
 		if status.State == Unverified {
-			fmt.Fprintf(options.Output, "Verifying [%d/%d] %s (%s)\n", index+1, len(options.Artifacts), artifact.Destination, humanBytes(artifact.Size))
+			terminal := ui.New(options.Output, options.Environment)
+			fmt.Fprintf(options.Output, "\n%s SHA-256 for existing %s (%s)\n", terminal.Heading("Verifying"), artifact.Destination, humanBytes(artifact.Size))
 			// Relabel before hashing. On enforcing SELinux hosts chcon changes
 			// filesystem identity, and a newly written receipt must describe the
 			// post-label file that application containers will actually mount.
 			if err := client.PrepareSharedContentLabel(options.Context, status.Path); err != nil {
 				return err
 			}
-			verified, verifyErr := InspectArtifact(store, options.DataRoot, artifact, true)
+			progress := ui.NewProgress(options.Output, options.Environment, artifact.Size)
+			progress.Update(artifact.Destination, index+1, len(options.Artifacts), 0, false)
+			verified, verifyErr := VerifyArtifact(options.Context, store, options.DataRoot, artifact, func(hashed int64) {
+				progress.Update(artifact.Destination, index+1, len(options.Artifacts), hashed, false)
+			})
+			if verifyErr == nil {
+				progress.Update(artifact.Destination, index+1, len(options.Artifacts), artifact.Size, true)
+			} else {
+				progress.Finish()
+			}
 			if verifyErr != nil {
 				return verifyErr
 			}
@@ -189,7 +212,7 @@ func Install(options InstallOptions) error {
 		if status.State != Missing {
 			return controlerr.New("managed content is not installable: %s (%s)", status.Path, status.State)
 		}
-		if err := installMissing(options, client, store, mirror, artifact, index+1); err != nil {
+		if err := installMissing(options, client, store, mirror, mirrorMatches[artifact.ID], artifact, index+1); err != nil {
 			return err
 		}
 		completedStaging[stagingRoot(options.DataRoot, artifact)] = true
@@ -208,7 +231,7 @@ func Install(options InstallOptions) error {
 	return nil
 }
 
-func installMissing(options InstallOptions, client podman.Client, store *verification.Store, mirror localMirror, artifact catalog.Artifact, index int) error {
+func installMissing(options InstallOptions, client podman.Client, store *verification.Store, mirror localMirror, mirrorCandidate string, artifact catalog.Artifact, index int) error {
 	payload := payloadPath(options.DataRoot, artifact)
 	download := downloadPath(options.DataRoot, artifact)
 	if err := storage.ValidateManagedParent(payload, stagingPartition(options.DataRoot, artifact), options.DataRoot, "staging"); err != nil {
@@ -218,9 +241,14 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 		return err
 	}
 	if !stagedPayloadReady(options.DataRoot, artifact) {
-		if candidate := mirror.find(artifact); candidate != "" {
-			fmt.Fprintf(options.Output, "Reusing local mirror file: %s\n", candidate)
-			if err := mirror.materialize(candidate, payload); err != nil {
+		if mirrorCandidate != "" {
+			terminal := ui.New(options.Output, options.Environment)
+			action := "Copying"
+			if mirror.move {
+				action = "Moving"
+			}
+			fmt.Fprintf(options.Output, "%s local mirror file: %s\n", terminal.Heading(action), mirrorCandidate)
+			if err := mirror.materialize(mirrorCandidate, payload); err != nil {
 				return err
 			}
 		} else {
@@ -234,13 +262,45 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 				if err := os.MkdirAll(filepath.Dir(download), 0o755); err != nil {
 					return err
 				}
-				fmt.Fprintf(options.Output, "Downloading [%d/%d] %s (%s)\n", index, len(options.Artifacts), artifact.Destination, humanBytes(downloadSize(artifact)))
+				terminal := ui.New(options.Output, options.Environment)
+				fmt.Fprintf(options.Output, "\n%s [%d/%d] %s (%s)\n", terminal.Heading("Downloading"), index, len(options.Artifacts), artifact.Destination, humanBytes(downloadSize(artifact)))
 				containerName := identity.Container(fmt.Sprintf("download-%d-%d", os.Getpid(), downloaderSequence.Add(1)))
 				command, err := downloadCommand(options, client, artifact, containerName)
 				if err != nil {
 					return err
 				}
-				result, err := options.Runner.Run(options.Context, process.Command{Name: command[0], Args: command[1:], Stdin: nil, Stdout: options.Output, Stderr: options.Output})
+				measurement := newDownloadMeasurement(stagingRoot(options.DataRoot, artifact), download, artifact)
+				progress := ui.NewDownloadProgress(options.Output, options.Environment, downloadSize(artifact), artifact.Source.ArchiveMember != "")
+				progress.Update(measurement.bytes(), false)
+				type downloadResult struct {
+					result process.Result
+					err    error
+				}
+				completed := make(chan downloadResult, 1)
+				go func() {
+					result, runErr := options.Runner.Run(options.Context, process.Command{Name: command[0], Args: command[1:], Stdin: nil, Stdout: io.Discard})
+					completed <- downloadResult{result: result, err: runErr}
+				}()
+				ticker := time.NewTicker(time.Second)
+				var outcome downloadResult
+			waiting:
+				for {
+					select {
+					case outcome = <-completed:
+						break waiting
+					case <-ticker.C:
+						progress.Update(measurement.bytes(), false)
+					}
+				}
+				ticker.Stop()
+				progress.Update(measurement.bytes(), true)
+				result, err := outcome.result, outcome.err
+				if len(result.Stderr) > 0 {
+					fmt.Fprint(options.Output, string(result.Stderr))
+					if result.Stderr[len(result.Stderr)-1] != '\n' {
+						fmt.Fprintln(options.Output)
+					}
+				}
 				cleanupErr := client.RemoveContainer(context.WithoutCancel(options.Context), containerName, 0, podman.Streams{})
 				if err != nil {
 					if cleanupErr != nil {
@@ -280,8 +340,18 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 		return controlerr.New("managed content changed while preparing its shared label: %s", payload)
 	}
 	fingerprint := fileIdentity(labeled)
-	fmt.Fprintf(options.Output, "Verifying SHA-256 for %s (%s)\n", artifact.Destination, humanBytes(artifact.Size))
-	digest, err := fileSHA256(payload)
+	terminal := ui.New(options.Output, options.Environment)
+	fmt.Fprintf(options.Output, "\n%s SHA-256 for %s (%s)\n", terminal.Heading("Verifying"), artifact.Destination, humanBytes(artifact.Size))
+	progress := ui.NewProgress(options.Output, options.Environment, artifact.Size)
+	progress.Update(artifact.Destination, index, len(options.Artifacts), 0, false)
+	digest, err := fileSHA256Context(options.Context, payload, func(hashed int64) {
+		progress.Update(artifact.Destination, index, len(options.Artifacts), hashed, false)
+	})
+	if err == nil {
+		progress.Update(artifact.Destination, index, len(options.Artifacts), artifact.Size, true)
+	} else {
+		progress.Finish()
+	}
 	if err != nil {
 		return err
 	}
@@ -326,8 +396,89 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	if err := store.Record(destination, artifact.Size, artifact.SHA256); err != nil {
 		return err
 	}
-	fmt.Fprintf(options.Output, "Installed %s\n", destination)
+	fmt.Fprintf(options.Output, "%s %s\n", terminal.Success("Installed"), destination)
 	return nil
+}
+
+type downloadFileSignature struct {
+	size       int64
+	modifiedNS int64
+}
+
+// downloadMeasurement follows only the requested payload and unambiguous HF
+// partials that appeared or changed during this attempt. It intentionally does
+// not sum the whole staging tree, where abandoned retry files may remain.
+type downloadMeasurement struct {
+	root     string
+	target   string
+	expected int64
+	marker   string
+	initial  map[string]downloadFileSignature
+	active   map[string]bool
+}
+
+func newDownloadMeasurement(root, target string, artifact catalog.Artifact) *downloadMeasurement {
+	measurement := &downloadMeasurement{root: root, target: target, expected: downloadSize(artifact), active: make(map[string]bool)}
+	if artifact.Source.Provider == "huggingface" {
+		measurement.marker = "." + artifact.SHA256 + "."
+	}
+	measurement.initial = measurement.partialSignatures()
+	return measurement
+}
+
+func (measurement *downloadMeasurement) bytes() int64 {
+	if size, ok := regularSize(measurement.target); ok {
+		return min(size, measurement.expected)
+	}
+	current := measurement.partialSignatures()
+	for path, signature := range current {
+		if previous, ok := measurement.initial[path]; !ok || previous != signature {
+			measurement.active[path] = true
+		}
+	}
+	var largest int64
+	for path := range measurement.active {
+		if signature, ok := current[path]; ok && signature.size > largest {
+			largest = signature.size
+		}
+	}
+	return min(largest, measurement.expected)
+}
+
+func (measurement *downloadMeasurement) partialSignatures() map[string]downloadFileSignature {
+	result := make(map[string]downloadFileSignature)
+	if measurement.marker == "" {
+		return result
+	}
+	relative, err := filepath.Rel(measurement.root, measurement.target)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return result
+	}
+	cache := filepath.Join(measurement.root, ".cache", "huggingface", "download", filepath.Dir(relative))
+	entries, err := os.ReadDir(cache)
+	if err != nil {
+		return result
+	}
+	for _, entry := range entries {
+		if !strings.Contains(entry.Name(), measurement.marker) || !strings.HasSuffix(entry.Name(), ".incomplete") {
+			continue
+		}
+		path := filepath.Join(cache, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		result[path] = downloadFileSignature{size: info.Size(), modifiedNS: info.ModTime().UnixNano()}
+	}
+	return result
+}
+
+func regularSize(path string) (int64, bool) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return 0, false
+	}
+	return info.Size(), true
 }
 
 func downloadCommand(options InstallOptions, client podman.Client, artifact catalog.Artifact, containerName string) ([]string, error) {
@@ -490,9 +641,11 @@ func extractArchive(artifact catalog.Artifact, archive, destination string) erro
 }
 
 type localMirror struct {
-	root   string
-	move   bool
-	byName map[string][]string
+	root     string
+	move     bool
+	byName   map[string][]string
+	digests  map[string]string
+	reserved map[string]bool
 }
 
 func openMirror(root, dataRoot string, move bool) (localMirror, error) {
@@ -533,27 +686,58 @@ func openMirror(root, dataRoot string, move bool) (localMirror, error) {
 	for name := range index {
 		sort.Strings(index[name])
 	}
-	return localMirror{root: resolved, move: move, byName: index}, nil
+	return localMirror{root: resolved, move: move, byName: index, digests: make(map[string]string), reserved: make(map[string]bool)}, nil
 }
 
-func (mirror localMirror) find(artifact catalog.Artifact) string {
+func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, output io.Writer, environment map[string]string) (string, error) {
 	if mirror.root == "" {
-		return ""
+		return "", nil
 	}
 	names := []string{artifact.SHA256, filepath.Base(artifact.Destination), filepath.Base(artifact.Source.Path)}
+	checked := make(map[string]bool)
 	for _, name := range names {
 		for _, candidate := range mirror.byName[name] {
+			if checked[candidate] || mirror.reserved[candidate] {
+				continue
+			}
+			checked[candidate] = true
 			info, err := os.Lstat(candidate)
 			if err != nil || !info.Mode().IsRegular() || info.Size() != artifact.Size {
 				continue
 			}
-			digest, err := fileSHA256(candidate)
-			if err == nil && digest == artifact.SHA256 {
-				return candidate
+			fingerprint := fileIdentity(info)
+			if fingerprint == "" {
+				fingerprint = candidate
+			}
+			digest, ok := mirror.digests[fingerprint]
+			if !ok {
+				terminal := ui.New(output, environment)
+				fmt.Fprintf(output, "\n%s local mirror candidate %s (%s)\n", terminal.Heading("Checking"), candidate, humanBytes(artifact.Size))
+				progress := ui.NewProgress(output, environment, artifact.Size)
+				progress.Update(filepath.Base(candidate), 1, 1, 0, false)
+				digest, err = fileSHA256Context(ctx, candidate, func(hashed int64) {
+					progress.Update(filepath.Base(candidate), 1, 1, hashed, false)
+				})
+				if err == nil {
+					progress.Update(filepath.Base(candidate), 1, 1, artifact.Size, true)
+					mirror.digests[fingerprint] = digest
+				} else {
+					progress.Finish()
+					if errors.Is(err, context.Canceled) {
+						return "", err
+					}
+					continue
+				}
+			}
+			if digest == artifact.SHA256 {
+				if mirror.move {
+					mirror.reserved[candidate] = true
+				}
+				return candidate, nil
 			}
 		}
 	}
-	return ""
+	return "", nil
 }
 
 func (mirror localMirror) materialize(source, destination string) error {

@@ -13,7 +13,7 @@ import (
 
 func (app *App) commandImages(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, usage("images", "COMMAND", "[OPTIONS]"),
+		app.writeGroupHelp(usage("images", "COMMAND", "[OPTIONS]"),
 			[2]string{"export", "save exact managed images to an archive"},
 			[2]string{"import", "validate and load a managed image archive"})
 		return nil
@@ -71,6 +71,8 @@ func (app *App) imagesExport(args []string) error {
 		return err
 	}
 	localIDs := make(map[string]string)
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Image export:"))
 	for _, reference := range references {
 		present, err := app.podman().Exists(app.Context, "image", reference)
 		if err != nil {
@@ -83,7 +85,7 @@ func (app *App) imagesExport(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stdout, "  ready  %s\n", reference)
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-10s", "ready")), reference)
 	}
 	command := []string{"podman", "save", "--format", "docker-archive", "--output", "<temporary-archive>"}
 	if len(references) > 1 {
@@ -91,7 +93,7 @@ func (app *App) imagesExport(args []string) error {
 	}
 	command = append(command, references...)
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Archive: %s\nCommand: %s\n", output, shellJoin(command))
+		fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Label("Archive:"), output, terminal.Label("Command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(output), "."+filepath.Base(output)+".*.partial")
@@ -129,7 +131,7 @@ func (app *App) imagesExport(args []string) error {
 	if err := atomicfile.Publish(output, partial, 0o600, atomicfile.Create); err != nil {
 		return controlerr.New("publish image archive: %v", err)
 	}
-	fmt.Fprintf(app.Stdout, "Exported: %s (%s)\n", output, humanSize(archive.Size))
+	fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Success("Exported:"), output, humanSize(archive.Size))
 	return nil
 }
 
@@ -166,6 +168,8 @@ func (app *App) imagesImport(args []string) error {
 		return err
 	}
 	missing := 0
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Image import:"))
 	for _, image := range archive.Images {
 		present, err := app.podman().Exists(app.Context, "image", image.Reference)
 		if err != nil {
@@ -184,16 +188,16 @@ func (app *App) imagesImport(args []string) error {
 		} else {
 			missing++
 		}
-		fmt.Fprintf(app.Stdout, "  %-10s %s\n", state, image.Reference)
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-10s", state)), image.Reference)
 	}
-	fmt.Fprintf(app.Stdout, "Archive: %s (%s)\n", resolved, humanSize(archive.Size))
+	fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Label("Archive:"), resolved, humanSize(archive.Size))
 	if missing == 0 {
-		fmt.Fprintln(app.Stdout, "All archived images are already present.")
+		fmt.Fprintln(app.Stdout, terminal.Success("All archived images are already present."))
 		return nil
 	}
 	command := []string{"podman", "load", "--input", resolved}
 	if *dryRun {
-		fmt.Fprintf(app.Stdout, "Command: %s\n", shellJoin(command))
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Label("Command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
 	if _, err := app.run(command, false); err != nil {
@@ -209,6 +213,6 @@ func (app *App) imagesImport(args []string) error {
 	if len(invalid) > 0 {
 		return controlerr.New("Podman load completed but verification failed for: %s", strings.Join(invalid, ", "))
 	}
-	fmt.Fprintf(app.Stdout, "Imported %d managed images.\n", len(archive.Images))
+	fmt.Fprintln(app.Stdout, terminal.Success(fmt.Sprintf("Imported %d managed images.", len(archive.Images))))
 	return nil
 }
