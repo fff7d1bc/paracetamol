@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,42 +13,67 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"rocmplete/internal/application"
 	"rocmplete/internal/buildplan"
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/process"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
+	"rocmplete/internal/ui"
 )
 
 func (app *App) commandBuild(args []string) error {
-	set := app.flags("build", "Usage: ./rocmplete build TARGET [--no-layer-cache | --no-cache] [--image TAG]")
+	set := app.flags("build", "Usage: "+identity.Command("build", "TARGET", "[--no-layer-cache | --no-cache]", "[--image TAG]"))
 	noLayerCache := set.Bool("no-layer-cache", false, "rebuild selected image layers")
 	noCache := set.Bool("no-cache", false, "cold-build selected images and prerequisites")
 	image := set.String("image", "", "override the selected image tag")
 	target, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if target == "" && len(set.Args()) > 0 {
-		target = set.Args()[0]
+	positionals := set.Args()
+	if target == "" && len(positionals) > 0 {
+		target, positionals = positionals[0], positionals[1:]
+	}
+	if len(positionals) > 0 {
+		return controlerr.Usage("build accepts exactly one target")
 	}
 	if target == "" {
-		return controlerr.Usage("choose an image target")
+		if !terminalReader(app.Stdin) {
+			return controlerr.Usage("choose an image target")
+		}
+		var err error
+		target, err = app.guidedBuildTarget()
+		if err != nil {
+			return err
+		}
 	}
-	if err := requireChoice(target, "build target", "all", "base", "content-tools", "comfyui", "llama-cpp", "dwarfstar"); err != nil {
-		return err
+	targets := []application.BuildID{application.BuildID(target)}
+	if target == "all" {
+		targets = []application.BuildID{
+			application.BuildContentTools,
+			application.BuildComfyUI,
+			application.BuildLlamaCPP,
+			application.BuildDwarfStar,
+		}
+	}
+	if *image != "" && target == "all" {
+		return controlerr.Usage("--image requires one build target, not all")
 	}
 	if *noLayerCache && *noCache {
 		return controlerr.Usage("--no-layer-cache and --no-cache are mutually exclusive")
 	}
-	if *image != "" && target == "all" {
-		return controlerr.Usage("--image requires one build target, not all")
+	if _, err := application.BuildClosure(targets); err != nil {
+		return controlerr.Usage("%v", err)
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
@@ -61,116 +88,144 @@ func (app *App) commandBuild(args []string) error {
 		}
 		volumeSuffix = app.podman().SELinuxVolumeSuffix(app.Context)
 	}
-	selectedNoCache := *noLayerCache || *noCache
-	build := func(label, target, tag, base, runtimeImage string, discardLayers bool) error {
-		command, err := buildplan.Command(buildplan.Options{ProjectRoot: app.Root, Image: tag, Target: target, BaseImage: base, RuntimeImage: runtimeImage, PipCache: pipCache, VolumeSuffix: volumeSuffix, NoLayerCache: discardLayers})
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(app.Stdout, "Building %s (%s)\n", tag, label)
-		_, err = app.run(command, false)
-		return err
+	steps, err := buildplan.Plan(buildplan.Request{
+		ProjectRoot: app.Root, Targets: targets, ImageOverride: *image,
+		PipCache: pipCache, VolumeSuffix: volumeSuffix,
+		NoLayerCache: *noLayerCache, NoCache: *noCache,
+	})
+	if err != nil {
+		return controlerr.Usage("%v", err)
 	}
-	if target == "content-tools" {
-		tag := config.ContentToolsImage
-		if *image != "" {
-			tag = *image
-		}
-		if err := build("content-tools", config.ContentToolsTarget, tag, "", "", selectedNoCache); err != nil {
-			return err
-		}
-		fmt.Fprintf(app.Stdout, "Built content-tools: %s\n", tag)
-		return nil
+	type outcome struct {
+		step   buildplan.Step
+		state  string
+		reason string
 	}
-	if target == "base" {
-		baseTag := config.ROCmBaseImage
-		if *image != "" {
-			baseTag = *image
+	outcomes := make([]outcome, 0, len(steps))
+	states := make(map[application.BuildID]string, len(steps))
+	failed := false
+	for _, step := range steps {
+		blockedBy := ""
+		for _, prerequisite := range step.Unit.Prerequisites {
+			if states[prerequisite] != "built" {
+				blockedBy = string(prerequisite)
+				break
+			}
 		}
-		if err := build("runtime", config.ROCmRuntimeBuildTarget, config.ROCmRuntimeImage, "", "", selectedNoCache); err != nil {
-			return err
+		if blockedBy != "" {
+			states[step.Unit.ID] = "skipped"
+			outcomes = append(outcomes, outcome{step: step, state: "skipped", reason: "prerequisite " + blockedBy + " did not build"})
+			continue
 		}
-		if err := build("base", config.ROCmBaseBuildTarget, baseTag, "", config.ROCmRuntimeImage, selectedNoCache); err != nil {
-			return err
+		fmt.Fprintf(app.Stdout, "Building %s (%s)\n", step.Unit.DisplayName, step.Image)
+		if _, runErr := app.run(step.Command, false); runErr != nil {
+			failed = true
+			states[step.Unit.ID] = "failed"
+			outcomes = append(outcomes, outcome{step: step, state: "failed", reason: runErr.Error()})
+			continue
 		}
-		fmt.Fprintf(app.Stdout, "Built runtime: %s\nBuilt base: %s\n", config.ROCmRuntimeImage, baseTag)
-		return nil
+		states[step.Unit.ID] = "built"
+		outcomes = append(outcomes, outcome{step: step, state: "built"})
 	}
-	prerequisiteNoCache := *noCache
-	if err := build("content", config.ContentToolsTarget, config.ContentToolsImage, "", "", prerequisiteNoCache); err != nil {
-		return err
-	}
-	if err := build("runtime", config.ROCmRuntimeBuildTarget, config.ROCmRuntimeImage, "", "", prerequisiteNoCache); err != nil {
-		return err
-	}
-	targets := []string{target}
-	if target == "all" {
-		targets = []string{"comfyui", "llama-cpp", "dwarfstar"}
-	}
-	needsPyTorch := false
-	for _, identifier := range targets {
-		spec, _ := config.ApplicationByID(identifier)
-		needsPyTorch = needsPyTorch || spec.SharedPyTorchBase
-	}
-	if needsPyTorch {
-		if err := build("base", config.ROCmBaseBuildTarget, config.ROCmBaseImage, "", config.ROCmRuntimeImage, prerequisiteNoCache); err != nil {
-			return err
+	terminal := ui.New(app.Stdout, app.Environment)
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Build summary"))
+	for _, result := range outcomes {
+		fmt.Fprintf(app.Stdout, "  %-8s %-14s %s", result.state, result.step.Unit.ID, result.step.Image)
+		if result.reason != "" {
+			fmt.Fprintf(app.Stdout, " (%s)", result.reason)
 		}
+		fmt.Fprintln(app.Stdout)
 	}
-	for _, identifier := range targets {
-		spec, _ := config.ApplicationByID(identifier)
-		tag := spec.Image
-		if *image != "" {
-			tag = *image
-		}
-		base := ""
-		runtimeImage := config.ROCmRuntimeImage
-		if spec.SharedPyTorchBase {
-			base = config.ROCmBaseImage
-			runtimeImage = ""
-		}
-		if err := build(identifier, spec.BuildTarget, tag, base, runtimeImage, selectedNoCache); err != nil {
-			return err
-		}
-		fmt.Fprintf(app.Stdout, "Built %s: %s\n", identifier, tag)
+	if failed {
+		return &controlerr.Error{Message: "one or more image builds failed", Status: 1}
 	}
 	return nil
 }
 
+func (app *App) guidedBuildTarget() (string, error) {
+	choices := []string{"all", string(application.BuildRuntime), string(application.BuildPyTorchBase), string(application.BuildContentTools)}
+	for _, spec := range application.All() {
+		choices = append(choices, spec.ID)
+	}
+	fmt.Fprintln(app.Stdout, "Choose an image target:")
+	for index, choice := range choices {
+		fmt.Fprintf(app.Stdout, "  %d. %s\n", index+1, choice)
+	}
+	fmt.Fprint(app.Stdout, "Selection (or q to cancel): ")
+	scanner := bufio.NewScanner(app.Stdin)
+	if !scanner.Scan() || strings.EqualFold(strings.TrimSpace(scanner.Text()), "q") {
+		return "", controlerr.New("build selection cancelled")
+	}
+	selected, err := strconv.Atoi(strings.TrimSpace(scanner.Text()))
+	if err != nil || selected < 1 || selected > len(choices) {
+		return "", controlerr.Usage("build selection must be a number from 1 through %d", len(choices))
+	}
+	return choices[selected-1], nil
+}
+
 func (app *App) commandGuide(args []string) error {
-	set := app.flags("guide", "Usage: ./rocmplete guide [comfyui|llama-cpp|dwarfstar]")
+	set := app.flags("guide", usage("guide", "[APPLICATION]"))
 	application, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if application == "" && len(set.Args()) > 0 {
-		application = set.Args()[0]
+	positionals := set.Args()
+	if application == "" && len(positionals) > 0 {
+		application, positionals = positionals[0], positionals[1:]
+	}
+	if len(positionals) > 0 {
+		return controlerr.Usage("guide accepts at most one application")
 	}
 	if application == "" {
-		fmt.Fprintln(app.Stdout, "Applications:\n  comfyui     image and video workflows\n  llama-cpp   local GGUF inference and router\n  dwarfstar   experimental DeepSeek V4 Flash inference")
+		fmt.Fprintln(app.Stdout, "Applications:")
+		for _, spec := range config.Applications() {
+			fmt.Fprintf(app.Stdout, "  %-12s %s\n", spec.ID, spec.Summary)
+		}
+		fmt.Fprintf(app.Stdout, "\nDetails: %s\n", identity.Command("guide", "APPLICATION"))
 		return nil
 	}
-	if err := requireChoice(application, "application", "comfyui", "llama-cpp", "dwarfstar"); err != nil {
-		return err
+	spec, ok := config.ApplicationByID(application)
+	if !ok {
+		return controlerr.Usage("unknown application %q", application)
 	}
-	spec, _ := config.ApplicationByID(application)
-	fmt.Fprintf(app.Stdout, "%s\n\n  Build:   ./rocmplete build %s\n  Content: %s\n  Run:     %s\n  Logs:    ./rocmplete logs %s\n  Stop:    ./rocmplete stop %s\n", spec.ID, spec.ID, spec.AfterBuild, spec.AfterContent, spec.ID, spec.ID)
+	fmt.Fprintf(app.Stdout, "%s\n%s\n\nManaged image: %s\nDefault port:  %d\nModes:         %s\n\n", spec.DisplayName, spec.Summary, spec.Image, spec.Port, strings.Join(spec.Modes, ", "))
+	fmt.Fprintf(app.Stdout, "Walkthrough\n  Build:   %s\n", identity.Command("build", spec.ID))
+	for _, action := range spec.AfterBuild {
+		fmt.Fprintf(app.Stdout, "  Content: %s\n           %s\n", action.Command(), action.Description)
+	}
+	for _, action := range spec.AfterContent {
+		fmt.Fprintf(app.Stdout, "  Run:     %s\n           %s\n", action.Command(), action.Description)
+	}
+	fmt.Fprintf(app.Stdout, "  Status:  %s\n", identity.Command("status", spec.ID))
+	if spec.Logs {
+		fmt.Fprintf(app.Stdout, "  Logs:    %s\n", identity.Command("logs", spec.ID))
+	}
+	if spec.Shell {
+		fmt.Fprintf(app.Stdout, "  Shell:   %s\n", identity.Command("shell", spec.ID))
+	}
+	fmt.Fprintf(app.Stdout, "  Stop:    %s\n", identity.Command("stop", spec.ID))
 	return nil
 }
 
 func (app *App) commandStatus(args []string) error {
-	set := app.flags("status", "Usage: ./rocmplete status [llama-cpp] [--model PRESET] [--data-dir PATH]")
+	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]"))
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	application, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if application == "" && len(set.Args()) > 0 {
-		application = set.Args()[0]
+	positionals := set.Args()
+	if application == "" && len(positionals) > 0 {
+		application, positionals = positionals[0], positionals[1:]
 	}
-	if application != "" && application != "llama-cpp" {
-		return controlerr.Usage("status application must be llama-cpp")
+	if len(positionals) > 0 {
+		return controlerr.Usage("status accepts at most one application")
+	}
+	if application != "" {
+		if _, ok := config.ApplicationByID(application); !ok {
+			return controlerr.Usage("unknown status application %q", application)
+		}
 	}
 	if *model != "" && application != "llama-cpp" {
 		return controlerr.Usage("--model requires 'status llama-cpp'")
@@ -183,6 +238,10 @@ func (app *App) commandStatus(args []string) error {
 	}
 	if application == "llama-cpp" {
 		return app.llamaStatus(*model)
+	}
+	if application != "" {
+		spec, _ := config.ApplicationByID(application)
+		return app.applicationStatus(spec, *dataFlag)
 	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
@@ -249,12 +308,62 @@ func (app *App) commandStatus(args []string) error {
 	return nil
 }
 
+func (app *App) applicationStatus(spec config.Application, dataFlag string) error {
+	dataRoot, err := app.resolveDataDir(dataFlag, false)
+	if err != nil {
+		return err
+	}
+	imageState := "missing"
+	if present, inspectErr := app.podman().Exists(app.Context, "image", spec.Image); inspectErr != nil {
+		return inspectErr
+	} else if present {
+		imageState = "ready"
+	}
+	containerState := "absent"
+	if present, inspectErr := app.podman().Exists(app.Context, "container", spec.ContainerName); inspectErr != nil {
+		return inspectErr
+	} else if present {
+		containerState, err = app.podman().Capture(app.Context, []string{"inspect", "--format", "{{.State.Status}}", spec.ContainerName}, "cannot inspect container "+spec.ContainerName)
+		if err != nil {
+			return err
+		}
+	}
+	applicationData := (storage.Layout{Root: dataRoot}).Application(spec.ID)
+	dataState := "missing"
+	if status, statErr := os.Stat(applicationData); statErr == nil && status.IsDir() {
+		dataState = "ready"
+	}
+	managed, err := app.managedCatalog()
+	if err != nil {
+		return err
+	}
+	ready, total := 0, 0
+	for _, bundle := range managed.Bundles {
+		if bundle.Application != spec.ID {
+			continue
+		}
+		total++
+		if _, requireErr := content.RequireBundle(managed, bundle, dataRoot); requireErr == nil {
+			ready++
+		}
+	}
+	fmt.Fprintf(app.Stdout, "%s\n", spec.DisplayName)
+	writeStatusRows(app.Stdout, [][2]string{
+		{"Image", imageState + " — " + spec.Image},
+		{"Container", containerState + " — " + spec.ContainerName},
+		{"Data", dataState + " — " + applicationData},
+		{"Content", fmt.Sprintf("%d/%d bundles ready", ready, total)},
+	})
+	return nil
+}
+
 func (app *App) commandRun(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete run APPLICATION [MODE] [OPTIONS]",
-			[2]string{"comfyui", "run the ComfyUI web application"},
-			[2]string{"llama-cpp", "run llama.cpp server or cli mode"},
-			[2]string{"dwarfstar", "run DwarfStar server or cli mode"})
+		commands := make([][2]string, 0, len(config.Applications()))
+		for _, spec := range config.Applications() {
+			commands = append(commands, [2]string{spec.ID, spec.Summary})
+		}
+		writeGroupHelp(app.Stdout, usage("run", "APPLICATION", "[MODE]", "[OPTIONS]"), commands...)
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
@@ -280,7 +389,7 @@ func (app *App) commandRun(args []string) error {
 }
 
 func (app *App) runComfyUI(args []string) error {
-	set := app.flags("run comfyui", "Usage: ./rocmplete run comfyui [OPTIONS] [-- COMFYUI-ARGS]")
+	set := app.flags("run comfyui", usage("run", "comfyui", "[OPTIONS]", "[-- COMFYUI-ARGS]"))
 	profile := set.String("profile", "", "execution profile")
 	listen := set.String("listen", "", "host publication address")
 	portText := set.String("port", "", "host port")
@@ -294,8 +403,12 @@ func (app *App) runComfyUI(args []string) error {
 	memoryPolicy := set.String("memory-policy", "", "balanced or conservative")
 	image := set.String("image", "", "override image")
 	kernelPolicy := set.String("kernel-policy", "", "default or experimental")
-	if err := set.Parse(args); err != nil {
+	upstreamArgs, err := parseFlagsWithPassthrough(set, args)
+	if err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("ComfyUI arguments must follow --")
 	}
 	profileValue := firstNonEmpty(*profile, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
 	if err := platform.ValidateProfile(profileValue); err != nil {
@@ -331,7 +444,7 @@ func (app *App) runComfyUI(args []string) error {
 			return err
 		}
 	}
-	for _, argument := range set.Args() {
+	for _, argument := range upstreamArgs {
 		for _, managed := range []string{"--listen", "--port", "--base-directory", "--models-directory", "--input-directory", "--output-directory", "--temp-directory", "--user-directory", "--database-url", "--cpu"} {
 			if argument == managed || strings.HasPrefix(argument, managed+"=") {
 				return controlerr.Usage("ComfyUI argument %s is managed by the launcher", managed)
@@ -339,7 +452,7 @@ func (app *App) runComfyUI(args []string) error {
 		}
 	}
 	imageValue := firstNonEmpty(*image, config.EnvironmentValue(app.Environment, "IMAGE", application.Image))
-	command := runtime.WebCommand(runtime.WebOptions{Image: imageValue, Profile: profileValue, Listen: listenValue, Port: portValue, DataDir: dataRoot, RenderNodes: selected, Detach: *detach, Unconfined: *unconfined, DisableBundledExtensions: *disableExtensions, Arguments: set.Args(), ContainerName: application.ContainerName, Application: "comfyui", MemoryPolicy: memoryValue, KernelPolicy: kernelValue, Publish: true}, app.podman().SELinuxVolumeSuffix(app.Context))
+	command := runtime.WebCommand(runtime.WebOptions{Image: imageValue, Profile: profileValue, Listen: listenValue, Port: portValue, DataDir: dataRoot, RenderNodes: selected, Detach: *detach, Unconfined: *unconfined, DisableBundledExtensions: *disableExtensions, Arguments: upstreamArgs, ContainerName: application.ContainerName, Application: "comfyui", MemoryPolicy: memoryValue, KernelPolicy: kernelValue, Publish: true}, app.podman().SELinuxVolumeSuffix(app.Context))
 	if !isLoopback(listenValue) {
 		fmt.Fprintf(app.Stderr, "WARNING: ComfyUI is published on %s:%d without authentication.\n", listenValue, portValue)
 	}
@@ -355,10 +468,13 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err := requireChoice(mode, "llama.cpp mode", "server", "cli"); err != nil {
 		return err
 	}
-	set := app.flags("run llama-cpp "+mode, "Usage: ./rocmplete run llama-cpp "+mode+" (--model FILE | --preset NAME | --router) [OPTIONS]")
+	set := app.flags("run llama-cpp "+mode, usage("run", "llama-cpp", mode, "(--model FILE | --preset NAME | --router)", "[OPTIONS]"))
 	model := set.String("model", "", "exact local GGUF")
 	presetID := set.String("preset", "", "installed catalog preset")
-	routerMode := set.Bool("router", false, "serve installed presets")
+	routerMode := false
+	if mode == "server" {
+		set.BoolVar(&routerMode, "router", false, "serve installed presets")
+	}
 	profileFlag := set.String("profile", "", "execution profile")
 	backend := set.String("backend", "rocm", "rocm or vulkan")
 	var nodes stringList
@@ -368,20 +484,27 @@ func (app *App) runLlama(mode string, args []string) error {
 	contextSize := set.Int64("context", -1, "context size")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print resolved command")
-	listen := set.String("listen", "", "host publication address")
-	portText := set.String("port", "", "host port")
-	detach := set.Bool("detach", false, "run in background")
-	apiKey := set.String("api-key-file", "", "read-only API key file")
-	modelsMax := set.Int("models-max", 0, "router simultaneous models")
+	listen, portText, apiKey := "", "", ""
+	detach := false
+	modelsMax := 0
+	if mode == "server" {
+		set.StringVar(&listen, "listen", "", "host publication address")
+		set.StringVar(&portText, "port", "", "host port")
+		set.BoolVar(&detach, "detach", false, "run in background")
+		set.StringVar(&apiKey, "api-key-file", "", "read-only API key file")
+		set.IntVar(&modelsMax, "models-max", 0, "router simultaneous models")
+	}
 	prompt := optionalString{}
-	set.Var(&prompt, "prompt", "single prompt")
-	if err := set.Parse(args); err != nil {
+	if mode == "cli" {
+		set.Var(&prompt, "prompt", "single prompt")
+	}
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if mode != "server" && *routerMode {
-		return controlerr.Usage("--router is only valid for server mode")
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("run llama-cpp %s does not accept positional arguments", mode)
 	}
-	selectedSources := boolCount(*model != "", *presetID != "", *routerMode)
+	selectedSources := boolCount(*model != "", *presetID != "", routerMode)
 	if selectedSources != 1 {
 		return controlerr.Usage("choose exactly one of --model, --preset, or --router")
 	}
@@ -391,10 +514,10 @@ func (app *App) runLlama(mode string, args []string) error {
 	if *contextSize < -1 {
 		return controlerr.Usage("--context must be zero or positive")
 	}
-	if *modelsMax != 0 && !*routerMode {
+	if modelsMax != 0 && !routerMode {
 		return controlerr.Usage("--models-max is only valid with --router")
 	}
-	modelsMaxValue := *modelsMax
+	modelsMaxValue := modelsMax
 	if modelsMaxValue == 0 {
 		modelsMaxValue = 2
 	}
@@ -422,14 +545,17 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
-	options := runtime.LlamaOptions{Profile: profileValue, Mode: mode, DataDir: dataRoot, Backend: *backend, ModelsMax: modelsMaxValue, RenderNodes: selectedNodes, Listen: firstNonEmpty(*listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen)), AutoRemove: true, Unconfined: *unconfined, Detach: *detach}
-	if err := config.ValidateListenAddress(options.Listen); err != nil {
-		return err
-	}
+	options := runtime.LlamaOptions{Profile: profileValue, Mode: mode, DataDir: dataRoot, Backend: *backend, ModelsMax: modelsMaxValue, RenderNodes: selectedNodes, AutoRemove: true, Unconfined: *unconfined, Detach: detach}
 	application, _ := config.ApplicationByID("llama-cpp")
-	options.Port, err = config.ValidatePort(firstNonEmpty(*portText, config.EnvironmentValue(app.Environment, "PORT", fmt.Sprint(application.Port))))
-	if err != nil {
-		return err
+	if mode == "server" {
+		options.Listen = firstNonEmpty(listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen))
+		if err := config.ValidateListenAddress(options.Listen); err != nil {
+			return err
+		}
+		options.Port, err = config.ValidatePort(firstNonEmpty(portText, config.EnvironmentValue(app.Environment, "PORT", fmt.Sprint(application.Port))))
+		if err != nil {
+			return err
+		}
 	}
 	options.Image = firstNonEmpty(*imageFlag, application.Image)
 	options.SourceRevision = app.projectRevision()
@@ -455,7 +581,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		}
 		bundle := managed.Bundles[preset.Bundle]
 		if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
-			return controlerr.New("preset %q is not installed: %v\n  Install content: ./rocmplete content install %s", *presetID, err, preset.Bundle)
+			return controlerr.New("preset %q is not installed: %v\n  Install content: %s", *presetID, err, identity.Command("content", "install", preset.Bundle))
 		}
 		artifact := managed.Artifacts[preset.Artifact]
 		options.ManagedModel = artifact.Destination
@@ -479,7 +605,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		}
 		displayModel = fmt.Sprintf("%s (%s)", *presetID, content.ArtifactPath(dataRoot, artifact))
 	}
-	if *routerMode {
+	if routerMode {
 		contents, installed, renderErr := runtime.RenderRouter(managed, dataRoot, *backend)
 		if renderErr != nil {
 			return renderErr
@@ -494,8 +620,8 @@ func (app *App) runLlama(mode string, args []string) error {
 		}
 		displayModel = "router: " + strings.Join(installed, ", ")
 	}
-	if *apiKey != "" {
-		options.APIKeyFile, err = regularFile(*apiKey, "API-key file")
+	if apiKey != "" {
+		options.APIKeyFile, err = regularFile(apiKey, "API-key file")
 		if err != nil {
 			return err
 		}
@@ -519,14 +645,14 @@ func (app *App) runLlama(mode string, args []string) error {
 		fmt.Fprintf(app.Stdout, "Resolved command:\n  %s\n", shellJoin(command))
 		return nil
 	}
-	return app.startManaged(application, options.Image, command, *detach)
+	return app.startManaged(application, options.Image, command, detach)
 }
 
 func (app *App) runDwarfStar(mode string, args []string) error {
 	if err := requireChoice(mode, "DwarfStar mode", "server", "cli"); err != nil {
 		return err
 	}
-	set := app.flags("run dwarfstar "+mode, "Usage: ./rocmplete run dwarfstar "+mode+" [OPTIONS]")
+	set := app.flags("run dwarfstar "+mode, usage("run", "dwarfstar", mode, "[OPTIONS]"))
 	modelFlag := set.String("model", "", "exact local GGUF")
 	profileFlag := set.String("profile", "", "execution profile")
 	var nodes stringList
@@ -538,14 +664,23 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 	dspark := set.Bool("dspark", false, "enable managed DSpark pair")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print resolved command")
-	listen := set.String("listen", "", "host publication address")
-	portText := set.String("port", "", "host port")
-	detach := set.Bool("detach", false, "run in background")
+	listen, portText := "", ""
+	detach := false
+	if mode == "server" {
+		set.StringVar(&listen, "listen", "", "host publication address")
+		set.StringVar(&portText, "port", "", "host port")
+		set.BoolVar(&detach, "detach", false, "run in background")
+	}
 	prompt := optionalString{}
-	set.Var(&prompt, "prompt", "single prompt")
+	if mode == "cli" {
+		set.Var(&prompt, "prompt", "single prompt")
+	}
 	noThinking := set.Bool("no-thinking", false, "disable thinking")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("run dwarfstar %s does not accept positional arguments", mode)
 	}
 	if *contextSize < 4096 || *contextSize > 1048576 {
 		return controlerr.Usage("--context must be between 4096 and 1048576")
@@ -608,16 +743,19 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 		}
 	}
 	application, _ := config.ApplicationByID("dwarfstar")
-	options := runtime.DwarfStarOptions{Image: firstNonEmpty(*imageFlag, application.Image), Mode: mode, DataDir: dataRoot, Model: model, SupportModel: support, DSpark: *dspark, RenderNodes: selectedNodes, Profile: profileValue, Listen: firstNonEmpty(*listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen)), Context: *contextSize, OutputTokens: *outputTokens, NoThinking: *noThinking, Detach: *detach, Unconfined: *unconfined, Interactive: mode == "cli" && !prompt.set}
+	options := runtime.DwarfStarOptions{Image: firstNonEmpty(*imageFlag, application.Image), Mode: mode, DataDir: dataRoot, Model: model, SupportModel: support, DSpark: *dspark, RenderNodes: selectedNodes, Profile: profileValue, Context: *contextSize, OutputTokens: *outputTokens, NoThinking: *noThinking, Detach: detach, Unconfined: *unconfined, Interactive: mode == "cli" && !prompt.set}
 	if prompt.set {
 		options.Prompt = &prompt.value
 	}
-	if err := config.ValidateListenAddress(options.Listen); err != nil {
-		return err
-	}
-	options.Port, err = config.ValidatePort(firstNonEmpty(*portText, config.EnvironmentValue(app.Environment, "PORT", fmt.Sprint(application.Port))))
-	if err != nil {
-		return err
+	if mode == "server" {
+		options.Listen = firstNonEmpty(listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen))
+		if err := config.ValidateListenAddress(options.Listen); err != nil {
+			return err
+		}
+		options.Port, err = config.ValidatePort(firstNonEmpty(portText, config.EnvironmentValue(app.Environment, "PORT", fmt.Sprint(application.Port))))
+		if err != nil {
+			return err
+		}
 	}
 	if options.Interactive && !*dryRun && !terminalReader(app.Stdin) {
 		return controlerr.New("interactive DwarfStar CLI requires a terminal; pass --prompt")
@@ -634,20 +772,20 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 		fmt.Fprintf(app.Stdout, "Resolved command:\n  %s\n", shellJoin(command))
 		return nil
 	}
-	return app.startManaged(application, options.Image, command, *detach)
+	return app.startManaged(application, options.Image, command, detach)
 }
 
 func (app *App) commandShell(args []string) error {
-	set := app.flags("shell", "Usage: ./rocmplete shell APPLICATION [--data-dir PATH] [--image TAG]")
+	set := app.flags("shell", usage("shell", "APPLICATION", "[--data-dir PATH]", "[--image TAG]"))
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "override image")
-	applicationID, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if applicationID == "" {
-		return controlerr.Usage("choose an application")
+	if len(set.Args()) != 1 {
+		return controlerr.Usage("shell accepts exactly one application")
 	}
+	applicationID := set.Args()[0]
 	application, ok := config.ApplicationByID(applicationID)
 	if !ok || !application.Shell {
 		return controlerr.Usage("unknown shell application %q", applicationID)
@@ -675,17 +813,17 @@ func (app *App) commandShell(args []string) error {
 }
 
 func (app *App) commandLogs(args []string) error {
-	set := app.flags("logs", "Usage: ./rocmplete logs APPLICATION [--follow] [--tail N | --all]")
+	set := app.flags("logs", usage("logs", "APPLICATION", "[--follow]", "[--tail N | --all]"))
 	follow := set.Bool("follow", false, "follow output")
 	tail := set.Int("tail", 200, "recent lines")
 	all := set.Bool("all", false, "show complete logs")
-	applicationID, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if applicationID == "" {
-		return controlerr.Usage("choose an application")
+	if len(set.Args()) != 1 {
+		return controlerr.Usage("logs accepts exactly one application")
 	}
+	applicationID := set.Args()[0]
 	application, ok := config.ApplicationByID(applicationID)
 	if !ok || !application.Logs {
 		return controlerr.Usage("unknown log application %q", applicationID)
@@ -706,36 +844,32 @@ func (app *App) commandLogs(args []string) error {
 	if !present {
 		return controlerr.New("container %q does not exist", application.ContainerName)
 	}
-	command := []string{"podman", "logs"}
-	if *follow {
-		command = append(command, "--follow")
-	}
-	if !*all {
-		command = append(command, "--tail", fmt.Sprint(*tail))
-	}
-	command = append(command, application.ContainerName)
-	_, err = app.run(command, false)
-	return err
+	return app.podman().Logs(app.Context, podman.LogOptions{Container: application.ContainerName, Follow: *follow, All: *all, Tail: *tail, Streams: podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}})
 }
 
 func (app *App) commandStop(args []string) error {
-	set := app.flags("stop", "Usage: ./rocmplete stop APPLICATION|all")
-	applicationID, args := leadingPositional(args)
-	if err := set.Parse(args); err != nil {
+	set := app.flags("stop", usage("stop", "APPLICATION|all"))
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
-	if applicationID == "" {
-		return controlerr.Usage("choose an application")
+	if len(set.Args()) != 1 {
+		return controlerr.Usage("stop accepts exactly one application")
 	}
-	if err := requireChoice(applicationID, "application", "comfyui", "llama-cpp", "dwarfstar", "all"); err != nil {
-		return err
+	applicationID := set.Args()[0]
+	if applicationID != "all" {
+		if _, ok := config.ApplicationByID(applicationID); !ok {
+			return controlerr.Usage("unknown application %q", applicationID)
+		}
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
 	targets := []string{applicationID}
 	if applicationID == "all" {
-		targets = []string{"comfyui", "llama-cpp", "dwarfstar"}
+		targets = nil
+		for _, spec := range config.Applications() {
+			targets = append(targets, spec.ID)
+		}
 	}
 	for _, identifier := range targets {
 		application, _ := config.ApplicationByID(identifier)
@@ -747,7 +881,7 @@ func (app *App) commandStop(args []string) error {
 			fmt.Fprintf(app.Stdout, "Container not present: %s\n", application.ContainerName)
 			continue
 		}
-		if _, err := app.run([]string{"podman", "rm", "--force", "--time", "2", "--ignore", application.ContainerName}, false); err != nil {
+		if err := app.podman().RemoveContainer(app.Context, application.ContainerName, 2, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
 			return err
 		}
 		fmt.Fprintf(app.Stdout, "Removed container: %s\n", application.ContainerName)
@@ -764,7 +898,7 @@ func (app *App) startManaged(application config.Application, image string, comma
 		return err
 	}
 	if !present {
-		return controlerr.New("image not found: %s\n  Build image: ./rocmplete build %s", image, application.ID)
+		return controlerr.New("image not found: %s\n  Build image: %s", image, identity.Command("build", application.ID))
 	}
 	exists, err := app.podman().Exists(app.Context, "container", application.ContainerName)
 	if err != nil {
@@ -774,14 +908,15 @@ func (app *App) startManaged(application config.Application, image string, comma
 		return controlerr.New("container %q already exists; use logs or stop", application.ContainerName)
 	}
 	if application.Port != 0 {
-		fmt.Fprintf(app.Stdout, "Logs: ./rocmplete logs %s\nStop: ./rocmplete stop %s\n", application.ID, application.ID)
+		fmt.Fprintf(app.Stdout, "Logs: %s\nStop: %s\n", identity.Command("logs", application.ID), identity.Command("stop", application.ID))
 	}
 	_, runErr := app.run(command, false)
 	if runErr != nil && !detach {
-		_, _ = app.Runner.Run(contextWithoutCancel(), processCommand("podman", "rm", "--force", "--time", "1", "--ignore", application.ContainerName))
+		cleanupErr := app.podman().RemoveContainer(contextWithoutCancel(), application.ContainerName, 1, podman.Streams{})
 		if app.Context.Err() != nil {
-			return app.Context.Err()
+			return withCleanupFailure(app.Context.Err(), "remove interrupted application container", cleanupErr)
 		}
+		return withCleanupFailure(runErr, "remove failed application container", cleanupErr)
 	}
 	return runErr
 }
@@ -829,7 +964,7 @@ func (app *App) resolveDataDir(value string, prepare bool) (string, error) {
 }
 
 func (app *App) projectRevision() string {
-	result, err := app.Runner.Run(app.Context, processCommand("git", "-C", app.Root, "rev-parse", "HEAD"))
+	result, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "rev-parse", "HEAD"}})
 	if err != nil || result.Status != 0 {
 		return "unavailable"
 	}
@@ -837,11 +972,73 @@ func (app *App) projectRevision() string {
 	if len(revision) != 40 || strings.Trim(revision, "0123456789abcdef") != "" {
 		return "unavailable"
 	}
-	changes, changeErr := app.Runner.Run(app.Context, processCommand("git", "-C", app.Root, "status", "--porcelain"))
+	changes, changeErr := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "status", "--porcelain"}})
 	if changeErr == nil && changes.Status == 0 && strings.TrimSpace(string(changes.Stdout)) != "" {
 		return revision + " (dirty)"
 	}
 	return revision
+}
+
+func (app *App) projectSourceIdentity() (string, error) {
+	result, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "rev-parse", "HEAD"}})
+	if err != nil || result.Status != 0 {
+		return "", fmt.Errorf("cannot resolve project revision")
+	}
+	revision := strings.TrimSpace(string(result.Stdout))
+	if len(revision) != 40 || strings.Trim(revision, "0123456789abcdef") != "" {
+		return "", fmt.Errorf("project revision is invalid")
+	}
+	difference, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "diff", "--binary", "HEAD", "--"}})
+	if err != nil || difference.Status != 0 {
+		return "", fmt.Errorf("cannot fingerprint tracked project changes")
+	}
+	untracked, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "ls-files", "--others", "--exclude-standard", "-z"}})
+	if err != nil || untracked.Status != 0 {
+		return "", fmt.Errorf("cannot fingerprint untracked project inputs")
+	}
+	if len(difference.Stdout) == 0 && len(untracked.Stdout) == 0 {
+		return revision, nil
+	}
+	hash := sha256.New()
+	hash.Write([]byte("rocmplete-source-v1\x00" + revision + "\x00"))
+	hash.Write(difference.Stdout)
+	paths := strings.Split(strings.TrimSuffix(string(untracked.Stdout), "\x00"), "\x00")
+	sort.Strings(paths)
+	for _, relative := range paths {
+		if relative == "" || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("git returned unsafe untracked path %q", relative)
+		}
+		path := filepath.Join(app.Root, filepath.FromSlash(relative))
+		status, inspectErr := os.Lstat(path)
+		if inspectErr != nil {
+			return "", fmt.Errorf("inspect untracked project input %s: %w", relative, inspectErr)
+		}
+		fmt.Fprintf(hash, "\x00%s\x00%s\x00", relative, status.Mode())
+		if status.Mode()&os.ModeSymlink != 0 {
+			target, readErr := os.Readlink(path)
+			if readErr != nil {
+				return "", readErr
+			}
+			hash.Write([]byte(target))
+			continue
+		}
+		if !status.Mode().IsRegular() {
+			return "", fmt.Errorf("untracked project input is not a regular file: %s", relative)
+		}
+		handle, openErr := os.Open(path)
+		if openErr != nil {
+			return "", openErr
+		}
+		_, copyErr := io.Copy(hash, handle)
+		closeErr := handle.Close()
+		if copyErr != nil {
+			return "", copyErr
+		}
+		if closeErr != nil {
+			return "", closeErr
+		}
+	}
+	return fmt.Sprintf("%s+dirty.%x", revision, hash.Sum(nil)), nil
 }
 
 func leadingPositional(args []string) (string, []string) {
@@ -966,10 +1163,6 @@ func setWasSet(set *flag.FlagSet, name string) bool {
 		}
 	})
 	return found
-}
-
-func processCommand(name string, arguments ...string) process.Command {
-	return process.Command{Name: name, Args: arguments}
 }
 
 func contextWithoutCancel() context.Context { return context.Background() }

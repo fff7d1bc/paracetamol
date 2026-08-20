@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"rocmplete/internal/atomicfile"
 )
 
 func Timestamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -30,52 +32,8 @@ func DefaultPath(directory, suffix string) string {
 // WriteJSON publishes a new result atomically and never replaces an existing
 // result. Benchmark evidence is append-only even when a caller chooses a path.
 func WriteJSON(path string, value any) error {
-	if !filepath.IsAbs(path) {
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		path = absolute
-	}
-	if status, err := os.Lstat(path); err == nil {
-		return fmt.Errorf("refusing to replace existing benchmark result: %s (%s)", path, status.Mode())
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("inspect benchmark result %s: %w", path, err)
-	}
-	contents, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode benchmark result: %w", err)
-	}
-	contents = append(contents, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("prepare benchmark result directory: %w", err)
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(contents); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Link(temporaryPath, path); err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("refusing to replace existing benchmark result: %s", path)
-		}
-		return fmt.Errorf("publish benchmark result %s: %w", path, err)
+	if err := atomicfile.JSON(path, value, 0o644, atomicfile.Create); err != nil {
+		return fmt.Errorf("write benchmark result: %w", err)
 	}
 	return nil
 }
@@ -83,68 +41,34 @@ func WriteJSON(path string, value any) error {
 // WriteCheckpoint atomically creates or replaces a regular checkpoint owned
 // by an in-progress suite. It refuses symlinks and other unexpected targets.
 func WriteCheckpoint(path string, value any) error {
-	if !filepath.IsAbs(path) {
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		path = absolute
-	}
-	if status, err := os.Lstat(path); err == nil && !status.Mode().IsRegular() {
-		return fmt.Errorf("checkpoint is not a regular file: %s", path)
-	} else if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	contents, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	contents = append(contents, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
-	if err := temporary.Chmod(0o644); err != nil {
-		temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(contents); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return err
-	}
-	return nil
+	return atomicfile.JSON(path, value, 0o644, atomicfile.ReplaceRegular)
 }
 
-func ReadObject(path string) (map[string]any, error) {
+// WriteNewCheckpoint publishes the first state of a resumable run without
+// replacing a path selected by another concurrent run.
+func WriteNewCheckpoint(path string, value any) error {
+	return atomicfile.JSON(path, value, 0o644, atomicfile.Create)
+}
+
+// ReadJSON decodes one complete JSON document. Strict mode rejects unknown
+// fields and is appropriate for ROCmplete-owned resumable state.
+func ReadJSON(path string, destination any, strict bool) error {
 	handle, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer handle.Close()
 	decoder := json.NewDecoder(handle)
 	decoder.UseNumber()
-	var value map[string]any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("decode benchmark result %s: %w", path, err)
+	if strict {
+		decoder.DisallowUnknownFields()
+	}
+	if err := decoder.Decode(destination); err != nil {
+		return fmt.Errorf("decode JSON %s: %w", path, err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return nil, fmt.Errorf("benchmark result contains invalid trailing data: %s", path)
+		return fmt.Errorf("JSON contains invalid trailing data: %s", path)
 	}
-	return value, nil
+	return nil
 }

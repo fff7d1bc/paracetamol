@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -15,14 +16,29 @@ import (
 	"rocmplete/internal/process"
 )
 
-const (
-	ManagedContainerLabel       = identity.LabelNamespace + ".managed"
-	ManagedApplicationLabel     = identity.LabelNamespace + ".application"
-	ManagedRoleLabel            = identity.LabelNamespace + ".role"
-	SharedContentSELinuxContext = "system_u:object_r:container_file_t:s0"
+var (
+	ManagedContainerLabel   = identity.LabelNamespace + ".managed"
+	ManagedApplicationLabel = identity.LabelNamespace + ".application"
+	ManagedRoleLabel        = identity.LabelNamespace + ".role"
 )
 
+const SharedContentSELinuxContext = "system_u:object_r:container_file_t:s0"
+
 type Client struct{ Runner process.Runner }
+
+type Streams struct {
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+type LogOptions struct {
+	Container string
+	Follow    bool
+	All       bool
+	Tail      int
+	Streams   Streams
+}
 
 // CurrentUmask reads procfs without briefly changing the process-wide umask,
 // which would race concurrent launcher work.
@@ -131,6 +147,50 @@ func (client Client) Capture(ctx context.Context, arguments []string, failure st
 		return "", controlerr.New("%s", failure)
 	}
 	return strings.TrimSpace(string(result.Stdout)), nil
+}
+
+func (client Client) RemoveContainer(ctx context.Context, name string, graceSeconds int, streams Streams) error {
+	if name == "" || graceSeconds < 0 {
+		return fmt.Errorf("invalid container removal request")
+	}
+	return client.execute(ctx, []string{"rm", "--force", "--time", strconv.Itoa(graceSeconds), "--ignore", name}, streams, "cannot remove container "+name)
+}
+
+func (client Client) RemoveImage(ctx context.Context, reference string, streams Streams) error {
+	if reference == "" {
+		return fmt.Errorf("invalid image removal request")
+	}
+	return client.execute(ctx, []string{"image", "rm", reference}, streams, "cannot remove image "+reference)
+}
+
+func (client Client) Logs(ctx context.Context, options LogOptions) error {
+	if options.Container == "" || (!options.All && options.Tail < 1) {
+		return fmt.Errorf("invalid container log request")
+	}
+	arguments := []string{"logs"}
+	if options.Follow {
+		arguments = append(arguments, "--follow")
+	}
+	if !options.All {
+		arguments = append(arguments, "--tail", strconv.Itoa(options.Tail))
+	}
+	arguments = append(arguments, options.Container)
+	return client.execute(ctx, arguments, options.Streams, "cannot read container logs for "+options.Container)
+}
+
+func (client Client) execute(ctx context.Context, arguments []string, streams Streams, failure string) error {
+	result, err := client.runner().Run(ctx, process.Command{Name: "podman", Args: arguments, Stdin: streams.Stdin, Stdout: streams.Stdout, Stderr: streams.Stderr})
+	if err != nil {
+		return controlerr.New("%s: %v", failure, err)
+	}
+	if result.Status == 0 {
+		return nil
+	}
+	detail := strings.TrimSpace(string(result.Stderr))
+	if detail == "" {
+		detail = fmt.Sprintf("podman exited with status %d", result.Status)
+	}
+	return &controlerr.Error{Message: failure + ": " + detail, Status: result.Status}
 }
 
 func (client Client) SELinuxVolumeSuffix(ctx context.Context) string {

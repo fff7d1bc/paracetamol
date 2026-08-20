@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"rocmplete/internal/identity"
 )
 
 func TestHelpListsCoreCommands(t *testing.T) {
@@ -18,6 +20,19 @@ func TestHelpListsCoreCommands(t *testing.T) {
 		if !strings.Contains(stdout.String(), command) {
 			t.Fatalf("help does not contain %q:\n%s", command, stdout.String())
 		}
+	}
+}
+
+func TestLeafHelpUsesProductCommandIdentity(t *testing.T) {
+	original := identity.CommandName
+	t.Cleanup(func() { identity.CommandName = original })
+	identity.CommandName = "renamed-local"
+	var stdout, stderr bytes.Buffer
+	if status := Main(context.Background(), []string{"acceptance", "--help"}, strings.NewReader(""), &stdout, &stderr); status != 0 {
+		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Usage: ./renamed-local acceptance [OPTIONS]") {
+		t.Fatalf("unexpected renamed help: %q", stderr.String())
 	}
 }
 
@@ -48,13 +63,13 @@ func TestFlattenedAcceptanceHelp(t *testing.T) {
 	}
 }
 
-func TestComfyBenchmarkRenameIsExplicit(t *testing.T) {
+func TestBenchmarkFamiliesExposeModes(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if status := Main(context.Background(), []string{"benchmark", "comfyui", "--help"}, strings.NewReader(""), &stdout, &stderr); status != 0 {
 		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "benchmark comfyui") {
-		t.Fatalf("unexpected benchmark help: %s", stderr.String())
+	if !strings.Contains(stdout.String(), "comfyui COMMAND") || !strings.Contains(stdout.String(), "suite") {
+		t.Fatalf("unexpected benchmark help: %s", stdout.String())
 	}
 }
 

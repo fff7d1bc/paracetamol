@@ -31,8 +31,8 @@ jobs:
           make test
           make static
 
-      - name: Compile container-owned Python
-        run: PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers
+      - name: Compile retained Python resources
+        run: PYTHONPYCACHEPREFIX=/tmp/rocmplete-pycache python3 -m compileall -q applications containers evaluations tests
 
       - name: Check shell syntax
         run: |

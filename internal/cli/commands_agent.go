@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"syscall"
+	"strings"
 
 	"rocmplete/internal/agent"
 	"rocmplete/internal/config"
@@ -14,33 +14,48 @@ import (
 
 func (app *App) commandAgent(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete agent COMMAND [OPTIONS]",
+		writeGroupHelp(app.Stdout, usage("agent", "COMMAND", "[OPTIONS]"),
 			[2]string{"install", "install the pinned managed Pi runtime"},
-			[2]string{"pi", "run managed Pi"},
-			[2]string{"maki", "run managed Maki"})
+			[2]string{"run", "run managed Pi or Maki"})
 		return nil
 	}
 	if len(args) == 0 {
-		return controlerr.Usage("choose agent install, pi, or maki")
+		return controlerr.Usage("choose agent install or run")
 	}
 	switch args[0] {
 	case "install":
 		return app.agentInstall(args[1:])
-	case "pi":
-		return app.agentPi(args[1:])
-	case "maki":
-		return app.agentMaki(args[1:])
+	case "run":
+		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+			return controlerr.Usage("choose agent run pi or maki")
+		}
+		switch args[1] {
+		case "pi":
+			return app.agentPi(args[2:])
+		case "maki":
+			return app.agentMaki(args[2:])
+		default:
+			return controlerr.Usage("unknown agent client %q", args[1])
+		}
 	default:
 		return controlerr.Usage("unknown agent client %q", args[0])
 	}
 }
 
 func (app *App) agentInstall(args []string) error {
-	set := app.flags("agent install", "Usage: ./rocmplete agent install pi [--data-dir PATH]")
+	set := app.flags("agent install", usage("agent", "install", "pi", "[--data-dir PATH]"))
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	client, remaining := leadingPositional(args)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	if client == "" && len(set.Args()) > 0 {
+		client = set.Args()[0]
+		if len(set.Args()) > 1 {
+			return controlerr.Usage("agent install accepts exactly one client")
+		}
+	} else if len(set.Args()) > 0 {
+		return controlerr.Usage("agent install accepts exactly one client")
 	}
 	if client != "pi" {
 		return controlerr.Usage("agent install supports only pi")
@@ -62,15 +77,19 @@ func (app *App) agentInstall(args []string) error {
 }
 
 func (app *App) agentPi(args []string) error {
-	set := app.flags("agent pi", "Usage: ./rocmplete agent pi [OPTIONS] [-- PI-ARGS]")
+	set := app.flags("agent run pi", usage("agent", "run", "pi", "[OPTIONS]", "[-- PI-ARGS]"))
 	portText := set.String("port", "", "local llama.cpp router port")
 	llamaURL := set.String("llama-url", "", "remote llama.cpp base URL ending in /v1")
 	dwarfstarPortText := set.String("dwarfstar-port", "", "local DwarfStar port")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Pi to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
-	if err := set.Parse(args); err != nil {
+	upstreamArgs, err := parseFlagsWithPassthrough(set, args)
+	if err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("Pi arguments must follow --")
 	}
 	if *noSandbox {
 		*sandbox = false
@@ -102,12 +121,12 @@ func (app *App) agentPi(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreatePiPlan(app.Context, managed, dataRoot, app.Root, port, dwarfstarPort, remote, set.Args(), runtime)
+	plan, err := agent.CreatePiPlan(app.Context, managed, dataRoot, app.Root, port, dwarfstarPort, remote, upstreamArgs, runtime)
 	if err != nil {
 		return err
 	}
 	if plan.Mode == "passthrough" {
-		return execProcess(plan.Command, app.Environment)
+		return app.execProcess(plan.Command, app.Environment)
 	}
 	if plan.Mode == "management" || plan.Remote {
 		dataRoot, err = app.resolveDataDir(*dataFlag, true)
@@ -115,7 +134,7 @@ func (app *App) agentPi(args []string) error {
 			return err
 		}
 	}
-	paths, agentDir, err := agent.PreparePiState(plan, dataRoot)
+	agentDir, err := agent.PreparePiState(plan, dataRoot)
 	if err != nil {
 		return err
 	}
@@ -137,19 +156,22 @@ func (app *App) agentPi(args []string) error {
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}
-	_ = paths
-	return execProcess(command, environment)
+	return app.execProcess(command, environment)
 }
 
 func (app *App) agentMaki(args []string) error {
-	set := app.flags("agent maki", "Usage: ./rocmplete agent maki [OPTIONS] [-- MAKI-ARGS]")
+	set := app.flags("agent run maki", usage("agent", "run", "maki", "[OPTIONS]", "[-- MAKI-ARGS]"))
 	portText := set.String("port", "", "local llama.cpp router port")
 	dwarfstarPortText := set.String("dwarfstar-port", "", "local DwarfStar port")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Maki to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
-	if err := set.Parse(args); err != nil {
+	upstreamArgs, err := parseFlagsWithPassthrough(set, args)
+	if err != nil {
 		return err
+	}
+	if len(set.Args()) > 0 {
+		return controlerr.Usage("Maki arguments must follow --")
 	}
 	if *noSandbox {
 		*sandbox = false
@@ -173,12 +195,12 @@ func (app *App) agentMaki(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreateMakiPlan(managed, dataRoot, app.Root, port, dwarfstarPort, set.Args(), app.Environment)
+	plan, err := agent.CreateMakiPlan(managed, dataRoot, app.Root, port, dwarfstarPort, upstreamArgs, app.Environment)
 	if err != nil {
 		return err
 	}
 	if plan.Mode == "passthrough" {
-		return execProcess(plan.Command, app.Environment)
+		return app.execProcess(plan.Command, app.Environment)
 	}
 	dataRoot, err = app.resolveDataDir(*dataFlag, true)
 	if err != nil {
@@ -202,7 +224,7 @@ func (app *App) agentMaki(args []string) error {
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}
-	return execProcess(command, environment)
+	return app.execProcess(command, environment)
 }
 
 func mustWorkingDirectory() string {
@@ -213,11 +235,11 @@ func mustWorkingDirectory() string {
 	return value
 }
 
-func execProcess(command []string, environment map[string]string) error {
+func (app *App) execProcess(command []string, environment map[string]string) error {
 	if len(command) == 0 {
 		return fmt.Errorf("empty agent command")
 	}
-	return syscall.Exec(command[0], command, mapEnvironment(environment))
+	return app.executor().Exec(command[0], command, mapEnvironment(environment))
 }
 
 func mapEnvironment(environment map[string]string) []string {

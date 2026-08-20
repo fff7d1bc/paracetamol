@@ -2,14 +2,19 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
+	"rocmplete/internal/application"
+	"rocmplete/internal/benchmark"
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/podman"
 	"rocmplete/internal/process"
 )
@@ -22,7 +27,47 @@ type App struct {
 	Stdout      io.Writer
 	Stderr      io.Writer
 	Runner      process.Runner
+	Executor    process.Executor
 	catalog     *catalog.Catalog
+}
+
+var managedRunID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$`)
+
+type commandDefinition struct {
+	Name        string
+	Description string
+	Run         func(*App, []string) error
+}
+
+var commandTree = []commandDefinition{
+	{Name: "build", Description: "build locally pinned application images", Run: func(app *App, args []string) error { return app.commandBuild(args) }},
+	{Name: "guide", Description: "show a focused application walkthrough", Run: func(app *App, args []string) error { return app.commandGuide(args) }},
+	{Name: "doctor", Description: "inspect host readiness and GPU policy", Run: func(app *App, args []string) error { return app.commandDoctor(args) }},
+	{Name: "acceptance", Description: "run target-hardware smoke acceptance", Run: func(app *App, args []string) error { return app.commandAcceptance(args) }},
+	{Name: "status", Description: "show managed images, containers, devices, and data", Run: func(app *App, args []string) error { return app.commandStatus(args) }},
+	{Name: "run", Description: "run a managed application", Run: func(app *App, args []string) error { return app.commandRun(args) }},
+	{Name: "shell", Description: "open a constrained application shell", Run: func(app *App, args []string) error { return app.commandShell(args) }},
+	{Name: "logs", Description: "show managed container logs", Run: func(app *App, args []string) error { return app.commandLogs(args) }},
+	{Name: "stop", Description: "stop managed containers", Run: func(app *App, args []string) error { return app.commandStop(args) }},
+	{Name: "content", Description: "list, install, import, and inspect managed content", Run: func(app *App, args []string) error { return app.commandContent(args) }},
+	{Name: "agent", Description: "install or run a managed coding agent", Run: func(app *App, args []string) error { return app.commandAgent(args) }},
+	{Name: "benchmark", Description: "run or report managed performance evaluations", Run: func(app *App, args []string) error { return app.commandBenchmark(args) }},
+	{Name: "images", Description: "export or import locally built images", Run: func(app *App, args []string) error { return app.commandImages(args) }},
+	{Name: "cleanup", Description: "remove one explicit managed resource scope", Run: func(app *App, args []string) error { return app.commandCleanup(args) }},
+}
+
+func checkpointThenReturn(path string, value any, cause error) error {
+	if err := benchmark.WriteCheckpoint(path, value); err != nil {
+		return fmt.Errorf("%w; additionally could not save checkpoint: %v", cause, err)
+	}
+	return cause
+}
+
+func withCleanupFailure(cause error, description string, cleanup error) error {
+	if cleanup == nil {
+		return cause
+	}
+	return errors.Join(cause, fmt.Errorf("%s: %w", description, cleanup))
 }
 
 func environment() map[string]string {
@@ -38,6 +83,13 @@ func environment() map[string]string {
 
 func (app *App) podman() podman.Client { return podman.Client{Runner: app.Runner} }
 
+func (app *App) executor() process.Executor {
+	if app.Executor == nil {
+		return process.OSExecutor{}
+	}
+	return app.Executor
+}
+
 func (app *App) managedCatalog() (catalog.Catalog, error) {
 	if app.catalog != nil {
 		return *app.catalog, nil
@@ -51,41 +103,18 @@ func (app *App) managedCatalog() (catalog.Catalog, error) {
 }
 
 func (app *App) Dispatch(args []string) error {
+	if err := application.Validate(); err != nil {
+		return fmt.Errorf("invalid application registry: %w", err)
+	}
 	if len(args) == 0 {
 		return controlerr.Usage("choose a command")
 	}
-	switch args[0] {
-	case "build":
-		return app.commandBuild(args[1:])
-	case "guide":
-		return app.commandGuide(args[1:])
-	case "status":
-		return app.commandStatus(args[1:])
-	case "run":
-		return app.commandRun(args[1:])
-	case "shell":
-		return app.commandShell(args[1:])
-	case "logs":
-		return app.commandLogs(args[1:])
-	case "stop":
-		return app.commandStop(args[1:])
-	case "cleanup":
-		return app.commandCleanup(args[1:])
-	case "content":
-		return app.commandContent(args[1:])
-	case "agent":
-		return app.commandAgent(args[1:])
-	case "images":
-		return app.commandImages(args[1:])
-	case "doctor":
-		return app.commandDoctor(args[1:])
-	case "benchmark":
-		return app.commandBenchmark(args[1:])
-	case "acceptance":
-		return app.commandAcceptance(args[1:])
-	default:
-		return controlerr.Usage("unknown command %q", args[0])
+	for _, command := range commandTree {
+		if command.Name == args[0] {
+			return command.Run(app, args[1:])
+		}
 	}
+	return controlerr.Usage("unknown command %q", args[0])
 }
 
 func (app *App) flags(name, usage string) *flag.FlagSet {
@@ -152,3 +181,5 @@ func writeGroupHelp(output io.Writer, usage string, commands ...[2]string) {
 		fmt.Fprintf(output, "  %-*s  %s\n", width, command[0], command[1])
 	}
 }
+
+func usage(arguments ...string) string { return "Usage: " + identity.Command(arguments...) }

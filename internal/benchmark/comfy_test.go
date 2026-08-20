@@ -1,8 +1,12 @@
 package benchmark
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"rocmplete/internal/catalog"
@@ -20,6 +24,34 @@ func TestEveryCatalogBenchmarkLoadsAndMatches(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestQueuePromptUsesSubstitutableHTTPBoundary(t *testing.T) {
+	client := doerFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path != "/prompt" || request.Method != http.MethodPost {
+			t.Fatalf("unexpected request: %s %s", request.Method, request.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"prompt_id":"queued"}`))}, nil
+	})
+	identifier, err := QueuePromptWithClient(context.Background(), client, "http://example.invalid", map[string]any{"node": true})
+	if err != nil || identifier != "queued" {
+		t.Fatalf("identifier=%q err=%v", identifier, err)
+	}
+}
+
+func TestSuiteReportsReplaceOnlyWhenExplicitlyOwned(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "suite.json")
+	suite := ComfySuite{SuiteID: "one", Status: "running"}
+	if _, err := WriteSuiteReports(path, suite, "markdown", "", false); err != nil {
+		t.Fatal(err)
+	}
+	suite.Status = "complete"
+	if _, err := WriteSuiteReports(path, suite, "markdown", "", false); err == nil {
+		t.Fatal("create-only report was replaced")
+	}
+	if _, err := WriteSuiteReports(path, suite, "markdown", "", true); err != nil {
+		t.Fatal(err)
 	}
 }
 

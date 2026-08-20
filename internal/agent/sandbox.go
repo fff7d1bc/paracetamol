@@ -10,13 +10,14 @@ import (
 	"strings"
 	"syscall"
 
+	"rocmplete/internal/identity"
 	"rocmplete/internal/process"
 	"rocmplete/internal/storage"
 )
 
-const (
-	SandboxHome    = "/run/rocmplete/home"
-	SandboxRuntime = "/run/rocmplete/runtime"
+var (
+	SandboxHome    = "/run/" + identity.StateNamespace + "/home"
+	SandboxRuntime = "/run/" + identity.StateNamespace + "/runtime"
 )
 
 type SandboxPaths struct {
@@ -106,7 +107,7 @@ func CreateSandboxPlan(ctx context.Context, runner process.Runner, command []str
 	} else {
 		destinations = append(destinations, filepath.Dir(executable))
 	}
-	arguments := []string{bwrap, "--unshare-all", "--share-net", "--die-with-parent", "--new-session", "--hostname", "rocmplete", "--cap-drop", "ALL", "--clearenv", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run", "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin", "--symlink", "usr/lib", "/lib"}
+	arguments := []string{bwrap, "--unshare-all", "--share-net", "--die-with-parent", "--new-session", "--hostname", identity.StateNamespace, "--cap-drop", "ALL", "--clearenv", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run", "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin", "--symlink", "usr/lib", "/lib"}
 	if _, err := os.Stat("/usr/lib64"); err == nil {
 		arguments = append(arguments, "--symlink", "usr/lib64", "/lib64")
 	}

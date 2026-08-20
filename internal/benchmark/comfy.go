@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/png"
@@ -19,14 +20,101 @@ import (
 	"strings"
 	"time"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/catalog"
+	"rocmplete/internal/identity"
 )
 
 const (
-	ComfyResultSchema = "rocmplete.comfyui-benchmark.v1"
-	ComfySuiteSchema  = "rocmplete.comfyui-benchmark-suite.v1"
-	SyntheticInput    = "rocmplete/benchmark-input-768.png"
+	ComfyResultSchema = "rocmplete.comfyui-benchmark.v2"
+	ComfySuiteSchema  = "rocmplete.comfyui-benchmark-suite.v2"
 )
+
+var SyntheticInput = identity.StateNamespace + "/benchmark-input-768.png"
+
+type ComfyConfiguration struct {
+	Image        string `json:"image"`
+	ImageID      string `json:"image_id,omitempty"`
+	Profile      string `json:"profile"`
+	RenderNode   string `json:"render_node"`
+	Port         int    `json:"port"`
+	Runs         int    `json:"runs"`
+	Seed         int    `json:"seed"`
+	MemoryPolicy string `json:"memory_policy"`
+	KernelPolicy string `json:"kernel_policy"`
+	CacheMode    string `json:"cache_mode"`
+	Unconfined   bool   `json:"unconfined"`
+}
+
+type ComfySuiteEntry struct {
+	Bundle          string  `json:"bundle"`
+	Result          string  `json:"result,omitempty"`
+	Status          string  `json:"status"`
+	ColdSeconds     float64 `json:"cold_seconds,omitempty"`
+	WarmMeanSeconds float64 `json:"warm_mean_seconds,omitempty"`
+	Error           string  `json:"error,omitempty"`
+}
+
+type ComfySuite struct {
+	Schema        string             `json:"schema"`
+	SuiteID       string             `json:"suite_id"`
+	Signature     string             `json:"signature"`
+	Status        string             `json:"status"`
+	CreatedAt     string             `json:"created_at"`
+	FinishedAt    string             `json:"finished_at,omitempty"`
+	Configuration ComfyConfiguration `json:"configuration"`
+	Entries       []ComfySuiteEntry  `json:"entries"`
+}
+
+type ComfyArtifactEvidence struct {
+	Identifier string `json:"identifier"`
+	SHA256     string `json:"sha256"`
+	Size       int64  `json:"size"`
+}
+
+type ComfyWorkflowEvidence struct {
+	SourceSHA256   string `json:"benchmark_source_sha256"`
+	Renderer       string `json:"benchmark_renderer"`
+	RenderedSHA256 string `json:"benchmark_rendered_sha256"`
+}
+
+type ComfySyntheticInput struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+type ComfyRun struct {
+	Index       int             `json:"index"`
+	Kind        string          `json:"kind"`
+	Seed        int             `json:"seed"`
+	PromptID    string          `json:"prompt_id"`
+	WallSeconds float64         `json:"wall_seconds"`
+	Outputs     json.RawMessage `json:"outputs"`
+}
+
+type ComfyResult struct {
+	Schema          string                  `json:"schema"`
+	RunID           string                  `json:"run_id"`
+	Bundle          string                  `json:"bundle"`
+	Status          string                  `json:"status"`
+	StartedAt       string                  `json:"started_at"`
+	FinishedAt      string                  `json:"finished_at"`
+	Profile         string                  `json:"profile"`
+	RenderNode      string                  `json:"render_node"`
+	MemoryPolicy    string                  `json:"memory_policy"`
+	KernelPolicy    string                  `json:"kernel_policy"`
+	CacheMode       string                  `json:"cache_mode"`
+	Unconfined      bool                    `json:"unconfined"`
+	Image           ImageIdentity           `json:"image"`
+	Workflow        ComfyWorkflowEvidence   `json:"workflow"`
+	Artifacts       []ComfyArtifactEvidence `json:"artifacts"`
+	SyntheticInput  *ComfySyntheticInput    `json:"synthetic_input"`
+	System          map[string]any          `json:"system"`
+	Runs            []ComfyRun              `json:"runs"`
+	OutputDirectory string                  `json:"output_directory"`
+}
 
 func LoadPrompt(root string, spec catalog.Benchmark) (map[string]any, error) {
 	path := filepath.Join(root, "catalog", spec.Resource)
@@ -268,7 +356,7 @@ func EnsureSyntheticInput(dataRoot string) (string, string, error) {
 	} else if !os.IsNotExist(err) {
 		return "", "", err
 	}
-	if err := os.WriteFile(destination, encoded.Bytes(), 0o644); err != nil {
+	if err := atomicfile.Write(destination, encoded.Bytes(), 0o644, atomicfile.Create); err != nil {
 		return "", "", err
 	}
 	return destination, hex.EncodeToString(digest[:]), nil
@@ -284,7 +372,14 @@ func PortAvailable(port int) error {
 
 func WaitForServer(ctx context.Context, baseURL string) (map[string]any, error) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	ticker := time.NewTicker(time.Second)
+	return WaitForServerWithClient(ctx, client, baseURL, time.Second)
+}
+
+func WaitForServerWithClient(ctx context.Context, client HTTPDoer, baseURL string, interval time.Duration) (map[string]any, error) {
+	if interval <= 0 {
+		return nil, fmt.Errorf("poll interval must be positive")
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/system_stats", nil)
@@ -308,7 +403,11 @@ func WaitForServer(ctx context.Context, baseURL string) (map[string]any, error) 
 }
 
 func QueuePrompt(ctx context.Context, baseURL string, prompt map[string]any) (string, error) {
-	body, err := json.Marshal(map[string]any{"prompt": prompt, "client_id": "rocmplete-" + Identifier()})
+	return QueuePromptWithClient(ctx, http.DefaultClient, baseURL, prompt)
+}
+
+func QueuePromptWithClient(ctx context.Context, client HTTPDoer, baseURL string, prompt map[string]any) (string, error) {
+	body, err := json.Marshal(map[string]any{"prompt": prompt, "client_id": identity.StateNamespace + "-" + Identifier()})
 	if err != nil {
 		return "", err
 	}
@@ -317,7 +416,7 @@ func QueuePrompt(ctx context.Context, baseURL string, prompt map[string]any) (st
 		return "", err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return "", err
 	}
@@ -337,7 +436,14 @@ func QueuePrompt(ctx context.Context, baseURL string, prompt map[string]any) (st
 
 func WaitForPrompt(ctx context.Context, baseURL, promptID string) (map[string]any, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
-	ticker := time.NewTicker(time.Second)
+	return WaitForPromptWithClient(ctx, client, baseURL, promptID, time.Second)
+}
+
+func WaitForPromptWithClient(ctx context.Context, client HTTPDoer, baseURL, promptID string, interval time.Duration) (map[string]any, error) {
+	if interval <= 0 {
+		return nil, fmt.Errorf("poll interval must be positive")
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/history/"+promptID, nil)
@@ -366,7 +472,7 @@ func WaitForPrompt(ctx context.Context, baseURL, promptID string) (map[string]an
 	}
 }
 
-func WriteSuiteReports(subject string, suite map[string]any, format, explicit string) ([]string, error) {
+func WriteSuiteReports(subject string, suite ComfySuite, format, explicit string, replace bool) ([]string, error) {
 	markdown := RenderSuiteMarkdown(suite)
 	html := RenderSuiteHTML(suite)
 	base := strings.TrimSuffix(subject, filepath.Ext(subject))
@@ -386,20 +492,16 @@ func WriteSuiteReports(subject string, suite map[string]any, format, explicit st
 		outputs = append(outputs, struct{ path, contents string }{path, html})
 	}
 	paths := make([]string, 0, len(outputs))
+	policy := atomicfile.Create
+	if replace {
+		policy = atomicfile.ReplaceRegular
+	}
 	for _, output := range outputs {
 		path, err := filepath.Abs(output.path)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := os.Lstat(path); err == nil {
-			return nil, fmt.Errorf("refusing to replace report: %s", path)
-		} else if !os.IsNotExist(err) {
-			return nil, err
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(path, []byte(output.contents), 0o644); err != nil {
+		if err := atomicfile.Write(path, []byte(output.contents), 0o644, policy); err != nil {
 			return nil, err
 		}
 		paths = append(paths, path)
@@ -407,40 +509,34 @@ func WriteSuiteReports(subject string, suite map[string]any, format, explicit st
 	return paths, nil
 }
 
-func RenderSuiteMarkdown(suite map[string]any) string {
+func RenderSuiteMarkdown(suite ComfySuite) string {
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "# ROCmplete benchmark suite\n\n- Suite: `%v`\n- Status: `%v`\n\n", suite["suite_id"], suite["status"])
+	fmt.Fprintf(&builder, "# %s benchmark suite\n\n- Suite: `%s`\n- Status: `%s`\n\n", identity.DisplayName, suite.SuiteID, suite.Status)
 	builder.WriteString("| Bundle | Status | Cold (s) | Warm mean (s) | Result |\n|---|---:|---:|---:|---|\n")
-	for _, entry := range suiteEntries(suite) {
-		fmt.Fprintf(&builder, "| `%v` | %v | %s | %s | `%v` |\n", entry["bundle"], entry["status"], seconds(entry["cold_seconds"]), seconds(entry["warm_mean_seconds"]), entry["result"])
+	for _, entry := range suiteEntries(suite.Entries) {
+		fmt.Fprintf(&builder, "| `%s` | %s | %s | %s | `%s` |\n", entry.Bundle, entry.Status, seconds(entry.ColdSeconds), seconds(entry.WarmMeanSeconds), entry.Result)
 	}
 	return builder.String()
 }
 
-func RenderSuiteHTML(suite map[string]any) string {
+func RenderSuiteHTML(suite ComfySuite) string {
 	var rows strings.Builder
-	for _, entry := range suiteEntries(suite) {
-		fmt.Fprintf(&rows, "<tr><td>%v</td><td>%v</td><td>%s</td><td>%s</td><td>%v</td></tr>\n", entry["bundle"], entry["status"], seconds(entry["cold_seconds"]), seconds(entry["warm_mean_seconds"]), entry["result"])
+	for _, entry := range suiteEntries(suite.Entries) {
+		fmt.Fprintf(&rows, "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\n", html.EscapeString(entry.Bundle), html.EscapeString(entry.Status), seconds(entry.ColdSeconds), seconds(entry.WarmMeanSeconds), html.EscapeString(entry.Result))
 	}
-	return fmt.Sprintf("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>ROCmplete benchmark suite</title></head><body><h1>ROCmplete benchmark suite %v</h1><p>Status: %v</p><table><thead><tr><th>Bundle</th><th>Status</th><th>Cold (s)</th><th>Warm mean (s)</th><th>Result</th></tr></thead><tbody>%s</tbody></table></body></html>\n", suite["suite_id"], suite["status"], rows.String())
+	display := html.EscapeString(identity.DisplayName)
+	return fmt.Sprintf("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>%s benchmark suite</title></head><body><h1>%s benchmark suite %s</h1><p>Status: %s</p><table><thead><tr><th>Bundle</th><th>Status</th><th>Cold (s)</th><th>Warm mean (s)</th><th>Result</th></tr></thead><tbody>%s</tbody></table></body></html>\n", display, display, html.EscapeString(suite.SuiteID), html.EscapeString(suite.Status), rows.String())
 }
 
-func suiteEntries(suite map[string]any) []map[string]any {
-	var result []map[string]any
-	if entries, ok := suite["entries"].([]any); ok {
-		for _, raw := range entries {
-			if entry, ok := raw.(map[string]any); ok {
-				result = append(result, entry)
-			}
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return fmt.Sprint(result[i]["bundle"]) < fmt.Sprint(result[j]["bundle"]) })
+func suiteEntries(entries []ComfySuiteEntry) []ComfySuiteEntry {
+	result := append([]ComfySuiteEntry(nil), entries...)
+	sort.Slice(result, func(i, j int) bool { return result[i].Bundle < result[j].Bundle })
 	return result
 }
 
-func seconds(value any) string {
-	if number, ok := value.(float64); ok {
-		return fmt.Sprintf("%.2f", number)
+func seconds(value float64) string {
+	if value > 0 {
+		return fmt.Sprintf("%.2f", value)
 	}
 	return "—"
 }

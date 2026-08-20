@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"rocmplete/internal/catalog"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/process"
 )
 
@@ -29,6 +31,34 @@ func (relabelRunner) Run(_ context.Context, command process.Command) (process.Re
 		return process.Result{}, nil
 	default:
 		return process.Result{}, fmt.Errorf("unexpected command %s", command.Name)
+	}
+}
+
+type noSELinuxRunner struct{}
+
+func (noSELinuxRunner) LookPath(string) (string, error) { return "", fmt.Errorf("missing") }
+func (noSELinuxRunner) Run(context.Context, process.Command) (process.Result, error) {
+	return process.Result{}, fmt.Errorf("unexpected process")
+}
+
+func TestDownloadCommandIsNamedConfinedAndDoesNotInlineTokens(t *testing.T) {
+	artifact := testArtifact([]byte("fixture"))
+	artifact.Source.Provider = "huggingface"
+	artifact.Source.Repository = "owner/model"
+	artifact.Source.Revision = strings.Repeat("a", 40)
+	options := InstallOptions{Context: context.Background(), DataRoot: "/data", Image: "content-image", Environment: map[string]string{"HF_TOKEN": "secret-value"}}
+	command, err := downloadCommand(options, podman.Client{Runner: noSELinuxRunner{}}, artifact, "rocmplete-download-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(command, " ")
+	for _, expected := range []string{"--name rocmplete-download-test", "--read-only", "--cap-drop all", "no-new-privileges", "--label " + podman.ManagedRoleLabel + "=download", "--env HF_TOKEN"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("download command lacks %q: %s", expected, joined)
+		}
+	}
+	if strings.Contains(joined, "secret-value") {
+		t.Fatalf("download command inlined token: %s", joined)
 	}
 }
 

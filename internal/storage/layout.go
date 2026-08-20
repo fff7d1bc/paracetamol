@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"rocmplete/internal/identity"
 )
 
 type Layout struct{ Root string }
@@ -29,7 +31,7 @@ func (layout Layout) ImportedWorkflows() string {
 	return filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "imported")
 }
 func (layout Layout) VerificationReceipt() string {
-	return filepath.Join(layout.Root, "content", ".rocmplete", "verification.json")
+	return filepath.Join(layout.Root, "content", "."+identity.StateNamespace, "verification.json")
 }
 func (layout Layout) Staging() string { return filepath.Join(layout.Root, "staging") }
 func (layout Layout) PiRuntime() string {

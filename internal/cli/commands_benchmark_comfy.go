@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -16,20 +17,24 @@ import (
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
+	"rocmplete/internal/podman"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
 )
 
 type comfyBenchmarkOptions struct {
-	profile, dataRoot, image, renderNode string
-	port, runs, seed                     int
-	unconfined, dryRun                   bool
-	memoryPolicy, kernelPolicy           string
-	cacheMode                            string
-	acceptLicense                        bool
-	transform                            func(map[string]any) error
+	profile, dataRoot, image, imageID, renderNode string
+	port, runs, seed                              int
+	unconfined, dryRun                            bool
+	memoryPolicy, kernelPolicy                    string
+	cacheMode                                     string
+	acceptLicense                                 bool
+	transform                                     func(map[string]any) error
 }
+
+var comfyBenchmarkContainer = identity.Container("comfyui-benchmark")
 
 func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBenchmarkOptions, []string, error) {
 	set := app.flags(name, usage)
@@ -44,11 +49,10 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print the validated workload")
 	acceptLicense := set.Bool("accept-license", false, "accept catalog model agreements")
-	_ = set.Bool("non-interactive", false, "never prompt")
 	memory := set.String("memory-policy", "balanced", "balanced or conservative")
 	kernel := set.String("kernel-policy", "default", "default or experimental")
 	cache := set.String("cache-mode", "persistent", "persistent or isolated")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return nil, nil, err
 	}
 	if *runs < 1 {
@@ -91,7 +95,7 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 
 func (app *App) benchmarkComfyUI(args []string) error {
 	bundleID, remaining := leadingPositional(args)
-	options, extras, err := app.comfyBenchmarkFlags("benchmark comfyui", "Usage: ./rocmplete benchmark comfyui BUNDLE [OPTIONS]", remaining)
+	options, extras, err := app.comfyBenchmarkFlags("benchmark comfyui run", usage("benchmark", "comfyui", "run", "BUNDLE", "[OPTIONS]"), remaining)
 	if err != nil {
 		return err
 	}
@@ -135,7 +139,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	// Re-parse one explicit flag set because Go's flag package intentionally
 	// has no argparse-style parent parser. Keeping this local makes the public
 	// suite surface obvious and testable.
-	set := app.flags("benchmark suite", "Usage: ./rocmplete benchmark suite [OPTIONS]")
+	set := app.flags("benchmark comfyui suite", usage("benchmark", "comfyui", "suite", "[OPTIONS]"))
 	profileFlag := set.String("profile", "", "execution profile")
 	var nodes, includes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node")
@@ -149,14 +153,13 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	dryRun := set.Bool("dry-run", false, "print the validated workload")
 	acceptLicense := set.Bool("accept-license", false, "accept catalog model agreements")
-	_ = set.Bool("non-interactive", false, "never prompt")
 	memory := set.String("memory-policy", "balanced", "balanced or conservative")
 	kernel := set.String("kernel-policy", "default", "default or experimental")
 	cache := set.String("cache-mode", "persistent", "persistent or isolated")
 	resume := set.String("resume", "", "resume a compatible Go suite JSON")
 	keepGoing := set.Bool("keep-going", false, "continue after individual failure")
 	reportFormat := set.String("report-format", "both", "markdown, html, both, or none")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
 	if len(set.Args()) != 0 {
@@ -233,6 +236,22 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	if err := requireBenchmarkAgreements(managed, bundles, options.acceptLicense, options.dryRun); err != nil {
 		return err
 	}
+	if !options.dryRun {
+		if err := app.podman().RequireRootless(app.Context); err != nil {
+			return err
+		}
+		present, err := app.podman().Exists(app.Context, "image", options.image)
+		if err != nil {
+			return err
+		}
+		if !present {
+			return controlerr.New("image not found: %s", options.image)
+		}
+		options.imageID, err = app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", options.image}, "cannot inspect benchmark image")
+		if err != nil {
+			return err
+		}
+	}
 	signature, err := comfySuiteSignature(managed, bundles, options)
 	if err != nil {
 		return err
@@ -250,30 +269,37 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	}
 	suiteID := time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier()
 	suitePath := benchmark.DefaultPath(filepath.Join((storage.Layout{Root: dataRoot}).ComfyBenchmarks(), "suites"), ".json")
-	entries := []any{}
+	createdAt := benchmark.Timestamp()
+	entries := []benchmark.ComfySuiteEntry{}
 	if *resume != "" {
 		suitePath, err = filepath.Abs(*resume)
 		if err != nil {
 			return err
 		}
-		previous, err := benchmark.ReadObject(suitePath)
-		if err != nil {
+		var previous benchmark.ComfySuite
+		if err := benchmark.ReadJSON(suitePath, &previous, true); err != nil {
 			return err
 		}
-		if previous["schema"] != benchmark.ComfySuiteSchema || previous["signature"] != signature {
+		if previous.Schema != benchmark.ComfySuiteSchema || previous.Signature != signature {
 			return controlerr.New("suite checkpoint is not compatible with this selection and configuration")
 		}
-		suiteID, _ = previous["suite_id"].(string)
-		entries, _ = previous["entries"].([]any)
+		if err := validateComfySuiteResume(previous, managed, bundles, dataRoot); err != nil {
+			return err
+		}
+		suiteID, createdAt, entries = previous.SuiteID, previous.CreatedAt, previous.Entries
 	}
 	done := map[string]bool{}
-	for _, raw := range entries {
-		if entry, ok := raw.(map[string]any); ok && entry["status"] == "pass" {
-			done[fmt.Sprint(entry["bundle"])] = true
+	for _, entry := range entries {
+		if entry.Status == "pass" {
+			done[entry.Bundle] = true
 		}
 	}
-	suite := map[string]any{"schema": benchmark.ComfySuiteSchema, "suite_id": suiteID, "signature": signature, "status": "running", "created_at": benchmark.Timestamp(), "configuration": comfyConfiguration(options), "entries": entries}
-	if err := benchmark.WriteCheckpoint(suitePath, suite); err != nil {
+	suite := benchmark.ComfySuite{Schema: benchmark.ComfySuiteSchema, SuiteID: suiteID, Signature: signature, Status: "running", CreatedAt: createdAt, Configuration: comfyConfiguration(options), Entries: entries}
+	writeInitial := benchmark.WriteNewCheckpoint
+	if *resume != "" {
+		writeInitial = benchmark.WriteCheckpoint
+	}
+	if err := writeInitial(suitePath, suite); err != nil {
 		return err
 	}
 	failed := false
@@ -282,31 +308,30 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 			continue
 		}
 		path, summary, runErr := app.executeComfyBenchmark(managed, bundle, options, suiteID)
-		entry := map[string]any{"bundle": bundle.ID, "result": path, "status": "pass", "cold_seconds": summary.cold, "warm_mean_seconds": summary.warmMean}
+		entry := benchmark.ComfySuiteEntry{Bundle: bundle.ID, Result: path, Status: "pass", ColdSeconds: summary.cold, WarmMeanSeconds: summary.warmMean}
 		if runErr != nil {
-			entry["status"], entry["error"] = "fail", runErr.Error()
+			entry.Status, entry.Result, entry.Error = "fail", "", runErr.Error()
 			failed = true
 		}
-		entries = append(entries, entry)
-		suite["entries"] = entries
+		entries = upsertComfySuiteEntry(entries, entry)
+		suite.Entries = entries
 		if err := benchmark.WriteCheckpoint(suitePath, suite); err != nil {
 			return err
 		}
 		if runErr != nil && !*keepGoing {
-			suite["status"] = "failed"
-			_ = benchmark.WriteCheckpoint(suitePath, suite)
-			return runErr
+			suite.Status = "failed"
+			return checkpointThenReturn(suitePath, suite, runErr)
 		}
 	}
-	suite["status"], suite["finished_at"] = "complete", benchmark.Timestamp()
+	suite.Status, suite.FinishedAt = "complete", benchmark.Timestamp()
 	if failed {
-		suite["status"] = "completed-with-failures"
+		suite.Status = "completed-with-failures"
 	}
 	if err := benchmark.WriteCheckpoint(suitePath, suite); err != nil {
 		return err
 	}
 	if *reportFormat != "none" {
-		if _, err := benchmark.WriteSuiteReports(suitePath, suite, *reportFormat, ""); err != nil {
+		if _, err := benchmark.WriteSuiteReports(suitePath, suite, *reportFormat, "", *resume != ""); err != nil {
 			return err
 		}
 	}
@@ -317,7 +342,56 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	return nil
 }
 
-type comfySummary struct{ cold, warmMean any }
+func validateComfySuiteResume(suite benchmark.ComfySuite, managed catalog.Catalog, bundles []catalog.Bundle, dataRoot string) error {
+	if !managedRunID.MatchString(suite.SuiteID) || suite.CreatedAt == "" || !map[string]bool{"running": true, "failed": true, "complete": true, "completed-with-failures": true}[suite.Status] {
+		return controlerr.New("ComfyUI suite checkpoint has invalid root metadata")
+	}
+	selected := make(map[string]bool, len(bundles))
+	for _, bundle := range bundles {
+		selected[bundle.ID] = true
+	}
+	seen := make(map[string]bool)
+	resultsRoot := (storage.Layout{Root: dataRoot}).ComfyBenchmarks()
+	for index, entry := range suite.Entries {
+		if !selected[entry.Bundle] || seen[entry.Bundle] || entry.Status != "pass" && entry.Status != "fail" {
+			return controlerr.New("ComfyUI suite checkpoint entry %d has invalid metadata", index+1)
+		}
+		seen[entry.Bundle] = true
+		if entry.Status != "pass" {
+			if entry.Error == "" || entry.Result != "" {
+				return controlerr.New("failed ComfyUI suite entry %s has invalid evidence", entry.Bundle)
+			}
+			continue
+		}
+		if entry.Result == "" || entry.Error != "" {
+			return controlerr.New("ComfyUI suite checkpoint has duplicate or empty completed evidence for %s", entry.Bundle)
+		}
+		if err := storage.ValidateManagedParent(entry.Result, resultsRoot, dataRoot, "ComfyUI benchmark result"); err != nil {
+			return err
+		}
+		status, err := os.Lstat(entry.Result)
+		if err != nil || !status.Mode().IsRegular() {
+			return controlerr.New("completed ComfyUI suite result is missing or unexpected: %s", entry.Result)
+		}
+		var result benchmark.ComfyResult
+		if err := benchmark.ReadJSON(entry.Result, &result, true); err != nil || result.Schema != benchmark.ComfyResultSchema || result.Status != "complete" || result.Bundle != entry.Bundle || !comfyResultMatches(result, suite.Configuration, managed, managed.Bundles[entry.Bundle]) {
+			return controlerr.New("completed ComfyUI suite result is incompatible: %s", entry.Result)
+		}
+	}
+	return nil
+}
+
+func upsertComfySuiteEntry(entries []benchmark.ComfySuiteEntry, replacement benchmark.ComfySuiteEntry) []benchmark.ComfySuiteEntry {
+	for index := range entries {
+		if entries[index].Bundle == replacement.Bundle {
+			entries[index] = replacement
+			return entries
+		}
+	}
+	return append(entries, replacement)
+}
+
+type comfySummary struct{ cold, warmMean float64 }
 
 func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bundle, options comfyBenchmarkOptions, runID string) (path string, summary comfySummary, returned error) {
 	if _, err := content.RequireBundle(managed, bundle, options.dataRoot); err != nil {
@@ -339,7 +413,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	if runID == "" {
 		runID = time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier()
 	}
-	prefix := "rocmplete-benchmarks/" + runID + "/" + bundle.ID
+	prefix := identity.StateNamespace + "-benchmarks/" + runID + "/" + bundle.ID
 	_, needsInput, err := benchmark.PreparePrompt(source, int64(options.seed), prefix)
 	if err != nil {
 		return "", summary, err
@@ -351,7 +425,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		containerRoot := "/data/benchmarks/.cache/" + runID + "-" + bundle.ID
 		environment = []string{"HOME=" + containerRoot + "/home", "XDG_CACHE_HOME=" + containerRoot + "/xdg", "HF_HOME=" + containerRoot + "/huggingface", "TORCH_HOME=" + containerRoot + "/torch", "TRITON_CACHE_DIR=" + containerRoot + "/triton"}
 	}
-	command := runtime.WebCommand(runtime.WebOptions{Image: options.image, Profile: options.profile, Listen: "127.0.0.1", Port: options.port, DataDir: options.dataRoot, RenderNodes: []string{options.renderNode}, Detach: true, Unconfined: options.unconfined, DisableBundledExtensions: true, Arguments: []string{"--disable-all-custom-nodes"}, ContainerName: "rocmplete-comfyui-benchmark", Application: "comfyui", MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, Environment: environment, Publish: true, ContainerRole: "benchmark"}, app.podman().SELinuxVolumeSuffix(app.Context))
+	command := runtime.WebCommand(runtime.WebOptions{Image: options.image, Profile: options.profile, Listen: "127.0.0.1", Port: options.port, DataDir: options.dataRoot, RenderNodes: []string{options.renderNode}, Detach: true, Unconfined: options.unconfined, DisableBundledExtensions: true, Arguments: []string{"--disable-all-custom-nodes"}, ContainerName: comfyBenchmarkContainer, Application: "comfyui", MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, Environment: environment, Publish: true, ContainerRole: "benchmark"}, app.podman().SELinuxVolumeSuffix(app.Context))
 	path = filepath.Join((storage.Layout{Root: options.dataRoot}).ComfyBenchmarks(), runID+"-"+bundle.ID+".json")
 	if options.dryRun {
 		fmt.Fprintf(app.Stdout, "Benchmark source SHA-256: %s\nRuns: %d (cold + %d warm)\nCache mode: %s\nSynthetic input: %t\nResolved command:\n  %s\n", spec.SHA256, options.runs, options.runs-1, options.cacheMode, needsInput, shellJoin(command))
@@ -367,7 +441,8 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		}
 		return "", summary, controlerr.New("image not found: %s", options.image)
 	}
-	for _, name := range []string{"rocmplete-comfyui-benchmark", "rocmplete-comfyui"} {
+	application, _ := config.ApplicationByID("comfyui")
+	for _, name := range []string{comfyBenchmarkContainer, application.ContainerName} {
 		exists, err := app.podman().Exists(app.Context, "container", name)
 		if err != nil {
 			return "", summary, err
@@ -391,25 +466,29 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
 			return "", summary, err
 		}
-		defer os.RemoveAll(cacheRoot)
+		defer func() {
+			returned = withCleanupFailure(returned, "remove isolated benchmark cache", os.RemoveAll(cacheRoot))
+		}()
 	}
-	inputMetadata := any(nil)
+	var inputMetadata *benchmark.ComfySyntheticInput
 	if needsInput {
 		inputPath, digest, err := benchmark.EnsureSyntheticInput(options.dataRoot)
 		if err != nil {
 			return "", summary, err
 		}
-		inputMetadata = map[string]any{"path": inputPath, "sha256": digest, "width": 768, "height": 768}
+		inputMetadata = &benchmark.ComfySyntheticInput{Path: inputPath, SHA256: digest, Width: 768, Height: 768}
 	}
 	imageID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", options.image}, "cannot inspect benchmark image")
 	if err != nil {
 		return "", summary, err
 	}
-	startedAt := benchmark.Timestamp()
-	cleanup := func() {
-		_, _ = app.run([]string{"podman", "rm", "--force", "--time", "2", "--ignore", "rocmplete-comfyui-benchmark"}, true)
+	if options.imageID != "" && imageID != options.imageID {
+		return "", summary, controlerr.New("benchmark image changed after suite planning: %s", options.image)
 	}
-	defer cleanup()
+	startedAt := benchmark.Timestamp()
+	defer func() {
+		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), comfyBenchmarkContainer, 2, podman.Streams{}))
+	}()
 	if _, err := app.run(command, true); err != nil {
 		return "", summary, err
 	}
@@ -417,7 +496,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	if err != nil {
 		return "", summary, err
 	}
-	runs := []any{}
+	runs := []benchmark.ComfyRun{}
 	warmTotal, warmCount := 0.0, 0
 	for index := 0; index < options.runs; index++ {
 		prompt, _, err := benchmark.PreparePrompt(source, int64(options.seed+index), prefix)
@@ -440,17 +519,25 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		} else {
 			warmTotal, warmCount = warmTotal+seconds, warmCount+1
 		}
-		runs = append(runs, map[string]any{"index": index, "kind": kind, "seed": options.seed + index, "prompt_id": promptID, "wall_seconds": seconds, "outputs": history["outputs"]})
+		outputs, marshalErr := json.Marshal(history["outputs"])
+		if marshalErr != nil {
+			return "", summary, marshalErr
+		}
+		runs = append(runs, benchmark.ComfyRun{Index: index, Kind: kind, Seed: options.seed + index, PromptID: promptID, WallSeconds: seconds, Outputs: outputs})
 	}
 	if warmCount > 0 {
 		summary.warmMean = warmTotal / float64(warmCount)
 	}
-	artifacts := []any{}
-	for _, artifactID := range bundle.Artifacts {
-		artifact := managed.Artifacts[artifactID]
-		artifacts = append(artifacts, map[string]any{"identifier": artifact.ID, "sha256": artifact.SHA256, "size": artifact.Size})
+	artifacts := comfyArtifactEvidence(managed, bundle)
+	value := benchmark.ComfyResult{
+		Schema: benchmark.ComfyResultSchema, RunID: runID, Bundle: bundle.ID, Status: "complete",
+		StartedAt: startedAt, FinishedAt: benchmark.Timestamp(), Profile: options.profile, RenderNode: options.renderNode,
+		MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, CacheMode: options.cacheMode, Unconfined: options.unconfined,
+		Image:     benchmark.ImageIdentity{Reference: options.image, ID: imageID},
+		Workflow:  benchmark.ComfyWorkflowEvidence{SourceSHA256: spec.SHA256, Renderer: spec.Renderer, RenderedSHA256: spec.RenderedSHA256},
+		Artifacts: artifacts, SyntheticInput: inputMetadata, System: stats, Runs: runs,
+		OutputDirectory: filepath.Join((storage.Layout{Root: options.dataRoot}).Application("comfyui"), "output", identity.StateNamespace+"-benchmarks", runID),
 	}
-	value := map[string]any{"schema": benchmark.ComfyResultSchema, "run_id": runID, "bundle": bundle.ID, "status": "complete", "started_at": startedAt, "finished_at": benchmark.Timestamp(), "profile": options.profile, "render_node": options.renderNode, "memory_policy": options.memoryPolicy, "kernel_policy": options.kernelPolicy, "cache_mode": options.cacheMode, "unconfined": options.unconfined, "image": map[string]any{"reference": options.image, "id": imageID}, "workflow": map[string]any{"benchmark_source_sha256": spec.SHA256, "benchmark_renderer": spec.Renderer, "benchmark_rendered_sha256": spec.RenderedSHA256}, "artifacts": artifacts, "synthetic_input": inputMetadata, "system": stats, "runs": runs, "output_directory": filepath.Join((storage.Layout{Root: options.dataRoot}).Application("comfyui"), "output", "rocmplete-benchmarks", runID)}
 	if err := benchmark.WriteJSON(path, value); err != nil {
 		return "", summary, err
 	}
@@ -469,23 +556,66 @@ func requireBenchmarkAgreements(managed catalog.Catalog, bundles []catalog.Bundl
 	return nil
 }
 
-func comfyConfiguration(options comfyBenchmarkOptions) map[string]any {
-	return map[string]any{"image": options.image, "profile": options.profile, "render_node": options.renderNode, "port": options.port, "runs": options.runs, "seed": options.seed, "memory_policy": options.memoryPolicy, "kernel_policy": options.kernelPolicy, "cache_mode": options.cacheMode, "unconfined": options.unconfined}
+func comfyConfiguration(options comfyBenchmarkOptions) benchmark.ComfyConfiguration {
+	return benchmark.ComfyConfiguration{Image: options.image, ImageID: options.imageID, Profile: options.profile, RenderNode: options.renderNode, Port: options.port, Runs: options.runs, Seed: options.seed, MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, CacheMode: options.cacheMode, Unconfined: options.unconfined}
 }
 
 func comfySuiteSignature(managed catalog.Catalog, bundles []catalog.Bundle, options comfyBenchmarkOptions) (string, error) {
-	ids := make([]string, 0, len(bundles))
+	type bundleIdentity struct {
+		ID        string                            `json:"id"`
+		Workflow  benchmark.ComfyWorkflowEvidence   `json:"workflow"`
+		Artifacts []benchmark.ComfyArtifactEvidence `json:"artifacts"`
+	}
+	identities := make([]bundleIdentity, 0, len(bundles))
 	for _, bundle := range bundles {
 		spec := managed.Benchmarks[bundle.ID]
-		ids = append(ids, strings.Join([]string{bundle.ID, spec.SHA256, spec.Renderer, spec.RenderedSHA256}, ":"))
+		identities = append(identities, bundleIdentity{
+			ID: bundle.ID, Workflow: benchmark.ComfyWorkflowEvidence{SourceSHA256: spec.SHA256, Renderer: spec.Renderer, RenderedSHA256: spec.RenderedSHA256},
+			Artifacts: comfyArtifactEvidence(managed, bundle),
+		})
 	}
-	sort.Strings(ids)
-	encoded, err := json.Marshal(map[string]any{"bundles": ids, "configuration": comfyConfiguration(options)})
+	sort.Slice(identities, func(i, j int) bool { return identities[i].ID < identities[j].ID })
+	encoded, err := json.Marshal(struct {
+		Bundles       []bundleIdentity             `json:"bundles"`
+		Configuration benchmark.ComfyConfiguration `json:"configuration"`
+	}{Bundles: identities, Configuration: comfyConfiguration(options)})
 	if err != nil {
 		return "", err
 	}
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:]), nil
+}
+
+func comfyArtifactEvidence(managed catalog.Catalog, bundle catalog.Bundle) []benchmark.ComfyArtifactEvidence {
+	result := make([]benchmark.ComfyArtifactEvidence, 0, len(bundle.Artifacts))
+	for _, artifactID := range bundle.Artifacts {
+		artifact := managed.Artifacts[artifactID]
+		result = append(result, benchmark.ComfyArtifactEvidence{Identifier: artifact.ID, SHA256: artifact.SHA256, Size: artifact.Size})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Identifier < result[j].Identifier })
+	return result
+}
+
+func comfyResultMatches(result benchmark.ComfyResult, configuration benchmark.ComfyConfiguration, managed catalog.Catalog, bundle catalog.Bundle) bool {
+	if result.Image.Reference != configuration.Image || result.Image.ID != configuration.ImageID || result.Profile != configuration.Profile || result.RenderNode != configuration.RenderNode ||
+		result.MemoryPolicy != configuration.MemoryPolicy || result.KernelPolicy != configuration.KernelPolicy || result.CacheMode != configuration.CacheMode || result.Unconfined != configuration.Unconfined ||
+		result.StartedAt == "" || result.FinishedAt == "" || len(result.Runs) != configuration.Runs {
+		return false
+	}
+	spec := managed.Benchmarks[bundle.ID]
+	if result.Workflow != (benchmark.ComfyWorkflowEvidence{SourceSHA256: spec.SHA256, Renderer: spec.Renderer, RenderedSHA256: spec.RenderedSHA256}) || !reflect.DeepEqual(result.Artifacts, comfyArtifactEvidence(managed, bundle)) {
+		return false
+	}
+	for index, run := range result.Runs {
+		kind := "warm"
+		if index == 0 {
+			kind = "cold"
+		}
+		if run.Index != index || run.Kind != kind || run.Seed != configuration.Seed+index || run.PromptID == "" || run.WallSeconds <= 0 || !json.Valid(run.Outputs) {
+			return false
+		}
+	}
+	return true
 }
 
 func containsString(values []string, wanted string) bool {

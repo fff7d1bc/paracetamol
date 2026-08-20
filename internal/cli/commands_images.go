@@ -6,13 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/controlerr"
 	"rocmplete/internal/imagearchive"
 )
 
 func (app *App) commandImages(args []string) error {
 	if groupHelpRequested(args) {
-		writeGroupHelp(app.Stdout, "Usage: ./rocmplete images COMMAND [OPTIONS]",
+		writeGroupHelp(app.Stdout, usage("images", "COMMAND", "[OPTIONS]"),
 			[2]string{"export", "save exact managed images to an archive"},
 			[2]string{"import", "validate and load a managed image archive"})
 		return nil
@@ -31,12 +32,20 @@ func (app *App) commandImages(args []string) error {
 }
 
 func (app *App) imagesExport(args []string) error {
-	set := app.flags("images export", "Usage: ./rocmplete images export TARGET --output ARCHIVE [--dry-run]")
+	set := app.flags("images export", usage("images", "export", "TARGET", "--output ARCHIVE", "[--dry-run]"))
 	outputFlag := set.String("output", "", "new Docker archive path")
 	dryRun := set.Bool("dry-run", false, "validate and print the command")
 	target, remaining := leadingPositional(args)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	if target == "" && len(set.Args()) > 0 {
+		target = set.Args()[0]
+		if len(set.Args()) > 1 {
+			return controlerr.Usage("images export accepts exactly one target")
+		}
+	} else if len(set.Args()) > 0 {
+		return controlerr.Usage("images export accepts exactly one target")
 	}
 	if target == "" || *outputFlag == "" {
 		return controlerr.Usage("images export requires TARGET and --output")
@@ -117,27 +126,27 @@ func (app *App) imagesExport(args []string) error {
 			return controlerr.New("image identity changed while exporting: %s", image.Reference)
 		}
 	}
-	reserve, err := os.OpenFile(output, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return controlerr.New("image archive output appeared during export: %s", output)
-	}
-	if err := reserve.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(partial, output); err != nil {
-		_ = os.Remove(output)
-		return err
+	if err := atomicfile.Publish(output, partial, 0o600, atomicfile.Create); err != nil {
+		return controlerr.New("publish image archive: %v", err)
 	}
 	fmt.Fprintf(app.Stdout, "Exported: %s (%s)\n", output, humanSize(archive.Size))
 	return nil
 }
 
 func (app *App) imagesImport(args []string) error {
-	set := app.flags("images import", "Usage: ./rocmplete images import ARCHIVE [--dry-run]")
+	set := app.flags("images import", usage("images", "import", "ARCHIVE", "[--dry-run]"))
 	dryRun := set.Bool("dry-run", false, "validate without loading")
 	file, remaining := leadingPositional(args)
-	if err := set.Parse(remaining); err != nil {
+	if err := parseFlags(set, remaining); err != nil {
 		return err
+	}
+	if file == "" && len(set.Args()) > 0 {
+		file = set.Args()[0]
+		if len(set.Args()) > 1 {
+			return controlerr.Usage("images import accepts exactly one archive")
+		}
+	} else if len(set.Args()) > 0 {
+		return controlerr.Usage("images import accepts exactly one archive")
 	}
 	if file == "" {
 		return controlerr.Usage("images import requires an archive")

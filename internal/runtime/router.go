@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/content"
 	"rocmplete/internal/platform"
@@ -116,24 +117,7 @@ func WriteRouter(dataRoot, contents string) (string, error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".models.ini.*.tmp")
-	if err != nil {
-		return "", err
-	}
-	name := temporary.Name()
-	defer os.Remove(name)
-	if err := temporary.Chmod(0o600); err != nil {
-		temporary.Close()
-		return "", err
-	}
-	if _, err := temporary.WriteString(contents); err != nil {
-		temporary.Close()
-		return "", err
-	}
-	if err := temporary.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(name, path); err != nil {
+	if err := atomicfile.Write(path, []byte(contents), 0o600, atomicfile.ReplaceRegular); err != nil {
 		return "", err
 	}
 	return path, nil

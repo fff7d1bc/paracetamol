@@ -16,10 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"rocmplete/internal/atomicfile"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/process"
 )
 
-const ResultSchema = "rocmplete.coding-agent-evaluation.v3"
+const ResultSchema = "rocmplete.coding-agent-evaluation.v4"
 
 type HiddenTest struct {
 	Resource    string `json:"resource"`
@@ -56,6 +58,62 @@ type Attempt struct {
 	Root    string
 	Fixture string
 	Task    Task
+}
+
+type GradeResult struct {
+	Outcome          string `json:"outcome"`
+	AnswerWords      int    `json:"answer_words,omitempty"`
+	HiddenTestPassed *bool  `json:"hidden_test_passed,omitempty"`
+	PatchSHA256      string `json:"patch_sha256,omitempty"`
+}
+
+type Usage struct {
+	Input      int64 `json:"input"`
+	Output     int64 `json:"output"`
+	Reasoning  int64 `json:"reasoning"`
+	CacheRead  int64 `json:"cache_read"`
+	CacheWrite int64 `json:"cache_write"`
+}
+
+type HarnessResult struct {
+	Exit        int     `json:"exit"`
+	WallSeconds float64 `json:"wall_seconds"`
+	Usage       Usage   `json:"usage"`
+}
+
+type AttemptResult struct {
+	Repetition int           `json:"repetition"`
+	Harness    HarnessResult `json:"harness"`
+	Grade      GradeResult   `json:"grade"`
+	Error      string        `json:"error,omitempty"`
+}
+
+type TaskResult struct {
+	Identifier string          `json:"identifier"`
+	Kind       string          `json:"kind"`
+	Difficulty string          `json:"difficulty"`
+	Attempts   []AttemptResult `json:"attempts"`
+}
+
+type ModelResult struct {
+	Identifier string `json:"identifier"`
+	Context    int64  `json:"context"`
+	Thinking   string `json:"thinking"`
+	Backend    string `json:"backend"`
+}
+
+type Result struct {
+	Schema           string       `json:"schema"`
+	Suite            string       `json:"suite"`
+	SuiteFingerprint string       `json:"suite_fingerprint"`
+	RunID            string       `json:"run_id"`
+	Status           string       `json:"status"`
+	StartedAt        string       `json:"started_at"`
+	FinishedAt       string       `json:"finished_at,omitempty"`
+	Model            ModelResult  `json:"model"`
+	Harness          string       `json:"harness"`
+	Tasks            []TaskResult `json:"tasks"`
+	Error            string       `json:"error,omitempty"`
 }
 
 func Load(path string) (Suite, error) {
@@ -145,10 +203,10 @@ func Prepare(ctx context.Context, runner process.Runner, suite Suite, task Task,
 	if err := extractArchive(archive.Stdout, fixture); err != nil {
 		return Attempt{}, err
 	}
-	if err := os.WriteFile(filepath.Join(fixture, "AGENTS.md"), []byte(suite.FixtureInstructions), 0o644); err != nil {
+	if err := atomicfile.Write(filepath.Join(fixture, "AGENTS.md"), []byte(suite.FixtureInstructions), 0o644, atomicfile.Create); err != nil {
 		return Attempt{}, err
 	}
-	for _, arguments := range [][]string{{"init", "--quiet"}, {"config", "user.name", "ROCmplete Evaluation"}, {"config", "user.email", "evaluation@invalid.local"}, {"add", "--all"}, {"commit", "--quiet", "-m", "evaluation base"}} {
+	for _, arguments := range [][]string{{"init", "--quiet"}, {"config", "user.name", identity.DisplayName + " Evaluation"}, {"config", "user.email", "evaluation@invalid.local"}, {"add", "--all"}, {"commit", "--quiet", "-m", "evaluation base"}} {
 		if _, err := checked(ctx, runner, process.Command{Name: "git", Args: arguments, Dir: fixture, Env: environment}, "prepare coding evaluation fixture"); err != nil {
 			return Attempt{}, err
 		}
@@ -159,7 +217,7 @@ func Prepare(ctx context.Context, runner process.Runner, suite Suite, task Task,
 		}
 	}
 	log, err := Test(ctx, runner, task, fixture, environment)
-	if writeErr := os.WriteFile(filepath.Join(attemptRoot, "baseline.log"), log, 0o644); writeErr != nil {
+	if writeErr := atomicfile.Write(filepath.Join(attemptRoot, "baseline.log"), log, 0o644, atomicfile.Create); writeErr != nil {
 		return Attempt{}, writeErr
 	}
 	if err != nil {
@@ -184,27 +242,27 @@ func Test(ctx context.Context, runner process.Runner, task Task, directory strin
 	return log, nil
 }
 
-func Grade(ctx context.Context, runner process.Runner, root string, attempt Attempt, environment []string) (map[string]any, error) {
+func Grade(ctx context.Context, runner process.Runner, root string, attempt Attempt, environment []string) (GradeResult, error) {
 	status, err := checked(ctx, runner, process.Command{Name: "git", Args: []string{"status", "--porcelain=v1", "--untracked-files=all"}, Dir: attempt.Fixture, Env: environment}, "inspect evaluation changes")
 	if err != nil {
-		return nil, err
+		return GradeResult{}, err
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(status.Stdout)), "\n") {
 		if len(line) >= 4 && strings.HasPrefix(line, "??") {
 			if _, err := checked(ctx, runner, process.Command{Name: "git", Args: []string{"add", "--intent-to-add", "--", line[3:]}, Dir: attempt.Fixture, Env: environment}, "include untracked evaluation change"); err != nil {
-				return nil, err
+				return GradeResult{}, err
 			}
 		}
 	}
 	patch, err := checked(ctx, runner, process.Command{Name: "git", Args: []string{"diff", "--binary", "--no-ext-diff", "HEAD", "--"}, Dir: attempt.Fixture, Env: environment}, "capture evaluation patch")
 	if err != nil {
-		return nil, err
+		return GradeResult{}, err
 	}
 	if len(patch.Stdout) > 20*1024*1024 {
-		return nil, fmt.Errorf("evaluation patch exceeds 20 MiB")
+		return GradeResult{}, fmt.Errorf("evaluation patch exceeds 20 MiB")
 	}
-	if err := os.WriteFile(filepath.Join(attempt.Root, "agent.patch"), patch.Stdout, 0o644); err != nil {
-		return nil, err
+	if err := atomicfile.Write(filepath.Join(attempt.Root, "agent.patch"), patch.Stdout, 0o644, atomicfile.Create); err != nil {
+		return GradeResult{}, err
 	}
 	if attempt.Task.Kind == "review" {
 		contents, err := os.ReadFile(filepath.Join(attempt.Fixture, attempt.Task.Answer))
@@ -213,45 +271,48 @@ func Grade(ctx context.Context, runner process.Runner, root string, attempt Atte
 		if err == nil && words >= 200 && words <= 2000 {
 			outcome = "answered"
 		}
-		return map[string]any{"outcome": outcome, "answer_words": words, "patch_sha256": digest(patch.Stdout)}, nil
+		return GradeResult{Outcome: outcome, AnswerWords: words, PatchSHA256: digest(patch.Stdout)}, nil
 	}
 	if attempt.Task.Hidden == nil {
-		return nil, fmt.Errorf("implementation task %s has no hidden test", attempt.Task.Identifier)
+		return GradeResult{}, fmt.Errorf("implementation task %s has no hidden test", attempt.Task.Identifier)
 	}
 	resource := filepath.Join(root, "evaluations", "coding", filepath.FromSlash(attempt.Task.Hidden.Resource))
 	contents, err := os.ReadFile(resource)
 	if err != nil {
-		return nil, fmt.Errorf("read private hidden test for %s: %w", attempt.Task.Identifier, err)
+		return GradeResult{}, fmt.Errorf("read private hidden test for %s: %w", attempt.Task.Identifier, err)
 	}
 	if digest(contents) != attempt.Task.Hidden.SHA256 {
-		return nil, fmt.Errorf("private hidden test does not match frozen suite for %s", attempt.Task.Identifier)
+		return GradeResult{}, fmt.Errorf("private hidden test does not match frozen suite for %s", attempt.Task.Identifier)
 	}
 	destination := filepath.Join(attempt.Fixture, filepath.FromSlash(attempt.Task.Hidden.Destination))
 	relative, err := filepath.Rel(attempt.Fixture, destination)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return nil, fmt.Errorf("hidden test destination escapes fixture")
+		return GradeResult{}, fmt.Errorf("hidden test destination escapes fixture")
 	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return nil, err
+		return GradeResult{}, err
 	}
 	handle, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, err
+		return GradeResult{}, err
 	}
 	if _, err := handle.Write(contents); err != nil {
 		handle.Close()
-		return nil, err
+		return GradeResult{}, err
 	}
 	if err := handle.Close(); err != nil {
-		return nil, err
+		return GradeResult{}, err
 	}
 	log, testErr := Test(ctx, runner, attempt.Task, attempt.Fixture, environment)
-	_ = os.WriteFile(filepath.Join(attempt.Root, "grade.log"), log, 0o644)
+	if err := atomicfile.Write(filepath.Join(attempt.Root, "grade.log"), log, 0o644, atomicfile.Create); err != nil {
+		return GradeResult{}, err
+	}
 	outcome := "solved"
 	if testErr != nil {
 		outcome = "failed"
 	}
-	return map[string]any{"outcome": outcome, "hidden_test_passed": testErr == nil, "patch_sha256": digest(patch.Stdout)}, nil
+	passed := testErr == nil
+	return GradeResult{Outcome: outcome, HiddenTestPassed: &passed, PatchSHA256: digest(patch.Stdout)}, nil
 }
 
 func extractArchive(contents []byte, destination string) error {

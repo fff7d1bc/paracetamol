@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"rocmplete/internal/identity"
 )
 
 var renderNodePattern = regexp.MustCompile(`^/dev/dri/renderD[0-9]+$`)
@@ -20,23 +22,26 @@ func RequestedRenderNodes(values []string, explicitlySet bool, environment map[s
 	if explicitlySet {
 		return append([]string(nil), values...), nil
 	}
-	if plural, ok := environment["ROCMLETE_RENDER_NODES"]; ok {
+	pluralName := identity.EnvironmentPrefix() + "_RENDER_NODES"
+	singularName := identity.EnvironmentPrefix() + "_RENDER_NODE"
+	if plural, ok := environment[pluralName]; ok {
 		parts := strings.Split(plural, ",")
 		for index := range parts {
 			parts[index] = strings.TrimSpace(parts[index])
 			if parts[index] == "" {
-				return nil, fmt.Errorf("ROCMLETE_RENDER_NODES must be a comma-separated list of exact render nodes")
+				return nil, fmt.Errorf("%s must be a comma-separated list of exact render nodes", pluralName)
 			}
 		}
 		return parts, nil
 	}
-	if singular := environment["ROCMLETE_RENDER_NODE"]; singular != "" {
+	if singular := environment[singularName]; singular != "" {
 		return []string{singular}, nil
 	}
 	return nil, nil
 }
 
 func SelectRenderNodes(requested []string) ([]string, error) {
+	pluralName := identity.EnvironmentPrefix() + "_RENDER_NODES"
 	selected := append([]string(nil), requested...)
 	if len(selected) == 0 {
 		nodes, err := filepath.Glob("/dev/dri/renderD*")
@@ -48,7 +53,7 @@ func SelectRenderNodes(requested []string) ([]string, error) {
 			return nil, fmt.Errorf("no /dev/dri/renderD* nodes found; use --profile cpu for a CPU-only smoke test")
 		}
 		if len(nodes) > 1 {
-			return nil, fmt.Errorf("multiple render nodes found (%s); select an exact set with --render-node or ROCMLETE_RENDER_NODES", strings.Join(nodes, ", "))
+			return nil, fmt.Errorf("multiple render nodes found (%s); select an exact set with --render-node or %s", strings.Join(nodes, ", "), pluralName)
 		}
 		selected = nodes
 	}
@@ -79,7 +84,7 @@ func CheckDeviceAccess(device string) error {
 		return fmt.Errorf("inspect device %s: %w", device, err)
 	}
 	if err := syscall.Access(device, accessReadWrite); err != nil {
-		return fmt.Errorf("current user needs read and write access to %s; run './rocmplete doctor' for a persistent host fix", device)
+		return fmt.Errorf("current user needs read and write access to %s; run %q for a persistent host fix", device, identity.Command("doctor"))
 	}
 	return nil
 }

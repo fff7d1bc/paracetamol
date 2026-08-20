@@ -12,92 +12,37 @@ import (
 	"strconv"
 	"strings"
 
+	"rocmplete/internal/application"
 	"rocmplete/internal/controlerr"
 	"rocmplete/internal/identity"
-	"rocmplete/internal/platform"
 )
 
-type Application struct {
-	ID                string
-	Image             string
-	ContainerName     string
-	BuildTarget       string
-	Port              int
-	Shell             bool
-	Logs              bool
-	RuntimeFamily     platform.RuntimeFamily
-	SharedPyTorchBase bool
-	MultiGPU          bool
-	AfterBuild        string
-	AfterContent      string
-}
+type Application = application.Spec
 
-const (
-	ROCmRuntimeImage       = "localhost/rocmplete:runtime-ubuntu26.04-rocm7.14-r2"
-	ROCmRuntimeBuildTarget = "rocm-runtime"
-	ROCmBaseImage          = "localhost/rocmplete:base-ubuntu26.04-rocm7.14-torch2.11-r5"
-	ROCmBaseBuildTarget    = "rocm-base"
-	ContentToolsImage      = "localhost/rocmplete:content-ubuntu26.04-huggingface1.27-r1"
-	ContentToolsTarget     = "content-tools"
-	DefaultListen          = "127.0.0.1"
+var (
+	ROCmRuntimeImage  = mustBuildUnit(application.BuildRuntime).Image
+	ROCmBaseImage     = mustBuildUnit(application.BuildPyTorchBase).Image
+	ContentToolsImage = mustBuildUnit(application.BuildContentTools).Image
 )
 
-var applications = map[string]Application{
-	"comfyui": {
-		ID: "comfyui", Image: "localhost/rocmplete:comfyui-ubuntu26.04-rocm7.14-0.28.0-r11",
-		ContainerName: "rocmplete-comfyui", BuildTarget: "comfyui", Port: 8188,
-		Shell: true, Logs: true, RuntimeFamily: platform.RuntimeROCm,
-		SharedPyTorchBase: true, MultiGPU: true,
-		AfterBuild:   "./rocmplete content install comfyui",
-		AfterContent: "./rocmplete run comfyui",
-	},
-	"llama-cpp": {
-		ID: "llama-cpp", Image: "localhost/rocmplete:llama-cpp-ubuntu26.04-rocm7.14-3cb7ffb-r29",
-		ContainerName: "rocmplete-llama-cpp", BuildTarget: "llama-cpp", Port: 8080,
-		Shell: true, Logs: true, RuntimeFamily: platform.RuntimeROCm,
-		MultiGPU:     true,
-		AfterBuild:   "./rocmplete content install llama-cpp qwen3.8",
-		AfterContent: "./rocmplete run llama-cpp server --preset qwen3.8-27b-mtp-ud-q8-k-xl",
-	},
-	"dwarfstar": {
-		ID: "dwarfstar", Image: "localhost/rocmplete:dwarfstar-ubuntu26.04-rocm7.14-84cc882-r7",
-		ContainerName: "rocmplete-dwarfstar", BuildTarget: "dwarfstar", Port: 8000,
-		Shell: true, Logs: true, RuntimeFamily: platform.RuntimeROCm,
-		AfterBuild:   "./rocmplete content install dwarfstar flash-0731-q2-imatrix",
-		AfterContent: "./rocmplete run dwarfstar server",
-	},
-}
+const DefaultListen = "127.0.0.1"
 
-func ApplicationByID(identifier string) (Application, bool) {
-	application, ok := applications[identifier]
-	return application, ok
-}
+func ApplicationByID(identifier string) (Application, bool) { return application.ByID(identifier) }
+func Applications() []Application                           { return application.All() }
 
-func Applications() []Application {
-	identifiers := []string{"comfyui", "llama-cpp", "dwarfstar"}
-	result := make([]Application, 0, len(identifiers))
-	for _, identifier := range identifiers {
-		result = append(result, applications[identifier])
+func mustBuildUnit(identifier application.BuildID) application.BuildUnit {
+	unit, ok := application.BuildUnitByID(string(identifier))
+	if !ok {
+		panic("application registry lacks build unit " + string(identifier))
 	}
-	return result
+	return unit
 }
 
 func EnvironmentValue(environment map[string]string, name, fallback string) string {
-	if value, ok := environment[identity.EnvPrefix+"_"+name]; ok {
+	if value, ok := environment[identity.EnvironmentPrefix()+"_"+name]; ok {
 		return value
 	}
 	return fallback
-}
-
-func Environment() map[string]string {
-	result := make(map[string]string)
-	for _, entry := range os.Environ() {
-		name, value, found := strings.Cut(entry, "=")
-		if found {
-			result[name] = value
-		}
-	}
-	return result
 }
 
 func ConfigFile(environment map[string]string) (string, bool, error) {

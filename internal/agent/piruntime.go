@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"rocmplete/internal/identity"
 	"rocmplete/internal/process"
 	"rocmplete/internal/storage"
 )
@@ -165,7 +166,7 @@ func ResolvePiRuntime(ctx context.Context, runner process.Runner, dataRoot, proj
 	}
 	installation := piInstallation(piRuntimeRoot(dataRoot), source)
 	if info, err := os.Lstat(installation); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return PiRuntime{}, fmt.Errorf("managed Pi %s is not installed; run ./rocmplete agent install pi", source.PackageVersion)
+		return PiRuntime{}, fmt.Errorf("managed Pi %s is not installed; run %s", source.PackageVersion, identity.Command("agent", "install", "pi"))
 	}
 	return runtimeFromInstallation(installation, source, node, nodeVersion)
 }

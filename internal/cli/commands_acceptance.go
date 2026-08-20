@@ -2,32 +2,99 @@ package cli
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"rocmplete/internal/atomicfile"
 	"rocmplete/internal/benchmark"
 	"rocmplete/internal/catalog"
 	"rocmplete/internal/config"
 	"rocmplete/internal/content"
 	"rocmplete/internal/controlerr"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/platform"
 	"rocmplete/internal/runtime"
 	"rocmplete/internal/storage"
 )
 
-const acceptanceSchema = "rocmplete.hardware-acceptance.v1"
+const acceptanceSchema = "rocmplete.hardware-acceptance.v2"
 
 type acceptanceCase struct {
 	id, description, application, bundle string
 	visual                               bool
 }
 
+type acceptanceImageIdentity struct {
+	Target    string `json:"target"`
+	Reference string `json:"reference"`
+	ID        string `json:"id"`
+}
+
+type acceptanceBundleIdentity struct {
+	ID        string            `json:"id"`
+	Artifacts map[string]string `json:"artifacts"`
+	Workflow  string            `json:"workflow,omitempty"`
+}
+
+type acceptanceDefinition struct {
+	Profile         string                     `json:"profile"`
+	Architecture    string                     `json:"architecture"`
+	RenderNode      string                     `json:"render_node"`
+	MemoryPolicy    string                     `json:"memory_policy"`
+	KernelPolicy    string                     `json:"kernel_policy"`
+	Port            int                        `json:"port"`
+	ProjectRevision string                     `json:"project_revision"`
+	Images          []acceptanceImageIdentity  `json:"images"`
+	Bundles         []acceptanceBundleIdentity `json:"bundles"`
+	Cases           []string                   `json:"cases"`
+}
+
+type acceptanceEntry struct {
+	Identifier  string               `json:"identifier"`
+	Description string               `json:"description"`
+	Application string               `json:"application,omitempty"`
+	Bundle      string               `json:"bundle,omitempty"`
+	Visual      bool                 `json:"visual"`
+	Status      string               `json:"status"`
+	Attempts    int                  `json:"attempts"`
+	StartedAt   string               `json:"started_at,omitempty"`
+	FinishedAt  string               `json:"finished_at,omitempty"`
+	WallSeconds float64              `json:"wall_seconds,omitempty"`
+	Artifacts   []acceptanceArtifact `json:"artifacts"`
+	Reason      string               `json:"reason,omitempty"`
+}
+
+type acceptanceArtifact struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+}
+
+type acceptanceResult struct {
+	Schema      string               `json:"schema"`
+	SuiteID     string               `json:"suite_id"`
+	Fingerprint string               `json:"fingerprint"`
+	Definition  acceptanceDefinition `json:"definition"`
+	Status      string               `json:"status"`
+	StartedAt   string               `json:"started_at"`
+	FinishedAt  string               `json:"finished_at,omitempty"`
+	Hardware    map[string]string    `json:"hardware"`
+	Cases       []acceptanceEntry    `json:"cases"`
+}
+
 func (app *App) commandAcceptance(args []string) error {
-	set := app.flags("acceptance", "Usage: ./rocmplete acceptance [OPTIONS]")
+	if len(args) > 0 && args[0] == "run" {
+		return controlerr.Usage("acceptance is a direct command; use %q", identity.Command("acceptance", "[OPTIONS]"))
+	}
+	set := app.flags("acceptance", usage("acceptance", "[OPTIONS]"))
 	profileFlag := set.String("profile", "auto", "expected GPU profile or auto")
 	var nodes, applications stringList
 	set.Var(&nodes, "render-node", "exact GPU render node")
@@ -43,14 +110,41 @@ func (app *App) commandAcceptance(args []string) error {
 	acknowledgeRisk := set.Bool("acknowledge-license-risk", false, "allow NOASSERTION smoke content")
 	memory := set.String("memory-policy", "balanced", "balanced or conservative")
 	kernel := set.String("kernel-policy", "default", "default or experimental")
-	if err := set.Parse(args); err != nil {
+	if err := parseFlags(set, args); err != nil {
 		return err
 	}
 	if len(set.Args()) != 0 {
-		return controlerr.Usage("acceptance takes no positional command; use './rocmplete acceptance [OPTIONS]'")
+		return controlerr.Usage("acceptance takes no positional command; use %q", identity.Command("acceptance", "[OPTIONS]"))
 	}
 	if *output != "" && *resume != "" {
 		return controlerr.Usage("--output and --resume are mutually exclusive")
+	}
+	if *resume != "" && (*prepare || *dryRun) {
+		return controlerr.Usage("--resume cannot be combined with --prepare or --dry-run")
+	}
+	resultPath := ""
+	var result acceptanceResult
+	var err error
+	if *resume != "" {
+		resultPath, err = filepath.Abs(*resume)
+		if err != nil {
+			return err
+		}
+		if err := readAcceptanceResult(resultPath, &result); err != nil {
+			return err
+		}
+		if err := validateAcceptanceEnvelope(result); err != nil {
+			return err
+		}
+	} else if *output != "" {
+		resultPath, err = absoluteNewPath(*output)
+		if err != nil {
+			return err
+		}
+		reportPath := strings.TrimSuffix(resultPath, filepath.Ext(resultPath)) + ".md"
+		if _, err := absoluteNewPath(reportPath); err != nil {
+			return err
+		}
 	}
 	if err := platform.ValidateProfile(*profileFlag); err != nil || *profileFlag == "cpu" {
 		return controlerr.Usage("acceptance requires auto or a supported GPU profile")
@@ -76,6 +170,14 @@ func (app *App) commandAcceptance(args []string) error {
 	port, err := config.ValidatePort(*portText)
 	if err != nil {
 		return err
+	}
+	if *resume != "" {
+		if result.Definition.RenderNode != selectedNodes[0] || result.Definition.MemoryPolicy != *memory || result.Definition.KernelPolicy != *kernel || result.Definition.Port != port {
+			return controlerr.New("acceptance checkpoint does not match the requested render node or runtime policy")
+		}
+		if *profileFlag != "auto" && result.Definition.Profile != *profileFlag {
+			return controlerr.New("acceptance checkpoint does not match the requested profile")
+		}
 	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
 	if err != nil {
@@ -122,7 +224,7 @@ func (app *App) commandAcceptance(args []string) error {
 		return err
 	}
 	if !basePresent && *prepare {
-		if err := app.commandBuild([]string{"base"}); err != nil {
+		if err := app.commandBuild([]string{"pytorch-base"}); err != nil {
 			return err
 		}
 	} else if !basePresent {
@@ -210,85 +312,242 @@ func (app *App) commandAcceptance(args []string) error {
 			return controlerr.New("acceptance content is not ready: %s (repeat with --prepare): %v", bundle.ID, err)
 		}
 	}
-	definition := map[string]any{"profile": detected.ID, "architecture": hardware["Architecture"], "render_node": selectedNodes[0], "memory_policy": *memory, "kernel_policy": *kernel, "base_image": map[string]any{"reference": config.ROCmBaseImage, "id": baseImageID}, "cases": acceptanceCaseIDs(cases)}
+	imageIdentities := make([]acceptanceImageIdentity, 0, len(images))
+	for _, image := range images {
+		identifier, inspectErr := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", image.image}, "inspect acceptance image "+image.image)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		imageIdentities = append(imageIdentities, acceptanceImageIdentity{Target: image.target, Reference: image.image, ID: identifier})
+	}
+	if len(imageIdentities) == 0 || imageIdentities[0].ID != baseImageID {
+		return controlerr.New("acceptance base image identity changed during preparation")
+	}
+	bundleIdentities := make([]acceptanceBundleIdentity, 0, len(requiredBundles))
+	for _, bundle := range requiredBundles {
+		identity := acceptanceBundleIdentity{ID: bundle.ID, Artifacts: make(map[string]string), Workflow: bundle.Workflow}
+		for _, artifactID := range bundle.Artifacts {
+			identity.Artifacts[artifactID] = managed.Artifacts[artifactID].SHA256
+		}
+		bundleIdentities = append(bundleIdentities, identity)
+	}
+	sourceIdentity, err := app.projectSourceIdentity()
+	if err != nil {
+		return err
+	}
+	definition := acceptanceDefinition{
+		Profile: detected.ID, Architecture: hardware["Architecture"], RenderNode: selectedNodes[0],
+		MemoryPolicy: *memory, KernelPolicy: *kernel, Port: port, ProjectRevision: sourceIdentity,
+		Images: imageIdentities, Bundles: bundleIdentities, Cases: acceptanceCaseIDs(cases),
+	}
 	fingerprint, err := jsonDigest(definition)
 	if err != nil {
 		return err
 	}
-	resultPath := benchmark.DefaultPath((storage.Layout{Root: dataRoot}).AcceptanceResults(), ".json")
-	var result map[string]any
+	if resultPath == "" {
+		resultPath = benchmark.DefaultPath((storage.Layout{Root: dataRoot}).AcceptanceResults(), ".json")
+	}
 	if *resume != "" {
-		resultPath, err = filepath.Abs(*resume)
-		if err != nil {
-			return err
-		}
-		result, err = benchmark.ReadObject(resultPath)
-		if err != nil {
-			return err
-		}
-		if result["schema"] != acceptanceSchema || result["fingerprint"] != fingerprint {
+		if result.Fingerprint != fingerprint {
 			return controlerr.New("acceptance checkpoint does not match this hardware and case selection")
 		}
+		if err := validateAcceptanceResult(result, cases); err != nil {
+			return err
+		}
 	} else {
-		if *output != "" {
-			resultPath, err = absoluteNewPath(*output)
-			if err != nil {
-				return err
-			}
-		}
-		entries := []any{}
+		entries := make([]acceptanceEntry, 0, len(cases))
 		for _, candidate := range cases {
-			entries = append(entries, map[string]any{"identifier": candidate.id, "description": candidate.description, "application": candidate.application, "bundle": candidate.bundle, "visual": candidate.visual, "status": "pending", "attempts": 0, "artifacts": []any{}})
+			entries = append(entries, acceptanceEntry{Identifier: candidate.id, Description: candidate.description, Application: candidate.application, Bundle: candidate.bundle, Visual: candidate.visual, Status: "pending", Artifacts: []acceptanceArtifact{}})
 		}
-		result = map[string]any{"schema": acceptanceSchema, "suite_id": time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier(), "fingerprint": fingerprint, "definition": definition, "status": "running", "started_at": benchmark.Timestamp(), "hardware": hardware, "cases": entries}
-		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+		result = acceptanceResult{Schema: acceptanceSchema, SuiteID: time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier(), Fingerprint: fingerprint, Definition: definition, Status: "running", StartedAt: benchmark.Timestamp(), Hardware: hardware, Cases: entries}
+		if err := benchmark.WriteNewCheckpoint(resultPath, result); err != nil {
 			return err
 		}
 	}
-	entries, ok := result["cases"].([]any)
-	if !ok {
-		return controlerr.New("acceptance checkpoint has no cases")
-	}
-	failed, blocked := false, false
-	for _, raw := range entries {
-		entry, ok := raw.(map[string]any)
-		if !ok || entry["status"] == "pass" {
+	for index := range result.Cases {
+		entry := &result.Cases[index]
+		candidate, ok := findAcceptanceCase(cases, entry.Identifier)
+		if !ok {
+			return controlerr.New("acceptance checkpoint contains unknown case %q", entry.Identifier)
+		}
+		if entry.Status == "blocked" && candidate.visual && artifactsAvailable(entry.Artifacts) {
+			entry.Status = "review"
+		}
+		if entry.Status == "pass" || entry.Status == "review" {
 			continue
 		}
-		identifier := fmt.Sprint(entry["identifier"])
-		candidate := findAcceptanceCase(cases, identifier)
-		entry["status"], entry["attempts"], entry["started_at"] = "running", numberAsInt64(entry["attempts"])+1, benchmark.Timestamp()
-		_ = benchmark.WriteCheckpoint(resultPath, result)
+		entry.Status, entry.Attempts, entry.StartedAt, entry.Reason = "running", entry.Attempts+1, benchmark.Timestamp(), ""
+		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+			return err
+		}
 		started := time.Now()
-		artifacts, caseErr := app.runAcceptanceCase(managed, candidate, dataRoot, detected.ID, selectedNodes[0], port, fmt.Sprint(result["suite_id"]), *memory, *kernel)
-		entry["wall_seconds"], entry["finished_at"], entry["artifacts"] = time.Since(started).Seconds(), benchmark.Timestamp(), artifacts
+		paths, caseErr := app.runAcceptanceCase(managed, candidate, dataRoot, detected.ID, selectedNodes[0], port, result.SuiteID, *memory, *kernel)
+		artifacts, evidenceErr := captureAcceptanceArtifacts(paths)
+		if caseErr == nil && evidenceErr != nil {
+			caseErr = evidenceErr
+		}
+		entry.WallSeconds, entry.FinishedAt, entry.Artifacts = time.Since(started).Seconds(), benchmark.Timestamp(), artifacts
 		if caseErr != nil {
-			entry["status"], entry["reason"] = "fail", caseErr.Error()
-			failed = true
-		} else if candidate.visual && (*nonInteractive || !app.confirmVisual(candidate, artifacts)) {
-			entry["status"], entry["reason"] = "blocked", "generated artifact requires successful visual review"
-			blocked = true
+			entry.Status, entry.Reason = "fail", caseErr.Error()
+		} else if candidate.visual {
+			entry.Status = "review"
 		} else {
-			entry["status"] = "pass"
+			entry.Status = "pass"
 		}
 		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 			return err
 		}
 	}
-	result["status"], result["finished_at"] = "pass", benchmark.Timestamp()
-	if failed {
-		result["status"] = "fail"
-	} else if blocked {
-		result["status"] = "blocked"
+	for index := range result.Cases {
+		entry := &result.Cases[index]
+		if entry.Status != "review" {
+			continue
+		}
+		candidate, _ := findAcceptanceCase(cases, entry.Identifier)
+		if *nonInteractive || !app.confirmVisual(candidate, entry.Artifacts) {
+			entry.Status, entry.Reason = "blocked", "generated artifact requires successful visual review"
+		} else {
+			entry.Status, entry.Reason = "pass", ""
+		}
+		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+			return err
+		}
+	}
+	result.Status, result.FinishedAt = "pass", benchmark.Timestamp()
+	for _, entry := range result.Cases {
+		if entry.Status == "fail" {
+			result.Status = "fail"
+			break
+		}
+		if entry.Status == "blocked" {
+			result.Status = "blocked"
+		}
 	}
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "Acceptance complete: %s (%s)\n", resultPath, result["status"])
-	if failed || blocked {
-		return &controlerr.Error{Message: fmt.Sprintf("acceptance status: %s", result["status"]), Status: 1}
+	reportPath := strings.TrimSuffix(resultPath, filepath.Ext(resultPath)) + ".md"
+	reportPolicy := atomicfile.Create
+	if *resume != "" {
+		reportPolicy = atomicfile.ReplaceRegular
+	}
+	if err := atomicfile.Write(reportPath, []byte(renderAcceptanceReport(result)), 0o644, reportPolicy); err != nil {
+		return err
+	}
+	fmt.Fprintf(app.Stdout, "Acceptance complete: %s (%s)\nReport: %s\n", resultPath, result.Status, reportPath)
+	if result.Status != "pass" {
+		status := 1
+		if result.Status == "blocked" {
+			status = 2
+		}
+		return &controlerr.Error{Message: fmt.Sprintf("acceptance status: %s", result.Status), Status: status}
 	}
 	return nil
+}
+
+func validateAcceptanceResult(result acceptanceResult, cases []acceptanceCase) error {
+	if err := validateAcceptanceEnvelope(result); err != nil {
+		return err
+	}
+	if len(result.Cases) != len(cases) {
+		return controlerr.New("acceptance checkpoint has invalid root metadata")
+	}
+	for index, entry := range result.Cases {
+		candidate := cases[index]
+		if entry.Identifier != candidate.id || entry.Description != candidate.description || entry.Application != candidate.application || entry.Bundle != candidate.bundle || entry.Visual != candidate.visual {
+			return controlerr.New("acceptance checkpoint case %d has invalid metadata", index+1)
+		}
+		if entry.Status == "pass" || entry.Status == "review" || entry.Status == "blocked" {
+			needsEvidence := candidate.id == "comfyui-image" || candidate.id == "comfyui-video" || candidate.id == "llama-cpp"
+			if needsEvidence && len(entry.Artifacts) == 0 {
+				return controlerr.New("acceptance checkpoint case %q lacks result evidence", entry.Identifier)
+			}
+			if len(entry.Artifacts) > 0 && !artifactsAvailable(entry.Artifacts) {
+				return controlerr.New("acceptance checkpoint case %q has missing or changed result evidence", entry.Identifier)
+			}
+		}
+	}
+	return nil
+}
+
+func validateAcceptanceEnvelope(result acceptanceResult) error {
+	if result.Schema != acceptanceSchema || !managedRunID.MatchString(result.SuiteID) || result.StartedAt == "" {
+		return controlerr.New("acceptance checkpoint has invalid root metadata")
+	}
+	if !map[string]bool{"running": true, "pass": true, "fail": true, "blocked": true}[result.Status] {
+		return controlerr.New("acceptance checkpoint has invalid status %q", result.Status)
+	}
+	digest, err := jsonDigest(result.Definition)
+	if err != nil || digest != result.Fingerprint {
+		return controlerr.New("acceptance checkpoint definition does not match its fingerprint")
+	}
+	allowedStatus := map[string]bool{"pending": true, "running": true, "pass": true, "fail": true, "review": true, "blocked": true}
+	seen := make(map[string]bool, len(result.Cases))
+	for _, entry := range result.Cases {
+		if entry.Identifier == "" || seen[entry.Identifier] || !allowedStatus[entry.Status] || entry.Attempts < 0 || unsafeCheckpointText(entry.Reason) {
+			return controlerr.New("acceptance checkpoint has invalid case metadata")
+		}
+		seen[entry.Identifier] = true
+		for _, artifact := range entry.Artifacts {
+			if !filepath.IsAbs(artifact.Path) || unsafeCheckpointText(artifact.Path) || len(artifact.SHA256) != 64 || strings.Trim(artifact.SHA256, "0123456789abcdef") != "" || artifact.Size < 1 {
+				return controlerr.New("acceptance checkpoint case %q has an invalid artifact path", entry.Identifier)
+			}
+		}
+	}
+	return nil
+}
+
+func unsafeCheckpointText(value string) bool {
+	return strings.IndexFunc(value, func(character rune) bool { return character < 0x20 || character == 0x7f }) >= 0
+}
+
+func artifactsAvailable(artifacts []acceptanceArtifact) bool {
+	if len(artifacts) == 0 {
+		return false
+	}
+	for _, artifact := range artifacts {
+		captured, err := captureAcceptanceArtifact(artifact.Path)
+		if err != nil || captured != artifact {
+			return false
+		}
+	}
+	return true
+}
+
+func captureAcceptanceArtifacts(paths []string) ([]acceptanceArtifact, error) {
+	artifacts := make([]acceptanceArtifact, 0, len(paths))
+	for _, path := range paths {
+		artifact, err := captureAcceptanceArtifact(path)
+		if err != nil {
+			return nil, err
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	return artifacts, nil
+}
+
+func captureAcceptanceArtifact(path string) (acceptanceArtifact, error) {
+	if !filepath.IsAbs(path) {
+		return acceptanceArtifact{}, fmt.Errorf("acceptance evidence path is not absolute: %s", path)
+	}
+	status, err := os.Lstat(path)
+	if err != nil || !status.Mode().IsRegular() {
+		return acceptanceArtifact{}, fmt.Errorf("acceptance evidence is not a regular file: %s", path)
+	}
+	handle, err := os.Open(path)
+	if err != nil {
+		return acceptanceArtifact{}, err
+	}
+	digest := sha256.New()
+	_, copyErr := io.Copy(digest, handle)
+	closeErr := handle.Close()
+	if copyErr != nil {
+		return acceptanceArtifact{}, copyErr
+	}
+	if closeErr != nil {
+		return acceptanceArtifact{}, closeErr
+	}
+	return acceptanceArtifact{Path: path, SHA256: hex.EncodeToString(digest.Sum(nil)), Size: status.Size()}, nil
 }
 
 func selectedAcceptanceCases(applications []string) []acceptanceCase {
@@ -306,7 +565,7 @@ func selectedAcceptanceCases(applications []string) []acceptanceCase {
 }
 
 func acceptanceImages(cases []acceptanceCase) []struct{ target, image string } {
-	images := []struct{ target, image string }{{"base", config.ROCmBaseImage}}
+	images := []struct{ target, image string }{{"pytorch-base", config.ROCmBaseImage}}
 	seen := map[string]bool{config.ROCmBaseImage: true}
 	for _, candidate := range cases {
 		if candidate.application == "" {
@@ -341,19 +600,19 @@ func acceptanceCaseIDs(cases []acceptanceCase) []string {
 	return result
 }
 
-func findAcceptanceCase(cases []acceptanceCase, identifier string) acceptanceCase {
+func findAcceptanceCase(cases []acceptanceCase, identifier string) (acceptanceCase, bool) {
 	for _, candidate := range cases {
 		if candidate.id == identifier {
-			return candidate
+			return candidate, true
 		}
 	}
-	return acceptanceCase{id: identifier}
+	return acceptanceCase{}, false
 }
 
-func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceCase, dataRoot, profile, renderNode string, port int, suiteID, memory, kernel string) ([]any, error) {
+func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceCase, dataRoot, profile, renderNode string, port int, suiteID, memory, kernel string) ([]string, error) {
 	switch candidate.id {
 	case "host-gpu":
-		return []any{}, nil
+		return []string{}, nil
 	case "comfyui-image", "comfyui-video":
 		transform := benchmark.SmokeImagePrompt
 		extension := ".png"
@@ -365,7 +624,7 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		if err != nil {
 			return nil, err
 		}
-		outputRoot := filepath.Join((storage.Layout{Root: dataRoot}).Application("comfyui"), "output", "rocmplete-benchmarks", runID)
+		outputRoot := filepath.Join((storage.Layout{Root: dataRoot}).Application("comfyui"), "output", identity.StateNamespace+"-benchmarks", runID)
 		var outputs []string
 		_ = filepath.WalkDir(outputRoot, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr == nil && !entry.IsDir() && strings.EqualFold(filepath.Ext(path), extension) {
@@ -379,7 +638,7 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		if err := validateMedia(outputs[0], extension); err != nil {
 			return nil, err
 		}
-		return []any{outputs[0], path}, nil
+		return []string{outputs[0], path}, nil
 	case "llama-cpp":
 		preset := managed.LlamaPresets["qwen3-0.6b-q8-0"]
 		artifact := managed.Artifacts[preset.Artifact]
@@ -389,10 +648,10 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 			return nil, err
 		}
 		path := filepath.Join((storage.Layout{Root: dataRoot}).AcceptanceResults(), "cases", suiteID+"-llama.json")
-		if err := benchmark.WriteLlama(path, benchmark.LlamaRun{Image: map[string]any{"reference": configApplicationImage("llama-cpp")}, Profile: profile, Backend: "rocm", RenderNodes: []string{renderNode}, Model: map[string]any{"preset": preset.ID, "path": content.ArtifactPath(dataRoot, artifact)}, Parameters: map[string]any{"prompt_tokens": 32, "generation_tokens": 16}, Results: rows}); err != nil {
+		if err := benchmark.WriteLlama(path, benchmark.LlamaRun{Image: benchmark.ImageIdentity{Reference: configApplicationImage("llama-cpp")}, Profile: profile, Backend: "rocm", RenderNodes: []string{renderNode}, Model: benchmark.ModelIdentity{Preset: preset.ID, Path: content.ArtifactPath(dataRoot, artifact)}, Parameters: benchmark.LlamaParameters{PromptTokens: 32, GenerationTokens: 16}, Results: rows}); err != nil {
 			return nil, err
 		}
-		return []any{path}, nil
+		return []string{path}, nil
 	case "dwarfstar":
 		bundle := managed.Bundles[candidate.bundle]
 		artifact := managed.Artifacts[bundle.Artifacts[0]]
@@ -402,7 +661,7 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 			return nil, err
 		}
 		_, err = app.run(command, false)
-		return []any{}, err
+		return []string{}, err
 	default:
 		return nil, fmt.Errorf("unknown acceptance case %q", candidate.id)
 	}
@@ -430,10 +689,10 @@ func validateMedia(path, extension string) error {
 	return nil
 }
 
-func (app *App) confirmVisual(candidate acceptanceCase, artifacts []any) bool {
+func (app *App) confirmVisual(candidate acceptanceCase, artifacts []acceptanceArtifact) bool {
 	fmt.Fprintf(app.Stdout, "Visual review required for %s:\n", candidate.id)
 	for _, artifact := range artifacts {
-		fmt.Fprintf(app.Stdout, "  %v\n", artifact)
+		fmt.Fprintf(app.Stdout, "  %s\n", artifact.Path)
 	}
 	fmt.Fprint(app.Stdout, "Does the generated artifact pass the documented smoke criteria? [y/N] ")
 	scanner := bufio.NewScanner(app.Stdin)
@@ -442,4 +701,54 @@ func (app *App) confirmVisual(candidate acceptanceCase, artifacts []any) bool {
 	}
 	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
 	return answer == "y" || answer == "yes"
+}
+
+func readAcceptanceResult(path string, result *acceptanceResult) error {
+	handle, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	decoder := json.NewDecoder(handle)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(result); err != nil {
+		return controlerr.New("decode acceptance checkpoint %s: %v", path, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return controlerr.New("acceptance checkpoint contains trailing data: %s", path)
+	}
+	return nil
+}
+
+func renderAcceptanceReport(result acceptanceResult) string {
+	var output strings.Builder
+	fmt.Fprintf(&output, "# Hardware acceptance\n\n")
+	fmt.Fprintf(&output, "**Result: %s.** Profile `%s` on `%s` using `%s`.\n\n", strings.ToUpper(result.Status), result.Definition.Profile, result.Definition.Architecture, result.Definition.RenderNode)
+	fmt.Fprintf(&output, "- Suite: `%s`\n- Started: %s\n- Finished: %s\n- Memory policy: `%s`\n- Kernel policy: `%s`\n\n", result.SuiteID, result.StartedAt, result.FinishedAt, result.Definition.MemoryPolicy, result.Definition.KernelPolicy)
+	fmt.Fprintln(&output, "| Case | Status | Attempts | Time | Evidence |")
+	fmt.Fprintln(&output, "| --- | --- | ---: | ---: | --- |")
+	for _, entry := range result.Cases {
+		paths := make([]string, 0, len(entry.Artifacts))
+		for _, artifact := range entry.Artifacts {
+			paths = append(paths, artifact.Path)
+		}
+		evidence := strings.Join(paths, "<br>")
+		if entry.Reason != "" {
+			if evidence != "" {
+				evidence += "<br>"
+			}
+			evidence += entry.Reason
+		}
+		fmt.Fprintf(&output, "| %s | %s | %d | %.2fs | %s |\n", entry.Identifier, entry.Status, entry.Attempts, entry.WallSeconds, evidence)
+	}
+	fmt.Fprint(&output, "\n## Exact inputs\n\n")
+	fmt.Fprintf(&output, "Fingerprint: `%s`\n\n", result.Fingerprint)
+	for _, image := range result.Definition.Images {
+		fmt.Fprintf(&output, "- Image `%s`: `%s` (`%s`)\n", image.Target, image.Reference, image.ID)
+	}
+	for _, bundle := range result.Definition.Bundles {
+		fmt.Fprintf(&output, "- Bundle `%s`\n", bundle.ID)
+	}
+	return output.String()
 }

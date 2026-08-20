@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"rocmplete/internal/catalog"
+	"rocmplete/internal/identity"
 )
 
 var shaPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
@@ -229,21 +230,21 @@ func BuildPlan(discovery Discovery, file File, kind Kind) (Plan, error) {
 	if !compatible {
 		return Plan{}, fmt.Errorf("%s cannot install %q", kind.Label, file.Name)
 	}
-	identity := ""
+	sourceIdentity := ""
 	source := catalog.Source{}
 	rawSource := map[string]any{}
 	if discovery.Provider == "civitai" {
-		identity = fmt.Sprintf("civitai-v%d-f%s", discovery.VersionID, file.ID)
+		sourceIdentity = fmt.Sprintf("civitai-v%d-f%s", discovery.VersionID, file.ID)
 		source = catalog.Source{Provider: "civitai", ProviderHost: discovery.Host, ModelID: discovery.ModelID, ModelVersionID: discovery.VersionID, Path: file.Name, DownloadURL: file.DownloadURL, RequiresAuth: discovery.RequiresAuth}
 		rawSource = map[string]any{"provider": "civitai", "host": discovery.Host, "model_id": discovery.ModelID, "model_version_id": discovery.VersionID, "filename": file.Name, "download_url": file.DownloadURL, "requires_auth": discovery.RequiresAuth}
 	} else {
-		identity = "hf-" + slug(strings.ReplaceAll(discovery.Repository, "/", "-"), 32) + "-" + file.SHA256[:12]
+		sourceIdentity = "hf-" + slug(strings.ReplaceAll(discovery.Repository, "/", "-"), 32) + "-" + file.SHA256[:12]
 		source = catalog.Source{Provider: "huggingface", Repository: discovery.Repository, Revision: discovery.Revision, Path: file.ID}
 		rawSource = map[string]any{"repository": discovery.Repository, "revision": discovery.Revision, "path": file.ID}
 	}
-	id := "import-" + slug(identity, 56) + "-" + slug(strings.ReplaceAll(kind.ID, ":", "-"), 32)
+	id := "import-" + slug(sourceIdentity, 56) + "-" + slug(strings.ReplaceAll(kind.ID, ":", "-"), 32)
 	destination := kind.Prefix + "/" + file.Name
-	warning := "ROCmplete imported this remote file on request but did not independently verify that its declared permissions cover the hosted bytes."
+	warning := identity.DisplayName + " imported this remote file on request but did not independently verify that its declared permissions cover the hosted bytes."
 	license := catalog.License{SPDX: "NOASSERTION", Status: "unverified", URL: discovery.SourceURL, Warning: warning, UpstreamRepository: discovery.Repository, UpstreamLicense: discovery.DeclaredLicense, UpstreamLicenseURL: discovery.SourceURL}
 	artifact := catalog.Artifact{ID: id, Description: file.Name + " from " + discovery.Title, Source: source, Target: kind.Target, Destination: destination, Size: file.Size, SHA256: file.SHA256, License: license}
 	group := "comfyui"
@@ -406,7 +407,7 @@ func requestJSON(ctx context.Context, endpoint, token, provider string, target a
 		return err
 	}
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("User-Agent", "ROCmplete-content-import/1")
+	request.Header.Set("User-Agent", identity.CommandName+"-content-import/1")
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
 	}

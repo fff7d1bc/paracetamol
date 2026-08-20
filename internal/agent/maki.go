@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"rocmplete/internal/catalog"
+	"rocmplete/internal/identity"
 	"rocmplete/internal/storage"
 )
 
@@ -43,7 +44,7 @@ func FindRealExecutable(name, wrapper string, environment map[string]string) (st
 			return resolved, nil
 		}
 	}
-	return "", fmt.Errorf("%s executable not found outside ROCmplete's bin directory", name)
+	return "", fmt.Errorf("%s executable not found outside %s's bin directory", name, identity.DisplayName)
 }
 
 func CreateMakiPlan(managed catalog.Catalog, dataRoot, projectRoot string, port, dwarfstarPort int, arguments []string, environment map[string]string) (MakiPlan, error) {
@@ -71,7 +72,7 @@ func CreateMakiPlan(managed catalog.Catalog, dataRoot, projectRoot string, port,
 	dwarfstarEndpoint := fmt.Sprintf("http://127.0.0.1:%d/v1", dwarfstarPort)
 	models := makiModels(managed)
 	dwarfstarModels := []map[string]any{{"id": DwarfStarModel, "tier": "medium", "context_window": DwarfStarContext, "max_output_tokens": DwarfStarOutput, "supports_thinking": true, "thinking_fields": map[string]any{"off": map[string]string{"reasoning_effort": "none"}, "adaptive": map[string]string{"reasoning_effort": "high"}, "high": map[string]string{"reasoning_effort": "high"}}}}
-	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, DwarfStarEndpoint: dwarfstarEndpoint, Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider("ROCmplete llama.cpp", endpoint, models), DwarfStarProviderID: makiProvider("ROCmplete DwarfStar", dwarfstarEndpoint, dwarfstarModels)}, Mode: mode}
+	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, DwarfStarEndpoint: dwarfstarEndpoint, Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" llama.cpp", endpoint, models), DwarfStarProviderID: makiProvider(identity.DisplayName+" DwarfStar", dwarfstarEndpoint, dwarfstarModels)}, Mode: mode}
 	tiers, _ := json.MarshalIndent(map[string]string{"compaction": provider + "/" + model, "weak": provider + "/" + model, "medium": provider + "/" + model, "strong": provider + "/" + model}, "", "  ")
 	plan.Tiers = append(tiers, '\n')
 	if mode == "session" {
@@ -122,7 +123,7 @@ func makiProvider(display, endpoint string, models []map[string]any) []byte {
 	info, _ := json.Marshal(map[string]any{"display_name": display, "base": "llama-cpp", "has_auth": false})
 	listed, _ := json.Marshal(models)
 	resolved, _ := json.Marshal(map[string]any{"base_url": endpoint, "headers": map[string]string{}})
-	return []byte(fmt.Sprintf("#!/bin/sh\nset -eu\ncase \"${1:-}\" in\n  info) printf '%%s\\n' %s ;;\n  models) printf '%%s\\n' %s ;;\n  resolve|refresh|reload) printf '%%s\\n' %s ;;\n  *) printf '%%s\\n' 'unsupported ROCmplete provider command' >&2; exit 2 ;;\nesac\n", shellQuote(string(info)), shellQuote(string(listed)), shellQuote(string(resolved))))
+	return []byte(fmt.Sprintf("#!/bin/sh\nset -eu\ncase \"${1:-}\" in\n  info) printf '%%s\\n' %s ;;\n  models) printf '%%s\\n' %s ;;\n  resolve|refresh|reload) printf '%%s\\n' %s ;;\n  *) printf '%%s\\n' %s >&2; exit 2 ;;\nesac\n", shellQuote(string(info)), shellQuote(string(listed)), shellQuote(string(resolved)), shellQuote("unsupported "+identity.DisplayName+" provider command")))
 }
 
 func luaString(value string) string { encoded, _ := json.Marshal(value); return string(encoded) }
