@@ -20,14 +20,45 @@ func TestRunHelpIncludesGateway(t *testing.T) {
 	}
 }
 
-func TestRunGatewayRequiresExplicitApplicationBeforeHostInspection(t *testing.T) {
-	runner := &commandRunner{}
-	app, _, _ := testApp(t, runner)
-	if err := app.runGateway(nil); err == nil {
-		t.Fatal("gateway without an application succeeded")
+func TestGatewayApplicationSelectionDefaultsToLlamaCPP(t *testing.T) {
+	if got := strings.Join(selectedGatewayApplications(nil), ","); got != "llama-cpp" {
+		t.Fatalf("default applications=%q", got)
 	}
-	if len(runner.commands) != 0 {
-		t.Fatalf("host inspected before gateway selection validation: %#v", runner.commands)
+	explicit := []string{"dwarfstar"}
+	selected := selectedGatewayApplications(explicit)
+	if got := strings.Join(selected, ","); got != "dwarfstar" {
+		t.Fatalf("explicit applications=%q", got)
+	}
+	selected[0] = "llama-cpp"
+	if explicit[0] != "dwarfstar" {
+		t.Fatal("application selection aliases caller storage")
+	}
+}
+
+func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	app.writeGatewayStartup(gatewayStartup{
+		Endpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
+		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
+		Backend: "rocm", ModelsMax: 2,
+		Registry: gateway.Registry{
+			Fingerprint: "1234567890abcdef",
+			Models:      []gateway.Model{{ID: "qwen-one"}, {ID: "qwen-two"}},
+		},
+	})
+	output := stdout.String()
+	for _, expected := range []string{
+		"http://127.0.0.1:8080/v1", "strix-halo", "/dev/dri/renderD128",
+		"2 verified models", "1234567890ab", "up to 2 loaded models",
+		"unloaded", "status gateway --gateway-url http://127.0.0.1:8080/v1",
+		"Waiting for requests",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("startup output lacks %q:\n%s", expected, output)
+		}
+	}
+	if strings.Contains(output, "qwen-one") || strings.Contains(output, "qwen-two") {
+		t.Fatalf("startup output dumps the model inventory:\n%s", output)
 	}
 }
 

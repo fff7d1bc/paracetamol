@@ -25,9 +25,9 @@ import (
 )
 
 func (app *App) runGateway(args []string) error {
-	set := app.flags("run gateway", usage("run", "gateway", "--application APPLICATION", "[OPTIONS]"))
+	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
 	var applications stringList
-	set.Var(&applications, "application", "llama-cpp or dwarfstar; repeatable")
+	set.Var(&applications, "application", "llama-cpp or dwarfstar; repeatable; explicit values replace default llama-cpp")
 	profileFlag := set.String("profile", "", "auto, rdna4, strix-halo, or strix-point (default: auto)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
@@ -44,9 +44,7 @@ func (app *App) runGateway(args []string) error {
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run gateway does not accept positional arguments")
 	}
-	if len(applications) == 0 {
-		return set.usageError("run gateway requires at least one --application")
-	}
+	applications = selectedGatewayApplications(applications)
 	for _, application := range applications {
 		if err := requireChoice(application, "gateway application", "llama-cpp", "dwarfstar"); err != nil {
 			return err
@@ -160,13 +158,11 @@ func (app *App) runGateway(args []string) error {
 	if !isLoopback(listen) {
 		fmt.Fprintf(app.Stderr, "%s gateway is published on %s:%d without authentication.\n", errorTerminal.Warning("WARNING:"), listen, port)
 	}
-	terminal := app.terminal(app.Stdout)
-	fmt.Fprintln(app.Stdout, terminal.Heading(identity.DisplayName+" gateway"))
-	writeDetailRows(app.Stdout, terminal, [][2]string{
-		{"Listen", "http://" + net.JoinHostPort(listen, fmt.Sprint(port)) + "/v1"},
-		{"Applications", strings.Join(applications, ", ")}, {"Models", strings.Join(registry.IDs(""), ", ")}, {"Inventory", registry.Fingerprint},
+	app.writeGatewayStartup(gatewayStartup{
+		Endpoint:     "http://" + net.JoinHostPort(listen, fmt.Sprint(port)) + "/v1",
+		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
+		Backend: *backend, ModelsMax: *modelsMax, Registry: registry,
 	})
-	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("No backend is loaded until its first request. Press Ctrl-C to stop."))
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	select {
@@ -186,6 +182,55 @@ func (app *App) runGateway(args []string) error {
 		backendErr := scheduler.Shutdown(contextWithoutCancel())
 		return errors.Join(app.Context.Err(), shutdownErr, serveErr, backendErr)
 	}
+}
+
+type gatewayStartup struct {
+	Endpoint     string
+	Applications []string
+	Profile      string
+	RenderNodes  []string
+	Backend      string
+	ModelsMax    int
+	Registry     gateway.Registry
+}
+
+func selectedGatewayApplications(applications []string) []string {
+	if len(applications) == 0 {
+		return []string{"llama-cpp"}
+	}
+	return append([]string(nil), applications...)
+}
+
+func (app *App) writeGatewayStartup(summary gatewayStartup) {
+	terminal := app.terminal(app.Stdout)
+	modelCount := len(summary.Registry.Models)
+	fingerprint := summary.Registry.Fingerprint
+	if len(fingerprint) > 12 {
+		fingerprint = fingerprint[:12]
+	}
+	profile := summary.Profile
+	if len(summary.RenderNodes) > 0 {
+		profile += " · " + strings.Join(summary.RenderNodes, ", ")
+	}
+	rows := [][2]string{
+		{"Endpoint", summary.Endpoint},
+		{"Profile", profile},
+		{"Applications", strings.Join(summary.Applications, ", ")},
+		{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},
+	}
+	for _, application := range summary.Applications {
+		if application == "llama-cpp" {
+			rows = append(rows, [2]string{"llama.cpp", fmt.Sprintf("%s · up to %d loaded %s", summary.Backend, summary.ModelsMax, plural(summary.ModelsMax, "model", "models"))})
+			break
+		}
+	}
+	rows = append(rows,
+		[2]string{"Backend", terminal.State("unloaded") + " — starts with the first request"},
+		[2]string{"Inspect", terminal.Command(identity.Command("status", "gateway", "--gateway-url", summary.Endpoint))},
+	)
+	fmt.Fprintln(app.Stdout, terminal.Heading(identity.DisplayName+" gateway"))
+	writeDetailRows(app.Stdout, terminal, rows)
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Waiting for requests. Press Ctrl-C to stop."))
 }
 
 func (app *App) gatewayStatus(rawURL string) error {

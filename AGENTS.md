@@ -140,11 +140,12 @@ them:
 - Web applications use private rootless networking and publish exactly one
   TCP port. The default host address is `127.0.0.1`. An explicit non-loopback
   address has no authentication and must remain visibly warned about.
-- The foreground inference gateway exposes only explicitly selected
-  applications and a frozen receipt-verified startup inventory. It eagerly
-  loads no backend, keeps one application allocation resident, publishes
-  backend containers only on ephemeral loopback ports, and reclaims only an
-  exact container bearing all gateway ownership labels.
+- The foreground inference gateway exposes only its selected applications and
+  a frozen receipt-verified startup inventory. Omitted application selection
+  means llama.cpp only; any explicit selection replaces that default. It
+  eagerly loads no backend, keeps one application allocation resident,
+  publishes backend containers only on ephemeral loopback ports, and reclaims
+  only an exact container bearing all gateway ownership labels.
 - Downloads use full Hugging Face revisions or exact Civitai model-version
   IDs, plus exact byte sizes and SHA-256 hashes. Applications must not
   silently fetch unpinned model content.
