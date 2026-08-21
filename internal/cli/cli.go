@@ -73,5 +73,11 @@ func writeRootHelp(output io.Writer) {
 		fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, command.Name)), command.Description)
 	}
 	fmt.Fprintln(output)
+	fmt.Fprintf(output, "Options:\n  -h, --help  show this help\n  --version   show the %s version\n\n", identity.DisplayName)
+	fmt.Fprintln(output, terminal.Heading("Typical lifecycle:"))
+	for _, arguments := range [][]string{{"guide", "APPLICATION"}, {"build", "APPLICATION"}, {"content", "install", "APPLICATION", "RECIPE"}, {"run", "APPLICATION"}, {"status"}} {
+		fmt.Fprintf(output, "  %s\n", terminal.Command(identity.Command(arguments...)))
+	}
+	fmt.Fprintln(output)
 	fmt.Fprintf(output, "Run './%s COMMAND --help' for command-specific help.\n", strings.TrimSpace(identity.CommandName))
 }

@@ -24,6 +24,7 @@ import (
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/textmodel"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) benchmarkAgent(args []string) (returned error) {
@@ -62,12 +63,20 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 	if *listTasks {
 		terminal := app.terminal(app.Stdout)
 		fmt.Fprintln(app.Stdout, terminal.Heading("Coding-agent evaluation tasks:"))
+		rows := [][]string{{terminal.Label("Task"), terminal.Label("Kind"), terminal.Label("Difficulty"), terminal.Label("Repository")}}
 		for _, task := range suite.Tasks {
-			fmt.Fprintf(app.Stdout, "%s %-14s %-8s %s\n", terminal.Command(fmt.Sprintf("%-28s", task.Identifier)), task.Kind, task.Difficulty, task.Repository)
+			rows = append(rows, []string{terminal.Command(task.Identifier), task.Kind, task.Difficulty, task.Repository})
+		}
+		lines, _ := ui.ColumnLines(rows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		return nil
 	}
 	if boolCount(*presetID != "", *dwarfstar) != 1 {
+		if *presetID == "" && !*dwarfstar {
+			set.renderHelp(app.Stdout)
+		}
 		return controlerr.Usage("choose exactly one of --preset or --dwarfstar")
 	}
 	if *repetitions < 1 || *contextSize < 4096 {
@@ -149,7 +158,12 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 	}
 	if *dryRun {
 		terminal := app.terminal(app.Stdout)
-		fmt.Fprintf(app.Stdout, "%s\n  %s  %s (%s)\n  %s  %s\n  %s  Pi\n  %s  %d\n  %s  %s\n  %s  %s\n  %s  %d\n  %s  %s\n", terminal.Heading("Coding-agent evaluation"), terminal.Label(fmt.Sprintf("%-11s", "Suite")), suite.Identifier, suite.Fingerprint, terminal.Label(fmt.Sprintf("%-11s", "Model")), model, terminal.Label(fmt.Sprintf("%-11s", "Harness")), terminal.Label(fmt.Sprintf("%-11s", "Context")), *contextSize, terminal.Label(fmt.Sprintf("%-11s", "Thinking")), level, terminal.Label(fmt.Sprintf("%-11s", "Tasks")), joinTaskIDs(selectedTasks), terminal.Label(fmt.Sprintf("%-11s", "Repetitions")), *repetitions, terminal.Label(fmt.Sprintf("%-11s", "Server")), terminal.Command(shellJoin(server)))
+		fmt.Fprintln(app.Stdout, terminal.Heading("Coding-agent evaluation"))
+		writeDetailRows(app.Stdout, terminal, [][2]string{
+			{"Suite", suite.Identifier + " (" + suite.Fingerprint + ")"}, {"Model", model}, {"Harness", "Pi"},
+			{"Context", fmt.Sprint(*contextSize)}, {"Thinking", level}, {"Tasks", joinTaskIDs(selectedTasks)},
+			{"Repetitions", fmt.Sprint(*repetitions)}, {"Server", terminal.Command(shellJoin(server))},
+		})
 		return nil
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {

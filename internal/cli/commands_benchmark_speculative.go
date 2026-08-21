@@ -149,7 +149,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return controlerr.Usage("speculative benchmark accepts no positional arguments")
 	}
 	if *presetID == "" {
-		return controlerr.Usage("--preset is required")
+		return set.usageError("--preset is required")
 	}
 	if *output != "" && *resume != "" {
 		return controlerr.Usage("--output and --resume are mutually exclusive")
@@ -220,7 +220,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if *draftProbability < 0 || *draftProbability > 1 {
 		return controlerr.Usage("--draft-probability-min must be between 0 and 1")
 	}
-	if *poll < -1 || *poll > 100 {
+	if (setWasSet(set, "poll") && *poll < 0) || *poll > 100 {
 		return controlerr.Usage("--poll must be between 0 and 100")
 	}
 	if *contextSize < 1 || int64(*contextSize) > preset.DefaultContext || contexts[len(contexts)-1]+*generation+1024 > *contextSize {

@@ -49,6 +49,11 @@ func Applications() []string {
 	return result
 }
 
+func IsApplication(application string) bool {
+	_, ok := byApplication[application]
+	return ok
+}
+
 func ForApplication(application string) ([]Recipe, error) {
 	values, ok := byApplication[application]
 	if !ok {

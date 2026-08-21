@@ -725,7 +725,7 @@ Application aggregates, families, and the literal global aggregate remain
 absent from the guided installer.
 
 The guided exact-bundle browser is categorized separately from recipes.
-`_exact_bundle_category()` in `internal/cli/` maps every bundle to
+`categoryForExactBundle()` in `internal/cli/exact_bundles.go` maps every bundle to
 exactly one presentation category using its owning application and existing
 family groups. When adding a new application or ComfyUI family, update that
 mapping and its exhaustive coverage test. Category-local display names may

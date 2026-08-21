@@ -22,6 +22,7 @@ import (
 	"paracetamol/internal/platform"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/ui"
 )
 
 const acceptanceSchema = "paracetamol.hardware-acceptance.v2"
@@ -193,21 +194,32 @@ func (app *App) commandAcceptance(args []string) error {
 			return err
 		}
 		terminal := app.terminal(app.Stdout)
-		fmt.Fprintf(app.Stdout, "%s\n  %s  %s\n  %s  %s\n  %s  %s\n", terminal.Heading("Hardware acceptance"), terminal.Label(fmt.Sprintf("%-12s", "Profile")), *profileFlag, terminal.Label(fmt.Sprintf("%-12s", "Render node")), selectedNodes[0], terminal.Label(fmt.Sprintf("%-12s", "Data")), dataRoot)
+		fmt.Fprintln(app.Stdout, terminal.Heading("Hardware acceptance"))
+		writeDetailRows(app.Stdout, terminal, [][2]string{{"Profile", *profileFlag}, {"Render node", selectedNodes[0]}, {"Data", dataRoot}})
+		var readiness [][]string
 		for _, image := range acceptanceImages(cases) {
 			present, _ := app.podman().Exists(app.Context, "image", image.image)
-			fmt.Fprintf(app.Stdout, "  %s  %s %s (%s)\n", terminal.Label(fmt.Sprintf("%-12s", "Image")), terminal.Command(fmt.Sprintf("%-10s", image.target)), image.image, terminal.State(map[bool]string{true: "ready", false: "build required"}[present]))
+			readiness = append(readiness, []string{terminal.Label("Image"), terminal.Command(image.target), image.image, terminal.State(map[bool]string{true: "ready", false: "build required"}[present])})
 		}
 		for _, bundle := range requiredBundles {
 			state := "ready"
 			if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
 				state = "install required"
 			}
-			fmt.Fprintf(app.Stdout, "  %s  %s %s\n", terminal.Label(fmt.Sprintf("%-12s", "Content")), terminal.Command(fmt.Sprintf("%-54s", bundle.ID)), terminal.State(state))
+			readiness = append(readiness, []string{terminal.Label("Content"), terminal.Command(bundle.ID), "", terminal.State(state)})
+		}
+		lines, _ := ui.ColumnLines(readiness, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Cases:"))
+		var caseRows [][]string
 		for _, candidate := range cases {
-			fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Command(fmt.Sprintf("%-16s", candidate.id)), candidate.description)
+			caseRows = append(caseRows, []string{terminal.Command(candidate.id), candidate.description})
+		}
+		lines, _ = ui.ColumnLines(caseRows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		if *prepare {
 			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Preparation was planned but no image was built and no content was installed."))

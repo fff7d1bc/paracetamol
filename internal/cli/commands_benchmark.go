@@ -18,7 +18,7 @@ import (
 )
 
 func (app *App) commandBenchmark(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("benchmark", "COMMAND", "[OPTIONS]"),
 			[2]string{"comfyui run", "run one managed ComfyUI benchmark"},
 			[2]string{"comfyui suite", "run or resume an ordered ComfyUI suite"},
@@ -26,16 +26,24 @@ func (app *App) commandBenchmark(args []string) error {
 			[2]string{"llama-cpp throughput", "measure llama-bench or compare backends"},
 			[2]string{"llama-cpp speculative", "screen speculative-decoding depths"},
 			[2]string{"report", "render a stored ComfyUI result"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		writeHelp()
 		return controlerr.Usage("choose benchmark comfyui, llama-cpp, agent, or report")
 	}
 	switch args[0] {
 	case "comfyui":
-		if len(args) == 1 || groupHelpRequested(args[1:]) {
+		if groupHelpRequested(args[1:]) {
 			app.writeGroupHelp(usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
 			return nil
+		}
+		if len(args) == 1 {
+			app.writeGroupHelp(usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
+			return controlerr.Usage("choose benchmark comfyui run or suite")
 		}
 		switch args[1] {
 		case "run":
@@ -43,14 +51,19 @@ func (app *App) commandBenchmark(args []string) error {
 		case "suite":
 			return app.benchmarkSuite(args[2:])
 		default:
+			app.writeGroupHelp(usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
 			return controlerr.Usage("unknown ComfyUI benchmark command %q", args[1])
 		}
 	case "agent":
 		return app.benchmarkAgent(args[1:])
 	case "llama-cpp":
-		if len(args) == 1 || groupHelpRequested(args[1:]) {
+		if groupHelpRequested(args[1:]) {
 			app.writeGroupHelp(usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
 			return nil
+		}
+		if len(args) == 1 {
+			app.writeGroupHelp(usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
+			return controlerr.Usage("choose benchmark llama-cpp throughput or speculative")
 		}
 		switch args[1] {
 		case "throughput":
@@ -58,11 +71,13 @@ func (app *App) commandBenchmark(args []string) error {
 		case "speculative":
 			return app.benchmarkSpeculative(args[2:])
 		default:
+			app.writeGroupHelp(usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})
 			return controlerr.Usage("unknown llama.cpp benchmark command %q", args[1])
 		}
 	case "report":
 		return app.benchmarkReport(args[1:])
 	default:
+		writeHelp()
 		return controlerr.Usage("unknown benchmark command %q", args[0])
 	}
 }
@@ -97,6 +112,9 @@ func (app *App) benchmarkLlama(args []string) error {
 		return controlerr.Usage("llama.cpp throughput accepts no positional arguments")
 	}
 	if boolCount(*modelFlag != "", *presetFlag != "") != 1 {
+		if *modelFlag == "" && *presetFlag == "" {
+			set.renderHelp(app.Stdout)
+		}
 		return controlerr.Usage("choose exactly one of --model or --preset")
 	}
 	selectedOutput := ""
@@ -267,6 +285,7 @@ func (app *App) benchmarkLlama(args []string) error {
 
 func (app *App) benchmarkReport(args []string) error {
 	set := app.flags("benchmark report", usage("benchmark", "report", "SUITE.json", "[--report-format markdown|html|both]", "[--output PATH]"))
+	set.Argument("SUITE.json", "completed or partial managed ComfyUI suite result")
 	format := set.String("report-format", "both", "markdown, html, or both")
 	output := set.String("output", "", "single report output path")
 	subject, remaining := leadingPositional(args)
@@ -282,7 +301,7 @@ func (app *App) benchmarkReport(args []string) error {
 		return controlerr.Usage("benchmark report accepts exactly one suite")
 	}
 	if subject == "" {
-		return controlerr.Usage("choose a suite JSON")
+		return set.usageError("choose a suite JSON")
 	}
 	if err := requireChoice(*format, "report format", "markdown", "html", "both"); err != nil {
 		return err

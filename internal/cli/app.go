@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"paracetamol/internal/application"
 	"paracetamol/internal/benchmark"
@@ -117,51 +118,141 @@ func (app *App) Dispatch(args []string) error {
 			return command.Run(app, args[1:])
 		}
 	}
+	writeRootHelp(app.Stdout)
 	return controlerr.Usage("unknown command %q", args[0])
 }
 
-func (app *App) flags(name, usage string) *flag.FlagSet {
-	return app.flagsWithExamples(name, usage, nil)
+type commandFlags struct {
+	*flag.FlagSet
+	app       *App
+	synopsis  string
+	examples  []string
+	arguments [][2]string
+	order     []*flag.Flag
 }
 
-func (app *App) flagsWithExamples(name, synopsis string, examples []string) *flag.FlagSet {
-	set := flag.NewFlagSet(name, flag.ContinueOnError)
-	set.SetOutput(app.Stderr)
-	set.Usage = func() {
-		terminal := ui.New(app.Stderr, app.Environment)
-		fmt.Fprintln(app.Stderr, terminal.Heading(synopsis))
-		count, width := 0, 0
-		set.VisitAll(func(option *flag.Flag) {
-			count++
-			if candidate := len(flagSyntax(option)); candidate > width {
-				width = candidate
-			}
-		})
-		if count > 0 {
-			fmt.Fprintf(app.Stderr, "\n%s\n", terminal.Heading("Options:"))
-			set.VisitAll(func(option *flag.Flag) {
-				syntax := flagSyntax(option)
-				description := option.Usage
-				if option.DefValue != "" && option.DefValue != "false" && option.DefValue != "0" {
-					description += " (default " + option.DefValue + ")"
-				}
-				fmt.Fprintf(app.Stderr, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, syntax)), description)
-			})
+func (set *commandFlags) record(name string) {
+	set.order = append(set.order, set.Lookup(name))
+}
+
+func (set *commandFlags) Bool(name string, value bool, usage string) *bool {
+	result := set.FlagSet.Bool(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) BoolVar(target *bool, name string, value bool, usage string) {
+	set.FlagSet.BoolVar(target, name, value, usage)
+	set.record(name)
+}
+
+func (set *commandFlags) String(name, value, usage string) *string {
+	result := set.FlagSet.String(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) StringVar(target *string, name, value, usage string) {
+	set.FlagSet.StringVar(target, name, value, usage)
+	set.record(name)
+}
+
+func (set *commandFlags) Int(name string, value int, usage string) *int {
+	result := set.FlagSet.Int(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) IntVar(target *int, name string, value int, usage string) {
+	set.FlagSet.IntVar(target, name, value, usage)
+	set.record(name)
+}
+
+func (set *commandFlags) Int64(name string, value int64, usage string) *int64 {
+	result := set.FlagSet.Int64(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) Float64(name string, value float64, usage string) *float64 {
+	result := set.FlagSet.Float64(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) Duration(name string, value time.Duration, usage string) *time.Duration {
+	result := set.FlagSet.Duration(name, value, usage)
+	set.record(name)
+	return result
+}
+
+func (set *commandFlags) Var(value flag.Value, name, usage string) {
+	set.FlagSet.Var(value, name, usage)
+	set.record(name)
+}
+
+func (set *commandFlags) Argument(name, description string) {
+	set.arguments = append(set.arguments, [2]string{name, description})
+}
+
+func (set *commandFlags) renderHelp(output io.Writer) {
+	terminal := ui.New(output, set.app.Environment)
+	fmt.Fprintln(output, terminal.Heading(set.synopsis))
+	if len(set.arguments) > 0 {
+		width := 0
+		for _, argument := range set.arguments {
+			width = max(width, ui.DisplayWidth(argument[0]))
 		}
-		if len(examples) > 0 {
-			fmt.Fprintf(app.Stderr, "\n%s\n", terminal.Heading("Examples:"))
-			for _, example := range examples {
-				fmt.Fprintf(app.Stderr, "  %s\n", terminal.Command(example))
-			}
+		fmt.Fprintf(output, "\n%s\n", terminal.Heading("Arguments:"))
+		for _, argument := range set.arguments {
+			fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, argument[0])), argument[1])
 		}
 	}
+	width := len("-h, --help")
+	for _, option := range set.order {
+		if candidate := len(flagSyntax(option)); candidate > width {
+			width = candidate
+		}
+	}
+	fmt.Fprintf(output, "\n%s\n", terminal.Heading("Options:"))
+	fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, "-h, --help")), "show this help")
+	for _, option := range set.order {
+		syntax := flagSyntax(option)
+		description := option.Usage
+		if option.DefValue != "" && option.DefValue != "false" && option.DefValue != "0" && option.DefValue != "-1" {
+			description += " (default: " + option.DefValue + ")"
+		}
+		fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, syntax)), description)
+	}
+	if len(set.examples) > 0 {
+		fmt.Fprintf(output, "\n%s\n", terminal.Heading("Examples:"))
+		for _, example := range set.examples {
+			fmt.Fprintf(output, "  %s\n", terminal.Command(example))
+		}
+	}
+}
+
+func (set *commandFlags) usageError(format string, arguments ...any) error {
+	set.renderHelp(set.app.Stdout)
+	return controlerr.Usage(format, arguments...)
+}
+
+func (app *App) flags(name, usage string) *commandFlags {
+	return app.flagsWithExamples(name, usage, examplesFor(name))
+}
+
+func (app *App) flagsWithExamples(name, synopsis string, examples []string) *commandFlags {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	set := &commandFlags{FlagSet: flags, app: app, synopsis: synopsis, examples: examples}
+	set.Usage = func() { set.renderHelp(app.Stderr) }
 	return set
 }
 
 func flagSyntax(option *flag.Flag) string {
 	value := "--" + option.Name
 	if !isBooleanFlag(option.Value) {
-		value += " VALUE"
+		value += " " + flagMetavar(option.Name)
 	}
 	return value
 }
@@ -196,6 +287,12 @@ func (app *App) promptLine(message string, leadingBlank bool) (string, error) {
 		return "", ctx.Err()
 	case read := <-completed:
 		if read.err != nil && (read.err != io.EOF || read.line == "") {
+			if errors.Is(read.err, io.EOF) {
+				if terminalReader(app.Stdin) {
+					fmt.Fprintln(app.Stdout)
+				}
+				return "", controlerr.New("input closed; cancelled")
+			}
 			return "", read.err
 		}
 		return strings.TrimSpace(read.line), nil
@@ -258,6 +355,13 @@ func (app *App) writeGroupHelp(synopsis string, commands ...[2]string) {
 	}
 	for _, command := range commands {
 		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, command[0])), command[1])
+	}
+	fmt.Fprintf(app.Stdout, "\n%s\n  %s  show this help\n", terminal.Heading("Options:"), terminal.Command("-h, --help"))
+	if examples := examplesForSynopsis(synopsis); len(examples) > 0 {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Examples:"))
+		for _, example := range examples {
+			fmt.Fprintf(app.Stdout, "  %s\n", terminal.Command(example))
+		}
 	}
 }
 

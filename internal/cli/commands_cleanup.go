@@ -21,7 +21,7 @@ type cleanupTarget struct {
 }
 
 func (app *App) commandCleanup(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("cleanup", "SCOPE", "[OPTIONS]"),
 			[2]string{"containers", "remove " + identity.DisplayName + "-owned containers"},
 			[2]string{"caches", "remove application runtime caches"},
@@ -29,37 +29,63 @@ func (app *App) commandCleanup(args []string) error {
 			[2]string{"downloads", "remove resumable download staging"},
 			[2]string{"images", "remove managed images"},
 			[2]string{"data", "remove one explicit persistent data root"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		writeHelp()
 		return controlerr.Usage("choose containers, caches, build-cache, downloads, images, or data")
 	}
 	scope := args[0]
 	if err := requireChoice(scope, "cleanup scope", "containers", "caches", "build-cache", "downloads", "images", "data"); err != nil {
+		writeHelp()
 		return err
 	}
-	set := app.flags("cleanup "+scope, usage("cleanup", scope, "[OPTIONS]"))
+	synopsis := usage("cleanup", scope, "[OPTIONS]")
+	if scope == "containers" || scope == "images" {
+		synopsis = usage("cleanup", scope, "[APPLICATION]", "[OPTIONS]")
+	}
+	set := app.flags("cleanup "+scope, synopsis)
+	if scope == "containers" || scope == "images" {
+		set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or all (default)")
+	}
 	yes := set.Bool("yes", false, "confirm the complete plan")
-	nonInteractive := set.Bool("non-interactive", false, "never prompt")
-	application := set.String("application", "all", "application scope")
-	dataFlag := set.String("data-dir", "", "persistent data directory")
-	imageTag := set.String("image-tag", "", "one exact image tag")
+	nonInteractive := set.Bool("non-interactive", false, "never prompt; require --yes for a non-empty plan")
+	application := "all"
+	dataFlag := ""
+	imageTag := ""
+	switch scope {
+	case "images":
+		set.StringVar(&imageTag, "image-tag", "", "one exact image tag")
+	case "caches", "downloads", "data":
+		set.StringVar(&dataFlag, "data-dir", "", "persistent data directory")
+	}
 	if err := parseFlags(set, args[1:]); err != nil {
 		return err
 	}
-	if *application != "all" {
-		if _, ok := config.ApplicationByID(*application); !ok {
-			return controlerr.Usage("unknown application %q", *application)
+	positionals := set.Args()
+	if scope == "containers" || scope == "images" {
+		if len(positionals) > 1 {
+			return controlerr.Usage("cleanup %s accepts at most one application", scope)
+		}
+		if len(positionals) == 1 {
+			application = positionals[0]
+		}
+	} else if len(positionals) > 0 {
+		return controlerr.Usage("cleanup %s accepts no positional arguments", scope)
+	}
+	if application != "all" {
+		if _, ok := config.ApplicationByID(application); !ok {
+			return controlerr.Usage("unknown application %q", application)
 		}
 	}
 	if scope == "containers" {
-		return app.cleanupContainers(*application, *yes, *nonInteractive)
+		return app.cleanupContainers(application, *yes, *nonInteractive)
 	}
 	if scope == "images" {
-		return app.cleanupImages(*application, *imageTag, *yes, *nonInteractive)
-	}
-	if *imageTag != "" {
-		return controlerr.Usage("--image-tag is valid only for images cleanup")
+		return app.cleanupImages(application, imageTag, *yes, *nonInteractive)
 	}
 	if scope == "build-cache" {
 		cache, err := buildplan.CacheDir(app.Environment)
@@ -68,7 +94,7 @@ func (app *App) commandCleanup(args []string) error {
 		}
 		return app.cleanupPaths(scope, []string{cache}, *yes, *nonInteractive, false)
 	}
-	dataRoot, err := app.cleanupDataRoot(*dataFlag)
+	dataRoot, err := app.cleanupDataRoot(dataFlag)
 	if err != nil {
 		return err
 	}
@@ -186,7 +212,7 @@ func (app *App) managedContainers(application string) ([]string, error) {
 
 func (app *App) cleanupImages(application, exact string, yes, nonInteractive bool) error {
 	if exact != "" && application != "all" {
-		return controlerr.Usage("--image-tag cannot be combined with --application")
+		return controlerr.Usage("--image-tag cannot be combined with an application scope")
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err

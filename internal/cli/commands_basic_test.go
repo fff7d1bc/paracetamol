@@ -9,7 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
+	"paracetamol/internal/identity"
 	"paracetamol/internal/process"
+	"paracetamol/internal/storage"
+	"paracetamol/internal/verification"
 )
 
 type commandRunner struct {
@@ -92,7 +97,7 @@ func TestBuildAllContinuesAfterIndependentFailure(t *testing.T) {
 		t.Fatal("failed independent build returned success")
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "failed   content-tools") || !strings.Contains(output, "built    llama-cpp") || !strings.Contains(output, "built    comfyui") {
+	if !strings.Contains(output, "failed  content-tools") || !strings.Contains(output, "built   llama-cpp") || !strings.Contains(output, "built   comfyui") {
 		t.Fatalf("incomplete partial-success summary:\n%s", output)
 	}
 }
@@ -115,6 +120,80 @@ func TestCLIModesDoNotDefineServerFlags(t *testing.T) {
 	}
 	if err := app.runDwarfStar("cli", []string{"--listen", "0.0.0.0"}); err == nil {
 		t.Fatal("DwarfStar CLI accepted --listen")
+	}
+}
+
+func TestExplicitRuntimeSentinelsAreRejectedAsUserValues(t *testing.T) {
+	app, _, _ := testApp(t, &commandRunner{})
+	for _, test := range []struct {
+		name string
+		run  func() error
+	}{
+		{name: "llama context", run: func() error { return app.runLlama("server", []string{"--model", "missing.gguf", "--context", "-1"}) }},
+		{name: "llama router limit", run: func() error { return app.runLlama("server", []string{"--router", "--models-max", "0"}) }},
+		{name: "DwarfStar context", run: func() error { return app.runDwarfStar("server", []string{"--context", "-1"}) }},
+		{name: "DwarfStar output", run: func() error { return app.runDwarfStar("server", []string{"--output-tokens", "-1"}) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.run(); err == nil {
+				t.Fatal("explicit internal sentinel succeeded")
+			}
+		})
+	}
+}
+
+func TestMissingManagedComfyUIImageOffersCompleteSetupCommands(t *testing.T) {
+	runner := &commandRunner{run: func(command process.Command) process.Result {
+		if len(command.Args) > 0 && command.Args[0] == "info" {
+			return process.Result{Stdout: []byte("true\n")}
+		}
+		return process.Result{Status: 1}
+	}}
+	app, _, _ := testApp(t, runner)
+	application, _ := config.ApplicationByID("comfyui")
+	err := app.startManaged(application, application.Image, nil, false)
+	if err == nil || !strings.Contains(err.Error(), identity.Command("build", "comfyui")) || !strings.Contains(err.Error(), identity.Command("content", "install", "comfyui", "image")) {
+		t.Fatalf("missing-image guidance = %v", err)
+	}
+	err = app.startManaged(application, "localhost/custom:test", nil, false)
+	if err == nil || strings.Contains(err.Error(), "Install content:") {
+		t.Fatalf("custom-image guidance = %v", err)
+	}
+}
+
+func TestLlamaServerPrintsItsShareableConfigurationCommand(t *testing.T) {
+	dataRoot := t.TempDir()
+	artifact := catalog.Artifact{ID: "model", Target: "llama-models", Destination: "test/model.gguf", Size: 1, SHA256: "0"}
+	managed := catalog.Catalog{
+		Artifacts:    map[string]catalog.Artifact{artifact.ID: artifact},
+		Bundles:      map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{artifact.ID}}},
+		LlamaPresets: map[string]catalog.LlamaPreset{"test": {ID: "test", Bundle: "bundle", Artifact: artifact.ID, DefaultContext: 4096}},
+	}
+	path := filepath.Join((storage.Layout{Root: dataRoot}).LlamaModels(), artifact.Destination)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := verification.Load(dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Record(path, artifact.Size, artifact.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+	app, stdout, _ := testApp(t, &commandRunner{})
+	app.catalog = &managed
+	if err := app.runLlama("server", []string{"--preset", "test", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err != nil {
+		t.Fatal(err)
+	}
+	want := "Configuration: " + identity.Command("status", "llama-cpp", "--model", "test")
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("output lacks %q:\n%s", want, stdout.String())
 	}
 }
 
