@@ -328,6 +328,18 @@ pi
 # or: maki
 ```
 
+Persistent gateway defaults are optional. Generate a complete runnable host
+configuration, or select a committed machine profile for one invocation:
+
+```bash
+./paracetamol config init
+./paracetamol run gateway -c configs/aion.toml
+```
+
+The configuration selector is global and may also precede the command. Flags
+override corresponding environment variables where defined; both override
+configuration values.
+
 Automatic discovery includes DwarfStar when its image and compatible verified
 model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
 dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
@@ -456,7 +468,10 @@ filesystem with `${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`:
 data_dir = "/mnt/ai/paracetamol"
 ```
 
-The configuration is optional and Paracetamol never creates or migrates it.
+Every setting is optional. `./paracetamol config init` creates a complete
+runnable file at that path without replacing an existing file. Use `-c` or
+`--config` to select another file, or `--no-config` to ignore the default XDG
+file. Paracetamol never migrates persistent data automatically.
 See [persistent data](docs/guides/operations.md#persistent-data) before moving or
 cleaning application state, models, inputs, or outputs.
 

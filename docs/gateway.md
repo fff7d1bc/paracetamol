@@ -26,14 +26,59 @@ demand both applications:
 ./paracetamol run gateway -a llama-cpp -a dwarfstar
 ```
 
+## Configuration
+
+Every gateway setting is optional. The normal XDG configuration path is
+`${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`; create a complete
+runnable file without replacing existing configuration with:
+
+```bash
+./paracetamol config init
+```
+
+The tracked `config.example.toml` shows the same schema without choosing a
+machine-specific storage path.
+
+Empty `applications` and `render_nodes` arrays retain automatic discovery:
+
+```toml
+[gateway]
+applications = []
+profile = "auto"
+render_nodes = []
+listen = "127.0.0.1"
+port = 8080
+startup_timeout = "30m"
+
+[gateway.llama-cpp]
+backend = "rocm"
+models_max = 1
+```
+
+Select another file globally either before or after the command:
+
+```bash
+./paracetamol -c configs/aion.toml run gateway
+./paracetamol run gateway --config configs/aion.toml
+```
+
+Explicit command flags win over corresponding environment variables where
+defined; both win over the selected configuration, which wins over built-in
+defaults. A command-line `-a` list replaces `gateway.applications`; it does not
+append to it. Use `--no-config` to bypass the optional XDG file. An explicitly
+selected missing file, an unknown key, or a malformed value is an error.
+Configuration exposes the reviewed typed gateway surface rather than arbitrary
+upstream llama.cpp arguments; security-relaxing `--unconfined` remains
+command-line-only.
+
 The compact startup card shows the endpoint, selected profile and render
-nodes, applications, verified model count, short inventory fingerprint, and
-the copyable status command. The default public address is
-`http://127.0.0.1:8080/v1`. There is no daemon or detach mode. The foreground
-process owns backend cleanup, and Ctrl-C stops accepting work, drains active
-HTTP requests, removes its exact private backend container, prints a successful
-stop, and exits cleanly. A non-loopback `--listen` is an unauthenticated
-trusted-LAN interface and is visibly warned about.
+nodes, applications, loaded configuration path, verified model count, short
+inventory fingerprint, and the copyable status command. The default public
+address is `http://127.0.0.1:8080/v1`. There is no daemon or detach mode. The
+foreground process owns backend cleanup, and Ctrl-C stops accepting work,
+drains active HTTP requests, removes its exact private backend container,
+prints a successful stop, and exits cleanly. A non-loopback `--listen` is an
+unauthenticated trusted-LAN interface and is visibly warned about.
 
 ## Frozen inventory
 

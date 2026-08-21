@@ -45,6 +45,14 @@ func (app *App) runGateway(args []string) error {
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run gateway does not accept positional arguments")
 	}
+	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return err
+	}
+	gatewayConfiguration := configuration.Gateway
+	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
+		return err
+	}
 	for _, application := range applications {
 		if err := requireChoice(application, "gateway application", "llama-cpp", "dwarfstar"); err != nil {
 			return err
@@ -59,15 +67,15 @@ func (app *App) runGateway(args []string) error {
 	if *startupTimeout <= 0 {
 		return controlerr.Usage("--startup-timeout must be positive")
 	}
-	listen := firstNonEmpty(*listenFlag, config.EnvironmentValue(app.Environment, "GATEWAY_LISTEN", config.DefaultListen))
+	listen := gatewayStringSetting(*listenFlag, app.Environment, "GATEWAY_LISTEN", gatewayConfiguration.Listen, config.DefaultListen)
 	if err := config.ValidateListenAddress(listen); err != nil {
 		return err
 	}
-	port, err := config.ValidatePort(firstNonEmpty(*portFlag, config.EnvironmentValue(app.Environment, "GATEWAY_PORT", "8080")))
+	port, err := config.ValidatePort(gatewayIntSetting(*portFlag, app.Environment, "GATEWAY_PORT", gatewayConfiguration.Port, 8080))
 	if err != nil {
 		return err
 	}
-	profile := firstNonEmpty(*profileFlag, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
+	profile := gatewayStringSetting(*profileFlag, app.Environment, "PROFILE", gatewayConfiguration.Profile, "auto")
 	if err := platform.ValidateProfile(profile); err != nil {
 		return controlerr.Usage("%v", err)
 	}
@@ -167,7 +175,7 @@ func (app *App) runGateway(args []string) error {
 	app.writeGatewayStartup(gatewayStartup{
 		Endpoint:     "http://" + net.JoinHostPort(listen, fmt.Sprint(port)) + "/v1",
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
-		Backend: *backend, ModelsMax: *modelsMax, Registry: registry,
+		Backend: *backend, ModelsMax: *modelsMax, Registry: registry, Configuration: configuration.Path,
 	})
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
@@ -195,13 +203,66 @@ func (app *App) runGateway(args []string) error {
 }
 
 type gatewayStartup struct {
-	Endpoint     string
-	Applications []string
-	Profile      string
-	RenderNodes  []string
-	Backend      string
-	ModelsMax    int
-	Registry     gateway.Registry
+	Endpoint      string
+	Applications  []string
+	Profile       string
+	RenderNodes   []string
+	Backend       string
+	ModelsMax     int
+	Registry      gateway.Registry
+	Configuration string
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func intValue(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(*value)
+}
+
+func gatewayStringSetting(flagValue string, environment map[string]string, environmentName string, configured *string, fallback string) string {
+	return firstNonEmpty(flagValue, config.EnvironmentValue(environment, environmentName, ""), stringValue(configured), fallback)
+}
+
+func gatewayIntSetting(flagValue string, environment map[string]string, environmentName string, configured *int, fallback int) string {
+	return firstNonEmpty(flagValue, config.EnvironmentValue(environment, environmentName, ""), intValue(configured), fmt.Sprint(fallback))
+}
+
+func renderNodeEnvironmentConfigured(environment map[string]string) bool {
+	prefix := identity.EnvironmentPrefix()
+	_, plural := environment[prefix+"_RENDER_NODES"]
+	return plural || environment[prefix+"_RENDER_NODE"] != ""
+}
+
+func applyGatewayConfiguration(set *commandFlags, environment map[string]string, configuration config.Configuration, applications, nodes *stringList, backend *string, modelsMax *int, startupTimeout *time.Duration) error {
+	gatewayConfiguration := configuration.Gateway
+	if !set.changed("application") {
+		*applications = append(*applications, gatewayConfiguration.Applications...)
+	}
+	if !set.changed("backend") && gatewayConfiguration.LlamaCPP.Backend != nil {
+		*backend = *gatewayConfiguration.LlamaCPP.Backend
+	}
+	if !set.changed("models-max") && gatewayConfiguration.LlamaCPP.ModelsMax != nil {
+		*modelsMax = *gatewayConfiguration.LlamaCPP.ModelsMax
+	}
+	if !set.changed("startup-timeout") && gatewayConfiguration.StartupTimeout != nil {
+		configuredTimeout, err := time.ParseDuration(*gatewayConfiguration.StartupTimeout)
+		if err != nil {
+			return controlerr.New("invalid [gateway].startup_timeout in %s: %v", configuration.Path, err)
+		}
+		*startupTimeout = configuredTimeout
+	}
+	if !set.changed("render-node") && !renderNodeEnvironmentConfigured(environment) && len(gatewayConfiguration.RenderNodes) > 0 {
+		*nodes = append(*nodes, gatewayConfiguration.RenderNodes...)
+	}
+	return nil
 }
 
 func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profile string, renderNodes []string) (gateway.Registry, []string, []gateway.Diagnostic, error) {
@@ -246,6 +307,9 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 		{"Profile", profile},
 		{"Applications", strings.Join(summary.Applications, ", ")},
 		{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},
+	}
+	if summary.Configuration != "" {
+		rows = append(rows, [2]string{"Configuration", summary.Configuration})
 	}
 	for _, application := range summary.Applications {
 		if application == "llama-cpp" {

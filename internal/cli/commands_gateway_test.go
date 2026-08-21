@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"paracetamol/internal/config"
 	"paracetamol/internal/gateway"
@@ -50,6 +51,51 @@ func TestGatewayApplicationFlagSupportsShortAndLongForms(t *testing.T) {
 	}
 }
 
+func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
+	app, _, _ := testApp(t, &commandRunner{})
+	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
+	var applications, nodes stringList
+	set.VarWithShort(&applications, "application", "a", "fixture")
+	set.Var(&nodes, "render-node", "fixture")
+	backend := set.String("backend", "rocm", "fixture")
+	modelsMax := set.Int("models-max", 1, "fixture")
+	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "fixture")
+	if err := parseFlags(set, []string{"-a", "llama-cpp", "--models-max", "3"}); err != nil {
+		t.Fatal(err)
+	}
+	configuredBackend := "vulkan"
+	configuredModels := 2
+	configuredTimeout := "45m"
+	configuration := config.Configuration{Path: "/profiles/aion.toml", Gateway: config.GatewayConfiguration{
+		Applications: []string{"dwarfstar"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
+		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels},
+	}}
+	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(applications, ",") != "llama-cpp" || strings.Join(nodes, ",") != "/dev/dri/renderD128" || *backend != "vulkan" || *modelsMax != 3 || *startupTimeout != 45*time.Minute {
+		t.Fatalf("applications=%v nodes=%v backend=%s models=%d timeout=%s", applications, nodes, *backend, *modelsMax, *startupTimeout)
+	}
+}
+
+func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing.T) {
+	configuredListen := "192.168.1.50"
+	environment := map[string]string{"PARACETAMOL_GATEWAY_LISTEN": "192.168.1.60"}
+	if got := gatewayStringSetting("192.168.1.70", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.70" {
+		t.Fatalf("flag precedence=%q", got)
+	}
+	if got := gatewayStringSetting("", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.60" {
+		t.Fatalf("environment precedence=%q", got)
+	}
+	if got := gatewayStringSetting("", map[string]string{}, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.50" {
+		t.Fatalf("configuration precedence=%q", got)
+	}
+	configuredPort := 18080
+	if got := gatewayIntSetting("", map[string]string{}, "GATEWAY_PORT", &configuredPort, 8080); got != "18080" {
+		t.Fatalf("configured port=%q", got)
+	}
+}
+
 func TestGatewayAutomaticSelectionConsidersOnlyBuiltImages(t *testing.T) {
 	llama, _ := config.ApplicationByID("llama-cpp")
 	runner := &commandRunner{run: func(command process.Command) process.Result {
@@ -73,7 +119,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	app.writeGatewayStartup(gatewayStartup{
 		Endpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
 		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
-		Backend: "rocm", ModelsMax: 1,
+		Backend: "rocm", ModelsMax: 1, Configuration: "/home/test/.config/paracetamol/config.toml",
 		Registry: gateway.Registry{
 			Fingerprint: "1234567890abcdef",
 			Models:      []gateway.Model{{ID: "qwen-one"}, {ID: "qwen-two"}},
@@ -84,6 +130,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 		"http://127.0.0.1:8080/v1", "strix-halo", "/dev/dri/renderD128",
 		"2 verified models", "1234567890ab", "up to 1 loaded model",
 		"unloaded", "status gateway --gateway-url http://127.0.0.1:8080/v1",
+		"/home/test/.config/paracetamol/config.toml",
 		"Waiting for requests",
 	} {
 		if !strings.Contains(output, expected) {

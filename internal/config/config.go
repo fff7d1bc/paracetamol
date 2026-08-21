@@ -2,15 +2,14 @@
 package config
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 
 	"paracetamol/internal/application"
 	"paracetamol/internal/controlerr"
@@ -28,7 +27,42 @@ var (
 const (
 	DefaultListen     = "127.0.0.1"
 	DefaultGatewayURL = "http://127.0.0.1:8080/v1"
+	maxFileSize       = 64 * 1024
 )
+
+// Selection chooses the one host configuration source. An empty selection
+// uses the optional XDG path; an explicit path must exist.
+type Selection struct {
+	Path     string
+	Disabled bool
+}
+
+type Configuration struct {
+	Storage StorageConfiguration `toml:"storage"`
+	Gateway GatewayConfiguration `toml:"gateway"`
+
+	Path   string `toml:"-"`
+	Loaded bool   `toml:"-"`
+}
+
+type StorageConfiguration struct {
+	DataDir *string `toml:"data_dir"`
+}
+
+type GatewayConfiguration struct {
+	Applications   []string                  `toml:"applications"`
+	Profile        *string                   `toml:"profile"`
+	RenderNodes    []string                  `toml:"render_nodes"`
+	Listen         *string                   `toml:"listen"`
+	Port           *int                      `toml:"port"`
+	StartupTimeout *string                   `toml:"startup_timeout"`
+	LlamaCPP       GatewayLlamaConfiguration `toml:"llama-cpp"`
+}
+
+type GatewayLlamaConfiguration struct {
+	Backend   *string `toml:"backend"`
+	ModelsMax *int    `toml:"models_max"`
+}
 
 func ApplicationByID(identifier string) (Application, bool) { return application.ByID(identifier) }
 func Applications() []Application                           { return application.All() }
@@ -63,11 +97,109 @@ func ConfigFile(environment map[string]string) (string, bool, error) {
 	return filepath.Join(root, identity.StateNamespace, "config.toml"), true, nil
 }
 
+func ResolveFile(environment map[string]string, selection Selection) (string, bool, bool, error) {
+	if selection.Disabled && selection.Path != "" {
+		return "", false, false, controlerr.Usage("configuration path and disabled configuration are mutually exclusive")
+	}
+	if selection.Disabled {
+		return "", false, false, nil
+	}
+	if selection.Path != "" {
+		path, err := filepath.Abs(selection.Path)
+		if err != nil {
+			return "", false, false, fmt.Errorf("resolve configuration path %s: %w", selection.Path, err)
+		}
+		return filepath.Clean(path), true, true, nil
+	}
+	path, available, err := ConfigFile(environment)
+	return path, available, false, err
+}
+
+func Load(environment map[string]string, selection Selection) (Configuration, error) {
+	path, available, explicit, err := ResolveFile(environment, selection)
+	if err != nil || !available {
+		return Configuration{}, err
+	}
+	status, err := os.Lstat(path)
+	if os.IsNotExist(err) && !explicit {
+		return Configuration{}, nil
+	}
+	if os.IsNotExist(err) {
+		return Configuration{}, controlerr.New("configuration does not exist: %s", path)
+	}
+	if err != nil {
+		return Configuration{}, controlerr.New("cannot inspect configuration %s: %v", path, err)
+	}
+	if !status.Mode().IsRegular() {
+		return Configuration{}, controlerr.New("configuration is not a regular file: %s", path)
+	}
+	if status.Size() > maxFileSize {
+		return Configuration{}, controlerr.New("configuration is unexpectedly large: %s", path)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return Configuration{}, controlerr.New("cannot read configuration %s: %v", path, err)
+	}
+	var configuration Configuration
+	metadata, err := toml.Decode(string(contents), &configuration)
+	if err != nil {
+		return Configuration{}, controlerr.New("cannot read configuration %s: %v", path, err)
+	}
+	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
+		keys := make([]string, 0, len(undecoded))
+		for _, key := range undecoded {
+			keys = append(keys, key.String())
+		}
+		return Configuration{}, controlerr.New("unknown configuration setting in %s: %s", path, strings.Join(keys, ", "))
+	}
+	if err := validateConfiguration(configuration, path); err != nil {
+		return Configuration{}, err
+	}
+	configuration.Path = path
+	configuration.Loaded = true
+	return configuration, nil
+}
+
+func validateConfiguration(configuration Configuration, path string) error {
+	if value := configuration.Storage.DataDir; value != nil {
+		if *value == "" || !filepath.IsAbs(*value) {
+			return controlerr.New("[storage].data_dir must be a non-empty absolute path: %s", path)
+		}
+	}
+	stringsToValidate := []struct {
+		key   string
+		value *string
+	}{
+		{"[gateway].profile", configuration.Gateway.Profile},
+		{"[gateway].listen", configuration.Gateway.Listen},
+		{"[gateway].startup_timeout", configuration.Gateway.StartupTimeout},
+		{"[gateway.llama-cpp].backend", configuration.Gateway.LlamaCPP.Backend},
+	}
+	for _, setting := range stringsToValidate {
+		if setting.value != nil && strings.TrimSpace(*setting.value) == "" {
+			return controlerr.New("%s must be a non-empty string: %s", setting.key, path)
+		}
+	}
+	if value := configuration.Gateway.Port; value != nil && (*value < 1 || *value > 65535) {
+		return controlerr.New("[gateway].port must be between 1 and 65535: %s", path)
+	}
+	if value := configuration.Gateway.LlamaCPP.ModelsMax; value != nil && *value < 1 {
+		return controlerr.New("[gateway.llama-cpp].models_max must be at least 1: %s", path)
+	}
+	return nil
+}
+
 func DefaultDataDir(environment map[string]string) (string, error) {
-	if configured, ok, err := configuredDataDir(environment); err != nil {
+	configuration, err := Load(environment, Selection{})
+	if err != nil {
 		return "", err
-	} else if ok {
-		return configured, nil
+	}
+	return DefaultDataDirWithConfiguration(environment, configuration)
+}
+
+func DefaultDataDirWithConfiguration(environment map[string]string, configuration Configuration) (string, error) {
+	if configuration.Storage.DataDir != nil {
+		return *configuration.Storage.DataDir, nil
 	}
 	root := environment["XDG_DATA_HOME"]
 	if root == "" {
@@ -83,158 +215,35 @@ func DefaultDataDir(environment map[string]string) (string, error) {
 	return filepath.Join(root, identity.StateNamespace), nil
 }
 
-func SelectDataDir(flagValue string, environment map[string]string) (string, error) {
+func SelectDataDir(flagValue string, environment map[string]string, configuration Configuration) (string, error) {
 	if flagValue != "" {
 		return flagValue, nil
 	}
 	if value := EnvironmentValue(environment, "DATA_DIR", ""); value != "" {
 		return value, nil
 	}
-	return DefaultDataDir(environment)
+	return DefaultDataDirWithConfiguration(environment, configuration)
 }
 
-func configuredDataDir(environment map[string]string) (string, bool, error) {
-	path, available, err := ConfigFile(environment)
-	if err != nil || !available {
-		return "", false, err
-	}
-	status, err := os.Lstat(path)
-	if os.IsNotExist(err) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, controlerr.New("cannot inspect configuration %s: %v", path, err)
-	}
-	if !status.Mode().IsRegular() {
-		return "", false, controlerr.New("configuration is not a regular file: %s", path)
-	}
-	if status.Size() > 64*1024 {
-		return "", false, controlerr.New("configuration is unexpectedly large: %s", path)
-	}
-	handle, err := os.Open(path)
-	if err != nil {
-		return "", false, controlerr.New("cannot read configuration %s: %v", path, err)
-	}
-	defer handle.Close()
-	value, found, err := parseStorageDataDir(handle)
-	if err != nil {
-		return "", false, controlerr.New("cannot read configuration %s: %v", path, err)
-	}
-	if !found {
-		return "", false, nil
-	}
-	if !filepath.IsAbs(value) {
-		return "", false, controlerr.New("[storage].data_dir must be an absolute path: %s", path)
-	}
-	return value, true, nil
-}
-
-// parseStorageDataDir intentionally implements the project's closed TOML
-// schema, not a partial general-purpose TOML parser.
-func parseStorageDataDir(input io.Reader) (string, bool, error) {
-	scanner := bufio.NewScanner(input)
-	section := ""
-	seenSection := false
-	seenValue := false
-	value := ""
-	for lineNumber := 1; scanner.Scan(); lineNumber++ {
-		line, err := stripTOMLComment(strings.TrimSpace(scanner.Text()))
-		if err != nil {
-			return "", false, fmt.Errorf("line %d: %w", lineNumber, err)
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "[") {
-			if !strings.HasSuffix(line, "]") || strings.Count(line, "[") != 1 || strings.Count(line, "]") != 1 {
-				return "", false, fmt.Errorf("line %d: invalid table", lineNumber)
-			}
-			section = strings.TrimSpace(line[1 : len(line)-1])
-			if section != "storage" {
-				return "", false, fmt.Errorf("unknown configuration section %q", section)
-			}
-			if seenSection {
-				return "", false, fmt.Errorf("line %d: duplicate [storage] table", lineNumber)
-			}
-			seenSection = true
-			continue
-		}
-		key, raw, found := strings.Cut(line, "=")
-		if !found || strings.TrimSpace(key) == "" {
-			return "", false, fmt.Errorf("line %d: expected key = value", lineNumber)
-		}
-		if section != "storage" {
-			return "", false, fmt.Errorf("line %d: settings must be below [storage]", lineNumber)
-		}
-		key = strings.TrimSpace(key)
-		if key != "data_dir" {
-			return "", false, fmt.Errorf("unknown [storage] setting %q", key)
-		}
-		if seenValue {
-			return "", false, fmt.Errorf("line %d: duplicate data_dir", lineNumber)
-		}
-		parsed, err := parseTOMLString(strings.TrimSpace(raw))
-		if err != nil {
-			return "", false, fmt.Errorf("line %d: data_dir %w", lineNumber, err)
-		}
-		if parsed == "" {
-			return "", false, errors.New("must be a non-empty string")
-		}
-		value = parsed
-		seenValue = true
-	}
-	if err := scanner.Err(); err != nil {
-		return "", false, err
-	}
-	return value, seenValue, nil
-}
-
-func stripTOMLComment(line string) (string, error) {
-	quote := rune(0)
-	escaped := false
-	for index, character := range line {
-		if escaped {
-			escaped = false
-			continue
-		}
-		if quote == '"' && character == '\\' {
-			escaped = true
-			continue
-		}
-		if quote == 0 && (character == '\'' || character == '"') {
-			quote = character
-			continue
-		}
-		if quote != 0 && character == quote {
-			quote = 0
-			continue
-		}
-		if quote == 0 && character == '#' {
-			return line[:index], nil
-		}
-	}
-	if quote != 0 || escaped {
-		return "", errors.New("unterminated string")
-	}
-	return line, nil
-}
-
-func parseTOMLString(raw string) (string, error) {
-	if len(raw) < 2 {
-		return "", errors.New("must be a string")
-	}
-	if raw[0] == '\'' && raw[len(raw)-1] == '\'' {
-		return raw[1 : len(raw)-1], nil
-	}
-	if raw[0] != '"' || raw[len(raw)-1] != '"' {
-		return "", errors.New("must be a string")
-	}
-	value, err := strconv.Unquote(raw)
-	if err != nil {
-		return "", err
-	}
-	return value, nil
+// DefaultContents returns a complete runnable configuration. Empty application
+// and render-node lists preserve automatic discovery rather than making those
+// selections mandatory.
+func DefaultContents(dataDir string) []byte {
+	return []byte("# Paracetamol host configuration. Command-line flags override corresponding\n" +
+		"# environment variables where defined; both override these values.\n\n" +
+		"[storage]\n" +
+		"data_dir = " + strconv.Quote(dataDir) + "\n\n" +
+		"[gateway]\n" +
+		"# Empty lists keep automatic backend and render-node discovery.\n" +
+		"applications = []\n" +
+		"profile = \"auto\"\n" +
+		"render_nodes = []\n" +
+		"listen = \"127.0.0.1\"\n" +
+		"port = 8080\n" +
+		"startup_timeout = \"30m\"\n\n" +
+		"[gateway.llama-cpp]\n" +
+		"backend = \"rocm\"\n" +
+		"models_max = 1\n")
 }
 
 func ValidatePort(value string) (int, error) {

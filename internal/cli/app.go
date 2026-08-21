@@ -15,6 +15,7 @@ import (
 	"paracetamol/internal/application"
 	"paracetamol/internal/benchmark"
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
@@ -23,16 +24,30 @@ import (
 )
 
 type App struct {
-	Context     context.Context
-	Root        string
-	Environment map[string]string
-	Stdin       io.Reader
-	Stdout      io.Writer
-	Stderr      io.Writer
-	Runner      process.Runner
-	Executor    process.Executor
-	catalog     *catalog.Catalog
-	promptInput *bufio.Reader
+	Context         context.Context
+	Root            string
+	Environment     map[string]string
+	ConfigSelection config.Selection
+	Stdin           io.Reader
+	Stdout          io.Writer
+	Stderr          io.Writer
+	Runner          process.Runner
+	Executor        process.Executor
+	catalog         *catalog.Catalog
+	configuration   *config.Configuration
+	promptInput     *bufio.Reader
+}
+
+func (app *App) hostConfiguration() (config.Configuration, error) {
+	if app.configuration != nil {
+		return *app.configuration, nil
+	}
+	loaded, err := config.Load(app.Environment, app.ConfigSelection)
+	if err != nil {
+		return config.Configuration{}, err
+	}
+	app.configuration = &loaded
+	return loaded, nil
 }
 
 var managedRunID = regexp.MustCompile(`^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$`)
@@ -44,6 +59,7 @@ type commandDefinition struct {
 }
 
 var commandTree = []commandDefinition{
+	{Name: "config", Description: "initialize host configuration", Run: func(app *App, args []string) error { return app.commandConfig(args) }},
 	{Name: "build", Description: "build locally pinned application images", Run: func(app *App, args []string) error { return app.commandBuild(args) }},
 	{Name: "guide", Description: "show a focused application walkthrough", Run: func(app *App, args []string) error { return app.commandGuide(args) }},
 	{Name: "doctor", Description: "inspect host readiness and GPU policy", Run: func(app *App, args []string) error { return app.commandDoctor(args) }},
@@ -220,6 +236,11 @@ func (set *commandFlags) renderHelp(output io.Writer) {
 		}
 	}
 	width := len("-h, --help")
+	for _, global := range globalConfigurationHelp {
+		if len(global[0]) > width {
+			width = len(global[0])
+		}
+	}
 	for _, option := range set.order {
 		if candidate := len(set.flagSyntax(option)); candidate > width {
 			width = candidate
@@ -227,6 +248,9 @@ func (set *commandFlags) renderHelp(output io.Writer) {
 	}
 	fmt.Fprintf(output, "\n%s\n", terminal.Heading("Options:"))
 	fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, "-h, --help")), "show this help")
+	for _, global := range globalConfigurationHelp {
+		fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, global[0])), global[1])
+	}
 	for _, option := range set.order {
 		syntax := set.flagSyntax(option)
 		description := option.Usage
@@ -241,6 +265,17 @@ func (set *commandFlags) renderHelp(output io.Writer) {
 			fmt.Fprintf(output, "  %s\n", terminal.Command(example))
 		}
 	}
+}
+
+func (set *commandFlags) changed(name string) bool {
+	changed := false
+	short := set.aliases[name]
+	set.Visit(func(option *flag.Flag) {
+		if option.Name == name || option.Name == short {
+			changed = true
+		}
+	})
+	return changed
 }
 
 func (set *commandFlags) usageError(format string, arguments ...any) error {
@@ -370,7 +405,15 @@ func (app *App) writeGroupHelp(synopsis string, commands ...[2]string) {
 	for _, command := range commands {
 		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, command[0])), command[1])
 	}
-	fmt.Fprintf(app.Stdout, "\n%s\n  %s  show this help\n", terminal.Heading("Options:"), terminal.Command("-h, --help"))
+	optionWidth := len("-h, --help")
+	for _, option := range globalConfigurationHelp {
+		optionWidth = max(optionWidth, len(option[0]))
+	}
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Options:"))
+	fmt.Fprintf(app.Stdout, "  %s  show this help\n", terminal.Command(fmt.Sprintf("%-*s", optionWidth, "-h, --help")))
+	for _, option := range globalConfigurationHelp {
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", optionWidth, option[0])), option[1])
+	}
 	if examples := examplesForSynopsis(synopsis); len(examples) > 0 {
 		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Examples:"))
 		for _, example := range examples {

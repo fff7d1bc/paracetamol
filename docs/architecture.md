@@ -575,9 +575,15 @@ ${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol
 `${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml` provides the durable
 host-level override. An explicit `--data-dir` wins over `PARACETAMOL_DATA_DIR`,
 which wins over TOML configuration, which wins over the XDG data default.
+The global `-c`/`--config` selector may appear before or after a command and
+selects one required file; `--no-config` bypasses the optional XDG file. Both
+selectors stop at the explicit `--` passthrough boundary. `config init`
+publishes one complete default file through the create-once atomic-file policy.
 Configuration lookup and dry-run resolution do not create either directory.
-The TOML surface is intentionally limited and unknown sections or keys fail
-closed.
+The typed TOML surface is intentionally closed, all fields are optional, and
+unknown sections or keys fail closed. Command flags win over corresponding
+environment variables, which win over configuration, which wins over built-in
+defaults. Lists replace lower-precedence lists rather than merging them.
 
 The storage boundary is:
 

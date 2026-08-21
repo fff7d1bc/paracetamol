@@ -294,14 +294,25 @@ For a durable location on another filesystem, create
 data_dir = "/mnt/ai/paracetamol"
 ```
 
-The path must be absolute. Paracetamol reads this file but never creates it or
-moves existing data automatically. A malformed file, misspelled section, or
-unknown setting is rejected instead of silently falling back somewhere else.
+The path must be absolute. Generate a complete runnable configuration using
+the current XDG data default with:
+
+```bash
+./paracetamol config init
+```
+
+Initialization publishes the file with mode `0600` and refuses to replace an
+existing path. Every setting is optional; see the [gateway
+configuration](../gateway.md#configuration) for the additional typed sections.
+Paracetamol never moves existing data automatically. A malformed file,
+misspelled section, or unknown setting is rejected instead of silently falling
+back somewhere else. Select a different file with `-c PATH` or `--config PATH`,
+or ignore the XDG file with `--no-config`.
 Resolution order is:
 
 1. `--data-dir`
 2. `PARACETAMOL_DATA_DIR`
-3. `[storage].data_dir` in `config.toml`
+3. `[storage].data_dir` in the selected `config.toml`
 4. the XDG data default above
 
 Major partitions are:

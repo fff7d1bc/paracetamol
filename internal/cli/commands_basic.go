@@ -1089,7 +1089,11 @@ func (app *App) resolveDevices(profile string, requested []string, explicit bool
 }
 
 func (app *App) resolveDataDir(value string, prepare bool) (string, error) {
-	selected, err := config.SelectDataDir(value, app.Environment)
+	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return "", err
+	}
+	selected, err := config.SelectDataDir(value, app.Environment, configuration)
 	if err != nil {
 		return "", err
 	}

@@ -10,6 +10,8 @@ revisions recorded in `catalog/catalog.json`.
 
 ## Direct components
 
+- BurntSushi/toml 1.6.0 is linked into the host control plane for strict TOML
+  configuration decoding. It is licensed under MIT.
 - ComfyUI is pinned to an exact source revision and is licensed under
   GPL-3.0. Its source and license are present at `/opt/ComfyUI` in the locally
   built image.

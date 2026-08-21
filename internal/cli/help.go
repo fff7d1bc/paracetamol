@@ -70,6 +70,7 @@ func flagMetavar(name string) string {
 // Command examples are tokenized so product identity changes continue to
 // produce copyable commands rather than baking one executable name into help.
 var commandExampleArguments = map[string][][]string{
+	"config init": {{"config", "init"}, {"config", "init", "-c", "configs/aion.toml"}},
 	"build": {
 		{"build", "all"},
 		{"build", "llama-cpp"},
