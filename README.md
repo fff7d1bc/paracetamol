@@ -314,9 +314,10 @@ Tailscale address only when unauthenticated network access is intentional:
 ```
 
 For local coding-agent work, start the gateway and use the sandboxed PATH
-launcher. With no application option the gateway exposes verified llama.cpp
-models only; an explicit application list replaces that default. Startup does
-not load a backend.
+launcher. With no application option the gateway discovers every built text
+application that has a compatible, verified model. An explicit `-a` or
+`--application` list strictly replaces discovery. Startup does not load a
+backend.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8
@@ -327,13 +328,15 @@ pi
 # or: maki
 ```
 
-Select both `--application llama-cpp --application dwarfstar` when DwarfStar's
-reviewed model is installed and should appear on the same endpoint. A single
-explicit `--application dwarfstar` starts a DwarfStar-only gateway. The first
-request lazily starts the matching private backend and its container output is
-followed in the gateway terminal. A request for the other application drains
-active work, stops the current backend, and starts the other one; queued
-requests remain FIFO. Inspect the frozen inventory and live allocation with
+Automatic discovery includes DwarfStar when its image and compatible verified
+model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
+dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
+lazily starts the matching private backend and its container output is followed
+in the gateway terminal. A request for the other application drains active
+work, stops the current backend, and starts the other one; queued requests
+remain FIFO. llama.cpp keeps one model loaded by default because its router
+limit is count-based rather than memory-aware; opt into a larger known-fitting
+set with `--models-max`. Inspect the frozen inventory and live allocation with
 `./paracetamol status gateway`.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway
@@ -342,8 +345,8 @@ port with the host firewall:
 
 ```bash
 # On the GPU host:
-./paracetamol run gateway --application llama-cpp \
-  --application dwarfstar --listen 192.168.1.50
+./paracetamol run gateway -a llama-cpp \
+  -a dwarfstar --listen 192.168.1.50
 
 # On a Pi or Maki client host:
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi

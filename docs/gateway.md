@@ -6,18 +6,24 @@ loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
 
-Start the normal llama.cpp gateway in the foreground without extra selection:
+Start every currently runnable text application in the foreground without
+extra selection:
 
 ```bash
 ./paracetamol run gateway
 ```
 
-Any explicit `--application` options replace that llama.cpp-only default. Use
-one for a DwarfStar-only endpoint or repeat it to expose both applications:
+Automatic discovery considers llama.cpp and DwarfStar, then includes an
+application only when its image is built and it contributes at least one
+compatible receipt-verified model. Any explicit `-a` or `--application`
+options replace discovery and are strict: a missing image or model fails
+startup. Use one for an exact single-application endpoint or repeat it to
+demand both applications:
 
 ```bash
-./paracetamol run gateway --application dwarfstar
-./paracetamol run gateway --application llama-cpp --application dwarfstar
+./paracetamol run gateway -a llama-cpp
+./paracetamol run gateway -a dwarfstar
+./paracetamol run gateway -a llama-cpp -a dwarfstar
 ```
 
 The compact startup card shows the endpoint, selected profile and render
@@ -25,9 +31,9 @@ nodes, applications, verified model count, short inventory fingerprint, and
 the copyable status command. The default public address is
 `http://127.0.0.1:8080/v1`. There is no daemon or detach mode. The foreground
 process owns backend cleanup, and Ctrl-C stops accepting work, drains active
-HTTP requests, then removes its exact private backend container. A non-loopback
-`--listen` is an unauthenticated trusted-LAN interface and is visibly warned
-about.
+HTTP requests, removes its exact private backend container, prints a successful
+stop, and exits cleanly. A non-loopback `--listen` is an unauthenticated
+trusted-LAN interface and is visibly warned about.
 
 ## Frozen inventory
 
@@ -66,6 +72,13 @@ The body limit is 16 MiB and the waiting queue holds at most 64 requests.
 Client cancellation removes a queued request or propagates to the upstream
 request. A proxy transport failure marks the allocation failed so it is
 drained and recycled rather than silently reused.
+
+The llama.cpp router keeps one model child loaded by default. Its
+`--models-max` limit counts loaded children; it does not predict whether their
+combined weights and contexts fit memory. Increase it only for a model set
+known to fit. At the count limit, the pinned router queues a new model request
+until it can evict an idle least-recently-used child; it does not evict a busy
+child.
 
 ## Ownership and security
 

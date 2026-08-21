@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/gateway"
@@ -27,7 +28,7 @@ import (
 func (app *App) runGateway(args []string) error {
 	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
 	var applications stringList
-	set.Var(&applications, "application", "llama-cpp or dwarfstar; repeatable; explicit values replace default llama-cpp")
+	set.VarWithShort(&applications, "application", "a", "restrict to llama-cpp or dwarfstar; repeatable; default discovers runnable applications")
 	profileFlag := set.String("profile", "", "auto, rdna4, strix-halo, or strix-point (default: auto)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
@@ -35,7 +36,7 @@ func (app *App) runGateway(args []string) error {
 	listenFlag := set.String("listen", "", "host IP on which to publish the gateway (default: 127.0.0.1)")
 	portFlag := set.String("port", "", "gateway host port (default: 8080)")
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
-	modelsMax := set.Int("models-max", 2, "llama.cpp router simultaneous models")
+	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
 	unconfined := set.Bool("unconfined", false, "disable backend seccomp")
 	if err := parseFlags(set, args); err != nil {
@@ -44,7 +45,6 @@ func (app *App) runGateway(args []string) error {
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run gateway does not accept positional arguments")
 	}
-	applications = selectedGatewayApplications(applications)
 	for _, application := range applications {
 		if err := requireChoice(application, "gateway application", "llama-cpp", "dwarfstar"); err != nil {
 			return err
@@ -83,7 +83,13 @@ func (app *App) runGateway(args []string) error {
 	if err != nil {
 		return err
 	}
-	registry, diagnostics, err := gateway.BuildRegistry(managed, dataRoot, applications, profile, selectedNodes)
+	var registry gateway.Registry
+	var diagnostics []gateway.Diagnostic
+	if len(applications) == 0 {
+		registry, applications, diagnostics, err = app.discoverGatewayRegistry(managed, dataRoot, profile, selectedNodes)
+	} else {
+		registry, diagnostics, err = gateway.BuildRegistry(managed, dataRoot, applications, profile, selectedNodes)
+	}
 	errorTerminal := app.terminal(app.Stderr)
 	if err != nil {
 		for _, diagnostic := range diagnostics {
@@ -180,7 +186,11 @@ func (app *App) runGateway(args []string) error {
 			serveErr = nil
 		}
 		backendErr := scheduler.Shutdown(contextWithoutCancel())
-		return errors.Join(app.Context.Err(), shutdownErr, serveErr, backendErr)
+		if err := errors.Join(shutdownErr, serveErr, backendErr); err != nil {
+			return err
+		}
+		fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Success("Gateway stopped."))
+		return nil
 	}
 }
 
@@ -194,11 +204,30 @@ type gatewayStartup struct {
 	Registry     gateway.Registry
 }
 
-func selectedGatewayApplications(applications []string) []string {
-	if len(applications) == 0 {
-		return []string{"llama-cpp"}
+func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profile string, renderNodes []string) (gateway.Registry, []string, []gateway.Diagnostic, error) {
+	candidates, err := app.builtGatewayApplications()
+	if err != nil {
+		return gateway.Registry{}, nil, nil, err
 	}
-	return append([]string(nil), applications...)
+	if len(candidates) == 0 {
+		return gateway.Registry{}, nil, nil, fmt.Errorf("no gateway application image is built; build llama-cpp or dwarfstar first")
+	}
+	return gateway.DiscoverRegistry(managed, dataRoot, candidates, profile, renderNodes)
+}
+
+func (app *App) builtGatewayApplications() ([]string, error) {
+	applications := make([]string, 0, 2)
+	for _, identifier := range []string{string(textmodel.BackendLlamaCPP), string(textmodel.BackendDwarfStar)} {
+		application, _ := config.ApplicationByID(identifier)
+		present, err := app.podman().Exists(app.Context, "image", application.Image)
+		if err != nil {
+			return nil, err
+		}
+		if present {
+			applications = append(applications, identifier)
+		}
+	}
+	return applications, nil
 }
 
 func (app *App) writeGatewayStartup(summary gatewayStartup) {

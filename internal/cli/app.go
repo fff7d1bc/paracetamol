@@ -129,6 +129,7 @@ type commandFlags struct {
 	examples  []string
 	arguments [][2]string
 	order     []*flag.Flag
+	aliases   map[string]string
 }
 
 func (set *commandFlags) record(name string) {
@@ -191,6 +192,16 @@ func (set *commandFlags) Var(value flag.Value, name, usage string) {
 	set.record(name)
 }
 
+func (set *commandFlags) VarWithShort(value flag.Value, name, short, usage string) {
+	set.FlagSet.Var(value, name, usage)
+	set.FlagSet.Var(value, short, usage)
+	set.record(name)
+	if set.aliases == nil {
+		set.aliases = make(map[string]string)
+	}
+	set.aliases[name] = short
+}
+
 func (set *commandFlags) Argument(name, description string) {
 	set.arguments = append(set.arguments, [2]string{name, description})
 }
@@ -210,14 +221,14 @@ func (set *commandFlags) renderHelp(output io.Writer) {
 	}
 	width := len("-h, --help")
 	for _, option := range set.order {
-		if candidate := len(flagSyntax(option)); candidate > width {
+		if candidate := len(set.flagSyntax(option)); candidate > width {
 			width = candidate
 		}
 	}
 	fmt.Fprintf(output, "\n%s\n", terminal.Heading("Options:"))
 	fmt.Fprintf(output, "  %s  %s\n", terminal.Command(fmt.Sprintf("%-*s", width, "-h, --help")), "show this help")
 	for _, option := range set.order {
-		syntax := flagSyntax(option)
+		syntax := set.flagSyntax(option)
 		description := option.Usage
 		if option.DefValue != "" && option.DefValue != "false" && option.DefValue != "0" && option.DefValue != "-1" {
 			description += " (default: " + option.DefValue + ")"
@@ -249,8 +260,11 @@ func (app *App) flagsWithExamples(name, synopsis string, examples []string) *com
 	return set
 }
 
-func flagSyntax(option *flag.Flag) string {
+func (set *commandFlags) flagSyntax(option *flag.Flag) string {
 	value := "--" + option.Name
+	if short := set.aliases[option.Name]; short != "" {
+		value = "-" + short + ", " + value
+	}
 	if !isBooleanFlag(option.Value) {
 		value += " " + flagMetavar(option.Name)
 	}

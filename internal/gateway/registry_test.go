@@ -3,6 +3,7 @@ package gateway
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"paracetamol/internal/catalog"
@@ -68,5 +69,80 @@ func TestRegistryRejectsDwarfStarWithoutOneGPU(t *testing.T) {
 	}}
 	if _, diagnostics, err := BuildRegistry(managed, t.TempDir(), []string{"dwarfstar"}, "cpu", nil); err == nil || len(diagnostics) != 1 {
 		t.Fatalf("err=%v diagnostics=%#v", err, diagnostics)
+	}
+}
+
+func TestDiscoverRegistrySelectsOnlyApplicationsWithVerifiedModels(t *testing.T) {
+	root := t.TempDir()
+	llamaArtifact := catalog.Artifact{ID: "llama-model", Destination: "llama.gguf", Target: "llama-models", Size: 5, SHA256: "llama-fixture"}
+	dwarfArtifact := catalog.Artifact{ID: "dwarf-model", Destination: "dwarf.gguf", Target: "dwarfstar-models", Size: 5, SHA256: "dwarf-fixture"}
+	managed := catalog.Catalog{
+		Artifacts: map[string]catalog.Artifact{llamaArtifact.ID: llamaArtifact, dwarfArtifact.ID: dwarfArtifact},
+		Bundles: map[string]catalog.Bundle{
+			"llama-bundle": {ID: "llama-bundle", Application: "llama-cpp", Artifacts: []string{llamaArtifact.ID}},
+			"dwarf-bundle": {ID: "dwarf-bundle", Application: "dwarfstar", Artifacts: []string{dwarfArtifact.ID}},
+		},
+		LlamaPresets: map[string]catalog.LlamaPreset{
+			"llama": {ID: "llama", Bundle: "llama-bundle", Artifact: llamaArtifact.ID, DefaultContext: 4096},
+		},
+		DwarfStarPresets: map[string]catalog.DwarfStarPreset{
+			"dwarf": {ID: "dwarf", Bundle: "dwarf-bundle", DefaultContext: 4096, MaxOutputTokens: 1024},
+		},
+	}
+	llamaPath := content.ArtifactPath(root, llamaArtifact)
+	if err := os.MkdirAll(filepath.Dir(llamaPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(llamaPath, []byte("llama"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := verification.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Record(llamaPath, llamaArtifact.Size, llamaArtifact.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	registry, applications, diagnostics, err := DiscoverRegistry(
+		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applications) != 1 || applications[0] != "llama-cpp" {
+		t.Fatalf("applications=%v", applications)
+	}
+	if len(registry.Models) != 1 || registry.Models[0].ID != "llama" {
+		t.Fatalf("registry=%#v", registry)
+	}
+	if len(diagnostics) != 0 {
+		t.Fatalf("optional unavailable application diagnostics=%#v", diagnostics)
+	}
+
+	dwarfPath := content.ArtifactPath(root, dwarfArtifact)
+	if err := os.MkdirAll(filepath.Dir(dwarfPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dwarfPath, []byte("dwarf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Record(dwarfPath, dwarfArtifact.Size, dwarfArtifact.SHA256); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(); err != nil {
+		t.Fatal(err)
+	}
+	registry, applications, diagnostics, err = DiscoverRegistry(
+		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(applications, ",") != "llama-cpp,dwarfstar" || len(registry.Models) != 2 || len(diagnostics) != 0 {
+		t.Fatalf("complete discovery applications=%v registry=%#v diagnostics=%#v", applications, registry, diagnostics)
 	}
 }
