@@ -2,12 +2,16 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"paracetamol/internal/config"
 	"paracetamol/internal/gateway"
+	"paracetamol/internal/process"
 )
 
 func TestRunHelpIncludesGateway(t *testing.T) {
@@ -20,18 +24,47 @@ func TestRunHelpIncludesGateway(t *testing.T) {
 	}
 }
 
-func TestGatewayApplicationSelectionDefaultsToLlamaCPP(t *testing.T) {
-	if got := strings.Join(selectedGatewayApplications(nil), ","); got != "llama-cpp" {
-		t.Fatalf("default applications=%q", got)
+func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	if err := app.runGateway([]string{"--help"}); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("help error=%v", err)
 	}
-	explicit := []string{"dwarfstar"}
-	selected := selectedGatewayApplications(explicit)
-	if got := strings.Join(selected, ","); got != "dwarfstar" {
-		t.Fatalf("explicit applications=%q", got)
+	output := stdout.String()
+	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
+		}
 	}
-	selected[0] = "llama-cpp"
-	if explicit[0] != "dwarfstar" {
-		t.Fatal("application selection aliases caller storage")
+}
+
+func TestGatewayApplicationFlagSupportsShortAndLongForms(t *testing.T) {
+	app, _, _ := testApp(t, &commandRunner{})
+	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
+	var applications stringList
+	set.VarWithShort(&applications, "application", "a", "fixture")
+	if err := parseFlags(set, []string{"-a", "llama-cpp", "--application", "dwarfstar"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(applications, ","); got != "llama-cpp,dwarfstar" {
+		t.Fatalf("applications=%q", got)
+	}
+}
+
+func TestGatewayAutomaticSelectionConsidersOnlyBuiltImages(t *testing.T) {
+	llama, _ := config.ApplicationByID("llama-cpp")
+	runner := &commandRunner{run: func(command process.Command) process.Result {
+		if strings.Join(command.Args, " ") == "image exists "+llama.Image {
+			return process.Result{}
+		}
+		return process.Result{Status: 1}
+	}}
+	app, _, _ := testApp(t, runner)
+	applications, err := app.builtGatewayApplications()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(applications, ","); got != "llama-cpp" {
+		t.Fatalf("built applications=%q", got)
 	}
 }
 
@@ -40,7 +73,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	app.writeGatewayStartup(gatewayStartup{
 		Endpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
 		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
-		Backend: "rocm", ModelsMax: 2,
+		Backend: "rocm", ModelsMax: 1,
 		Registry: gateway.Registry{
 			Fingerprint: "1234567890abcdef",
 			Models:      []gateway.Model{{ID: "qwen-one"}, {ID: "qwen-two"}},
@@ -49,7 +82,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	output := stdout.String()
 	for _, expected := range []string{
 		"http://127.0.0.1:8080/v1", "strix-halo", "/dev/dri/renderD128",
-		"2 verified models", "1234567890ab", "up to 2 loaded models",
+		"2 verified models", "1234567890ab", "up to 1 loaded model",
 		"unloaded", "status gateway --gateway-url http://127.0.0.1:8080/v1",
 		"Waiting for requests",
 	} {

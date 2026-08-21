@@ -489,14 +489,15 @@ point:
 ./paracetamol run gateway
 ```
 
-No application option means llama.cpp only. Any explicit application options
-replace that default. Add both applications to the same public inventory only
-when DwarfStar's verified model and image are present:
+No application option discovers every built text application with at least one
+compatible verified model. Any explicit `-a` or `--application` options
+strictly replace discovery. Demand both applications when DwarfStar's verified
+model and image are expected to be present:
 
 ```bash
 ./paracetamol run gateway \
-  --application llama-cpp \
-  --application dwarfstar
+  -a llama-cpp \
+  -a dwarfstar
 ```
 
 The gateway advertises a frozen receipt-verified snapshot, but starts no
@@ -509,6 +510,12 @@ DwarfStar server commands remain useful for engine diagnostics, isolated
 benchmarks, and API features outside the gateway's intentionally small
 surface. The complete lifecycle and failure policy is in the [gateway
 design](../gateway.md).
+
+The gateway starts its llama.cpp router with one loaded model allowed. The
+limit counts model children and is not a memory-fit calculation. Use
+`--models-max 2` only when the exact pair of weights and contexts is known to
+fit; otherwise the one-model default unloads the idle child before loading a
+different preset.
 
 Paracetamol manages its own pinned Pi runtime. It requires Node.js 22.19 or
 newer and npm from the host distribution, then installs the repository-locked
@@ -567,7 +574,7 @@ firewall because the gateway provides no application authentication:
 
 ```bash
 # GPU host
-./paracetamol run gateway --listen 192.168.1.50
+./paracetamol run gateway -a llama-cpp --listen 192.168.1.50
 
 # Pi or Maki client host
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
@@ -1249,12 +1256,12 @@ When the server was started with `--dspark`, include `"temperature": 0` in
 every Chat Completions request. This sampling requirement is independent of
 the request's thinking choice.
 
-When the gateway was started with `--application dwarfstar`, both launchers
-include its reviewed model in the same `paracetamol` provider. Choose it
-explicitly in a client:
+When automatic discovery includes DwarfStar, or the gateway was explicitly
+started with `-a dwarfstar`, both launchers include its reviewed model in the
+same `paracetamol` provider. Choose it explicitly in a client:
 
 ```bash
-./paracetamol run gateway --application llama-cpp --application dwarfstar
+./paracetamol run gateway -a llama-cpp -a dwarfstar
 pi --provider paracetamol --model deepseek-v4-flash-0731-q2-imatrix --thinking high
 maki -m paracetamol/deepseek-v4-flash-0731-q2-imatrix
 ```

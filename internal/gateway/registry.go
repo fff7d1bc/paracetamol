@@ -41,26 +41,66 @@ type Registry struct {
 }
 
 func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string) (Registry, []Diagnostic, error) {
+	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, applications, profile, renderNodes)
+	if err != nil {
+		return Registry{}, nil, err
+	}
+	for _, application := range applications {
+		if readyByApplication[application] == 0 {
+			return Registry{}, diagnostics, fmt.Errorf("selected gateway application %s has no verified schedulable model", application)
+		}
+	}
+	return registry, diagnostics, nil
+}
+
+// DiscoverRegistry returns only candidate applications that currently have at
+// least one receipt-verified model compatible with the selected hardware. A
+// caller can therefore use it for an automatic default while retaining the
+// strict BuildRegistry contract for explicit user selections.
+func DiscoverRegistry(managed catalog.Catalog, dataRoot string, candidates []string, profile string, renderNodes []string) (Registry, []string, []Diagnostic, error) {
+	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, candidates, profile, renderNodes)
+	if err != nil {
+		return Registry{}, nil, nil, err
+	}
+	applications := make([]string, 0, len(candidates))
+	for _, application := range candidates {
+		if readyByApplication[application] > 0 {
+			applications = append(applications, application)
+		}
+	}
+	if len(applications) == 0 {
+		return Registry{}, nil, diagnostics, fmt.Errorf("no built gateway application has a verified schedulable model")
+	}
+	filtered := diagnostics[:0]
+	for _, diagnostic := range diagnostics {
+		if readyByApplication[diagnostic.Application] > 0 {
+			filtered = append(filtered, diagnostic)
+		}
+	}
+	return registry, applications, filtered, nil
+}
+
+func buildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string) (Registry, []Diagnostic, map[string]int, error) {
 	selected := make(map[string]bool, len(applications))
 	for _, application := range applications {
 		if application != string(textmodel.BackendLlamaCPP) && application != string(textmodel.BackendDwarfStar) {
-			return Registry{}, nil, fmt.Errorf("gateway does not support application %q", application)
+			return Registry{}, nil, nil, fmt.Errorf("gateway does not support application %q", application)
 		}
 		if selected[application] {
-			return Registry{}, nil, fmt.Errorf("gateway application %q was selected more than once", application)
+			return Registry{}, nil, nil, fmt.Errorf("gateway application %q was selected more than once", application)
 		}
 		selected[application] = true
 	}
 	if len(selected) == 0 {
-		return Registry{}, nil, fmt.Errorf("gateway requires at least one application")
+		return Registry{}, nil, nil, fmt.Errorf("gateway requires at least one application")
 	}
 	models, err := textmodel.All(managed)
 	if err != nil {
-		return Registry{}, nil, err
+		return Registry{}, nil, nil, err
 	}
 	store, err := verification.Load(dataRoot)
 	if err != nil {
-		return Registry{}, nil, err
+		return Registry{}, nil, nil, err
 	}
 	readyByApplication := make(map[string]int)
 	diagnostics := []Diagnostic{}
@@ -76,11 +116,11 @@ func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 		}
 		bundle, ok := managed.Bundles[candidate.Bundle]
 		if !ok {
-			return Registry{}, nil, fmt.Errorf("text model %s references unknown bundle %s", candidate.ID, candidate.Bundle)
+			return Registry{}, nil, nil, fmt.Errorf("text model %s references unknown bundle %s", candidate.ID, candidate.Bundle)
 		}
 		statuses, err := content.InspectBundle(store, managed, bundle, dataRoot, false)
 		if err != nil {
-			return Registry{}, nil, err
+			return Registry{}, nil, nil, err
 		}
 		ready := len(statuses) > 0
 		var unavailable []string
@@ -101,16 +141,11 @@ func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 			ReasoningDefault: candidate.ReasoningDefault, ReasoningOff: candidate.ReasoningOff,
 		}
 		if _, duplicate := registry.byID[model.ID]; duplicate {
-			return Registry{}, nil, fmt.Errorf("gateway model identifier %q is ambiguous", model.ID)
+			return Registry{}, nil, nil, fmt.Errorf("gateway model identifier %q is ambiguous", model.ID)
 		}
 		registry.byID[model.ID] = model
 		registry.Models = append(registry.Models, model)
 		readyByApplication[application]++
-	}
-	for _, application := range applications {
-		if readyByApplication[application] == 0 {
-			return Registry{}, diagnostics, fmt.Errorf("selected gateway application %s has no verified schedulable model", application)
-		}
 	}
 	sort.Slice(registry.Models, func(i, j int) bool { return registry.Models[i].ID < registry.Models[j].ID })
 	hash := sha256.New()
@@ -126,7 +161,7 @@ func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 		}
 	}
 	registry.Fingerprint = fmt.Sprintf("%x", hash.Sum(nil))
-	return registry, diagnostics, nil
+	return registry, diagnostics, readyByApplication, nil
 }
 
 func (registry Registry) Lookup(identifier string) (Model, bool) {

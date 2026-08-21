@@ -258,13 +258,16 @@ preset; that is not managed content and should not be selected during the
 smoke test.
 
 For gateway changes, first run the unit and race tests for `internal/gateway`,
-then start `run gateway --profile cpu`. Confirm the omitted application
-selection exposes llama.cpp only, startup loads no backend, `/v1/models`
-contains only the receipt-verified frozen snapshot, `status gateway` reports
-`unloaded`, and Ctrl-C removes an exact backend container and joins its log
-follower if one was started. GPU acceptance must additionally cover lazy
-llama.cpp start, prefixed backend output, a streamed request, client
-cancellation, FIFO draining, and an application switch.
+then start `run gateway --profile cpu`. Confirm omitted application selection
+discovers only built applications with a compatible verified model, startup
+loads no backend, `/v1/models` contains only the receipt-verified frozen
+snapshot, `status gateway` reports `unloaded`, and Ctrl-C removes an exact
+backend container, joins its log follower, prints a clean stop, and exits zero
+if one was started. Confirm `-a llama-cpp` and `--application llama-cpp` produce
+the same strict inventory and the default llama.cpp loaded-model limit is one.
+GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
+output, a streamed request, client cancellation, FIFO draining, and an
+application switch.
 
 For DwarfStar agent-client integration, start the gateway with both
 applications, select
