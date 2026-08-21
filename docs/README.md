@@ -116,6 +116,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Offline managed image archives | `internal/imagearchive/` |
 | Public command tree, validation, and orchestration | `internal/cli/` |
 | Semantic terminal styling, prompts, and progress rendering | `internal/ui/` |
+| Host diagnostics and remediation planning | `internal/hostdoctor/` |
+| Receipt-aware managed and local text-model inventory | `internal/modelinventory/` |
 | Repository-root discovery | `internal/project/` |
 | Small runnable content recipes | `internal/recipes/` |
 | Built-in application walkthroughs | `internal/cli/commands_basic.go` |

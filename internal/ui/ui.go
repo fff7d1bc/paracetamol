@@ -33,7 +33,7 @@ var roleCodes = map[Role]string{
 
 var successStates = stringSet("available", "built", "complete", "identical", "installed", "pass", "read/write", "ready", "running", "verified", "writable", "yes")
 var warningStates = stringSet("download", "link-missing", "link-mismatch", "missing", "modified", "not created; parent writable", "partial", "repair link", "terms", "unverified")
-var errorStates = stringSet("blocked", "broken", "conflict", "error", "failed", "hash-mismatch", "insufficient access", "link mismatch", "no access", "not a directory", "size-mismatch", "unexpected", "unavailable", "user-file")
+var errorStates = stringSet("blocked", "broken", "conflict", "error", "failed", "hash-mismatch", "insufficient access", "link mismatch", "no access", "not a directory", "not created; parent not writable", "size-mismatch", "unexpected", "unavailable", "user-file")
 var mutedStates = stringSet("absent", "not built", "not present", "skipped", "unloaded")
 
 type Terminal struct {
@@ -48,16 +48,15 @@ func New(writer io.Writer, environment map[string]string) Terminal {
 	return Terminal{Writer: writer, tty: tty, color: tty && !noColor && environment["TERM"] != "dumb"}
 }
 
-func IsTerminal(writer io.Writer) bool {
-	if marker, ok := writer.(interface{ IsTerminal() bool }); ok {
+func IsTerminal(stream any) bool {
+	if marker, ok := stream.(interface{ IsTerminal() bool }); ok {
 		return marker.IsTerminal()
 	}
-	file, ok := writer.(*os.File)
+	file, ok := stream.(*os.File)
 	if !ok {
 		return false
 	}
-	status, err := file.Stat()
-	return err == nil && status.Mode()&os.ModeCharDevice != 0
+	return isTerminalFD(file.Fd())
 }
 
 func (terminal Terminal) IsTerminal() bool            { return terminal.tty }
@@ -279,9 +278,101 @@ func DisplayWidth(value string) int {
 		if unicode.Is(unicode.Mn, character) || unicode.Is(unicode.Me, character) || unicode.Is(unicode.Cf, character) {
 			continue
 		}
-		width++
+		if wideRune(character) {
+			width += 2
+		} else {
+			width++
+		}
 	}
 	return width
+}
+
+type Column struct {
+	Right    bool
+	MinWidth int
+}
+
+// ColumnLines measures complete plain or ANSI-styled rows before padding.
+// The final left-aligned column is intentionally not padded, so wrapping long
+// paths or descriptions does not gain trailing whitespace.
+func ColumnLines(rows [][]string, columns []Column, indent string) ([]string, error) {
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	count := len(rows[0])
+	if count == 0 {
+		return nil, fmt.Errorf("column rows must not be empty")
+	}
+	for _, row := range rows {
+		if len(row) != count {
+			return nil, fmt.Errorf("column rows must have one width")
+		}
+	}
+	if columns == nil {
+		columns = make([]Column, count)
+	}
+	if len(columns) != count {
+		return nil, fmt.Errorf("column policy does not match row width")
+	}
+	widths := make([]int, count)
+	for index, column := range columns {
+		widths[index] = column.MinWidth
+		for _, row := range rows {
+			widths[index] = max(widths[index], DisplayWidth(row[index]))
+		}
+	}
+	result := make([]string, 0, len(rows))
+	for _, row := range rows {
+		var line strings.Builder
+		line.WriteString(indent)
+		for index, cell := range row {
+			if index > 0 {
+				line.WriteString("  ")
+			}
+			padding := max(0, widths[index]-DisplayWidth(cell))
+			if columns[index].Right {
+				line.WriteString(strings.Repeat(" ", padding))
+			}
+			line.WriteString(cell)
+			if !columns[index].Right && index != count-1 {
+				line.WriteString(strings.Repeat(" ", padding))
+			}
+		}
+		result = append(result, line.String())
+	}
+	return result, nil
+}
+
+func NumberedLines(rows [][]string, columns []Column) ([]string, error) {
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	if columns == nil {
+		columns = make([]Column, len(rows[0]))
+	}
+	numbered := make([][]string, 0, len(rows))
+	for index, row := range rows {
+		copy := make([]string, 0, len(row)+1)
+		copy = append(copy, fmt.Sprintf("%d.", index+1))
+		copy = append(copy, row...)
+		numbered = append(numbered, copy)
+	}
+	policy := append([]Column{{Right: true, MinWidth: 3}}, columns...)
+	return ColumnLines(numbered, policy, "  ")
+}
+
+func wideRune(character rune) bool {
+	return character >= 0x1100 && (character <= 0x115f ||
+		character == 0x2329 || character == 0x232a ||
+		character >= 0x2e80 && character <= 0xa4cf && character != 0x303f ||
+		character >= 0xac00 && character <= 0xd7a3 ||
+		character >= 0xf900 && character <= 0xfaff ||
+		character >= 0xfe10 && character <= 0xfe19 ||
+		character >= 0xfe30 && character <= 0xfe6f ||
+		character >= 0xff00 && character <= 0xff60 ||
+		character >= 0xffe0 && character <= 0xffe6 ||
+		character >= 0x1f300 && character <= 0x1faff ||
+		character >= 0x20000 && character <= 0x3fffd)
 }
 
 func stripANSI(value string) string {

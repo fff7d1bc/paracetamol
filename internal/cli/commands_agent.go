@@ -13,20 +13,33 @@ import (
 )
 
 func (app *App) commandAgent(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("agent", "COMMAND", "[OPTIONS]"),
 			[2]string{"install", "install the pinned managed Pi runtime"},
 			[2]string{"run", "run managed Pi or Maki"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 {
+		writeHelp()
 		return controlerr.Usage("choose agent install or run")
 	}
 	switch args[0] {
 	case "install":
 		return app.agentInstall(args[1:])
 	case "run":
-		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+		if groupHelpRequested(args[1:]) {
+			app.writeGroupHelp(usage("agent", "run", "CLIENT", "[OPTIONS]", "[-- CLIENT-ARGS]"), [2]string{"pi", "run the managed Pi coding agent"}, [2]string{"maki", "run Maki with the managed provider"})
+			return nil
+		}
+		if len(args) == 1 {
+			app.writeGroupHelp(usage("agent", "run", "CLIENT", "[OPTIONS]", "[-- CLIENT-ARGS]"), [2]string{"pi", "run the managed Pi coding agent"}, [2]string{"maki", "run Maki with the managed provider"})
+			return controlerr.Usage("choose agent run pi or maki")
+		}
+		if strings.HasPrefix(args[1], "-") {
+			app.writeGroupHelp(usage("agent", "run", "CLIENT", "[OPTIONS]", "[-- CLIENT-ARGS]"), [2]string{"pi", "run the managed Pi coding agent"}, [2]string{"maki", "run Maki with the managed provider"})
 			return controlerr.Usage("choose agent run pi or maki")
 		}
 		switch args[1] {
@@ -35,15 +48,18 @@ func (app *App) commandAgent(args []string) error {
 		case "maki":
 			return app.agentMaki(args[2:])
 		default:
+			app.writeGroupHelp(usage("agent", "run", "CLIENT", "[OPTIONS]", "[-- CLIENT-ARGS]"), [2]string{"pi", "run the managed Pi coding agent"}, [2]string{"maki", "run Maki with the managed provider"})
 			return controlerr.Usage("unknown agent client %q", args[1])
 		}
 	default:
-		return controlerr.Usage("unknown agent client %q", args[0])
+		writeHelp()
+		return controlerr.Usage("unknown agent command %q", args[0])
 	}
 }
 
 func (app *App) agentInstall(args []string) error {
 	set := app.flags("agent install", usage("agent", "install", "pi", "[--data-dir PATH]"))
+	set.Argument("pi", "the pinned managed Pi npm runtime")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	client, remaining := leadingPositional(args)
 	if err := parseFlags(set, remaining); err != nil {
@@ -56,6 +72,9 @@ func (app *App) agentInstall(args []string) error {
 		}
 	} else if len(set.Args()) > 0 {
 		return controlerr.Usage("agent install accepts exactly one client")
+	}
+	if client == "" {
+		return set.usageError("agent install requires client pi")
 	}
 	if client != "pi" {
 		return controlerr.Usage("agent install supports only pi")
@@ -79,7 +98,7 @@ func (app *App) agentInstall(args []string) error {
 
 func (app *App) agentPi(args []string) error {
 	set := app.flags("agent run pi", usage("agent", "run", "pi", "[OPTIONS]", "[-- PI-ARGS]"))
-	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1")
+	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1 (default: "+config.DefaultGatewayURL+")")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Pi to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -128,7 +147,9 @@ func (app *App) agentPi(args []string) error {
 	environment := agent.PiEnvironment(app.Environment, agentDir, plan.Mode == "session")
 	if plan.Remote {
 		terminal := app.terminal(app.Stderr)
-		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Heading("Pi remote gateway"), terminal.Label(fmt.Sprintf("%-16s", "endpoint")), plan.Endpoint, terminal.Warning("WARNING:"))
+		fmt.Fprintln(app.Stderr, terminal.Heading("Pi remote gateway"))
+		writeDetailRows(app.Stderr, terminal, [][2]string{{"Endpoint", plan.Endpoint}})
+		fmt.Fprintf(app.Stderr, "%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Warning("WARNING:"))
 	}
 	if *sandbox {
 		child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
@@ -140,7 +161,8 @@ func (app *App) agentPi(args []string) error {
 			return err
 		}
 		terminal := app.terminal(app.Stderr)
-		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n  %s  %s\n  %s  host network retained for %s\n", terminal.Heading("Pi sandbox"), terminal.Label(fmt.Sprintf("%-17s", "Writable project")), sandboxPlan.Workdir, terminal.Label(fmt.Sprintf("%-17s", "Private state")), sandboxPlan.StateRoot, terminal.Label(fmt.Sprintf("%-17s", "Network")), plan.Endpoint)
+		fmt.Fprintln(app.Stderr, terminal.Heading("Pi sandbox"))
+		writeDetailRows(app.Stderr, terminal, [][2]string{{"Writable project", sandboxPlan.Workdir}, {"Private state", sandboxPlan.StateRoot}, {"Network", "host network retained for " + plan.Endpoint}})
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}
@@ -149,7 +171,7 @@ func (app *App) agentPi(args []string) error {
 
 func (app *App) agentMaki(args []string) error {
 	set := app.flags("agent run maki", usage("agent", "run", "maki", "[OPTIONS]", "[-- MAKI-ARGS]"))
-	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1")
+	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1 (default: "+config.DefaultGatewayURL+")")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Maki to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -197,7 +219,9 @@ func (app *App) agentMaki(args []string) error {
 	}
 	if plan.Remote {
 		terminal := app.terminal(app.Stderr)
-		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Heading("Maki remote gateway"), terminal.Label(fmt.Sprintf("%-16s", "endpoint")), plan.Endpoint, terminal.Warning("WARNING:"))
+		fmt.Fprintln(app.Stderr, terminal.Heading("Maki remote gateway"))
+		writeDetailRows(app.Stderr, terminal, [][2]string{{"Endpoint", plan.Endpoint}})
+		fmt.Fprintf(app.Stderr, "%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Warning("WARNING:"))
 	}
 	if *sandbox {
 		sandboxPlan, err := agent.CreateSandboxPlan(app.Context, app.Runner, command, dataRoot, mustWorkingDirectory(), "maki", map[string]string{}, app.Environment, nil)
@@ -205,7 +229,8 @@ func (app *App) agentMaki(args []string) error {
 			return err
 		}
 		terminal := app.terminal(app.Stderr)
-		fmt.Fprintf(app.Stderr, "%s\n  %s  %s\n  %s  %s\n  %s  host network retained for %s\n", terminal.Heading("Maki sandbox"), terminal.Label(fmt.Sprintf("%-17s", "Writable project")), sandboxPlan.Workdir, terminal.Label(fmt.Sprintf("%-17s", "Private state")), sandboxPlan.StateRoot, terminal.Label(fmt.Sprintf("%-17s", "Network")), plan.Endpoint)
+		fmt.Fprintln(app.Stderr, terminal.Heading("Maki sandbox"))
+		writeDetailRows(app.Stderr, terminal, [][2]string{{"Writable project", sandboxPlan.Workdir}, {"Private state", sandboxPlan.StateRoot}, {"Network", "host network retained for " + plan.Endpoint}})
 		command = sandboxPlan.Command
 		environment = envSliceMap(sandboxPlan.Environment)
 	}

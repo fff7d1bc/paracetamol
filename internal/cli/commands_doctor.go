@@ -1,21 +1,20 @@
 package cli
 
 import (
-	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 
 	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/identity"
-	"paracetamol/internal/platform"
 	runtimeplan "paracetamol/internal/runtime"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) commandDoctor(args []string) error {
@@ -41,44 +40,37 @@ func (app *App) commandDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
+	kernelRelease, err := hostdoctor.KernelRelease()
+	if err != nil {
+		return err
+	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Host"))
-	fmt.Fprintf(app.Stdout, "  %s  %s (rootless)\n", terminal.Label(fmt.Sprintf("%-14s", "Podman")), strings.TrimPrefix(podmanVersion, "podman version "))
-	fmt.Fprintf(app.Stdout, "  %s  %s/%s\n", terminal.Label(fmt.Sprintf("%-14s", "Kernel")), runtime.GOOS, runtime.GOARCH)
-	fmt.Fprintf(app.Stdout, "  %s  %s (%s)\n", terminal.Label(fmt.Sprintf("%-14s", "Data")), dataRoot, terminal.State(writableState(dataRoot)))
-	if restriction, readErr := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); readErr == nil && strings.TrimSpace(string(restriction)) != "0" {
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Warning(fmt.Sprintf("%-14s", "AppArmor")), "restricts unprivileged user namespaces; bubblewrap may need host policy")
-	}
+	writeDoctorField(app.Stdout, terminal, "Podman", strings.TrimPrefix(podmanVersion, "podman version ")+" ("+terminal.State("rootless")+")")
+	writeDoctorField(app.Stdout, terminal, "Kernel", kernelRelease)
+	writeDoctorField(app.Stdout, terminal, "Data", dataRoot+" ("+terminal.State(writableState(dataRoot))+")")
+	reportAppArmorPolicy(app.Stdout, terminal)
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("GPU access"))
-	reportDevice := func(path string) {
-		state := "read/write"
-		if err := platform.CheckDeviceAccess(path); err != nil {
-			state = err.Error()
-		}
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", path)), terminal.State(state))
-	}
-	reportDevice("/dev/kfd")
-	discovered, _ := filepath.Glob("/dev/dri/renderD*")
-	sort.Strings(discovered)
-	if len(discovered) == 0 {
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "/dev/dri/renderD*")), terminal.State("missing"))
-	}
-	for _, node := range discovered {
-		reportDevice(node)
-	}
+	reportDoctorDevices(app.Stdout, terminal)
 	allowed, err := app.podman().SELinuxContainerDeviceAccess(app.Context)
 	if err != nil {
 		return err
 	}
 	if allowed != nil && !*allowed {
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "SELinux")), terminal.State("blocked")+" (container_use_devices is off)")
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", "Host action")), terminal.Command("sudo setsebool -P container_use_devices 1"))
+		writeDoctorField(app.Stdout, terminal, "SELinux", terminal.State("blocked")+"; container_use_devices is off")
+		writeDoctorField(app.Stdout, terminal, "Host action", terminal.Command("sudo setsebool -P container_use_devices 1"))
 		return controlerr.New("SELinux blocks GPU device access")
+	} else if allowed != nil {
+		writeDoctorField(app.Stdout, terminal, "SELinux", terminal.State("allowed"))
 	}
+	ttmState := hostdoctor.ReadTTMState("/sys/module")
 	image := *imageFlag
 	if image == "" {
 		for _, candidate := range []string{config.ROCmBaseImage, mustApplication("comfyui").Image} {
-			present, _ := app.podman().Exists(app.Context, "image", candidate)
+			present, inspectErr := app.podman().Exists(app.Context, "image", candidate)
+			if inspectErr != nil {
+				return inspectErr
+			}
 			if present {
 				image = candidate
 				break
@@ -86,7 +78,10 @@ func (app *App) commandDoctor(args []string) error {
 		}
 	}
 	if image == "" {
-		fmt.Fprintf(app.Stdout, "\n%s\n  %s  %s\n  %s  %s\n", terminal.Heading("GPU probe"), terminal.Label(fmt.Sprintf("%-14s", "Image")), terminal.State("not built"), terminal.Label(fmt.Sprintf("%-14s", "Operation")), terminal.State("skipped"))
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("GPU probe"))
+		writeDoctorField(app.Stdout, terminal, "Image", terminal.State("not built"))
+		writeDoctorField(app.Stdout, terminal, "Operation", terminal.State("skipped"))
+		fmt.Fprintln(app.Stdout, "\nThe containerized GPU probe needs a managed PyTorch image.")
 		terminal.Next(identity.Command("build", "pytorch-base"))
 		return nil
 	}
@@ -109,12 +104,27 @@ func (app *App) commandDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(app.Stdout, "\n%s\n  %s  %s\n  %s  %s\n", terminal.Heading("GPU probe"), terminal.Label(fmt.Sprintf("%-14s", "Image")), image, terminal.Label(fmt.Sprintf("%-14s", "Render nodes")), strings.Join(selected, ", "))
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("GPU probe"))
+	writeDoctorField(app.Stdout, terminal, "Image", image)
+	writeDoctorField(app.Stdout, terminal, "Render nodes", strings.Join(selected, ", "))
 	for _, label := range []string{"PyTorch", "ROCm/HIP", "Device", "Architecture", "GPU operation", "GPU devices"} {
-		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-14s", label)), fields[label])
+		value := fields[label]
+		if label == "GPU operation" || label == "GPU devices" {
+			value = terminal.State(value)
+		}
+		writeDoctorField(app.Stdout, terminal, label, value)
+	}
+	if fields["Architecture"] == "gfx1151" {
+		if warning := hostdoctor.StrixHaloKFDWarning(kernelRelease); warning != "" {
+			writeDoctorField(app.Stdout, terminal, "KFD baseline", terminal.Warning(warning))
+		}
 	}
 	if fields["Architecture"] == "gfx1150" || fields["Architecture"] == "gfx1151" {
-		reportTTMMemory(app.Stdout, selected[0])
+		name := "Strix Point"
+		if fields["Architecture"] == "gfx1151" {
+			name = "Strix Halo"
+		}
+		reportTTMMemory(app.Stdout, terminal, selected[0], ttmState, name)
 	}
 	return nil
 }
@@ -132,12 +142,18 @@ func writableState(path string) string {
 			if !info.IsDir() {
 				return "not a directory"
 			}
-			if syscallAccess(probe) {
-				if probe == path {
+			if probe == path {
+				if syscall.Access(probe, 7) == nil {
 					return "writable"
 				}
+				return "insufficient access"
+			}
+			if syscall.Access(probe, 3) == nil {
 				return "not created; parent writable"
 			}
+			return "not created; parent not writable"
+		}
+		if !os.IsNotExist(err) {
 			return "insufficient access"
 		}
 		parent := filepath.Dir(probe)
@@ -148,25 +164,124 @@ func writableState(path string) string {
 	}
 }
 
-func syscallAccess(path string) bool {
-	// access(2) uses bit 2 for write and bit 1 for search/execute.
-	return syscall.Access(path, 3) == nil
+func writeDoctorField(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal, label, value string) {
+	fmt.Fprintf(output, "  %s %s\n", terminal.Label(fmt.Sprintf("%-14s", label)), value)
 }
 
-func reportTTMMemory(output interface{ Write([]byte) (int, error) }, renderNode string) {
-	memTotal := int64(0)
-	if handle, err := os.Open("/proc/meminfo"); err == nil {
-		scanner := bufio.NewScanner(handle)
-		for scanner.Scan() {
-			fields := strings.Fields(scanner.Text())
-			if len(fields) >= 2 && fields[0] == "MemTotal:" {
-				memTotal, _ = strconv.ParseInt(fields[1], 10, 64)
-				memTotal *= 1024
-			}
+func reportDoctorDevices(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal) {
+	nodes, _ := filepath.Glob("/dev/dri/renderD*")
+	sort.Strings(nodes)
+	devices := append([]string{"/dev/kfd"}, nodes...)
+	insufficient := false
+	for _, device := range devices {
+		if _, err := os.Stat(device); os.IsNotExist(err) {
+			writeDoctorField(output, terminal, map[bool]string{true: "KFD", false: "Render node"}[device == "/dev/kfd"], device+" ("+terminal.State("missing")+")")
+			continue
 		}
-		_ = handle.Close()
+		state := "read/write"
+		if err := syscall.Access(device, 6); err != nil {
+			state = "insufficient access"
+			insufficient = true
+		}
+		label := "Render node"
+		if device == "/dev/kfd" {
+			label = "KFD"
+		}
+		writeDoctorField(output, terminal, label, device+" ("+terminal.State(state)+")")
 	}
-	gtt, _ := os.ReadFile(filepath.Join("/sys/class/drm", filepath.Base(renderNode), "device", "mem_info_gtt_total"))
-	gttValue, _ := strconv.ParseInt(strings.TrimSpace(string(gtt)), 10, 64)
-	fmt.Fprintf(output, "\nShared memory\n  System RAM     %.2f GiB\n  GTT ready      %.2f GiB\n", float64(memTotal)/(1<<30), float64(gttValue)/(1<<30))
+	if len(nodes) == 0 {
+		writeDoctorField(output, terminal, "Render node", "/dev/dri/renderD* ("+terminal.State("missing")+")")
+	}
+	if insufficient {
+		writeDoctorField(output, terminal, "Access scope", terminal.Warning("the persistent rule below permits every local user"))
+		writeDoctorField(output, terminal, "Host action", terminal.Command(fmt.Sprintf("printf '%%s\\n' 'KERNEL==\"kfd\", MODE=\"0666\"' 'SUBSYSTEM==\"drm\", KERNEL==\"renderD*\", MODE=\"0666\"' | sudo tee /etc/udev/rules.d/70-%s-gpu.rules", identity.StateNamespace)))
+		writeDoctorField(output, terminal, "Apply", terminal.Command("sudo udevadm control --reload-rules && sudo udevadm trigger"))
+	}
+}
+
+func reportAppArmorPolicy(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal) {
+	path := "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
+	contents, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return
+	}
+	value := strings.TrimSpace(string(contents))
+	if err != nil || value != "0" && value != "1" {
+		writeDoctorField(output, terminal, "AppArmor", terminal.Warning("user namespace restriction state is unreadable"))
+		return
+	}
+	if value == "0" {
+		writeDoctorField(output, terminal, "AppArmor", terminal.State("user namespace restriction is off"))
+		return
+	}
+	writeDoctorField(output, terminal, "AppArmor", terminal.Warning("restricts unprivileged user namespaces"))
+	writeDoctorField(output, terminal, "Impact", terminal.Warning("bubblewrap without a matching AppArmor profile may be blocked"))
+	writeDoctorField(output, terminal, "Host action", terminal.Command(fmt.Sprintf("printf '%%s\\n' 'kernel.apparmor_restrict_unprivileged_userns = 0' | sudo tee /etc/sysctl.d/70-%s-userns.conf", identity.StateNamespace)))
+	writeDoctorField(output, terminal, "Apply", terminal.Command("sudo sysctl --system"))
+	writeDoctorField(output, terminal, "Security", terminal.Warning("this disables the AppArmor restriction system-wide"))
+}
+
+func reportTTMMemory(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal, renderNode string, state *hostdoctor.TTMState, platformName string) {
+	systemBytes, systemKnown := hostdoctor.ReadSystemMemory("/proc/meminfo")
+	gttBytes, gttKnown := hostdoctor.ReadGTTBytes(renderNode)
+	fmt.Fprintf(output, "\n%s\n", terminal.Heading(platformName+" shared memory"))
+	if systemKnown {
+		writeDoctorField(output, terminal, "System RAM", fmt.Sprintf("%.2f GiB", float64(systemBytes)/(1<<30)))
+	}
+	if state != nil {
+		writeDoctorField(output, terminal, "TTM ceiling", fmt.Sprintf("%.2f GiB (%s; %d pages)", float64(state.PagesLimit)/float64(hostdoctor.PagesPerGiB), state.Module, state.PagesLimit))
+		if state.PagePoolKnown {
+			writeDoctorField(output, terminal, "TTM pool", fmt.Sprintf("%.2f GiB (%d pages)", float64(state.PagePoolSize)/float64(hostdoctor.PagesPerGiB), state.PagePoolSize))
+		}
+	}
+	if gttKnown {
+		writeDoctorField(output, terminal, "GTT ready", fmt.Sprintf("%.2f GiB", float64(gttBytes)/(1<<30)))
+	}
+	if !systemKnown {
+		writeDoctorField(output, terminal, "Status", terminal.Warning("could not read total system RAM; see the tuning guide"))
+		return
+	}
+	target, ok := hostdoctor.TargetGiB(systemBytes)
+	if !ok {
+		writeDoctorField(output, terminal, "Status", terminal.Info("no automatic TTM starting point is defined for this RAM size; see the tuning guide"))
+		return
+	}
+	if state == nil {
+		writeDoctorField(output, terminal, "Status", terminal.Warning("could not identify the active TTM pages_limit parameter; see the tuning guide"))
+		return
+	}
+	if hostdoctor.MemoryReady(state, gttBytes, gttKnown, target) {
+		writeDoctorField(output, terminal, "Status", terminal.Success(fmt.Sprintf("meets the %d GiB starting point", target)))
+		return
+	}
+	writeDoctorField(output, terminal, "Status", terminal.Warning(fmt.Sprintf("effective GTT or TTM pool is below the %d GiB starting point", target)))
+	fmt.Fprintf(output, "\n%s administrator access and a reboot are required:\n", terminal.Heading("Host action:"))
+	tools := detectBootTools()
+	for _, command := range hostdoctor.Remediation(state, target, tools, identity.StateNamespace) {
+		if strings.HasPrefix(command, "Rebuild ") {
+			fmt.Fprintf(output, "  %s\n", terminal.Warning(command))
+		} else {
+			fmt.Fprintf(output, "  %s\n", terminal.Command(command))
+		}
+	}
+	fmt.Fprintf(output, "\n%s These are dynamic GPU-mapping and page-pool ceilings, not reserved memory.\n", terminal.Label("Note:"))
+}
+
+func detectBootTools() hostdoctor.BootTools {
+	exists := func(path string, directory bool) bool {
+		status, err := os.Stat(path)
+		return err == nil && status.IsDir() == directory
+	}
+	has := func(name string) bool { _, err := exec.LookPath(name); return err == nil }
+	tools := hostdoctor.BootTools{
+		OstreeBooted: exists("/run/ostree-booted", false), RPMOstree: has("rpm-ostree"),
+		GRUBDropIn: exists("/etc/default/grub.d", true), UpdateGRUB: has("update-grub"), Grubby: has("grubby"),
+	}
+	for _, candidate := range [][2]string{{"update-initramfs", "sudo update-initramfs -u"}, {"dracut", "sudo dracut --force"}, {"mkinitcpio", "sudo mkinitcpio -P"}} {
+		if has(candidate[0]) {
+			tools.Initramfs = candidate[1]
+			break
+		}
+	}
+	return tools
 }

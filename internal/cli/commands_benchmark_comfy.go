@@ -37,6 +37,7 @@ var comfyBenchmarkContainer = identity.Container("comfyui-benchmark")
 
 func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBenchmarkOptions, []string, error) {
 	set := app.flags(name, usage)
+	set.Argument("BUNDLE", "one exact ComfyUI bundle with a managed benchmark workload")
 	profileFlag := set.String("profile", "", "execution profile")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node")
@@ -54,6 +55,13 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 	cache := set.String("cache-mode", "persistent", "persistent or isolated")
 	if err := parseFlags(set, args); err != nil {
 		return nil, nil, err
+	}
+	positionals := set.Args()
+	if len(positionals) != 1 {
+		if len(positionals) == 0 {
+			set.renderHelp(app.Stdout)
+		}
+		return nil, nil, controlerr.Usage("choose one exact benchmark bundle")
 	}
 	if *runs < 1 {
 		return nil, nil, controlerr.Usage("--runs must be at least 1")
@@ -90,21 +98,15 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 		return nil, nil, err
 	}
 	application, _ := config.ApplicationByID("comfyui")
-	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selected[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, set.Args(), nil
+	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selected[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, positionals, nil
 }
 
 func (app *App) benchmarkComfyUI(args []string) error {
-	bundleID, remaining := leadingPositional(args)
-	options, extras, err := app.comfyBenchmarkFlags("benchmark comfyui run", usage("benchmark", "comfyui", "run", "BUNDLE", "[OPTIONS]"), remaining)
+	options, positionals, err := app.comfyBenchmarkFlags("benchmark comfyui run", usage("benchmark", "comfyui", "run", "BUNDLE", "[OPTIONS]"), args)
 	if err != nil {
 		return err
 	}
-	if bundleID == "" && len(extras) > 0 {
-		bundleID, extras = extras[0], extras[1:]
-	}
-	if bundleID == "" || len(extras) != 0 {
-		return controlerr.Usage("choose one exact benchmark bundle")
-	}
+	bundleID := positionals[0]
 	managed, err := app.managedCatalog()
 	if err != nil {
 		return err

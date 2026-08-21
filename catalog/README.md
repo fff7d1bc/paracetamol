@@ -3,7 +3,7 @@
 The catalog describes agreements, downloadable artifacts, shared archive
 collections, installable bundles and selector groups, deterministic UI
 workflows, and managed benchmark graphs. It contains no model weights or sample
-media. Use `./paracetamol content list --bundles` for the current exact inventory.
+media. Use `./paracetamol content list bundles` for the current exact inventory.
 
 ## Structure
 
@@ -56,8 +56,8 @@ DSpark support artifact. Do not maintain a second inventory in this file.
 Inspect the catalog through the same public commands users run:
 
 ```bash
-./paracetamol content list --bundles
-./paracetamol content list --models --details
+./paracetamol content list bundles
+./paracetamol content list models --details
 ./paracetamol content install all --dry-run
 ```
 

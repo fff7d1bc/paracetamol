@@ -28,10 +28,12 @@ import (
 	"paracetamol/internal/process"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) commandBuild(args []string) error {
-	set := app.flags("build", "Usage: "+identity.Command("build", "TARGET", "[--no-layer-cache | --no-cache]", "[--image TAG]"))
+	set := app.flags("build", "Usage: "+identity.Command("build", "[TARGET]", "[--no-layer-cache | --no-cache]", "[--image TAG]"))
+	set.Argument("TARGET", "all, runtime, pytorch-base, content-tools, comfyui, llama-cpp, or dwarfstar")
 	noLayerCache := set.Bool("no-layer-cache", false, "rebuild selected image layers")
 	noCache := set.Bool("no-cache", false, "cold-build selected images and prerequisites")
 	image := set.String("image", "", "override the selected image tag")
@@ -48,7 +50,7 @@ func (app *App) commandBuild(args []string) error {
 	}
 	if target == "" {
 		if !terminalReader(app.Stdin) {
-			return controlerr.Usage("choose an image target")
+			return set.usageError("choose an image target")
 		}
 		var err error
 		target, err = app.guidedBuildTarget()
@@ -128,12 +130,17 @@ func (app *App) commandBuild(args []string) error {
 		outcomes = append(outcomes, outcome{step: step, state: "built"})
 	}
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Build summary"))
+	rows := make([][]string, 0, len(outcomes))
 	for _, result := range outcomes {
-		fmt.Fprintf(app.Stdout, "  %s %s %s", terminal.State(fmt.Sprintf("%-8s", result.state)), terminal.Command(fmt.Sprintf("%-14s", result.step.Unit.ID)), result.step.Image)
+		detail := result.step.Image
 		if result.reason != "" {
-			fmt.Fprintf(app.Stdout, " (%s)", result.reason)
+			detail += " (" + result.reason + ")"
 		}
-		fmt.Fprintln(app.Stdout)
+		rows = append(rows, []string{terminal.State(result.state), terminal.Command(string(result.step.Unit.ID)), detail})
+	}
+	lines, _ := ui.ColumnLines(rows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	if failed {
 		return &controlerr.Error{Message: "one or more image builds failed", Status: 1}
@@ -148,8 +155,13 @@ func (app *App) guidedBuildTarget() (string, error) {
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Choose an image target:"))
-	for index, choice := range choices {
-		fmt.Fprintf(app.Stdout, "  %2d. %s\n", index+1, terminal.Command(choice))
+	rows := make([][]string, 0, len(choices))
+	for _, choice := range choices {
+		rows = append(rows, []string{terminal.Command(choice)})
+	}
+	lines, _ := ui.NumberedLines(rows, nil)
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	answer, err := app.promptLine("Selection (or q to cancel): ", true)
 	if err != nil {
@@ -167,6 +179,7 @@ func (app *App) guidedBuildTarget() (string, error) {
 
 func (app *App) commandGuide(args []string) error {
 	set := app.flags("guide", usage("guide", "[APPLICATION]"))
+	set.Argument("APPLICATION", "comfyui, llama-cpp, or dwarfstar; omit to list all")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -181,8 +194,13 @@ func (app *App) commandGuide(args []string) error {
 	if application == "" {
 		terminal := app.terminal(app.Stdout)
 		fmt.Fprintln(app.Stdout, terminal.Heading("Applications:"))
+		var rows [][]string
 		for _, spec := range config.Applications() {
-			fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Command(fmt.Sprintf("%-12s", spec.ID)), spec.Summary)
+			rows = append(rows, []string{terminal.Command(spec.ID), spec.Summary})
+		}
+		lines, _ := ui.ColumnLines(rows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		terminal.Next(identity.Command("guide", "APPLICATION"))
 		return nil
@@ -213,6 +231,7 @@ func (app *App) commandGuide(args []string) error {
 
 func (app *App) commandStatus(args []string) error {
 	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]", "[--gateway-url URL]"))
+	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gateway; omit for the host dashboard")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
@@ -272,12 +291,15 @@ func (app *App) commandStatus(args []string) error {
 		state = "ready"
 	}
 	terminal := app.terminal(app.Stdout)
-	fmt.Fprintf(app.Stdout, "%s\n  %s %s (%s free)\n\n", terminal.Heading("Persistent data"), terminal.State(fmt.Sprintf("%-12s", state)), dataRoot, humanSize(int64(free)))
+	fmt.Fprintln(app.Stdout, terminal.Heading("Persistent data"))
+	dataRows, _ := ui.ColumnLines([][]string{{terminal.State(state), dataRoot, humanSize(int64(free)) + " free"}}, nil, "  ")
+	fmt.Fprintln(app.Stdout, dataRows[0])
 	fmt.Fprintln(app.Stdout, terminal.Heading("GPU devices"))
 	devices := []string{"/dev/kfd"}
 	nodes, _ := filepath.Glob("/dev/dri/renderD*")
 	sort.Strings(nodes)
 	devices = append(devices, nodes...)
+	var deviceRows [][]string
 	for _, device := range devices {
 		deviceState := "read/write"
 		if err := platform.CheckDeviceAccess(device); err != nil {
@@ -287,13 +309,18 @@ func (app *App) commandStatus(args []string) error {
 				deviceState = "no access"
 			}
 		}
-		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-12s", deviceState)), device)
+		deviceRows = append(deviceRows, []string{terminal.State(deviceState), device})
+	}
+	lines, _ := ui.ColumnLines(deviceRows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Images"))
 	images := []struct{ label, image string }{{"content", config.ContentToolsImage}, {"runtime", config.ROCmRuntimeImage}, {"base", config.ROCmBaseImage}}
 	for _, application := range config.Applications() {
 		images = append(images, struct{ label, image string }{application.ID, application.Image})
 	}
+	var imageRows [][]string
 	for _, item := range images {
 		present, existsErr := app.podman().Exists(app.Context, "image", item.image)
 		if existsErr != nil {
@@ -303,9 +330,14 @@ func (app *App) commandStatus(args []string) error {
 		if present {
 			imageState = "ready"
 		}
-		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", imageState)), terminal.Label(fmt.Sprintf("%-12s", item.label)), item.image)
+		imageRows = append(imageRows, []string{terminal.State(imageState), terminal.Label(item.label), item.image})
+	}
+	lines, _ = ui.ColumnLines(imageRows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Managed containers"))
+	var containerRows [][]string
 	for _, application := range config.Applications() {
 		present, existsErr := app.podman().Exists(app.Context, "container", application.ContainerName)
 		if existsErr != nil {
@@ -318,7 +350,11 @@ func (app *App) commandStatus(args []string) error {
 				return existsErr
 			}
 		}
-		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", containerState)), terminal.Command(fmt.Sprintf("%-12s", application.ID)), application.ContainerName)
+		containerRows = append(containerRows, []string{terminal.State(containerState), terminal.Command(application.ID), application.ContainerName})
+	}
+	lines, _ = ui.ColumnLines(containerRows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	return nil
 }
@@ -374,16 +410,20 @@ func (app *App) applicationStatus(spec config.Application, dataFlag string) erro
 }
 
 func (app *App) commandRun(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		commands := make([][2]string, 0, len(config.Applications())+1)
 		commands = append(commands, [2]string{"gateway", "lazy one-port text inference across selected backends"})
 		for _, spec := range config.Applications() {
 			commands = append(commands, [2]string{spec.ID, spec.Summary})
 		}
 		app.writeGroupHelp(usage("run", "APPLICATION", "[MODE]", "[OPTIONS]"), commands...)
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
+		writeHelp()
 		return controlerr.Usage("choose an application")
 	}
 	application := args[0]
@@ -393,25 +433,44 @@ func (app *App) commandRun(args []string) error {
 	case "comfyui":
 		return app.runComfyUI(args[1:])
 	case "llama-cpp":
-		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+		if groupHelpRequested(args[1:]) {
+			app.writeGroupHelp(usage("run", "llama-cpp", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
+			return nil
+		}
+		if len(args) == 1 {
+			app.writeGroupHelp(usage("run", "llama-cpp", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
+			return controlerr.Usage("choose llama.cpp mode server or cli")
+		}
+		if strings.HasPrefix(args[1], "-") {
+			app.writeGroupHelp(usage("run", "llama-cpp", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
 			return controlerr.Usage("choose llama.cpp mode server or cli")
 		}
 		return app.runLlama(args[1], args[2:])
 	case "dwarfstar":
-		if len(args) < 2 || strings.HasPrefix(args[1], "-") {
+		if groupHelpRequested(args[1:]) {
+			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
+			return nil
+		}
+		if len(args) == 1 {
+			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
+			return controlerr.Usage("choose DwarfStar mode server or cli")
+		}
+		if strings.HasPrefix(args[1], "-") {
+			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
 			return controlerr.Usage("choose DwarfStar mode server or cli")
 		}
 		return app.runDwarfStar(args[1], args[2:])
 	default:
+		writeHelp()
 		return controlerr.Usage("unknown application %q", application)
 	}
 }
 
 func (app *App) runComfyUI(args []string) error {
 	set := app.flags("run comfyui", usage("run", "comfyui", "[OPTIONS]", "[-- COMFYUI-ARGS]"))
-	profile := set.String("profile", "", "execution profile")
-	listen := set.String("listen", "", "host publication address")
-	portText := set.String("port", "", "host port")
+	profile := set.String("profile", "", "auto, cpu, rdna4, strix-halo, or strix-point (default: auto)")
+	listen := set.String("listen", "", "host IP on which to publish ComfyUI (default: 127.0.0.1)")
+	portText := set.String("port", "", "host port (default: 8188)")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
@@ -419,9 +478,9 @@ func (app *App) runComfyUI(args []string) error {
 	dryRun := set.Bool("dry-run", false, "print resolved command")
 	unconfined := set.Bool("unconfined", false, "disable seccomp")
 	disableExtensions := set.Bool("disable-bundled-extensions", false, "disable bundled extensions")
-	memoryPolicy := set.String("memory-policy", "", "balanced or conservative")
+	memoryPolicy := set.String("memory-policy", "", "balanced or conservative (default: balanced)")
 	image := set.String("image", "", "override image")
-	kernelPolicy := set.String("kernel-policy", "", "default or experimental")
+	kernelPolicy := set.String("kernel-policy", "", "default or experimental (default: default)")
 	upstreamArgs, err := parseFlagsWithPassthrough(set, args)
 	if err != nil {
 		return err
@@ -488,31 +547,35 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err := requireChoice(mode, "llama.cpp mode", "server", "cli"); err != nil {
 		return err
 	}
-	set := app.flags("run llama-cpp "+mode, usage("run", "llama-cpp", mode, "(--model FILE | --preset NAME | --router)", "[OPTIONS]"))
+	sourceSynopsis := "(--model FILE | --preset NAME)"
+	if mode == "server" {
+		sourceSynopsis = "(--model FILE | --preset NAME | --router)"
+	}
+	set := app.flags("run llama-cpp "+mode, usage("run", "llama-cpp", mode, sourceSynopsis, "[OPTIONS]"))
 	model := set.String("model", "", "exact local GGUF")
 	presetID := set.String("preset", "", "installed catalog preset")
 	routerMode := false
 	if mode == "server" {
 		set.BoolVar(&routerMode, "router", false, "serve installed presets")
 	}
-	profileFlag := set.String("profile", "", "execution profile")
-	backend := set.String("backend", "rocm", "rocm or vulkan")
+	profileFlag := set.String("profile", "", "execution profile: auto, cpu, rdna4, strix-halo, or strix-point (default: auto)")
+	backend := set.String("backend", "rocm", "GPU inference backend: rocm or vulkan")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
-	imageFlag := set.String("image", "", "override image")
-	contextSize := set.Int64("context", -1, "context size")
-	unconfined := set.Bool("unconfined", false, "disable seccomp")
-	dryRun := set.Bool("dry-run", false, "print resolved command")
+	imageFlag := set.String("image", "", "override the managed local image tag")
+	contextSize := set.Int64("context", -1, "context size; overrides the preset or model default")
+	unconfined := set.Bool("unconfined", false, "disable the container seccomp filter")
+	dryRun := set.Bool("dry-run", false, "validate and print the resolved Podman command")
 	listen, portText, apiKey := "", "", ""
 	detach := false
 	modelsMax := 0
 	if mode == "server" {
-		set.StringVar(&listen, "listen", "", "host publication address")
-		set.StringVar(&portText, "port", "", "host port")
+		set.StringVar(&listen, "listen", "", "host IP on which to publish the server (default: 127.0.0.1)")
+		set.StringVar(&portText, "port", "", "host server port (default: 8080)")
 		set.BoolVar(&detach, "detach", false, "run in background")
-		set.StringVar(&apiKey, "api-key-file", "", "read-only API key file")
-		set.IntVar(&modelsMax, "models-max", 0, "router simultaneous models")
+		set.StringVar(&apiKey, "api-key-file", "", "exact local API-key file mounted read-only")
+		set.IntVar(&modelsMax, "models-max", 0, "router models loaded simultaneously (default: 2)")
 	}
 	prompt := optionalString{}
 	if mode == "cli" {
@@ -524,21 +587,29 @@ func (app *App) runLlama(mode string, args []string) error {
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run llama-cpp %s does not accept positional arguments", mode)
 	}
+	contextExplicit := setWasSet(set, "context")
+	modelsMaxExplicit := setWasSet(set, "models-max")
 	selectedSources := boolCount(*model != "", *presetID != "", routerMode)
 	if selectedSources != 1 {
-		return controlerr.Usage("choose exactly one of --model, --preset, or --router")
+		if selectedSources == 0 {
+			set.renderHelp(app.Stdout)
+		}
+		if mode == "server" {
+			return controlerr.Usage("choose exactly one of --model, --preset, or --router")
+		}
+		return controlerr.Usage("choose exactly one of --model or --preset")
 	}
 	if err := requireChoice(*backend, "backend", "rocm", "vulkan"); err != nil {
 		return err
 	}
-	if *contextSize < -1 {
+	if contextExplicit && *contextSize < 0 {
 		return controlerr.Usage("--context must be zero or positive")
 	}
-	if modelsMax != 0 && !routerMode {
+	if modelsMaxExplicit && !routerMode {
 		return controlerr.Usage("--models-max is only valid with --router")
 	}
 	modelsMaxValue := modelsMax
-	if modelsMaxValue == 0 {
+	if !modelsMaxExplicit {
 		modelsMaxValue = 2
 	}
 	if modelsMaxValue < 1 {
@@ -662,6 +733,13 @@ func (app *App) runLlama(mode string, args []string) error {
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("llama-cpp"), terminal.Label("Backend:"), options.Backend, terminal.Label("Model:"), displayModel)
+	if mode == "server" {
+		status := []string{"status", "llama-cpp"}
+		if *presetID != "" {
+			status = append(status, "--model", *presetID)
+		}
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Label("Configuration:"), terminal.Command(identity.Command(status...)))
+	}
 	if *dryRun {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
@@ -674,34 +752,43 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 		return err
 	}
 	set := app.flags("run dwarfstar "+mode, usage("run", "dwarfstar", mode, "[OPTIONS]"))
-	modelFlag := set.String("model", "", "exact local GGUF")
-	profileFlag := set.String("profile", "", "execution profile")
+	modelFlag := set.String("model", "", "exact local DwarfStar-compatible GGUF; defaults to the managed model")
+	profileFlag := set.String("profile", "", "execution profile: auto, rdna4, strix-halo, or strix-point (default: auto)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact render node")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
-	imageFlag := set.String("image", "", "override image")
-	contextSize := set.Int64("context", -1, "context tokens")
-	outputTokens := set.Int64("output-tokens", -1, "maximum output tokens")
-	dspark := set.Bool("dspark", false, "enable managed DSpark pair")
-	unconfined := set.Bool("unconfined", false, "disable seccomp")
-	dryRun := set.Bool("dry-run", false, "print resolved command")
+	imageFlag := set.String("image", "", "override the managed local image tag")
+	contextSize := set.Int64("context", -1, "allocated context tokens (default: managed preset policy)")
+	outputTokens := set.Int64("output-tokens", -1, "default or CLI maximum output tokens (default: managed preset policy)")
+	dspark := set.Bool("dspark", false, "enable the exact managed DSpark support GGUF")
+	unconfined := set.Bool("unconfined", false, "disable the container seccomp filter")
+	dryRun := set.Bool("dry-run", false, "validate and print the resolved Podman command")
 	listen, portText := "", ""
 	detach := false
 	if mode == "server" {
-		set.StringVar(&listen, "listen", "", "host publication address")
-		set.StringVar(&portText, "port", "", "host port")
+		set.StringVar(&listen, "listen", "", "host IP on which to publish the server (default: 127.0.0.1)")
+		set.StringVar(&portText, "port", "", "host server port (default: 8000)")
 		set.BoolVar(&detach, "detach", false, "run in background")
 	}
 	prompt := optionalString{}
+	noThinking := false
 	if mode == "cli" {
-		set.Var(&prompt, "prompt", "single prompt")
+		set.Var(&prompt, "prompt", "run one prompt; omit for an interactive conversation")
+		set.BoolVar(&noThinking, "no-thinking", false, "disable thinking and request a direct answer")
 	}
-	noThinking := set.Bool("no-thinking", false, "disable thinking")
 	if err := parseFlags(set, args); err != nil {
 		return err
 	}
 	if len(set.Args()) > 0 {
 		return controlerr.Usage("run dwarfstar %s does not accept positional arguments", mode)
+	}
+	contextExplicit := setWasSet(set, "context")
+	outputExplicit := setWasSet(set, "output-tokens")
+	if contextExplicit && (*contextSize < 4096 || *contextSize > 1048576) {
+		return controlerr.Usage("--context must be between 4096 and 1048576")
+	}
+	if outputExplicit && *outputTokens < 1 {
+		return controlerr.Usage("--output-tokens must be positive and smaller than --context")
 	}
 	profileValue := firstNonEmpty(*profileFlag, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
 	if profileValue == "cpu" {
@@ -737,10 +824,10 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 	for _, candidate := range managed.DwarfStarPresets {
 		preset = candidate
 	}
-	if *contextSize == -1 {
+	if !contextExplicit {
 		*contextSize = preset.DefaultContext
 	}
-	if *outputTokens == -1 {
+	if !outputExplicit {
 		*outputTokens = preset.MaxOutputTokens
 	}
 	if *contextSize < 4096 || *contextSize > 1048576 {
@@ -777,7 +864,7 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 		}
 	}
 	application, _ := config.ApplicationByID("dwarfstar")
-	options := runtime.DwarfStarOptions{Image: firstNonEmpty(*imageFlag, application.Image), Mode: mode, DataDir: dataRoot, Model: model, SupportModel: support, DSpark: *dspark, RenderNodes: selectedNodes, Profile: profileValue, Context: *contextSize, OutputTokens: *outputTokens, NoThinking: *noThinking, Detach: detach, Unconfined: *unconfined, Interactive: mode == "cli" && !prompt.set}
+	options := runtime.DwarfStarOptions{Image: firstNonEmpty(*imageFlag, application.Image), Mode: mode, DataDir: dataRoot, Model: model, SupportModel: support, DSpark: *dspark, RenderNodes: selectedNodes, Profile: profileValue, Context: *contextSize, OutputTokens: *outputTokens, NoThinking: noThinking, Detach: detach, Unconfined: *unconfined, Interactive: mode == "cli" && !prompt.set}
 	if prompt.set {
 		options.Prompt = &prompt.value
 	}
@@ -812,12 +899,16 @@ func (app *App) runDwarfStar(mode string, args []string) error {
 
 func (app *App) commandShell(args []string) error {
 	set := app.flags("shell", usage("shell", "APPLICATION", "[--data-dir PATH]", "[--image TAG]"))
+	set.Argument("APPLICATION", "application whose constrained image shell to open")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "override image")
 	if err := parseFlags(set, args); err != nil {
 		return err
 	}
 	if len(set.Args()) != 1 {
+		if len(set.Args()) == 0 {
+			set.renderHelp(app.Stdout)
+		}
 		return controlerr.Usage("shell accepts exactly one application")
 	}
 	applicationID := set.Args()[0]
@@ -849,6 +940,7 @@ func (app *App) commandShell(args []string) error {
 
 func (app *App) commandLogs(args []string) error {
 	set := app.flags("logs", usage("logs", "APPLICATION", "[--follow]", "[--tail N | --all]"))
+	set.Argument("APPLICATION", "managed application container")
 	follow := set.Bool("follow", false, "follow output")
 	tail := set.Int("tail", 200, "recent lines")
 	all := set.Bool("all", false, "show complete logs")
@@ -856,6 +948,9 @@ func (app *App) commandLogs(args []string) error {
 		return err
 	}
 	if len(set.Args()) != 1 {
+		if len(set.Args()) == 0 {
+			set.renderHelp(app.Stdout)
+		}
 		return controlerr.Usage("logs accepts exactly one application")
 	}
 	applicationID := set.Args()[0]
@@ -884,10 +979,14 @@ func (app *App) commandLogs(args []string) error {
 
 func (app *App) commandStop(args []string) error {
 	set := app.flags("stop", usage("stop", "APPLICATION|all"))
+	set.Argument("APPLICATION|all", "one managed application or every normal application container")
 	if err := parseFlags(set, args); err != nil {
 		return err
 	}
 	if len(set.Args()) != 1 {
+		if len(set.Args()) == 0 {
+			set.renderHelp(app.Stdout)
+		}
 		return controlerr.Usage("stop accepts exactly one application")
 	}
 	applicationID := set.Args()[0]
@@ -933,7 +1032,11 @@ func (app *App) startManaged(application config.Application, image string, comma
 		return err
 	}
 	if !present {
-		return controlerr.New("image not found: %s\n  Build image: %s", image, identity.Command("build", application.ID))
+		message := fmt.Sprintf("image not found: %s\n  Build image: %s", image, identity.Command("build", application.ID))
+		if application.ID == "comfyui" && image == application.Image {
+			message += "\n  Install content: " + identity.Command("content", "install", "comfyui", "image")
+		}
+		return controlerr.New("%s", message)
 	}
 	managed, err := app.podman().ManagedContainerNames(app.Context, application.ID)
 	if err != nil {
@@ -1122,15 +1225,7 @@ func (value *optionalString) Set(raw string) error {
 }
 
 func terminalReader(reader io.Reader) bool {
-	if marker, ok := reader.(interface{ IsTerminal() bool }); ok {
-		return marker.IsTerminal()
-	}
-	file, ok := reader.(*os.File)
-	if !ok {
-		return false
-	}
-	status, err := file.Stat()
-	return err == nil && status.Mode()&os.ModeCharDevice != 0
+	return ui.IsTerminal(reader)
 }
 
 func regularFile(value, description string) (string, error) {
@@ -1201,7 +1296,7 @@ func nearestExisting(value string) string {
 	}
 }
 
-func setWasSet(set *flag.FlagSet, name string) bool {
+func setWasSet(set interface{ Visit(func(*flag.Flag)) }, name string) bool {
 	found := false
 	set.Visit(func(item *flag.Flag) {
 		if item.Name == name {

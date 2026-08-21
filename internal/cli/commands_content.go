@@ -17,6 +17,7 @@ import (
 	"paracetamol/internal/contentpack"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/identity"
+	"paracetamol/internal/modelinventory"
 	"paracetamol/internal/recipes"
 	"paracetamol/internal/remoteimport"
 	"paracetamol/internal/storage"
@@ -25,16 +26,20 @@ import (
 )
 
 func (app *App) commandContent(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("content", "COMMAND", "[OPTIONS]"),
 			[2]string{"list [VIEW]", "list recipes, bundles, families, or models"},
 			[2]string{"status", "inspect managed-content readiness"},
 			[2]string{"install", "install verified managed content"},
 			[2]string{"import", "resolve a reviewed remote file into a local pack"},
 			[2]string{"workflows", "list, inspect, or install curated workflows"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 {
+		writeHelp()
 		return controlerr.Usage("choose content list, status, install, import, or workflows")
 	}
 	switch args[0] {
@@ -49,17 +54,19 @@ func (app *App) commandContent(args []string) error {
 	case "workflows":
 		return app.contentWorkflows(args[1:])
 	default:
+		writeHelp()
 		return controlerr.Usage("unknown content command %q", args[0])
 	}
 }
 
 func (app *App) contentList(args []string) error {
 	set := app.flags("content list", usage("content", "list", "[recipes|bundles|families|models]", "[OPTIONS]"))
-	application := set.String("application", "", "filter exact bundles or models")
-	details := set.Bool("details", false, "show model policy")
+	set.Argument("VIEW", "recipes (default), bundles, families, or runnable models")
+	application := set.String("application", "", "filter bundles or models by consuming application")
+	details := set.Bool("details", false, "show complete managed model runtime policy")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	var scans stringList
-	set.Var(&scans, "scan", "additional GGUF file or directory")
+	set.Var(&scans, "scan", "additional llama.cpp GGUF file or directory; repeatable")
 	view, remaining := leadingPositional(args)
 	if err := parseFlags(set, remaining); err != nil {
 		return err
@@ -85,22 +92,33 @@ func (app *App) contentList(args []string) error {
 		return err
 	}
 	if view == "models" {
-		if *application != "" && *application != "llama-cpp" {
-			return controlerr.Usage("--models supports only --application llama-cpp")
+		if *application != "" {
+			if err := requireChoice(*application, "model inventory application", "llama-cpp", "dwarfstar"); err != nil {
+				return err
+			}
+		}
+		if len(scans) > 0 && *application == "dwarfstar" {
+			return controlerr.Usage("--scan applies only to llama.cpp GGUF models")
 		}
 		dataRoot, err := app.resolveDataDir(*dataFlag, false)
 		if err != nil {
 			return err
 		}
-		return app.printModelInventory(managed, dataRoot, scans, *details)
+		return app.printModelInventory(managed, dataRoot, scans, *details, *application)
 	}
 	if *application != "" && view != "bundles" {
 		return controlerr.Usage("--application requires the bundles or models view")
 	}
 	if view == "bundles" {
+		if *application != "" {
+			if _, ok := config.ApplicationByID(*application); !ok {
+				return controlerr.Usage("unknown application %q", *application)
+			}
+		}
 		terminal := app.terminal(app.Stdout)
 		identifiers := sortedBundleIDs(managed)
 		fmt.Fprintln(app.Stdout, terminal.Heading("Exact bundles:"))
+		rows := [][]string{{terminal.Label("Bundle"), terminal.Label("Application"), terminal.Label("Size"), terminal.Label("License"), terminal.Label("Description")}}
 		for _, identifier := range identifiers {
 			bundle := managed.Bundles[identifier]
 			if *application != "" && bundle.Application != *application {
@@ -120,27 +138,51 @@ func (app *App) contentList(args []string) error {
 					break
 				}
 			}
-			fmt.Fprintf(app.Stdout, "  %s %-10s %10s  %s %s\n", terminal.Command(fmt.Sprintf("%-54s", identifier)), bundle.Application, humanSize(managed.BundleSize(bundle)), terminal.State(fmt.Sprintf("%-18s", licenseState)), bundle.Description)
+			rows = append(rows, []string{terminal.Command(identifier), bundle.Application, humanSize(managed.BundleSize(bundle)), terminal.State(licenseState), bundle.Description})
+		}
+		lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {}, {Right: true}, {}, {}}, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		return nil
 	}
 	if view == "families" {
 		terminal := app.terminal(app.Stdout)
 		fmt.Fprintln(app.Stdout, terminal.Heading("Model families:"))
+		var rows [][]string
 		for _, family := range []string{"qwen", "wan"} {
 			selected, _ := selectBundles(managed, "family", family)
-			fmt.Fprintf(app.Stdout, "  %s %2d bundles\n", terminal.Command(fmt.Sprintf("family %-8s", family)), len(selected))
+			rows = append(rows, []string{terminal.Command("family " + family), fmt.Sprintf("%d bundles", len(selected))})
 		}
-		fmt.Fprintf(app.Stdout, "\n%s\n  %s %2d bundles\n", terminal.Heading("Global:"), terminal.Command(fmt.Sprintf("%-14s", "all")), len(managed.Bundles))
+		lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {Right: true}}, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
+		}
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Global:"))
+		lines, _ = ui.ColumnLines([][]string{{terminal.Command("all"), fmt.Sprintf("%d bundles", len(managed.Bundles))}}, []ui.Column{{}, {Right: true}}, "  ")
+		fmt.Fprintln(app.Stdout, lines[0])
 		return nil
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Applications:"))
-	for _, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
+	for applicationIndex, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
 		values, _ := recipes.ForApplication(applicationID)
-		fmt.Fprintf(app.Stdout, "  %s\n", terminal.Label(applicationID))
+		if applicationIndex > 0 {
+			fmt.Fprintln(app.Stdout)
+		}
+		spec, _ := config.ApplicationByID(applicationID)
+		fmt.Fprintf(app.Stdout, "  %s\n", terminal.Label(spec.DisplayName))
+		rows := make([][]string, 0, len(values))
 		for _, recipe := range values {
-			fmt.Fprintf(app.Stdout, "    %s %d bundle(s)  %s\n", terminal.Command(fmt.Sprintf("%-24s", applicationID+" "+recipe.ID)), len(recipe.Bundles), recipe.Description)
+			count := fmt.Sprintf("%d bundles", len(recipe.Bundles))
+			if len(recipe.Bundles) == 1 {
+				count = "1 bundle"
+			}
+			rows = append(rows, []string{terminal.Command(applicationID + " " + recipe.ID), count, recipe.Description})
+		}
+		lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {Right: true}, {}}, "    ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 	}
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Use 'content list models' for runnable models, 'bundles' for exact content, or 'families' for aggregates."))
@@ -149,6 +191,8 @@ func (app *App) contentList(args []string) error {
 
 func (app *App) contentStatus(args []string) error {
 	set := app.flags("content status", usage("content", "status", "[TARGET [SELECTION]]", "[--details]", "[--verify]", "[--data-dir PATH]"))
+	set.Argument("TARGET", "application, family, exact bundle, or all (default)")
+	set.Argument("SELECTION", "recipe or family identifier required by an application or family target")
 	details := set.Bool("details", false, "show every artifact")
 	verifyHash := set.Bool("verify", false, "hash installed artifacts")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
@@ -192,6 +236,12 @@ func (app *App) contentStatus(args []string) error {
 	}
 	complete := true
 	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Content status"))
+	fmt.Fprintf(app.Stdout, "  %s  %s\n\n", terminal.Label("Data"), dataRoot)
+	var summaryRows [][]string
+	if !*details && !*verifyHash {
+		summaryRows = append(summaryRows, []string{terminal.Label("Status"), terminal.Label("Bundle"), terminal.Label("Ready")})
+	}
 	for _, bundle := range bundles {
 		statuses, inspectErr := app.inspectContentBundle(store, managed, bundle, dataRoot, *verifyHash)
 		if inspectErr != nil {
@@ -212,15 +262,20 @@ func (app *App) contentStatus(args []string) error {
 		complete = complete && summary == "ready"
 		if *details || *verifyHash {
 			fmt.Fprintf(app.Stdout, "%s: %s\n", terminal.Command(bundle.ID), terminal.State(summary))
+			var detailRows [][]string
 			for _, status := range statuses {
-				fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-14s", status.State)), status.Artifact.Destination)
+				detailRows = append(detailRows, []string{terminal.State(string(status.State)), status.Artifact.Destination})
 			}
 			if bundle.Workflow != "" {
 				state := "missing"
 				if workflowReady(dataRoot, managed.Workflows[bundle.Workflow]) {
 					state = "installed"
 				}
-				fmt.Fprintf(app.Stdout, "  %s workflow/%s\n", terminal.State(fmt.Sprintf("%-14s", state)), managed.Workflows[bundle.Workflow].Destination)
+				detailRows = append(detailRows, []string{terminal.State(state), "workflow/" + managed.Workflows[bundle.Workflow].Destination})
+			}
+			lines, _ := ui.ColumnLines(detailRows, nil, "  ")
+			for _, line := range lines {
+				fmt.Fprintln(app.Stdout, line)
 			}
 		} else {
 			itemCount := len(statuses)
@@ -230,7 +285,13 @@ func (app *App) contentStatus(args []string) error {
 					ready++
 				}
 			}
-			fmt.Fprintf(app.Stdout, "%s %s %d/%d items\n", terminal.State(fmt.Sprintf("%-10s", summary)), terminal.Command(fmt.Sprintf("%-54s", bundle.ID)), ready, itemCount)
+			summaryRows = append(summaryRows, []string{terminal.State(summary), terminal.Command(bundle.ID), fmt.Sprintf("%d/%d items", ready, itemCount)})
+		}
+	}
+	if len(summaryRows) > 0 {
+		lines, _ := ui.ColumnLines(summaryRows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 	}
 	if !complete {
@@ -275,12 +336,14 @@ func (app *App) inspectContentBundle(store *verification.Store, managed catalog.
 }
 
 func (app *App) contentInstall(args []string) error {
-	set := app.flagsWithExamples("content install", usage("content", "install", "TARGET", "[SELECTION]", "[OPTIONS]"), []string{
+	set := app.flagsWithExamples("content install", usage("content", "install", "[TARGET [SELECTION]]", "[OPTIONS]"), []string{
 		identity.Command("content", "install"),
 		identity.Command("content", "install", "llama-cpp", "qwen3.8"),
 		identity.Command("content", "install", "llama-cpp", "all", "--dry-run"),
 		identity.Command("content", "install", "llama-cpp", "all", "--local-mirror", "/path/to/old-data", "--local-mirror-move", "--accept-license"),
 	})
+	set.Argument("TARGET", "application, family, exact bundle, or all; omit for the guided installer")
+	set.Argument("SELECTION", "recipe, application aggregate 'all', or family identifier")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	imageFlag := set.String("image", "", "content-tools image")
 	dryRun := set.Bool("dry-run", false, "print the validated plan")
@@ -307,25 +370,24 @@ func (app *App) contentInstall(args []string) error {
 	if len(extras) > 0 {
 		return controlerr.Usage("content install accepts at most a target and selection")
 	}
-	if target == "" && len(packFiles) == 0 && !*nonInteractive && terminalReader(app.Stdin) {
-		selected, err := app.guidedContentSelection()
+	managed, err := app.managedCatalog()
+	if err != nil {
+		return err
+	}
+	if len(packFiles) == 0 && !*nonInteractive && terminalReader(app.Stdin) && (target == "" || selection == "" && recipes.IsApplication(target)) {
+		target, selection, err = app.guidedContentSelection(managed, target)
 		if err != nil {
 			return err
 		}
-		target, selection = selected.Application, selected.ID
 	}
 	if target == "" && len(packFiles) == 0 {
-		return controlerr.Usage("content install requires a complete target; use 'content list recipes'")
+		return set.usageError("content install requires a complete target; use 'content list recipes'")
 	}
 	if len(packFiles) > 0 && (target != "" || selection != "") {
 		return controlerr.Usage("--from-file cannot be combined with an explicit target")
 	}
 	if *localMirrorMove && *localMirror == "" {
 		return controlerr.Usage("--local-mirror-move requires --local-mirror")
-	}
-	managed, err := app.managedCatalog()
-	if err != nil {
-		return err
 	}
 	var bundles []catalog.Bundle
 	if len(packFiles) > 0 {
@@ -371,6 +433,7 @@ func (app *App) contentInstall(args []string) error {
 		fmt.Fprintf(app.Stderr, "%s %s has NOASSERTION licensing: %s\n", warningTerminal.Warning("WARNING:"), artifact.ID, artifact.License.Warning)
 	}
 	if *dryRun {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Dry run: no data directory was created and no content was downloaded, moved, or verified."))
 		return nil
 	}
 	acknowledged, err := app.confirmContentApprovals(agreements, plan.Risky, *acceptLicense, *acknowledgeRisk, *nonInteractive)
@@ -442,32 +505,88 @@ func (app *App) printContentAgreements(agreements []catalog.Agreement) {
 	}
 }
 
-func (app *App) guidedContentSelection() (recipes.Recipe, error) {
+func (app *App) guidedContentSelection(managed catalog.Catalog, application string) (string, string, error) {
 	if !terminalReader(app.Stdin) {
-		return recipes.Recipe{}, controlerr.Usage("content install requires a target when standard input is not a terminal")
+		return "", "", controlerr.Usage("content install requires a target when standard input is not a terminal")
 	}
-	var choices []recipes.Recipe
+	if application != "" {
+		return app.guidedApplicationContent(managed, application)
+	}
+	type topChoice struct {
+		application string
+		exact       bool
+	}
+	var choices []topChoice
+	var rows [][]string
 	terminal := app.terminal(app.Stdout)
-	fmt.Fprintln(app.Stdout, terminal.Heading("Choose managed content:"))
 	for _, application := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
-		values, _ := recipes.ForApplication(application)
-		for _, recipe := range values {
-			choices = append(choices, recipe)
-			fmt.Fprintf(app.Stdout, "  %2d. %s %s %s\n", len(choices), terminal.Label(fmt.Sprintf("%-22s", application)), terminal.Command(fmt.Sprintf("%-26s", recipe.ID)), recipe.Description)
-		}
+		spec, _ := config.ApplicationByID(application)
+		choices = append(choices, topChoice{application: application})
+		rows = append(rows, []string{terminal.Command(application), spec.DisplayName + " reviewed recipes"})
 	}
-	answer, err := app.promptLine("Selection (or q to cancel): ", true)
+	choices = append(choices, topChoice{exact: true})
+	rows = append(rows, []string{terminal.Command("exact bundles"), "browse every advanced bundle by category"})
+	index, err := app.promptMenu("Install content for:", rows, "content selection")
 	if err != nil {
-		return recipes.Recipe{}, err
+		return "", "", err
+	}
+	choice := choices[index]
+	if choice.exact {
+		bundle, err := app.guidedExactBundle(managed, "")
+		return bundle, "", err
+	}
+	return app.guidedApplicationContent(managed, choice.application)
+}
+
+func (app *App) guidedApplicationContent(managed catalog.Catalog, application string) (string, string, error) {
+	values, err := recipes.ForApplication(application)
+	if err != nil {
+		return "", "", controlerr.Usage("%v", err)
+	}
+	spec, _ := config.ApplicationByID(application)
+	terminal := app.terminal(app.Stdout)
+	rows := make([][]string, 0, len(values)+1)
+	for _, recipe := range values {
+		rows = append(rows, []string{terminal.Command(recipe.ID), recipe.Description})
+	}
+	rows = append(rows, []string{terminal.Command("exact bundles"), "browse every exact " + spec.DisplayName + " bundle"})
+	index, err := app.promptMenu(spec.DisplayName+" content:", rows, "content selection")
+	if err != nil {
+		return "", "", err
+	}
+	if index == len(values) {
+		bundle, err := app.guidedExactBundle(managed, application)
+		return bundle, "", err
+	}
+	return application, values[index].ID, nil
+}
+
+func (app *App) promptMenu(heading string, rows [][]string, subject string) (int, error) {
+	return app.promptMenuColumns(heading, rows, nil, subject)
+}
+
+func (app *App) promptMenuColumns(heading string, rows [][]string, columns []ui.Column, subject string) (int, error) {
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading(heading))
+	lines, _ := ui.NumberedLines(rows, columns)
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
+	}
+	answer, err := app.promptLine(fmt.Sprintf("Choose [1-%d] (or q to cancel): ", len(rows)), true)
+	if err != nil {
+		return 0, err
 	}
 	if strings.EqualFold(answer, "q") {
-		return recipes.Recipe{}, controlerr.New("content selection cancelled")
+		return 0, controlerr.New("%s cancelled", subject)
 	}
 	index, err := strconv.Atoi(answer)
-	if err != nil || index < 1 || index > len(choices) {
-		return recipes.Recipe{}, controlerr.Usage("content selection must be a number from 1 through %d", len(choices))
+	if err != nil {
+		return 0, controlerr.Usage("%s must be a menu number", subject)
 	}
-	return choices[index-1], nil
+	if index < 1 || index > len(rows) {
+		return 0, controlerr.Usage("%s must be a number from 1 through %d", subject, len(rows))
+	}
+	return index - 1, nil
 }
 
 func selectBundles(managed catalog.Catalog, target, selection string) ([]catalog.Bundle, error) {
@@ -616,87 +735,294 @@ func stringSliceContains(values []string, wanted string) bool {
 	return false
 }
 
-func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool) error {
-	store, err := verification.Load(dataRoot)
-	if err != nil {
-		return err
+func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool, selectedApplication string) error {
+	applications := []string{"llama-cpp", "dwarfstar"}
+	if selectedApplication != "" {
+		applications = []string{selectedApplication}
 	}
-	ids := make([]string, 0, len(managed.LlamaPresets))
-	for id := range managed.LlamaPresets {
-		ids = append(ids, id)
+	for index, application := range applications {
+		if index > 0 {
+			fmt.Fprintln(app.Stdout)
+		}
+		if application == "llama-cpp" {
+			if err := app.printLlamaModelInventory(managed, dataRoot, scans, details); err != nil {
+				return err
+			}
+		} else if err := app.printDwarfStarModelInventory(managed, dataRoot, details); err != nil {
+			return err
+		}
 	}
-	sort.Strings(ids)
 	terminal := app.terminal(app.Stdout)
-	fmt.Fprintln(app.Stdout, terminal.Heading("Managed llama.cpp presets:"))
-	for _, id := range ids {
-		preset := managed.LlamaPresets[id]
-		bundle := managed.Bundles[preset.Bundle]
-		statuses, inspectErr := content.InspectBundle(store, managed, bundle, dataRoot, false)
-		if inspectErr != nil {
-			return inspectErr
-		}
-		state := "ready"
-		for _, status := range statuses {
-			if !content.Ready(status.State) {
-				state = "missing"
-				if status.State != content.Missing {
-					state = string(status.State)
-				}
-				break
-			}
-		}
-		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", state)), terminal.Command(fmt.Sprintf("%-48s", id)), content.ArtifactPath(dataRoot, managed.Artifacts[preset.Artifact]))
-		if details {
-			fmt.Fprintf(app.Stdout, "    %s\n", terminal.Muted(fmt.Sprintf("context=%d tools=%t reasoning=%s default=%s levels=%s template=%s speculation=%s", preset.DefaultContext, preset.AgentTools, firstNonEmpty(preset.ReasoningControl, "none"), preset.ReasoningDefault, strings.Join(preset.ReasoningLevels, ","), firstNonEmpty(preset.ChatTemplate, "model metadata"), firstNonEmpty(preset.SpeculativeType, "off"))))
-		}
+	fmt.Fprintln(app.Stdout)
+	if !details {
+		fmt.Fprintln(app.Stdout, terminal.Muted("Use --details to find install commands and managed runtime policy."))
 	}
-	if len(scans) == 0 {
-		return nil
+	if selectedApplication != "dwarfstar" {
+		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready llama.cpp preset with --preset; use a local GGUF row's absolute path with --model."))
 	}
-	fmt.Fprintln(app.Stdout, terminal.Heading("Loose GGUF models:"))
-	for _, raw := range scans {
-		resolved, err := filepath.Abs(raw)
-		if err != nil {
-			return err
-		}
-		info, err := os.Stat(resolved)
-		if err != nil {
-			return controlerr.New("cannot scan %s: %v", resolved, err)
-		}
-		if info.Mode().IsRegular() {
-			if strings.EqualFold(filepath.Ext(resolved), ".gguf") {
-				fmt.Fprintf(app.Stdout, "  %s %s (%s)\n", terminal.State(fmt.Sprintf("%-12s", "ready")), resolved, humanSize(info.Size()))
-			}
-			continue
-		}
-		err = filepath.WalkDir(resolved, func(path string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.Type()&os.ModeSymlink != 0 && entry.IsDir() {
-				return filepath.SkipDir
-			}
-			if entry.Type().IsRegular() && strings.EqualFold(filepath.Ext(entry.Name()), ".gguf") {
-				fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-12s", "ready")), path)
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
+	if selectedApplication != "llama-cpp" {
+		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready DwarfStar model with 'run dwarfstar server'."))
 	}
 	return nil
 }
 
+func (app *App) printLlamaModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool) error {
+	models, err := modelinventory.Llama(managed, dataRoot, scans)
+	if err != nil {
+		return err
+	}
+	terminal := app.terminal(app.Stdout)
+	root := (storage.Layout{Root: dataRoot}).LlamaModels()
+	fmt.Fprintln(app.Stdout, terminal.Heading("llama.cpp models"))
+	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label("Model root"), root)
+	for _, scan := range scans {
+		fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label("Also scanned"), scan)
+	}
+	if len(models) == 0 {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("No managed or local GGUF models found."))
+		return nil
+	}
+	rows := [][]string{{terminal.Label("Status"), terminal.Label("Size"), terminal.Label("Preset or model")}}
+	for _, model := range models {
+		label := strings.Join(model.Presets, ", ")
+		if len(model.Presets) == 0 {
+			label = "local"
+			if model.ExpectedShards > 1 {
+				label = fmt.Sprintf("local (%d/%d shards)", model.ShardCount, model.ExpectedShards)
+			}
+			label += "  " + model.Path
+		} else {
+			label = terminal.Command(label)
+		}
+		size := "—"
+		if model.Size > 0 {
+			size = humanSize(model.Size)
+		}
+		rows = append(rows, []string{terminal.State(model.State), size, label})
+	}
+	lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {Right: true}, {}}, "  ")
+	fmt.Fprintln(app.Stdout)
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
+	}
+	if details {
+		app.printLlamaModelDetails(managed, models, root)
+	}
+	return nil
+}
+
+func (app *App) printLlamaModelDetails(managed catalog.Catalog, models []modelinventory.LlamaModel, root string) {
+	terminal := app.terminal(app.Stdout)
+	printed := false
+	for _, model := range models {
+		for _, id := range model.Presets {
+			if !printed {
+				fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Managed preset details"))
+				printed = true
+			}
+			preset := managed.LlamaPresets[id]
+			bundle := managed.Bundles[preset.Bundle]
+			path := model.Path
+			if relative, err := filepath.Rel(root, path); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				path = relative
+			}
+			files := 0
+			for _, artifactID := range bundle.Artifacts {
+				if managed.Artifacts[artifactID].Target == "llama-models" {
+					files++
+				}
+			}
+			fmt.Fprintf(app.Stdout, "\n  %s\n", terminal.Command(id))
+			writeDetailRows(app.Stdout, terminal, [][2]string{
+				{"Model", path}, {"Bundle", bundle.ID}, {"Catalog size", humanSize(managed.BundleSize(bundle))},
+				{"Files", strconv.Itoa(files)}, {"Default context", fmt.Sprintf("%d tokens", preset.DefaultContext)},
+				{"Context policy", llamaContextPolicy(preset)}, {"Template", llamaTemplatePolicy(preset)},
+				{"Speculation", llamaSpeculationPolicy(preset)}, {"Reasoning", llamaInventoryReasoningPolicy(preset)},
+				{"Sampling", llamaSamplingPolicy(preset)}, {"Flash Attention", llamaProfilePolicy(preset.FlashAttention)},
+				{"K/V cache", llamaProfilePolicy(preset.KVCache)},
+			})
+		}
+	}
+}
+
+func (app *App) printDwarfStarModelInventory(managed catalog.Catalog, dataRoot string, details bool) error {
+	store, err := verification.Load(dataRoot)
+	if err != nil {
+		return err
+	}
+	var bundles []catalog.Bundle
+	for _, bundle := range managed.Bundles {
+		if bundle.Application == "dwarfstar" {
+			bundles = append(bundles, bundle)
+		}
+	}
+	sort.Slice(bundles, func(i, j int) bool { return bundles[i].ID < bundles[j].ID })
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("DwarfStar models"))
+	fmt.Fprintf(app.Stdout, "  %s  %s\n\n", terminal.Label("Model root"), (storage.Layout{Root: dataRoot}).DwarfStarModels())
+	rows := [][]string{{terminal.Label("Status"), terminal.Label("Size"), terminal.Label("Bundle")}}
+	for _, bundle := range bundles {
+		statuses, inspectErr := content.InspectBundle(store, managed, bundle, dataRoot, false)
+		if inspectErr != nil {
+			return inspectErr
+		}
+		rows = append(rows, []string{terminal.State(bundleModelState(statuses)), humanSize(managed.BundleSize(bundle)), terminal.Command(bundle.ID)})
+	}
+	lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {Right: true}, {}}, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
+	}
+	if !details {
+		return nil
+	}
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Managed DwarfStar model details"))
+	for _, bundle := range bundles {
+		fmt.Fprintf(app.Stdout, "\n  %s\n", terminal.Command(bundle.ID))
+		rows := make([][2]string, 0, len(bundle.Artifacts)+4)
+		for index, artifactID := range bundle.Artifacts {
+			label := "Support"
+			if index == 0 {
+				label = "Model"
+			}
+			rows = append(rows, [2]string{label, managed.Artifacts[artifactID].Destination})
+		}
+		run := identity.Command("run", "dwarfstar", "server")
+		if len(bundle.Artifacts) > 1 {
+			run += " --dspark"
+		}
+		rows = append(rows,
+			[2]string{"Catalog size", humanSize(managed.BundleSize(bundle))},
+			[2]string{"Files", strconv.Itoa(len(bundle.Artifacts))},
+			[2]string{"Install", identity.Command("content", "install", bundle.ID)},
+			[2]string{"Run", run},
+		)
+		writeDetailRows(app.Stdout, terminal, rows)
+	}
+	return nil
+}
+
+func bundleModelState(statuses []content.ArtifactStatus) string {
+	missing := 0
+	for _, status := range statuses {
+		switch status.State {
+		case content.Unexpected:
+			return "user-file"
+		case content.HashMismatch, content.SizeMismatch:
+			return string(status.State)
+		case content.Missing:
+			missing++
+		}
+	}
+	if missing == len(statuses) {
+		return "missing"
+	}
+	if missing > 0 {
+		return "partial"
+	}
+	for _, status := range statuses {
+		if status.State == content.Unverified {
+			return "unverified"
+		}
+	}
+	return "ready"
+}
+
+func writeDetailRows(output io.Writer, terminal ui.Terminal, rows [][2]string) {
+	materialized := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		materialized = append(materialized, []string{terminal.Label(row[0]), row[1]})
+	}
+	lines, _ := ui.ColumnLines(materialized, nil, "    ")
+	for _, line := range lines {
+		fmt.Fprintln(output, line)
+	}
+}
+
+func llamaTemplatePolicy(preset catalog.LlamaPreset) string {
+	if preset.ChatTemplate != "" {
+		return "managed " + preset.ChatTemplate
+	}
+	if preset.Jinja {
+		return "model metadata; Jinja enabled"
+	}
+	return "model metadata; llama.cpp automatic"
+}
+
+func llamaContextPolicy(preset catalog.LlamaPreset) string {
+	if len(preset.ContextOverrideArchitectures) == 0 {
+		return "model metadata"
+	}
+	return "forced for " + strings.Join(preset.ContextOverrideArchitectures, ", ") + "; automatic fitting disabled"
+}
+
+func llamaSpeculationPolicy(preset catalog.LlamaPreset) string {
+	if preset.SpeculativeType == "" {
+		return "off"
+	}
+	strategy := map[string]string{"draft-mtp": "MTP", "draft-dflash": "DFlash"}[preset.SpeculativeType]
+	backend := ""
+	if len(preset.DraftTokensByBackend) > 0 {
+		var policies []string
+		for _, name := range []string{"rocm", "vulkan"} {
+			if value, ok := preset.DraftTokensByBackend[name]; ok {
+				policies = append(policies, fmt.Sprintf("%s=%d", name, value))
+			}
+		}
+		backend = " (" + strings.Join(policies, ", ") + ")"
+	}
+	if preset.DraftArtifact != "" {
+		return fmt.Sprintf("%s, %d draft tokens%s; draft %s", strategy, preset.DraftTokens, backend, preset.DraftArtifact)
+	}
+	return fmt.Sprintf("%s, %d draft tokens%s from model heads", strategy, preset.DraftTokens, backend)
+}
+
+func llamaInventoryReasoningPolicy(preset catalog.LlamaPreset) string {
+	if preset.ReasoningControl == "" {
+		return "not exposed"
+	}
+	levels := append([]string(nil), preset.ReasoningLevels...)
+	if preset.ReasoningControl == "toggle" {
+		levels = []string{"on"}
+	}
+	if preset.ReasoningOff {
+		levels = append([]string{"off"}, levels...)
+	}
+	return fmt.Sprintf("%s; %s; default %s", preset.ReasoningControl, strings.Join(levels, ", "), preset.ReasoningDefault)
+}
+
+func llamaSamplingPolicy(preset catalog.LlamaPreset) string {
+	if preset.SamplingPolicy == "" {
+		return "request or llama.cpp default"
+	}
+	return "catalog " + preset.SamplingPolicy + " (thinking/non-thinking)"
+}
+
+func llamaProfilePolicy(policy map[string]string) string {
+	var values []string
+	for _, profile := range []string{"rdna4", "strix-halo", "strix-point"} {
+		if value, ok := policy[profile]; ok {
+			values = append(values, profile+"="+value)
+		}
+	}
+	if len(values) == 0 {
+		return "llama.cpp default"
+	}
+	return strings.Join(values, ", ") + "; otherwise llama.cpp default"
+}
+
 func (app *App) contentWorkflows(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("content", "workflows", "COMMAND", "[OPTIONS]"),
 			[2]string{"list", "list curated workflows"},
 			[2]string{"status", "inspect installed curated workflows"},
 			[2]string{"install", "install one exact curated workflow"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 {
+		writeHelp()
 		return controlerr.Usage("choose content workflows list, status, or install")
 	}
 	managed, err := app.managedCatalog()
@@ -719,13 +1045,19 @@ func (app *App) contentWorkflows(args []string) error {
 			return controlerr.Usage("content workflows list accepts no positional arguments")
 		}
 		fmt.Fprintln(app.Stdout, terminal.Heading("Curated workflows:"))
+		var rows [][]string
 		for _, id := range ids {
 			workflow := managed.Workflows[id]
-			fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Command(fmt.Sprintf("%-48s", id)), workflow.Description)
+			rows = append(rows, []string{terminal.Command(id), workflow.Description})
+		}
+		lines, _ := ui.ColumnLines(rows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		return nil
 	case "status":
 		set := app.flags("content workflows status", usage("content", "workflows", "status", "[WORKFLOW]", "[--data-dir PATH]"))
+		set.Argument("WORKFLOW", "exact curated workflow; omit to inspect all")
 		dataFlag := set.String("data-dir", "", "persistent data directory")
 		id, remaining := leadingPositional(args[1:])
 		if err := parseFlags(set, remaining); err != nil {
@@ -750,6 +1082,7 @@ func (app *App) contentWorkflows(args []string) error {
 			return err
 		}
 		allReady := true
+		rows := [][]string{{terminal.Label("Status"), terminal.Label("Workflow"), terminal.Label("Path")}}
 		for _, id := range ids {
 			state := "missing"
 			path := workflowPath(dataRoot, managed.Workflows[id])
@@ -763,7 +1096,11 @@ func (app *App) contentWorkflows(args []string) error {
 				}
 			}
 			allReady = allReady && state == "installed"
-			fmt.Fprintf(app.Stdout, "%s %s %s\n", terminal.State(fmt.Sprintf("%-12s", state)), terminal.Command(fmt.Sprintf("%-48s", id)), path)
+			rows = append(rows, []string{terminal.State(state), terminal.Command(id), path})
+		}
+		lines, _ := ui.ColumnLines(rows, nil, "  ")
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		if !allReady {
 			return &controlerr.Error{Message: "some workflows are not installed", Status: 1}
@@ -771,6 +1108,7 @@ func (app *App) contentWorkflows(args []string) error {
 		return nil
 	case "install":
 		set := app.flags("content workflows install", usage("content", "workflows", "install", "WORKFLOW", "[--force]", "[--data-dir PATH]"))
+		set.Argument("WORKFLOW", "exact curated workflow identifier")
 		dataFlag := set.String("data-dir", "", "persistent data directory")
 		force := set.Bool("force", false, "replace a differing workflow")
 		id, remaining := leadingPositional(args[1:])
@@ -787,6 +1125,9 @@ func (app *App) contentWorkflows(args []string) error {
 		}
 		workflow, ok := managed.Workflows[id]
 		if id == "" || !ok {
+			if id == "" {
+				set.renderHelp(app.Stdout)
+			}
 			return controlerr.Usage("choose an exact workflow")
 		}
 		dataRoot, err := app.resolveDataDir(*dataFlag, true)
@@ -795,12 +1136,14 @@ func (app *App) contentWorkflows(args []string) error {
 		}
 		return app.installWorkflow(workflow, dataRoot, *force)
 	default:
+		writeHelp()
 		return controlerr.Usage("unknown workflows command %q", args[0])
 	}
 }
 
 func (app *App) contentImport(args []string) error {
-	set := app.flags("content import", usage("content", "import", "URL", "[OPTIONS]"))
+	set := app.flags("content import", usage("content", "import", "[URL]", "[OPTIONS]"))
+	set.Argument("URL", "allowlisted Hugging Face or Civitai file or model URL; omit for a prompt")
 	version := set.Int64("version", 0, "exact Civitai model-version ID")
 	fileSelector := set.String("file", "", "provider file ID, name, or path")
 	kindSelector := set.String("as", "", "explicit destination type")
@@ -822,12 +1165,12 @@ func (app *App) contentImport(args []string) error {
 	} else if len(set.Args()) > 0 {
 		return controlerr.Usage("content import accepts exactly one URL")
 	}
-	if *version < 0 {
+	if setWasSet(set, "version") && *version <= 0 {
 		return controlerr.Usage("--version must be positive")
 	}
 	if rawURL == "" {
 		if *nonInteractive || !terminalReader(app.Stdin) {
-			return controlerr.Usage("content import requires URL in noninteractive use")
+			return set.usageError("content import requires URL in noninteractive use")
 		}
 		entered, promptErr := app.promptLine("Civitai or Hugging Face URL: ", true)
 		if promptErr != nil {
@@ -858,8 +1201,13 @@ func (app *App) contentImport(args []string) error {
 			}
 			terminal := app.terminal(app.Stdout)
 			fmt.Fprintln(app.Stdout, terminal.Heading("Choose a Civitai model version:"))
-			for index, choice := range choices {
-				fmt.Fprintf(app.Stdout, "  %2d. %s — %s\n", index+1, terminal.Command(choice[0]), choice[1])
+			rows := make([][]string, 0, len(choices))
+			for _, choice := range choices {
+				rows = append(rows, []string{terminal.Command(choice[0]), choice[1]})
+			}
+			lines, _ := ui.NumberedLines(rows, nil)
+			for _, line := range lines {
+				fmt.Fprintln(app.Stdout, line)
 			}
 			selected, err := promptIndex(app, "Civitai model version", len(choices))
 			if err != nil {
@@ -887,8 +1235,13 @@ func (app *App) contentImport(args []string) error {
 		}
 		terminal := app.terminal(app.Stdout)
 		fmt.Fprintln(app.Stdout, terminal.Heading("Choose a remote file:"))
-		for index, file := range discovery.Files {
-			fmt.Fprintf(app.Stdout, "  %2d. %s (%s)%s\n", index+1, terminal.Command(file.Name), humanSize(file.Size), map[bool]string{true: " — primary"}[file.Primary])
+		rows := make([][]string, 0, len(discovery.Files))
+		for _, file := range discovery.Files {
+			rows = append(rows, []string{terminal.Command(file.Name), humanSize(file.Size), map[bool]string{true: "primary"}[file.Primary]})
+		}
+		lines, _ := ui.NumberedLines(rows, []ui.Column{{}, {Right: true}, {}})
+		for _, line := range lines {
+			fmt.Fprintln(app.Stdout, line)
 		}
 		index, promptErr := promptIndex(app, "Remote file", len(discovery.Files))
 		if promptErr != nil {
@@ -919,8 +1272,13 @@ func (app *App) contentImport(args []string) error {
 			}
 			terminal := app.terminal(app.Stdout)
 			fmt.Fprintln(app.Stdout, terminal.Heading("Choose an installation type:"))
-			for index, candidate := range candidates {
-				fmt.Fprintf(app.Stdout, "  %2d. %s — %s\n", index+1, terminal.Command(candidate.ID), candidate.Label)
+			rows := make([][]string, 0, len(candidates))
+			for _, candidate := range candidates {
+				rows = append(rows, []string{terminal.Command(candidate.ID), candidate.Label})
+			}
+			lines, _ := ui.NumberedLines(rows, nil)
+			for _, line := range lines {
+				fmt.Fprintln(app.Stdout, line)
 			}
 			index, promptErr := promptIndex(app, "Install as", len(candidates))
 			if promptErr != nil {
@@ -949,14 +1307,16 @@ func (app *App) contentImport(args []string) error {
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Remote import:"))
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "Source:")), discovery.SourceURL)
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "Title:")), discovery.Title)
-	fmt.Fprintf(app.Stdout, "  %s  %s (%s)\n", terminal.Label(fmt.Sprintf("%-12s", "File:")), selected.Name, humanSize(selected.Size))
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "SHA-256:")), selected.SHA256)
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "Install as:")), kind.Label)
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "Destination:")), plan.Artifact.Destination)
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Label(fmt.Sprintf("%-12s", "Local pack:")), packPath)
-	fmt.Fprintf(app.Stdout, "  %s  %s\n", terminal.Warning(fmt.Sprintf("%-12s", "License:")), "NOASSERTION; hosted-file rights are unverified")
+	packDisplay := packPath
+	if *dryRun {
+		packDisplay += " (not saved by dry run)"
+	}
+	writeDetailRows(app.Stdout, terminal, [][2]string{
+		{"Provider", discovery.Provider}, {"Source", discovery.SourceURL}, {"Title", discovery.Title},
+		{"File", selected.Name + " (" + humanSize(selected.Size) + ")"}, {"SHA-256", selected.SHA256},
+		{"Install as", kind.Label}, {"Destination", plan.Artifact.Destination}, {"Local pack", packDisplay},
+		{"License", terminal.Warning("NOASSERTION; hosted-file rights are unverified")},
+	})
 	if *dryRun {
 		return nil
 	}

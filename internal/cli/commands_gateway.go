@@ -21,18 +21,19 @@ import (
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/textmodel"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) runGateway(args []string) error {
 	set := app.flags("run gateway", usage("run", "gateway", "--application APPLICATION", "[OPTIONS]"))
 	var applications stringList
-	set.Var(&applications, "application", "backend application to expose; repeatable")
-	profileFlag := set.String("profile", "", "execution profile")
+	set.Var(&applications, "application", "llama-cpp or dwarfstar; repeatable")
+	profileFlag := set.String("profile", "", "auto, rdna4, strix-halo, or strix-point (default: auto)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
-	listenFlag := set.String("listen", "", "gateway publication address")
-	portFlag := set.String("port", "", "gateway host port")
+	listenFlag := set.String("listen", "", "host IP on which to publish the gateway (default: 127.0.0.1)")
+	portFlag := set.String("port", "", "gateway host port (default: 8080)")
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 2, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
@@ -44,7 +45,7 @@ func (app *App) runGateway(args []string) error {
 		return controlerr.Usage("run gateway does not accept positional arguments")
 	}
 	if len(applications) == 0 {
-		return controlerr.Usage("run gateway requires at least one --application")
+		return set.usageError("run gateway requires at least one --application")
 	}
 	for _, application := range applications {
 		if err := requireChoice(application, "gateway application", "llama-cpp", "dwarfstar"); err != nil {
@@ -160,8 +161,12 @@ func (app *App) runGateway(args []string) error {
 		fmt.Fprintf(app.Stderr, "%s gateway is published on %s:%d without authentication.\n", errorTerminal.Warning("WARNING:"), listen, port)
 	}
 	terminal := app.terminal(app.Stdout)
-	fmt.Fprintf(app.Stdout, "%s\n  %s  http://%s/v1\n  %s  %s\n  %s  %s\n  %s  %s\n\n%s\n",
-		terminal.Heading(identity.DisplayName+" gateway"), terminal.Label(fmt.Sprintf("%-13s", "listen:")), net.JoinHostPort(listen, fmt.Sprint(port)), terminal.Label(fmt.Sprintf("%-13s", "applications:")), strings.Join(applications, ", "), terminal.Label(fmt.Sprintf("%-13s", "models:")), strings.Join(registry.IDs(""), ", "), terminal.Label(fmt.Sprintf("%-13s", "inventory:")), registry.Fingerprint, terminal.Muted("No backend is loaded until its first request. Press Ctrl-C to stop."))
+	fmt.Fprintln(app.Stdout, terminal.Heading(identity.DisplayName+" gateway"))
+	writeDetailRows(app.Stdout, terminal, [][2]string{
+		{"Listen", "http://" + net.JoinHostPort(listen, fmt.Sprint(port)) + "/v1"},
+		{"Applications", strings.Join(applications, ", ")}, {"Models", strings.Join(registry.IDs(""), ", ")}, {"Inventory", registry.Fingerprint},
+	})
+	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("No backend is loaded until its first request. Press Ctrl-C to stop."))
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	select {
@@ -221,8 +226,13 @@ func (app *App) gatewayStatus(rawURL string) error {
 		{"Requests", fmt.Sprintf("%d active, %d queued", status.Scheduler.ActiveRequests, status.Scheduler.QueuedRequests)},
 		{"Inventory", status.InventoryFingerprint},
 	})
+	rows := make([][]string, 0, len(status.Models))
 	for _, model := range status.Models {
-		fmt.Fprintf(app.Stdout, "  %s %s %s\n", terminal.State(fmt.Sprintf("%-12s", model.State)), terminal.Label(fmt.Sprintf("%-10s", model.Application)), terminal.Command(model.ID))
+		rows = append(rows, []string{terminal.State(string(model.State)), terminal.Label(model.Application), terminal.Command(model.ID)})
+	}
+	lines, _ := ui.ColumnLines(rows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	return nil
 }

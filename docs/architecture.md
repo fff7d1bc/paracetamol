@@ -81,6 +81,12 @@ application context, so Ctrl-C exits promptly instead of leaving a blocked
 read behind. Exact SHA-256 progress and approximate downloader progress rewrite
 one TTY line; redirected logs receive bounded line-delimited milestones.
 
+`internal/hostdoctor/` owns read-only host inspection and pure remediation
+planning for kernel, device-access, security-policy, and RDNA 3.5 shared-memory
+diagnostics. `internal/modelinventory/` joins catalog presets, exact artifacts,
+verification receipts, and explicitly scanned local GGUF files without
+creating the data root or treating an unverified file as runnable content.
+
 The Go migration preserved persistent application state, managed content paths
 and receipts, staging, image references, and Podman labels within its original
 identity. The later pre-release Paracetamol identity cutover deliberately

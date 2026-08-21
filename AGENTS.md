@@ -55,6 +55,10 @@ in the same change. Important ownership boundaries are:
   orchestration, usage examples, and human-facing output.
 - `internal/ui/`: semantic terminal styling, prompt separation, and
   TTY-safe/redirect-safe progress presentation.
+- `internal/hostdoctor/`: read-only host diagnostics, kernel/shared-memory
+  policy, and host-specific remediation planning.
+- `internal/modelinventory/`: receipt-aware managed and local text-model
+  inventory without runtime or storage mutation.
 - `internal/project/`: repository-root discovery for source-tree
   resources and build context.
 - `internal/buildplan/`: validated local image build planning and dependency

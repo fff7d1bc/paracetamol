@@ -9,16 +9,21 @@ import (
 	"paracetamol/internal/atomicfile"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/imagearchive"
+	"paracetamol/internal/ui"
 )
 
 func (app *App) commandImages(args []string) error {
-	if groupHelpRequested(args) {
+	writeHelp := func() {
 		app.writeGroupHelp(usage("images", "COMMAND", "[OPTIONS]"),
 			[2]string{"export", "save exact managed images to an archive"},
 			[2]string{"import", "validate and load a managed image archive"})
+	}
+	if groupHelpRequested(args) {
+		writeHelp()
 		return nil
 	}
 	if len(args) == 0 {
+		writeHelp()
 		return controlerr.Usage("choose images export or import")
 	}
 	switch args[0] {
@@ -27,12 +32,14 @@ func (app *App) commandImages(args []string) error {
 	case "import":
 		return app.imagesImport(args[1:])
 	default:
+		writeHelp()
 		return controlerr.Usage("unknown images command %q", args[0])
 	}
 }
 
 func (app *App) imagesExport(args []string) error {
 	set := app.flags("images export", usage("images", "export", "TARGET", "--output ARCHIVE", "[--dry-run]"))
+	set.Argument("TARGET", "one managed application, a prerequisite image, or all")
 	outputFlag := set.String("output", "", "new Docker archive path")
 	dryRun := set.Bool("dry-run", false, "validate and print the command")
 	target, remaining := leadingPositional(args)
@@ -48,7 +55,7 @@ func (app *App) imagesExport(args []string) error {
 		return controlerr.Usage("images export accepts exactly one target")
 	}
 	if target == "" || *outputFlag == "" {
-		return controlerr.Usage("images export requires TARGET and --output")
+		return set.usageError("images export requires TARGET and --output")
 	}
 	references, err := imagearchive.SelectedReferences(target)
 	if err != nil {
@@ -73,6 +80,7 @@ func (app *App) imagesExport(args []string) error {
 	localIDs := make(map[string]string)
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Image export:"))
+	var rows [][]string
 	for _, reference := range references {
 		present, err := app.podman().Exists(app.Context, "image", reference)
 		if err != nil {
@@ -85,7 +93,11 @@ func (app *App) imagesExport(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-10s", "ready")), reference)
+		rows = append(rows, []string{terminal.State("ready"), reference})
+	}
+	lines, _ := ui.ColumnLines(rows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	command := []string{"podman", "save", "--format", "docker-archive", "--output", "<temporary-archive>"}
 	if len(references) > 1 {
@@ -137,6 +149,7 @@ func (app *App) imagesExport(args []string) error {
 
 func (app *App) imagesImport(args []string) error {
 	set := app.flags("images import", usage("images", "import", "ARCHIVE", "[--dry-run]"))
+	set.Argument("ARCHIVE", "validated Docker archive created by 'images export'")
 	dryRun := set.Bool("dry-run", false, "validate without loading")
 	file, remaining := leadingPositional(args)
 	if err := parseFlags(set, remaining); err != nil {
@@ -151,7 +164,7 @@ func (app *App) imagesImport(args []string) error {
 		return controlerr.Usage("images import accepts exactly one archive")
 	}
 	if file == "" {
-		return controlerr.Usage("images import requires an archive")
+		return set.usageError("images import requires an archive")
 	}
 	resolved, err := filepath.Abs(file)
 	if err != nil {
@@ -170,6 +183,7 @@ func (app *App) imagesImport(args []string) error {
 	missing := 0
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Image import:"))
+	var rows [][]string
 	for _, image := range archive.Images {
 		present, err := app.podman().Exists(app.Context, "image", image.Reference)
 		if err != nil {
@@ -188,7 +202,11 @@ func (app *App) imagesImport(args []string) error {
 		} else {
 			missing++
 		}
-		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.State(fmt.Sprintf("%-10s", state)), image.Reference)
+		rows = append(rows, []string{terminal.State(state), image.Reference})
+	}
+	lines, _ := ui.ColumnLines(rows, nil, "  ")
+	for _, line := range lines {
+		fmt.Fprintln(app.Stdout, line)
 	}
 	fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Label("Archive:"), resolved, humanSize(archive.Size))
 	if missing == 0 {

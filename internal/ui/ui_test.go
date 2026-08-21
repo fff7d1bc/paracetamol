@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,42 @@ func TestSemanticStylesAndPlainFallback(t *testing.T) {
 	plain := New(&bytes.Buffer{}, map[string]string{"TERM": "xterm-256color"})
 	if got := plain.Success("ready"); got != "ready" {
 		t.Fatalf("redirected style = %q", got)
+	}
+}
+
+func TestCharacterDeviceIsNotAutomaticallyATerminal(t *testing.T) {
+	handle, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if IsTerminal(handle) {
+		t.Fatal("/dev/null was treated as an interactive terminal")
+	}
+}
+
+func TestColumnLinesMeasureANSIAndWideRunes(t *testing.T) {
+	rows := [][]string{{"Name", "Value"}, {"短い", "one"}, {"long", "two"}}
+	lines, err := ColumnLines(rows, nil, "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 3 || lines[1] != "  短い  one" || lines[2] != "  long  two" {
+		t.Fatalf("lines=%q", lines)
+	}
+}
+
+func TestNumberedLinesAlignDoubleDigitChoices(t *testing.T) {
+	rows := make([][]string, 12)
+	for index := range rows {
+		rows[index] = []string{"choice"}
+	}
+	lines, err := NumberedLines(rows, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Index(lines[0], ".") != strings.Index(lines[11], ".") {
+		t.Fatalf("lines=%q", lines)
 	}
 }
 
