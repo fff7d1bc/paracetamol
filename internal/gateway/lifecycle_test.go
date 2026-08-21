@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -19,20 +20,39 @@ import (
 )
 
 type lifecycleRunner struct {
-	mu       sync.Mutex
-	port     int
-	running  bool
-	conflict string
-	commands []process.Command
+	mu           sync.Mutex
+	port         int
+	running      bool
+	conflict     string
+	commands     []process.Command
+	logFollowers int
+	logsStarted  chan struct{}
+	logsOnce     sync.Once
 }
 
 func (runner *lifecycleRunner) LookPath(string) (string, error) { return "/usr/bin/podman", nil }
 
-func (runner *lifecycleRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
+func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command) (process.Result, error) {
 	runner.mu.Lock()
-	defer runner.mu.Unlock()
 	runner.commands = append(runner.commands, command)
 	arguments := strings.Join(command.Args, " ")
+	if strings.HasPrefix(arguments, "logs --follow ") {
+		runner.logFollowers++
+		started := runner.logsStarted
+		runner.mu.Unlock()
+		if command.Stdout != nil {
+			_, _ = io.WriteString(command.Stdout, "backend ready\n")
+		}
+		if started != nil {
+			runner.logsOnce.Do(func() { close(started) })
+		}
+		<-ctx.Done()
+		runner.mu.Lock()
+		runner.logFollowers--
+		runner.mu.Unlock()
+		return process.Result{}, ctx.Err()
+	}
+	defer runner.mu.Unlock()
 	switch {
 	case arguments == "info --format {{.Host.Security.Rootless}}":
 		return process.Result{Stdout: []byte("true\n")}, nil
@@ -63,8 +83,12 @@ func (runner *lifecycleRunner) Run(_ context.Context, command process.Command) (
 	}
 }
 
-func llamaLifecycleFixture(t *testing.T, runner process.Runner) *ContainerLifecycle {
+func llamaLifecycleFixture(t *testing.T, runner process.Runner, logs ...io.Writer) *ContainerLifecycle {
 	t.Helper()
+	logOutput := io.Writer(io.Discard)
+	if len(logs) > 0 {
+		logOutput = logs[0]
+	}
 	managed := catalog.Catalog{
 		Artifacts: map[string]catalog.Artifact{"model": {ID: "model", Destination: "model.gguf"}},
 		LlamaPresets: map[string]catalog.LlamaPreset{
@@ -75,7 +99,7 @@ func llamaLifecycleFixture(t *testing.T, runner process.Runner) *ContainerLifecy
 	lifecycle, err := NewContainerLifecycle(LifecycleOptions{
 		Catalog: managed, Registry: registry, DataRoot: t.TempDir(), Profile: "cpu",
 		LlamaBackend: "rocm", LlamaModelsMax: 2, RouterPreset: "/data/models.ini",
-		VolumeSuffix: ":rw", Runner: runner, Log: io.Discard,
+		VolumeSuffix: ":rw", Runner: runner, Log: logOutput,
 		StartupTimeout: time.Second, ReadinessInterval: time.Millisecond,
 	})
 	if err != nil {
@@ -94,8 +118,9 @@ func TestContainerLifecycleStartsOnPrivateDynamicPortAndStopsOwnedContainer(t *t
 	defer backend.Close()
 	parsed, _ := url.Parse(backend.URL)
 	port, _ := strconv.Atoi(parsed.Port())
-	runner := &lifecycleRunner{port: port}
-	lifecycle := llamaLifecycleFixture(t, runner)
+	runner := &lifecycleRunner{port: port, logsStarted: make(chan struct{})}
+	var logs bytes.Buffer
+	lifecycle := llamaLifecycleFixture(t, runner, &logs)
 	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,17 +131,34 @@ func TestContainerLifecycleStartsOnPrivateDynamicPortAndStopsOwnedContainer(t *t
 	if upstream.String() != backend.URL {
 		t.Fatalf("upstream=%s want=%s", upstream, backend.URL)
 	}
+	select {
+	case <-runner.logsStarted:
+	case <-time.After(time.Second):
+		t.Fatal("backend log follower did not start")
+	}
 	if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil {
 		t.Fatal(err)
+	}
+	runner.mu.Lock()
+	logFollowers := runner.logFollowers
+	runner.mu.Unlock()
+	if logFollowers != 0 {
+		t.Fatalf("backend log followers after stop=%d", logFollowers)
 	}
 	joined := ""
 	for _, command := range runner.commands {
 		joined += "\n" + command.Name + " " + strings.Join(command.Args, " ")
 	}
-	for _, required := range []string{"--publish 127.0.0.1::8080/tcp", "--name paracetamol-gateway-llama-cpp", "gateway-backend"} {
+	for _, required := range []string{"--publish 127.0.0.1::8080/tcp", "--name paracetamol-gateway-llama-cpp", "gateway-backend", "logs --follow paracetamol-gateway-llama-cpp"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("commands lack %q:%s", required, joined)
 		}
+	}
+	if !strings.Contains(logs.String(), "llama-cpp | backend ready") {
+		t.Fatalf("backend logs lack application prefix:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "log stream ended") {
+		t.Fatalf("normal stop reported a log failure:\n%s", logs.String())
 	}
 }
 

@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"paracetamol/internal/catalog"
@@ -48,9 +50,73 @@ type LifecycleOptions struct {
 }
 
 type ContainerLifecycle struct {
-	options LifecycleOptions
-	podman  podman.Client
-	client  *http.Client
+	options  LifecycleOptions
+	podman   podman.Client
+	client   *http.Client
+	logMu    sync.Mutex
+	follower *backendLogFollower
+}
+
+type backendLogFollower struct {
+	allocation Allocation
+	cancel     context.CancelFunc
+	done       chan struct{}
+}
+
+type synchronizedWriter struct {
+	mu     sync.Mutex
+	output io.Writer
+}
+
+func (writer *synchronizedWriter) Write(value []byte) (int, error) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.output.Write(value)
+}
+
+type prefixedLineWriter struct {
+	mu          sync.Mutex
+	output      io.Writer
+	prefix      []byte
+	atLineStart bool
+}
+
+func newPrefixedLineWriter(output io.Writer, prefix string) *prefixedLineWriter {
+	return &prefixedLineWriter{output: output, prefix: []byte(prefix), atLineStart: true}
+}
+
+func (writer *prefixedLineWriter) Write(value []byte) (int, error) {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	original := len(value)
+	for len(value) > 0 {
+		if writer.atLineStart {
+			if _, err := writer.output.Write(writer.prefix); err != nil {
+				return 0, err
+			}
+			writer.atLineStart = false
+		}
+		newline := bytes.IndexByte(value, '\n')
+		length := len(value)
+		if newline >= 0 {
+			length = newline + 1
+		}
+		if _, err := writer.output.Write(value[:length]); err != nil {
+			return 0, err
+		}
+		writer.atLineStart = newline >= 0
+		value = value[length:]
+	}
+	return original, nil
+}
+
+func (writer *prefixedLineWriter) finish() {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if !writer.atLineStart {
+		_, _ = io.WriteString(writer.output, "\n")
+		writer.atLineStart = true
+	}
 }
 
 func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error) {
@@ -72,6 +138,7 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	if options.Log == nil {
 		options.Log = os.Stderr
 	}
+	options.Log = &synchronizedWriter{output: options.Log}
 	llamaModels, dwarfModels := 0, 0
 	for _, model := range options.Registry.Models {
 		switch model.Backend {
@@ -151,9 +218,14 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 		}
 		return nil, fmt.Errorf("start gateway %s backend: %s", allocation, detail)
 	}
+	if err := lifecycle.followBackendLogs(allocation); err != nil {
+		_ = lifecycle.removeOwned(context.Background(), allocation)
+		return nil, err
+	}
 	name := gatewayContainerNames[allocation]
 	hostPort, err := lifecycle.podman.PublishedLoopbackPort(ctx, name, internalPort)
 	if err != nil {
+		lifecycle.stopFollowingBackendLogs(allocation)
 		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
@@ -161,6 +233,7 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 	readyContext, cancel := context.WithTimeout(ctx, lifecycle.options.StartupTimeout)
 	defer cancel()
 	if err := lifecycle.waitReady(readyContext, allocation, upstream.ResolveReference(&url.URL{Path: readinessPath})); err != nil {
+		lifecycle.stopFollowingBackendLogs(allocation)
 		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
@@ -173,7 +246,49 @@ func (lifecycle *ContainerLifecycle) Stop(ctx context.Context, allocation Alloca
 		return fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
 	fmt.Fprintf(lifecycle.options.Log, "gateway: stopping %s backend\n", allocation)
+	lifecycle.stopFollowingBackendLogs(allocation)
 	return lifecycle.removeOwned(ctx, allocation)
+}
+
+func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation) error {
+	lifecycle.logMu.Lock()
+	if lifecycle.follower != nil {
+		active := lifecycle.follower.allocation
+		lifecycle.logMu.Unlock()
+		return fmt.Errorf("gateway is already following %s backend logs", active)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	follower := &backendLogFollower{allocation: allocation, cancel: cancel, done: make(chan struct{})}
+	lifecycle.follower = follower
+	lifecycle.logMu.Unlock()
+
+	fmt.Fprintf(lifecycle.options.Log, "gateway: following %s backend logs\n", allocation)
+	output := newPrefixedLineWriter(lifecycle.options.Log, string(allocation)+" | ")
+	go func() {
+		defer close(follower.done)
+		err := lifecycle.podman.Logs(ctx, podman.LogOptions{
+			Container: gatewayContainerNames[allocation], Follow: true, All: true,
+			Streams: podman.Streams{Stdout: output, Stderr: output},
+		})
+		output.finish()
+		if err != nil && ctx.Err() == nil {
+			fmt.Fprintf(lifecycle.options.Log, "gateway: %s backend log stream ended: %v\n", allocation, err)
+		}
+	}()
+	return nil
+}
+
+func (lifecycle *ContainerLifecycle) stopFollowingBackendLogs(allocation Allocation) {
+	lifecycle.logMu.Lock()
+	follower := lifecycle.follower
+	if follower == nil || follower.allocation != allocation {
+		lifecycle.logMu.Unlock()
+		return
+	}
+	lifecycle.follower = nil
+	lifecycle.logMu.Unlock()
+	follower.cancel()
+	<-follower.done
 }
 
 func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, int, string, error) {

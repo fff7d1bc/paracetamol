@@ -314,23 +314,26 @@ Tailscale address only when unauthenticated network access is intentional:
 ```
 
 For local coding-agent work, start the gateway and use the sandboxed PATH
-launcher. The explicit application list controls which verified model families
-are exposed; it does not load either backend at startup.
+launcher. With no application option the gateway exposes verified llama.cpp
+models only; an explicit application list replaces that default. Startup does
+not load a backend.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol agent install pi  # once, and after Paracetamol changes its Pi pin
-./paracetamol run gateway --application llama-cpp
+./paracetamol run gateway
 export PATH="$PWD/bin:$PATH"
 pi
 # or: maki
 ```
 
-Add `--application dwarfstar` when its reviewed model is installed and should
-appear on the same endpoint. The first request lazily starts the matching
-private backend. A request for the other application drains active work,
-stops the current backend, and starts the other one; queued requests remain
-FIFO. Inspect the frozen inventory and live allocation with
+Select both `--application llama-cpp --application dwarfstar` when DwarfStar's
+reviewed model is installed and should appear on the same endpoint. A single
+explicit `--application dwarfstar` starts a DwarfStar-only gateway. The first
+request lazily starts the matching private backend and its container output is
+followed in the gateway terminal. A request for the other application drains
+active work, stops the current backend, and starts the other one; queued
+requests remain FIFO. Inspect the frozen inventory and live allocation with
 `./paracetamol status gateway`.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway

@@ -6,18 +6,28 @@ loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
 
-Start it in the foreground with an explicit application allowlist:
+Start the normal llama.cpp gateway in the foreground without extra selection:
 
 ```bash
-./paracetamol run gateway --application llama-cpp
+./paracetamol run gateway
+```
+
+Any explicit `--application` options replace that llama.cpp-only default. Use
+one for a DwarfStar-only endpoint or repeat it to expose both applications:
+
+```bash
+./paracetamol run gateway --application dwarfstar
 ./paracetamol run gateway --application llama-cpp --application dwarfstar
 ```
 
-The default public address is `http://127.0.0.1:8080/v1`. There is no daemon or
-detach mode. The foreground process owns backend cleanup, and Ctrl-C stops
-accepting work, drains active HTTP requests, then removes its exact private
-backend container. A non-loopback `--listen` is an unauthenticated trusted-LAN
-interface and is visibly warned about.
+The compact startup card shows the endpoint, selected profile and render
+nodes, applications, verified model count, short inventory fingerprint, and
+the copyable status command. The default public address is
+`http://127.0.0.1:8080/v1`. There is no daemon or detach mode. The foreground
+process owns backend cleanup, and Ctrl-C stops accepting work, drains active
+HTTP requests, then removes its exact private backend container. A non-loopback
+`--listen` is an unauthenticated trusted-LAN interface and is visibly warned
+about.
 
 ## Frozen inventory
 
@@ -39,7 +49,10 @@ llama.cpp models share one private router allocation. DwarfStar v1 exposes its
 single reviewed non-DSpark preset as a separate allocation. The first Chat
 Completions request starts the required application in a constrained,
 Paracetamol-owned container with an ephemeral loopback host port. That port is
-never the public interface.
+never the public interface. Once started, the container's stdout and stderr are
+followed in the foreground terminal with a `llama-cpp |` or `dwarfstar |`
+prefix. The log follower changes with the allocation and is joined during
+backend stop, so it cannot outlive the gateway-owned container.
 
 Requests compatible with the active allocation run concurrently, subject to
 the backend's own slots; DwarfStar is limited to one active request. A request
@@ -86,8 +99,8 @@ Use the human status client for the versioned endpoint:
 
 Status reports the frozen applications and models, active allocation,
 lifecycle state, active and queued request counts, and inventory fingerprint.
-Raw backend errors remain on gateway stderr; the network status response does
-not expose host paths or process detail.
+Raw prefixed backend output remains on gateway stderr; the network status
+response does not expose host paths or process detail.
 
 Pi and Maki accept one `--gateway-url` setting, with
 `PARACETAMOL_GATEWAY_URL` as its environment equivalent. Normal sessions query

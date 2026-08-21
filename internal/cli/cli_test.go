@@ -280,7 +280,7 @@ func TestIncompleteLeafCommandsShowRecoveryHelp(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"build"}, {"shell"}, {"logs"}, {"stop"},
 		{"images", "export"}, {"images", "import"},
-		{"agent", "install"}, {"run", "gateway"},
+		{"agent", "install"},
 		{"content", "install", "--non-interactive"},
 		{"content", "import", "--non-interactive"},
 		{"content", "workflows", "install"},

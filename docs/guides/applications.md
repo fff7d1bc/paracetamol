@@ -486,11 +486,12 @@ every request. Use the native gateway as their shared, least-ambiguous entry
 point:
 
 ```bash
-./paracetamol run gateway --application llama-cpp
+./paracetamol run gateway
 ```
 
-Add DwarfStar to the same public inventory only when its verified model and
-image are present:
+No application option means llama.cpp only. Any explicit application options
+replace that default. Add both applications to the same public inventory only
+when DwarfStar's verified model and image are present:
 
 ```bash
 ./paracetamol run gateway \
@@ -501,11 +502,13 @@ image are present:
 The gateway advertises a frozen receipt-verified snapshot, but starts no
 backend until the first Chat Completions request. It keeps only one application
 allocation resident: cross-application requests wait in FIFO order while
-active work drains and the private backend changes. `status gateway` reports
-the snapshot and current allocation. Direct llama.cpp and DwarfStar server
-commands remain useful for engine diagnostics, isolated benchmarks, and API
-features outside the gateway's intentionally small surface. The complete
-lifecycle and failure policy is in the [gateway design](../gateway.md).
+active work drains and the private backend changes. The foreground terminal
+follows the active container's output with an application prefix. `status
+gateway` reports the snapshot and current allocation. Direct llama.cpp and
+DwarfStar server commands remain useful for engine diagnostics, isolated
+benchmarks, and API features outside the gateway's intentionally small
+surface. The complete lifecycle and failure policy is in the [gateway
+design](../gateway.md).
 
 Paracetamol manages its own pinned Pi runtime. It requires Node.js 22.19 or
 newer and npm from the host distribution, then installs the repository-locked
@@ -530,7 +533,7 @@ gateway first, then choose a client:
 ```bash
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol agent install pi
-./paracetamol run gateway --application llama-cpp
+./paracetamol run gateway
 export PATH="$PWD/bin:$PATH"
 pi
 # or: maki
@@ -564,7 +567,7 @@ firewall because the gateway provides no application authentication:
 
 ```bash
 # GPU host
-./paracetamol run gateway --application llama-cpp --listen 192.168.1.50
+./paracetamol run gateway --listen 192.168.1.50
 
 # Pi or Maki client host
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
