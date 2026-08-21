@@ -269,6 +269,14 @@ GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
 output, a streamed request, client cancellation, FIFO draining, and an
 application switch.
 
+For host-configuration changes, load the complete generated example and
+partial files with every table omitted in turn. Confirm unknown keys,
+duplicates, oversized files, non-regular paths, invalid scalar types, and an
+explicitly selected missing file fail closed. Exercise `-c` before and after a
+command, preserve arguments after `--`, confirm CLI and environment precedence,
+and verify `config init` creates mode `0600` once without replacing an existing
+file. `--help` must remain available without loading configuration.
+
 For DwarfStar agent-client integration, start the gateway with both
 applications, select
 `paracetamol/deepseek-v4-flash-0731-q2-imatrix` in Pi and Maki, then complete

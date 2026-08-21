@@ -1,0 +1,19 @@
+# Paracetamol host configuration. Command-line flags override corresponding
+# environment variables where defined; both override these values.
+
+[storage]
+# Choose an absolute persistent-data path, or omit this key for the XDG default.
+# data_dir = "/mnt/ai/paracetamol"
+
+[gateway]
+# Empty lists keep automatic backend and render-node discovery.
+applications = []
+profile = "auto"
+render_nodes = []
+listen = "127.0.0.1"
+port = 8080
+startup_timeout = "30m"
+
+[gateway.llama-cpp]
+backend = "rocm"
+models_max = 1

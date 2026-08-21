@@ -12,6 +12,7 @@ venv/
 .env
 .env.*
 !.env.example
+/config.toml
 
 .DS_Store
 

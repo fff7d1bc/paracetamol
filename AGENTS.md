@@ -47,8 +47,8 @@ in the same change. Important ownership boundaries are:
   dependency set.
 - `internal/application/`: the application registry, capabilities, guide
   actions, image identities, ports, and prerequisite build DAG.
-- `internal/config/config.go`: host settings, environment/config precedence,
-  and runtime defaults.
+- `internal/config/config.go`: host settings, typed TOML loading, global file
+  selection, environment/config precedence, and runtime defaults.
 - `internal/platform/`: canonical GPU profile and architecture
   identities.
 - `internal/cli/`: public command tree, leaf parsing, command validation,
