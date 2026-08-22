@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -63,62 +62,6 @@ type backendLogFollower struct {
 	done       chan struct{}
 }
 
-type synchronizedWriter struct {
-	mu     sync.Mutex
-	output io.Writer
-}
-
-func (writer *synchronizedWriter) Write(value []byte) (int, error) {
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
-	return writer.output.Write(value)
-}
-
-type prefixedLineWriter struct {
-	mu          sync.Mutex
-	output      io.Writer
-	prefix      []byte
-	atLineStart bool
-}
-
-func newPrefixedLineWriter(output io.Writer, prefix string) *prefixedLineWriter {
-	return &prefixedLineWriter{output: output, prefix: []byte(prefix), atLineStart: true}
-}
-
-func (writer *prefixedLineWriter) Write(value []byte) (int, error) {
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
-	original := len(value)
-	for len(value) > 0 {
-		if writer.atLineStart {
-			if _, err := writer.output.Write(writer.prefix); err != nil {
-				return 0, err
-			}
-			writer.atLineStart = false
-		}
-		newline := bytes.IndexByte(value, '\n')
-		length := len(value)
-		if newline >= 0 {
-			length = newline + 1
-		}
-		if _, err := writer.output.Write(value[:length]); err != nil {
-			return 0, err
-		}
-		writer.atLineStart = newline >= 0
-		value = value[length:]
-	}
-	return original, nil
-}
-
-func (writer *prefixedLineWriter) finish() {
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
-	if !writer.atLineStart {
-		_, _ = io.WriteString(writer.output, "\n")
-		writer.atLineStart = true
-	}
-}
-
 func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error) {
 	if options.Runner == nil || options.DataRoot == "" || options.Profile == "" || len(options.Registry.Models) == 0 {
 		return nil, fmt.Errorf("invalid gateway backend lifecycle configuration")
@@ -138,7 +81,7 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	if options.Log == nil {
 		options.Log = os.Stderr
 	}
-	options.Log = &synchronizedWriter{output: options.Log}
+	options.Log = atomicLogWriter(options.Log)
 	llamaModels, dwarfModels := 0, 0
 	for _, model := range options.Registry.Models {
 		switch model.Backend {
@@ -151,11 +94,11 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	if llamaModels > 0 && options.RouterPreset == "" {
 		return nil, fmt.Errorf("gateway llama.cpp inventory requires a router preset")
 	}
-	// DwarfStar serves one eagerly selected model per process. The v1 catalog
+	// DwarfStar serves one eagerly selected model per process. The catalog
 	// deliberately contains one non-DSpark preset; reject accidental expansion
 	// until allocations encode a DwarfStar model identity.
 	if dwarfModels > 1 {
-		return nil, fmt.Errorf("gateway v1 supports exactly one DwarfStar preset")
+		return nil, fmt.Errorf("gateway supports exactly one DwarfStar preset")
 	}
 	return &ContainerLifecycle{
 		options: options,
@@ -206,7 +149,7 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(lifecycle.options.Log, "gateway: starting %s backend\n", allocation)
+	logLine(lifecycle.options.Log, "gateway | starting %s backend", allocation)
 	result, err := lifecycle.options.Runner.Run(ctx, process.Command{Name: command[0], Args: command[1:]})
 	if err != nil {
 		return nil, fmt.Errorf("start gateway %s backend: %w", allocation, err)
@@ -237,7 +180,7 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
-	fmt.Fprintf(lifecycle.options.Log, "gateway: %s backend ready on private port %d\n", allocation, hostPort)
+	logLine(lifecycle.options.Log, "gateway | %s backend ready on private port %d", allocation, hostPort)
 	return upstream, nil
 }
 
@@ -245,7 +188,7 @@ func (lifecycle *ContainerLifecycle) Stop(ctx context.Context, allocation Alloca
 	if _, ok := gatewayContainerNames[allocation]; !ok {
 		return fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
-	fmt.Fprintf(lifecycle.options.Log, "gateway: stopping %s backend\n", allocation)
+	logLine(lifecycle.options.Log, "gateway | stopping %s backend", allocation)
 	lifecycle.stopFollowingBackendLogs(allocation)
 	return lifecycle.removeOwned(ctx, allocation)
 }
@@ -262,7 +205,7 @@ func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation) er
 	lifecycle.follower = follower
 	lifecycle.logMu.Unlock()
 
-	fmt.Fprintf(lifecycle.options.Log, "gateway: following %s backend logs\n", allocation)
+	logLine(lifecycle.options.Log, "gateway | following %s backend logs", allocation)
 	output := newPrefixedLineWriter(lifecycle.options.Log, string(allocation)+" | ")
 	go func() {
 		defer close(follower.done)
@@ -272,7 +215,7 @@ func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation) er
 		})
 		output.finish()
 		if err != nil && ctx.Err() == nil {
-			fmt.Fprintf(lifecycle.options.Log, "gateway: %s backend log stream ended: %v\n", allocation, err)
+			logLine(lifecycle.options.Log, "gateway | %s backend log stream ended: %v", allocation, err)
 		}
 	}()
 	return nil
@@ -398,7 +341,7 @@ func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, alloc
 	if !reclaim {
 		return fmt.Errorf("gateway backend container already exists: %s", target)
 	}
-	fmt.Fprintf(lifecycle.options.Log, "gateway: reclaiming stale backend container %s\n", target)
+	logLine(lifecycle.options.Log, "gateway | reclaiming stale backend container %s", target)
 	return lifecycle.podman.RemoveContainer(ctx, target, 2, podman.Streams{})
 }
 

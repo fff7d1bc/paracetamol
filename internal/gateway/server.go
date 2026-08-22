@@ -10,8 +10,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
-	"strings"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -19,16 +20,19 @@ import (
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v1"
+	StatusSchema    = "paracetamol.gateway-status.v2"
 )
 
 type Server struct {
-	registry  Registry
-	scheduler *Scheduler
-	transport *http.Transport
-	log       io.Writer
-	started   time.Time
-	accepting atomic.Bool
+	registry        Registry
+	scheduler       *Scheduler
+	transport       *http.Transport
+	residencyClient *http.Client
+	log             io.Writer
+	started         time.Time
+	accepting       atomic.Bool
+	nextRequestID   atomic.Uint64
+	requests        requestLedger
 }
 
 type Status struct {
@@ -39,12 +43,14 @@ type Status struct {
 	Applications         []string        `json:"applications"`
 	Models               []StatusModel   `json:"models"`
 	Scheduler            SchedulerStatus `json:"scheduler"`
+	RecentRequests       []RequestRecord `json:"recent_requests,omitempty"`
 }
 
 type StatusModel struct {
-	ID          string          `json:"id"`
-	Application string          `json:"application"`
-	State       AllocationState `json:"state"`
+	ID          string     `json:"id"`
+	Application string     `json:"application"`
+	State       ModelState `json:"state"`
+	Diagnostic  string     `json:"diagnostic,omitempty"`
 }
 
 func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server, error) {
@@ -54,13 +60,17 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server,
 	if log == nil {
 		log = os.Stderr
 	}
+	sharedLog := atomicLogWriter(log)
+	transport := &http.Transport{
+		Proxy:             http.ProxyFromEnvironment,
+		DialContext:       (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2: false, MaxIdleConns: 32, MaxIdleConnsPerHost: 16, IdleConnTimeout: 90 * time.Second,
+	}
+	residencyTransport := transport.Clone()
+	residencyTransport.Proxy = nil
 	server := &Server{
-		registry: registry, scheduler: scheduler, log: log, started: time.Now().UTC(),
-		transport: &http.Transport{
-			Proxy:             http.ProxyFromEnvironment,
-			DialContext:       (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-			ForceAttemptHTTP2: false, MaxIdleConns: 32, MaxIdleConnsPerHost: 16, IdleConnTimeout: 90 * time.Second,
-		},
+		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
+		residencyClient: &http.Client{Transport: residencyTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 	server.accepting.Store(true)
 	return server, nil
@@ -69,6 +79,9 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server,
 func (server *Server) BeginShutdown() {
 	server.accepting.Store(false)
 	server.transport.CloseIdleConnections()
+	if transport, ok := server.residencyClient.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+	}
 }
 
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -103,6 +116,11 @@ func (server *Server) models(writer http.ResponseWriter) {
 }
 
 func (server *Server) status(writer http.ResponseWriter, request *http.Request) {
+	recentLimit, err := recentRequestLimit(request.URL.RawQuery)
+	if err != nil {
+		writeAPIError(writer, http.StatusBadRequest, "invalid_request_error", "invalid_requests", err.Error())
+		return
+	}
 	schedulerStatus, err := server.scheduler.Status(request.Context())
 	if err != nil && !errors.Is(err, ErrShuttingDown) {
 		writeAPIError(writer, http.StatusServiceUnavailable, "gateway_error", "status_unavailable", "Gateway status is unavailable")
@@ -113,17 +131,11 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 	}
 	applications := []string{}
 	seen := map[string]bool{}
-	models := make([]StatusModel, 0, len(server.registry.Models))
 	for _, model := range server.registry.Models {
 		if !seen[model.Application] {
 			seen[model.Application] = true
 			applications = append(applications, model.Application)
 		}
-		state := StateUnloaded
-		if Allocation(model.Backend) == schedulerStatus.Allocation {
-			state = schedulerStatus.State
-		}
-		models = append(models, StatusModel{ID: model.ID, Application: model.Application, State: state})
 	}
 	gatewayState := "ready"
 	if !server.accepting.Load() {
@@ -131,86 +143,208 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 	}
 	writeJSON(writer, http.StatusOK, Status{
 		Schema: StatusSchema, Gateway: gatewayState, InventoryFingerprint: server.registry.Fingerprint,
-		StartedAt: server.started.Format(time.RFC3339), Applications: applications, Models: models, Scheduler: schedulerStatus,
+		StartedAt: server.started.Format(time.RFC3339), Applications: applications,
+		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus,
+		RecentRequests: server.requests.Recent(recentLimit),
 	})
 }
 
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
+	started := time.Now()
+	record := RequestRecord{
+		ID: fmt.Sprintf("r%08x", server.nextRequestID.Add(1)), Peer: requestPeer(request),
+		UserAgent: boundedText(request.UserAgent(), maxObservedTextRunes), StartedAt: started.UTC().Format(time.RFC3339Nano),
+	}
+	writer.Header().Set(RequestIDHeader, record.ID)
+	reject := func(status int, outcome RequestOutcome, kind, code, message string) {
+		writeAPIError(writer, status, kind, code, message)
+		record.Outcome, record.HTTPStatus = outcome, status
+		server.completeRequest(&record, started, time.Time{}, time.Time{})
+		logLine(server.log, "gateway | request %s reject outcome=%s status=%d model=%s peer=%s total=%dms",
+			record.ID, outcome, status, firstNonEmptyLog(record.Model, "unknown"), firstNonEmptyLog(record.Peer, "unknown"), record.Timing.TotalMilliseconds)
+	}
 	if !server.accepting.Load() {
-		writeAPIError(writer, http.StatusServiceUnavailable, "gateway_error", "gateway_shutting_down", "Gateway is shutting down")
+		reject(http.StatusServiceUnavailable, OutcomeRejected, "gateway_error", "gateway_shutting_down", "Gateway is shutting down")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(request.Body, MaxRequestBytes+1))
 	if err != nil {
-		writeAPIError(writer, http.StatusBadRequest, "invalid_request_error", "invalid_body", "Request body could not be read")
+		if request.Context().Err() != nil {
+			record.Outcome = OutcomeCanceled
+			server.completeRequest(&record, started, time.Time{}, time.Time{})
+			logLine(server.log, "gateway | request %s finish outcome=%s status=0 total=%dms", record.ID, record.Outcome, record.Timing.TotalMilliseconds)
+			return
+		}
+		reject(http.StatusBadRequest, OutcomeRejected, "invalid_request_error", "invalid_body", "Request body could not be read")
 		return
 	}
 	if len(body) > MaxRequestBytes {
-		writeAPIError(writer, http.StatusRequestEntityTooLarge, "invalid_request_error", "request_too_large", "Request body exceeds the gateway limit")
+		reject(http.StatusRequestEntityTooLarge, OutcomeRejected, "invalid_request_error", "request_too_large", "Request body exceeds the gateway limit")
 		return
 	}
-	identifier, err := requestModel(body)
+	observation, err := inspectRequest(body)
 	if err != nil {
-		writeAPIError(writer, http.StatusBadRequest, "invalid_request_error", "invalid_model", err.Error())
+		reject(http.StatusBadRequest, OutcomeRejected, "invalid_request_error", "invalid_model", err.Error())
 		return
 	}
-	model, ok := server.registry.Lookup(identifier)
+	record.Stream = observation.Stream
+	record.Controls = observation.Controls
+	model, ok := server.registry.Lookup(observation.Model)
 	if !ok {
-		writeAPIError(writer, http.StatusNotFound, "invalid_request_error", "model_not_found", "The requested model is not available")
+		reject(http.StatusNotFound, OutcomeRejected, "invalid_request_error", "model_not_found", "The requested model is not available")
 		return
 	}
+	record.Model, record.Application = model.ID, model.Application
+	logLine(server.log, "gateway | request %s start model=%s application=%s peer=%s stream=%t %s",
+		record.ID, model.ID, model.Application, firstNonEmptyLog(record.Peer, "unknown"), record.Stream, controlsLogSummary(record.Controls))
+	waitStarted := time.Now()
 	lease, err := server.scheduler.Acquire(request.Context(), Allocation(model.Backend))
+	waitFinished := time.Now()
 	if err != nil {
 		switch {
 		case errors.Is(err, context.Canceled):
-			return
+			record.Outcome = OutcomeCanceled
 		case errors.Is(err, ErrQueueFull):
 			writeAPIError(writer, http.StatusServiceUnavailable, "gateway_error", "gateway_queue_full", "Gateway request queue is full")
+			record.Outcome, record.HTTPStatus = OutcomeQueueFull, http.StatusServiceUnavailable
 		case errors.Is(err, ErrShuttingDown):
 			writeAPIError(writer, http.StatusServiceUnavailable, "gateway_error", "gateway_shutting_down", "Gateway is shutting down")
+			record.Outcome, record.HTTPStatus = OutcomeRejected, http.StatusServiceUnavailable
 		default:
-			fmt.Fprintf(server.log, "gateway: start %s for model %s: %v\n", model.Application, model.ID, err)
+			logLine(server.log, "gateway | request %s backend start %s: %v", record.ID, model.Application, err)
 			writeAPIError(writer, http.StatusServiceUnavailable, "gateway_error", "backend_start_failed", "The selected model backend could not start")
+			record.Outcome, record.HTTPStatus = OutcomeBackendStartFailed, http.StatusServiceUnavailable
 		}
+		server.completeRequest(&record, started, waitStarted, waitFinished)
+		server.logRequestFinish(record)
 		return
 	}
 	defer lease.Release()
 	request.Body = io.NopCloser(bytes.NewReader(body))
 	request.ContentLength = int64(len(body))
+	// Early gateway errors use the header installed before body parsing. A
+	// proxied response receives it through ModifyResponse instead; remove the
+	// early copy so ReverseProxy's additive header transfer cannot duplicate it.
+	writer.Header().Del(RequestIDHeader)
+	observedWriter := &statusResponseWriter{ResponseWriter: writer}
+	var observer *responseObserver
+	proxyFailed := false
 	proxy := httputil.NewSingleHostReverseProxy(lease.Upstream)
 	proxy.Transport = server.transport
 	proxy.FlushInterval = -1
+	proxy.ModifyResponse = func(response *http.Response) error {
+		response.Header.Set(RequestIDHeader, record.ID)
+		observer = newResponseObserver(response.Header.Get("Content-Type"))
+		response.Body = &observedBody{ReadCloser: response.Body, observer: observer}
+		return nil
+	}
 	proxy.ErrorHandler = func(output http.ResponseWriter, incoming *http.Request, proxyErr error) {
 		if incoming.Context().Err() != nil {
 			return
 		}
+		proxyFailed = true
 		lease.Fail(proxyErr)
-		fmt.Fprintf(server.log, "gateway: proxy %s through %s: %v\n", model.ID, model.Application, proxyErr)
+		logLine(server.log, "gateway | request %s proxy %s through %s: %v", record.ID, model.ID, model.Application, proxyErr)
+		output.Header().Set(RequestIDHeader, record.ID)
 		writeAPIError(output, http.StatusBadGateway, "gateway_error", "upstream_error", "The selected model backend disconnected")
 	}
-	proxy.ServeHTTP(writer, request)
+	upstreamStarted := time.Now()
+	proxyAborted := serveReverseProxy(proxy, observedWriter, request)
+	upstreamFinished := time.Now()
+	if proxyAborted && request.Context().Err() == nil {
+		proxyFailed = true
+		lease.Fail(errors.New("upstream response stream aborted"))
+		logLine(server.log, "gateway | request %s proxy %s through %s: response stream aborted", record.ID, model.ID, model.Application)
+	}
+	if observer != nil {
+		record.Tokens = observer.Finish()
+	}
+	record.HTTPStatus = observedWriter.status
+	switch {
+	case request.Context().Err() != nil:
+		record.Outcome = OutcomeCanceled
+	case proxyFailed || record.HTTPStatus >= http.StatusBadRequest:
+		record.Outcome = OutcomeUpstreamError
+	default:
+		record.Outcome = OutcomeSucceeded
+	}
+	record.Timing.UpstreamMilliseconds = elapsedMilliseconds(upstreamStarted, upstreamFinished)
+	server.completeRequest(&record, started, waitStarted, waitFinished)
+	server.logRequestFinish(record)
 }
 
-func requestModel(body []byte) (string, error) {
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	var object map[string]json.RawMessage
-	if err := decoder.Decode(&object); err != nil || object == nil {
-		return "", errors.New("Request body must be one JSON object")
+// ReverseProxy uses http.ErrAbortHandler to terminate a response whose stream
+// breaks after headers were committed. Contain that sentinel so the gateway
+// can release the lease normally and still publish its privacy-safe finish
+// record; any unrelated panic remains a programming error.
+func serveReverseProxy(proxy *httputil.ReverseProxy, writer http.ResponseWriter, request *http.Request) (aborted bool) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if recovered == http.ErrAbortHandler {
+				aborted = true
+				return
+			}
+			panic(recovered)
+		}
+	}()
+	proxy.ServeHTTP(writer, request)
+	return false
+}
+
+func recentRequestLimit(rawQuery string) (int, error) {
+	if rawQuery == "" {
+		return 0, nil
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return "", errors.New("Request body contains trailing data")
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil || len(values) != 1 || len(values["requests"]) != 1 {
+		return 0, fmt.Errorf("status accepts only one requests query parameter")
 	}
-	raw, ok := object["model"]
-	if !ok {
-		return "", errors.New("Request body requires a model string")
+	limit, err := strconv.Atoi(values.Get("requests"))
+	if err != nil || limit < 1 || limit > RecentRequestLimit {
+		return 0, fmt.Errorf("requests must be from 1 through %d", RecentRequestLimit)
 	}
-	var identifier string
-	if err := json.Unmarshal(raw, &identifier); err != nil || strings.TrimSpace(identifier) == "" {
-		return "", errors.New("Request body requires a non-empty model string")
+	return limit, nil
+}
+
+func (server *Server) completeRequest(record *RequestRecord, started, waitStarted, waitFinished time.Time) {
+	finished := time.Now()
+	record.FinishedAt = finished.UTC().Format(time.RFC3339Nano)
+	record.Timing.TotalMilliseconds = elapsedMilliseconds(started, finished)
+	if !waitStarted.IsZero() && !waitFinished.IsZero() {
+		record.Timing.GatewayWaitMilliseconds = elapsedMilliseconds(waitStarted, waitFinished)
 	}
-	return identifier, nil
+	server.requests.Add(*record)
+}
+
+func (server *Server) logRequestFinish(record RequestRecord) {
+	tokens := "unavailable"
+	if record.Tokens.Input != nil || record.Tokens.Output != nil || record.Tokens.Cached != nil {
+		tokens = fmt.Sprintf("in:%s,out:%s,cached:%s", tokenLogValue(record.Tokens.Input), tokenLogValue(record.Tokens.Output), tokenLogValue(record.Tokens.Cached))
+	}
+	logLine(server.log, "gateway | request %s finish outcome=%s status=%d wait=%dms upstream=%dms total=%dms tokens=%s",
+		record.ID, record.Outcome, record.HTTPStatus, record.Timing.GatewayWaitMilliseconds,
+		record.Timing.UpstreamMilliseconds, record.Timing.TotalMilliseconds, tokens)
+}
+
+func tokenLogValue(value *int64) string {
+	if value == nil {
+		return "?"
+	}
+	return strconv.FormatInt(*value, 10)
+}
+
+func elapsedMilliseconds(start, finish time.Time) int64 {
+	if start.IsZero() || finish.IsZero() || finish.Before(start) {
+		return 0
+	}
+	return finish.Sub(start).Milliseconds()
+}
+
+func firstNonEmptyLog(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func writeAPIError(writer http.ResponseWriter, status int, kind, code, message string) {

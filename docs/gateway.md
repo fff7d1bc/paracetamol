@@ -105,6 +105,12 @@ followed in the foreground terminal with a `llama-cpp |` or `dwarfstar |`
 prefix. The log follower changes with the allocation and is joined during
 backend stop, so it cannot outlive the gateway-owned container.
 
+Gateway controller and HTTP lines use the `gateway |` prefix. Each accepted
+Chat Completions request receives a process-local correlation ID and matching
+start/finish lines; an early rejection receives one reject line. Backend and
+controller prefixes are emitted as complete physical lines, so concurrent
+output cannot splice one prefix into another.
+
 Requests compatible with the active allocation run concurrently, subject to
 the backend's own slots; DwarfStar is limited to one active request. A request
 for another allocation enters the bounded FIFO queue. Once existing requests
@@ -153,12 +159,42 @@ Use the human status client for the versioned endpoint:
 ```bash
 ./paracetamol status gateway
 ./paracetamol status gateway --gateway-url http://aion.local:8080/v1
+./paracetamol status gateway --requests 10
 ```
 
-Status reports the frozen applications and models, active allocation,
-lifecycle state, active and queued request counts, and inventory fingerprint.
-Raw prefixed backend output remains on gateway stderr; the network status
-response does not expose host paths or process detail.
+The v2 status schema reports the frozen applications, active allocation,
+lifecycle state, active and queued request counts, inventory fingerprint, and
+exact per-model residency. For a resident llama.cpp allocation, the gateway
+performs a bounded read-only `GET /models` against the private router and keeps
+only frozen model IDs plus unloaded, loading, loaded, sleeping, failed, or
+unknown state. It never adds the router's mutating `reload` query and discards
+paths, child arguments, presets, and models outside the frozen inventory.
+DwarfStar residency follows its single allocation lifecycle. An unavailable,
+malformed, missing, or contradictory result becomes `unknown` with a fixed
+diagnostic rather than leaking backend detail.
+
+Recent-request history is opt-in. `--requests N`, where N is 1 through 64,
+requests `/paracetamol/v1/status?requests=N` and prints the newest completed
+records from a fixed 64-entry in-memory ring. A record contains its correlation
+ID, frozen model and application, direct TCP peer, bounded User-Agent, stream
+mode, outcome, HTTP status, timestamps, gateway wait/upstream/total wall time,
+and input/output/cached token counts when the upstream reports them. It also
+distinguishes explicit client values for `temperature`, `top_p`, `top_k`,
+`min_p`, `presence_penalty`, `repeat_penalty`, `reasoning_effort`,
+`reasoning_strength`, and the reviewed `chat_template_kwargs` reasoning fields
+from null or absent fields delegated to managed/backend defaults. Conflicting
+or malformed control values are diagnostic metadata only: the gateway neither
+rejects nor rewrites an otherwise valid request.
+
+The ledger is process-local and never retains prompts, messages, tools,
+arbitrary request fields, complete request/response bodies, response content,
+authorization headers, or forwarded-address headers. Normal JSON and SSE are
+observed through bounded incremental readers without delaying or changing
+their bytes or flushing. Missing or malformed usage data is simply reported as
+unavailable. Chat responses carry `X-Paracetamol-Request-ID` for correlation.
+Omitting `--requests` keeps the concise status response and excludes request
+history. Raw prefixed runtime output remains on gateway stderr; status exposes
+no host path or process detail.
 
 Pi and Maki accept one `--gateway-url` setting, with
 `PARACETAMOL_GATEWAY_URL` as its environment equivalent. Normal sessions query
@@ -167,14 +203,19 @@ generating one `paracetamol` provider. Management and informational client
 commands do not require a running gateway. Keep client and server checkouts on
 the same revision so model IDs and capability metadata agree.
 
-## Deliberate v1 limits
+## Deliberate current limits
 
 - DwarfStar uses the reviewed direct model only; DSpark remains a direct-server
   and benchmark option.
 - The gateway owns one resource pool and does not keep llama.cpp and DwarfStar
   resident together.
+- It adds no manual unload operation or gateway idle timer. Allocation switches
+  and foreground shutdown retain their existing lifecycle, while llama.cpp's
+  count-limited router retains its own idle-child LRU policy.
 - It does not add authentication, TLS, retries, request rewriting, or an
   arbitrary upstream registry.
+- The in-memory ledger is not a persistent metrics store, full traffic capture,
+  Prometheus endpoint, or web UI.
 - Direct servers remain supported diagnostic surfaces, not hidden gateway
   dependencies.
 

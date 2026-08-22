@@ -249,7 +249,7 @@ llama.cpp presets. Give the reviewed serving identity its own validated policy:
 ```
 
 The public DwarfStar recipe and runtime own one reviewed target-model identity.
-The gateway v1 exposes only its non-DSpark bundle. The optional
+The gateway exposes only its non-DSpark bundle. The optional
 DSpark bundle contains that target first and its exact support GGUF second;
 the runtime accepts the pair only through `--dspark` and never treats the
 support file as another user-selectable model.

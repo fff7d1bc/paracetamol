@@ -267,7 +267,17 @@ if one was started. Confirm `-a llama-cpp` and `--application llama-cpp` produce
 the same strict inventory and the default llama.cpp loaded-model limit is one.
 GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
 output, a streamed request, client cancellation, FIFO draining, and an
-application switch.
+application switch. Confirm `status gateway` derives llama.cpp child residency
+from a read-only private `/models` probe without `reload`, filters foreign
+models and router arguments, and reports bounded fixed diagnostics on malformed
+or unavailable responses. Send Pi-, Maki-, and OpenCode-shaped reasoning and
+sampler payloads, then use `status gateway --requests N` to verify that explicit
+controls, wait/upstream/total timing, and available usage tokens are credible
+while prompts, tools, authorization, response content, and forwarded peer
+headers are absent. Exercise normal JSON, fragmented SSE, client disconnect,
+and concurrent backend/controller logs; correlation IDs must match start and
+finish/reject lines and every physical line must retain one complete
+`gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
 
 For host-configuration changes, load the complete generated example and
 partial files with every table omitted in turn. Confirm unknown keys,
