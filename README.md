@@ -349,7 +349,10 @@ work, stops the current backend, and starts the other one; queued requests
 remain FIFO. llama.cpp keeps one model loaded by default because its router
 limit is count-based rather than memory-aware; opt into a larger known-fitting
 set with `--models-max`. Inspect the frozen inventory and live allocation with
-`./paracetamol status gateway`.
+`./paracetamol status gateway`. Add `--requests 10` when diagnosing a client:
+the opt-in view shows recent request timing, token usage when reported, and the
+reasoning/sampler fields the client actually sent without retaining prompts or
+response content.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway
 has no authentication, so bind it to one intended address and restrict that

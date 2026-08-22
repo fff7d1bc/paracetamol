@@ -150,7 +150,7 @@ func TestStatusGatewayUsesVersionedEndpoint(t *testing.T) {
 			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
 			Applications: []string{"llama-cpp"}, InventoryFingerprint: "fixture",
 			Scheduler: gateway.SchedulerStatus{State: gateway.StateUnloaded},
-			Models:    []gateway.StatusModel{{ID: "fixture", Application: "llama-cpp", State: gateway.StateUnloaded}},
+			Models:    []gateway.StatusModel{{ID: "fixture", Application: "llama-cpp", State: gateway.ModelUnloaded}},
 		})
 	}))
 	defer server.Close()
@@ -167,6 +167,62 @@ func TestGatewayURLRejectsCredentialsAndArbitraryPaths(t *testing.T) {
 	for _, value := range []string{"ftp://example.test/v1", "http://user@example.test/v1", "http://example.test/other"} {
 		if _, err := parseGatewayURL(value); err == nil {
 			t.Fatalf("URL %q was accepted", value)
+		}
+	}
+}
+
+func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
+	requested := ""
+	input, output, cached := int64(20), int64(5), int64(12)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requested = request.URL.RequestURI()
+		_ = json.NewEncoder(writer).Encode(gateway.Status{
+			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
+			Applications: []string{"llama-cpp"}, InventoryFingerprint: "fixture",
+			Scheduler: gateway.SchedulerStatus{State: gateway.StateReady, Allocation: gateway.AllocationLlamaCPP},
+			Models: []gateway.StatusModel{{
+				ID: "qwen", Application: "llama-cpp", State: gateway.ModelUnknown,
+				Diagnostic: "llama.cpp router model status is unavailable",
+			}},
+			RecentRequests: []gateway.RequestRecord{{
+				ID: "r00000001", Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "pi/fixture",
+				Stream: true, Outcome: gateway.OutcomeSucceeded, HTTPStatus: http.StatusOK,
+				Timing: gateway.RequestTiming{GatewayWaitMilliseconds: 3, UpstreamMilliseconds: 40, TotalMilliseconds: 44},
+				Tokens: gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached},
+				Controls: gateway.RequestControls{
+					Reasoning: []gateway.ObservedControl{{Name: "reasoning_effort", Source: gateway.ControlClient, Provided: true, Value: "medium"}},
+					Sampling:  []gateway.ObservedControl{{Name: "temperature", Source: gateway.ControlDefault}},
+				},
+			}},
+		})
+	}))
+	defer server.Close()
+	app, stdout, _ := testApp(t, &commandRunner{})
+	if err := app.commandStatus([]string{"gateway", "--gateway-url", server.URL + "/v1", "--requests", "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if requested != "/paracetamol/v1/status?requests=1" {
+		t.Fatalf("request=%q", requested)
+	}
+	for _, expected := range []string{
+		"r00000001", "qwen", "succeeded", "44ms total", "20 input", "5 output", "12 cached",
+		"reasoning_effort=medium", "sampler defaults", "pi/fixture", "router model status is unavailable",
+	} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("status output lacks %q:\n%s", expected, stdout)
+		}
+	}
+}
+
+func TestStatusGatewayValidatesRecentRequestCountAndScope(t *testing.T) {
+	for _, arguments := range [][]string{
+		{"gateway", "--requests", "0"},
+		{"gateway", "--requests", "65"},
+		{"llama-cpp", "--requests", "1"},
+	} {
+		app, _, _ := testApp(t, &commandRunner{})
+		if err := app.commandStatus(arguments); err == nil || !strings.Contains(err.Error(), "--requests") {
+			t.Fatalf("arguments=%v err=%v", arguments, err)
 		}
 	}
 }

@@ -739,7 +739,12 @@ lifecycle follows the active backend's prefixed logs and joins that follower
 when the allocation stops. The gateway owns no Podman socket and keeps only
 one application allocation resident. It reclaims only an exact stale container
 with all gateway ownership labels and refuses direct, benchmark, or foreign
-collisions. See `docs/gateway.md` for the public surface and v1 limits.
+collisions. A fixed process-local ledger retains only allowlisted request
+metadata; request and response bodies, tools, authorization, and backend model
+arguments never enter it. Exact llama.cpp child residency comes from a bounded
+read-only probe of the router's private `/models` endpoint, not from allocation
+state or a model-management request. See `docs/gateway.md` for the public
+surface and current limits.
 
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding

@@ -125,12 +125,13 @@ func (app *App) runGateway(args []string) error {
 		}
 		routerPath = filepath.Join((storage.Layout{Root: dataRoot}).Application("llama-cpp"), "models.ini")
 	}
+	gatewayLog := gateway.NewAtomicLogWriter(app.Stderr)
 	lifecycle, err := gateway.NewContainerLifecycle(gateway.LifecycleOptions{
 		Catalog: managed, Registry: registry, DataRoot: dataRoot, Profile: profile,
 		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax,
 		RouterPreset: routerPath, SourceRevision: app.projectRevision(),
 		VolumeSuffix: app.podman().SELinuxVolumeSuffix(app.Context), Unconfined: *unconfined,
-		StartupTimeout: *startupTimeout, Runner: app.Runner, Log: app.Stderr,
+		StartupTimeout: *startupTimeout, Runner: app.Runner, Log: gatewayLog,
 	})
 	if err != nil {
 		return err
@@ -161,12 +162,12 @@ func (app *App) runGateway(args []string) error {
 	if err != nil {
 		return err
 	}
-	handler, err := gateway.NewServer(registry, scheduler, app.Stderr)
+	handler, err := gateway.NewServer(registry, scheduler, gatewayLog)
 	if err != nil {
 		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
 	}
 	server := &http.Server{
-		Handler: handler, ErrorLog: log.New(app.Stderr, "gateway http: ", 0),
+		Handler: handler, ErrorLog: log.New(gatewayLog, "gateway | http: ", 0),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
 	if !isLoopback(listen) {
@@ -326,7 +327,7 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Waiting for requests. Press Ctrl-C to stop."))
 }
 
-func (app *App) gatewayStatus(rawURL string) error {
+func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 	base, err := parseGatewayURL(firstNonEmpty(rawURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL)))
 	if err != nil {
 		return err
@@ -334,6 +335,9 @@ func (app *App) gatewayStatus(rawURL string) error {
 	statusURL := *base
 	statusURL.Path = "/paracetamol/v1/status"
 	statusURL.RawQuery = ""
+	if recentRequests > 0 {
+		statusURL.RawQuery = url.Values{"requests": []string{fmt.Sprint(recentRequests)}}.Encode()
+	}
 	statusURL.Fragment = ""
 	ctx, cancel := context.WithTimeout(app.Context, 5*time.Second)
 	defer cancel()
@@ -366,13 +370,107 @@ func (app *App) gatewayStatus(rawURL string) error {
 	})
 	rows := make([][]string, 0, len(status.Models))
 	for _, model := range status.Models {
-		rows = append(rows, []string{terminal.State(string(model.State)), terminal.Label(model.Application), terminal.Command(model.ID)})
+		detail := terminal.Command(model.ID)
+		if model.Diagnostic != "" {
+			detail += " — " + terminal.Muted(model.Diagnostic)
+		}
+		rows = append(rows, []string{terminal.State(string(model.State)), terminal.Label(model.Application), detail})
 	}
 	lines, _ := ui.ColumnLines(rows, nil, "  ")
 	for _, line := range lines {
 		fmt.Fprintln(app.Stdout, line)
 	}
+	if recentRequests > 0 {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Recent requests"))
+		if len(status.RecentRequests) == 0 {
+			fmt.Fprintln(app.Stdout, terminal.Muted("No completed requests are recorded."))
+			return nil
+		}
+		for _, record := range status.RecentRequests {
+			statusText := "no HTTP response"
+			if record.HTTPStatus != 0 {
+				statusText = fmt.Sprintf("HTTP %d", record.HTTPStatus)
+			}
+			model := firstNonEmpty(record.Model, "unknown model")
+			requestRows, _ := ui.ColumnLines([][]string{{
+				terminal.State(string(record.Outcome)), terminal.Command(record.ID), terminal.Command(model),
+				fmt.Sprintf("%s · %s total · %s wait · %s upstream", statusText,
+					gatewayDuration(record.Timing.TotalMilliseconds), gatewayDuration(record.Timing.GatewayWaitMilliseconds), gatewayDuration(record.Timing.UpstreamMilliseconds)),
+			}}, nil, "  ")
+			fmt.Fprintln(app.Stdout, requestRows[0])
+			fmt.Fprintf(app.Stdout, "    %s\n", terminal.Muted(gatewayRequestMetadata(record)))
+		}
+	}
 	return nil
+}
+
+func gatewayDuration(milliseconds int64) string {
+	if milliseconds < 0 {
+		milliseconds = 0
+	}
+	return (time.Duration(milliseconds) * time.Millisecond).String()
+}
+
+func gatewayRequestMetadata(record gateway.RequestRecord) string {
+	parts := []string{firstNonEmpty(record.Application, "no application"), firstNonEmpty(record.Peer, "unknown peer")}
+	if record.UserAgent != "" {
+		parts = append(parts, record.UserAgent)
+	}
+	if record.Stream {
+		parts = append(parts, "stream")
+	} else {
+		parts = append(parts, "non-stream")
+	}
+	tokens := []string{}
+	if record.Tokens.Input != nil {
+		tokens = append(tokens, fmt.Sprintf("%d input", *record.Tokens.Input))
+	}
+	if record.Tokens.Output != nil {
+		tokens = append(tokens, fmt.Sprintf("%d output", *record.Tokens.Output))
+	}
+	if record.Tokens.Cached != nil {
+		tokens = append(tokens, fmt.Sprintf("%d cached", *record.Tokens.Cached))
+	}
+	if len(tokens) == 0 {
+		parts = append(parts, "tokens unavailable")
+	} else {
+		parts = append(parts, strings.Join(tokens, ", "))
+	}
+	parts = append(parts, gatewayControlMetadata(record.Controls))
+	return strings.Join(parts, " · ")
+}
+
+func gatewayControlMetadata(controls gateway.RequestControls) string {
+	reasoning := explicitGatewayControls(controls.Reasoning)
+	samplers := explicitGatewayControls(controls.Sampling)
+	parts := []string{}
+	if len(reasoning) == 0 {
+		parts = append(parts, "reasoning defaults")
+	} else {
+		parts = append(parts, strings.Join(reasoning, ", "))
+	}
+	if len(samplers) == 0 {
+		parts = append(parts, "sampler defaults")
+	} else {
+		parts = append(parts, strings.Join(samplers, ", "))
+	}
+	if len(controls.Diagnostics) > 0 {
+		parts = append(parts, fmt.Sprintf("%d control diagnostics", len(controls.Diagnostics)))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func explicitGatewayControls(controls []gateway.ObservedControl) []string {
+	result := []string{}
+	for _, control := range controls {
+		switch control.Source {
+		case gateway.ControlClient:
+			result = append(result, control.Name+"="+control.Value)
+		case gateway.ControlInvalid:
+			result = append(result, control.Name+"=invalid")
+		}
+	}
+	return result
 }
 
 func parseGatewayURL(value string) (*url.URL, error) {

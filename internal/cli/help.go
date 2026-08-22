@@ -47,6 +47,7 @@ var metavarByFlag = map[string]string{
 	"render-node":            "PATH",
 	"repetitions":            "COUNT",
 	"report-format":          "FORMAT",
+	"requests":               "COUNT",
 	"resume":                 "PATH",
 	"runs":                   "COUNT",
 	"save-pack":              "PATH",
@@ -79,7 +80,7 @@ var commandExampleArguments = map[string][][]string{
 	"guide":       {{"guide", "llama-cpp"}, {"guide", "dwarfstar"}},
 	"doctor":      {{"doctor"}, {"doctor", "--render-node", "/dev/dri/renderD128"}},
 	"acceptance":  {{"acceptance", "--dry-run"}, {"acceptance", "--application", "llama-cpp"}},
-	"status":      {{"status"}, {"status", "llama-cpp"}, {"status", "gateway"}},
+	"status":      {{"status"}, {"status", "llama-cpp"}, {"status", "gateway"}, {"status", "gateway", "--requests", "10"}},
 	"run comfyui": {{"run", "comfyui"}, {"run", "comfyui", "--", "--enable-manager"}, {"run", "comfyui", "--listen", "127.0.0.1", "--detach"}},
 	"run llama-cpp server": {
 		{"run", "llama-cpp", "server", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl"},

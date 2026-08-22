@@ -43,6 +43,7 @@ type SchedulerStatus struct {
 	ActiveRequests int             `json:"active_requests"`
 	QueuedRequests int             `json:"queued_requests"`
 	LastError      string          `json:"last_error,omitempty"`
+	Upstream       string          `json:"-"`
 }
 
 type Scheduler struct {
@@ -412,7 +413,11 @@ func (scheduler *Scheduler) run() {
 				}
 			}
 		case request := <-scheduler.statuses:
-			request.reply <- SchedulerStatus{Allocation: current, State: state, ActiveRequests: active, QueuedRequests: len(queue), LastError: lastError}
+			upstreamURL := ""
+			if upstream != nil {
+				upstreamURL = upstream.String()
+			}
+			request.reply <- SchedulerStatus{Allocation: current, State: state, ActiveRequests: active, QueuedRequests: len(queue), LastError: lastError, Upstream: upstreamURL}
 		case request := <-scheduler.shutdown:
 			if !shuttingDown {
 				shuttingDown, shutdownReply = true, request.reply

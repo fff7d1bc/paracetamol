@@ -22,6 +22,7 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/podman"
@@ -230,11 +231,12 @@ func (app *App) commandGuide(args []string) error {
 }
 
 func (app *App) commandStatus(args []string) error {
-	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]", "[--gateway-url URL]"))
+	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]", "[--gateway-url URL]", "[--requests COUNT]"))
 	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gateway; omit for the host dashboard")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
+	requests := set.Int("requests", 0, "include 1-64 recent gateway requests")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -255,10 +257,16 @@ func (app *App) commandStatus(args []string) error {
 		if *model != "" || *dataFlag != "" {
 			return controlerr.Usage("status gateway does not accept --model or --data-dir")
 		}
-		return app.gatewayStatus(*gatewayURL)
+		if set.changed("requests") && (*requests < 1 || *requests > gateway.RecentRequestLimit) {
+			return controlerr.Usage("--requests must be from 1 through %d", gateway.RecentRequestLimit)
+		}
+		return app.gatewayStatus(*gatewayURL, *requests)
 	}
 	if *gatewayURL != "" {
 		return controlerr.Usage("--gateway-url requires 'status gateway'")
+	}
+	if set.changed("requests") {
+		return controlerr.Usage("--requests requires 'status gateway'")
 	}
 	if *model != "" && application != "llama-cpp" {
 		return controlerr.Usage("--model requires 'status llama-cpp'")
