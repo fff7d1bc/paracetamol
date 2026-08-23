@@ -20,6 +20,8 @@ var (
 	SandboxRuntime = "/run/" + identity.StateNamespace + "/runtime"
 )
 
+const standardLinuxbrewPrefix = "/home/linuxbrew/.linuxbrew"
+
 type SandboxPaths struct {
 	Root   string
 	Config string
@@ -89,7 +91,15 @@ func CreateSandboxPlan(ctx context.Context, runner process.Runner, command []str
 	if err != nil {
 		return SandboxPlan{}, fmt.Errorf("cannot resolve agent executable: %w", err)
 	}
-	prefix := linuxbrewPrefix(executable)
+	prefixes := linuxbrewPrefixes(executable, standardLinuxbrewPrefix)
+	for _, prefix := range prefixes {
+		if pathWithin(working, prefix) || pathWithin(prefix, working) {
+			return SandboxPlan{}, fmt.Errorf("sandbox workdir overlaps read-only Linuxbrew prefix: %s", working)
+		}
+		if pathWithin(paths.Root, prefix) || pathWithin(prefix, paths.Root) {
+			return SandboxPlan{}, fmt.Errorf("sandbox private state overlaps read-only Linuxbrew prefix: %s", paths.Root)
+		}
+	}
 	resolver := runtimeResolver()
 	mdns := runtimeMDNSSocket()
 	destinations := []string{SandboxHome, filepath.Join(SandboxHome, ".config"), filepath.Join(SandboxHome, ".local"), filepath.Join(SandboxHome, ".local", "share"), filepath.Join(SandboxHome, ".local", "state"), filepath.Join(SandboxHome, ".cache"), SandboxRuntime, filepath.Dir(working)}
@@ -102,9 +112,10 @@ func CreateSandboxPlan(ctx context.Context, runner process.Runner, command []str
 	for _, mount := range readOnly {
 		destinations = append(destinations, filepath.Dir(mount.Destination))
 	}
-	if prefix != "" {
+	for _, prefix := range prefixes {
 		destinations = append(destinations, filepath.Dir(prefix))
-	} else {
+	}
+	if !pathWithinAny(executable, prefixes) {
 		destinations = append(destinations, filepath.Dir(executable))
 	}
 	arguments := []string{bwrap, "--unshare-all", "--share-net", "--die-with-parent", "--new-session", "--hostname", identity.StateNamespace, "--cap-drop", "ALL", "--clearenv", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run", "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--symlink", "usr/bin", "/bin", "--symlink", "usr/sbin", "/sbin", "--symlink", "usr/lib", "/lib"}
@@ -121,9 +132,10 @@ func CreateSandboxPlan(ctx context.Context, runner process.Runner, command []str
 	if mdns != "" {
 		arguments = append(arguments, "--ro-bind", mdns, mdns)
 	}
-	if prefix != "" {
+	for _, prefix := range prefixes {
 		arguments = append(arguments, "--ro-bind", prefix, prefix)
-	} else if !pathWithin(executable, "/usr") {
+	}
+	if !pathWithinAny(executable, prefixes) && !pathWithin(executable, "/usr") {
 		arguments = append(arguments, "--ro-bind", executable, executable)
 	}
 	for _, mount := range readOnly {
@@ -143,7 +155,7 @@ func CreateSandboxPlan(ctx context.Context, runner process.Runner, command []str
 			username = current.Username
 		}
 	}
-	child := map[string]string{"HOME": SandboxHome, "PATH": sandboxPath(executable), "SHELL": "/bin/sh", "USER": username, "LOGNAME": username, "TMPDIR": "/tmp", "XDG_CONFIG_HOME": filepath.Join(SandboxHome, ".config"), "XDG_DATA_HOME": filepath.Join(SandboxHome, ".local", "share"), "XDG_STATE_HOME": filepath.Join(SandboxHome, ".local", "state"), "XDG_CACHE_HOME": filepath.Join(SandboxHome, ".cache"), "XDG_RUNTIME_DIR": SandboxRuntime}
+	child := map[string]string{"HOME": SandboxHome, "PATH": sandboxPath(executable, prefixes), "SHELL": "/bin/sh", "USER": username, "LOGNAME": username, "TMPDIR": "/tmp", "XDG_CONFIG_HOME": filepath.Join(SandboxHome, ".config"), "XDG_DATA_HOME": filepath.Join(SandboxHome, ".local", "share"), "XDG_STATE_HOME": filepath.Join(SandboxHome, ".local", "state"), "XDG_CACHE_HOME": filepath.Join(SandboxHome, ".cache"), "XDG_RUNTIME_DIR": SandboxRuntime}
 	for key, value := range childEnvironment {
 		child[key] = value
 	}
@@ -226,12 +238,55 @@ func linuxbrewPrefix(executable string) string {
 	return ""
 }
 
-func sandboxPath(executable string) string {
-	var entries []string
-	if prefix := linuxbrewPrefix(executable); prefix != "" {
-		entries = append(entries, filepath.Join(prefix, "bin"), filepath.Join(prefix, "sbin"))
+// linuxbrewPrefixes preserves the prefix required by a Linuxbrew-installed
+// client and also exposes the standard host installation when it exists. A
+// standard prefix is a deliberate read-only host surface rather than arbitrary
+// PATH inheritance, so only reviewed candidate paths are considered.
+func linuxbrewPrefixes(executable string, candidates ...string) []string {
+	var prefixes []string
+	add := func(prefix string) {
+		if prefix == "" {
+			return
+		}
+		for _, existing := range prefixes {
+			if existing == prefix {
+				return
+			}
+		}
+		prefixes = append(prefixes, prefix)
 	}
-	return strings.Join(append(entries, "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"), ":")
+	add(linuxbrewPrefix(executable))
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			add(filepath.Clean(candidate))
+		}
+	}
+	return prefixes
+}
+
+func pathWithinAny(path string, roots []string) bool {
+	for _, root := range roots {
+		if pathWithin(path, root) {
+			return true
+		}
+	}
+	return false
+}
+
+func sandboxPath(executable string, prefixes []string) string {
+	system := []string{"/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"}
+	clientPrefix := linuxbrewPrefix(executable)
+	var before, after []string
+	for _, prefix := range prefixes {
+		entries := []string{filepath.Join(prefix, "bin"), filepath.Join(prefix, "sbin")}
+		if prefix == clientPrefix {
+			before = append(before, entries...)
+		} else {
+			after = append(after, entries...)
+		}
+	}
+	return strings.Join(append(append(before, system...), after...), ":")
 }
 
 func runtimeResolver() string {
