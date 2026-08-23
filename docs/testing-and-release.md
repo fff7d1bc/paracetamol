@@ -266,8 +266,12 @@ discovers only built applications with a compatible verified model, startup
 loads no backend, `/v1/models` contains only the receipt-verified frozen
 snapshot, `status gateway` reports `unloaded`, and Ctrl-C removes an exact
 backend container, joins its log follower, prints a clean stop, and exits zero
-if one was started. Confirm `-a llama-cpp` and `--application llama-cpp` produce
-the same strict inventory and the default llama.cpp loaded-model limit is one.
+if one was started. With an exact non-loopback `--listen`, confirm both
+`127.0.0.1:PORT` and the selected address serve the same frozen inventory and
+that shutdown closes both; an occupied required address must close any listener
+opened earlier and fail startup. Confirm `-a llama-cpp` and
+`--application llama-cpp` produce the same strict inventory and the default
+llama.cpp loaded-model limit is one.
 GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
 output, a streamed request, client cancellation, FIFO draining, and an
 application switch. Confirm `status gateway` derives llama.cpp child residency

@@ -46,6 +46,7 @@ Empty `applications` and `render_nodes` arrays retain automatic discovery:
 applications = []
 profile = "auto"
 render_nodes = []
+# Loopback remains available when this selects another exact address.
 listen = "127.0.0.1"
 port = 8080
 startup_timeout = "30m"
@@ -71,14 +72,21 @@ Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
 command-line-only.
 
-The compact startup card shows the endpoint, selected profile and render
-nodes, applications, loaded configuration path, verified model count, short
-inventory fingerprint, and the copyable status command. The default public
-address is `http://127.0.0.1:8080/v1`. There is no daemon or detach mode. The
-foreground process owns backend cleanup, and Ctrl-C stops accepting work,
-drains active HTTP requests, removes its exact private backend container,
-prints a successful stop, and exits cleanly. A non-loopback `--listen` is an
-unauthenticated trusted-LAN interface and is visibly warned about.
+The compact startup card shows the local endpoint, any additional publication,
+selected profile and render nodes, applications, loaded configuration path,
+verified model count, short inventory fingerprint, and the copyable local
+status command. The gateway always remains available to managed local clients
+at `http://127.0.0.1:PORT/v1`. A concrete non-loopback `--listen` adds that exact
+address on the same port; `0.0.0.0` uses one wildcard socket, which already
+includes IPv4 loopback. IPv6 uses a separate `tcp6` listener alongside IPv4
+loopback rather than relying on host dual-stack policy. Opening every required
+listener is all-or-nothing.
+
+There is no daemon or detach mode. The foreground process owns listener and
+backend cleanup, and Ctrl-C stops accepting work on every address, drains
+active HTTP requests, removes its exact private backend container, prints a
+successful stop, and exits cleanly. A non-loopback `--listen` is an
+unauthenticated trusted-LAN publication and is visibly warned about.
 
 ## Frozen inventory
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,12 +32,88 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
-	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1"} {
+	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
 	}
 }
+
+func TestGatewayListenBindingsAlwaysPreserveIPv4Loopback(t *testing.T) {
+	for _, test := range []struct {
+		name, requested, expected string
+	}{
+		{"default loopback", "127.0.0.1", "tcp4/127.0.0.1"},
+		{"exact LAN", "192.168.249.225", "tcp4/127.0.0.1,tcp4/192.168.249.225"},
+		{"IPv4 wildcard", "0.0.0.0", "tcp4/0.0.0.0"},
+		{"IPv6 loopback", "::1", "tcp4/127.0.0.1,tcp6/::1"},
+		{"IPv6 wildcard", "::", "tcp4/127.0.0.1,tcp6/::"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bindings := gatewayListenBindings(test.requested)
+			values := make([]string, 0, len(bindings))
+			for _, binding := range bindings {
+				values = append(values, binding.network+"/"+binding.host)
+			}
+			if got := strings.Join(values, ","); got != test.expected {
+				t.Fatalf("bindings=%q", got)
+			}
+		})
+	}
+}
+
+func TestOpenGatewayListenersClosesEarlierBindingsOnFailure(t *testing.T) {
+	first := &trackedGatewayListener{}
+	calls := []string{}
+	listeners, err := openGatewayListeners("192.168.249.225", 8080, func(network, address string) (net.Listener, error) {
+		calls = append(calls, network+"/"+address)
+		if len(calls) == 1 {
+			return first, nil
+		}
+		return nil, errors.New("fixture bind failure")
+	})
+	if err == nil || !strings.Contains(err.Error(), "192.168.249.225:8080") || listeners != nil {
+		t.Fatalf("listeners=%v err=%v", listeners, err)
+	}
+	if !first.closed || strings.Join(calls, ",") != "tcp4/127.0.0.1:8080,tcp4/192.168.249.225:8080" {
+		t.Fatalf("closed=%t calls=%v", first.closed, calls)
+	}
+}
+
+func TestGatewayAdditionalEndpointPresentation(t *testing.T) {
+	for _, test := range []struct {
+		requested string
+		label     string
+		value     string
+	}{
+		{"127.0.0.1", "", ""},
+		{"127.0.0.2", "Additional endpoint", "http://127.0.0.2:8080/v1"},
+		{"192.168.249.225", "Published endpoint", "http://192.168.249.225:8080/v1"},
+		{"0.0.0.0", "Published on", "0.0.0.0:8080 · all IPv4 interfaces"},
+		{"::", "Published on", "[::]:8080 · all IPv6 interfaces"},
+	} {
+		label, value := gatewayAdditionalEndpoint(test.requested, 8080)
+		if label != test.label || value != test.value {
+			t.Fatalf("requested=%s label=%q value=%q", test.requested, label, value)
+		}
+	}
+}
+
+func TestCollectGatewayServeErrorsIgnoresNormalShutdown(t *testing.T) {
+	results := make(chan error, 2)
+	results <- http.ErrServerClosed
+	results <- errors.New("fixture serve failure")
+	err := collectGatewayServeErrors(results, 2, nil)
+	if err == nil || !strings.Contains(err.Error(), "fixture serve failure") || strings.Contains(err.Error(), http.ErrServerClosed.Error()) {
+		t.Fatalf("serve error=%v", err)
+	}
+}
+
+type trackedGatewayListener struct{ closed bool }
+
+func (*trackedGatewayListener) Accept() (net.Conn, error) { return nil, errors.New("unused") }
+func (listener *trackedGatewayListener) Close() error     { listener.closed = true; return nil }
+func (*trackedGatewayListener) Addr() net.Addr            { return &net.TCPAddr{} }
 
 func TestGatewayApplicationFlagSupportsShortAndLongForms(t *testing.T) {
 	app, _, _ := testApp(t, &commandRunner{})
@@ -117,7 +194,7 @@ func TestGatewayAutomaticSelectionConsidersOnlyBuiltImages(t *testing.T) {
 func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
 	app.writeGatewayStartup(gatewayStartup{
-		Endpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
+		LocalEndpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
 		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
 		Backend: "rocm", ModelsMax: 1, Configuration: "/home/test/.config/paracetamol/config.toml",
 		Registry: gateway.Registry{
@@ -139,6 +216,25 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	}
 	if strings.Contains(output, "qwen-one") || strings.Contains(output, "qwen-two") {
 		t.Fatalf("startup output dumps the model inventory:\n%s", output)
+	}
+}
+
+func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	label, published := gatewayAdditionalEndpoint("192.168.249.225", 8080)
+	app.writeGatewayStartup(gatewayStartup{
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, 8080), AdditionalLabel: label, AdditionalEndpoint: published,
+		Applications: []string{"llama-cpp"}, Profile: "strix-halo", Backend: "rocm", ModelsMax: 1,
+		Registry: gateway.Registry{Fingerprint: "1234567890abcdef", Models: []gateway.Model{{ID: "qwen"}}},
+	})
+	output := stdout.String()
+	for _, expected := range []string{
+		"Local endpoint", "http://127.0.0.1:8080/v1", "Published endpoint", "http://192.168.249.225:8080/v1",
+		"status gateway --gateway-url http://127.0.0.1:8080/v1",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("startup output lacks %q:\n%s", expected, output)
+		}
 	}
 }
 

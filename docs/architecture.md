@@ -729,15 +729,19 @@ limits, agent-tool eligibility, and reasoning choices.
 
 `internal/gateway/` owns a frozen receipt-backed model registry, the bounded
 FIFO allocation scheduler, the OpenAI-compatible proxy, and exact backend
-lifecycle. The foreground host process listens publicly; a lazily started
-llama.cpp router or DwarfStar server remains in its normal constrained
-container and publishes only one ephemeral loopback port. With no application
-selection, the CLI discovers built applications that contribute at least one
-compatible receipt-verified model. Explicit selections replace discovery and
-retain strict missing-image and missing-content failures. The foreground
-lifecycle follows the active backend's prefixed logs and joins that follower
-when the allocation stops. The gateway owns no Podman socket and keeps only
-one application allocation resident. It reclaims only an exact stale container
+lifecycle. The foreground host process always retains an IPv4 loopback
+listener. A concrete non-loopback publication adds one exact listener on the
+same port; an IPv4 wildcard listener already includes loopback. IPv6 listeners
+use an explicit `tcp6` socket beside IPv4 loopback so platform dual-stack
+policy cannot break managed local clients. A lazily started llama.cpp router
+or DwarfStar server remains in its normal constrained container and publishes
+only one ephemeral loopback port. With no application selection, the CLI
+discovers built applications that contribute at least one compatible
+receipt-verified model. Explicit selections replace discovery and retain
+strict missing-image and missing-content failures. The foreground lifecycle
+follows the active backend's prefixed logs and joins that follower when the
+allocation stops. The gateway owns no Podman socket and keeps only one
+application allocation resident. It reclaims only an exact stale container
 with all gateway ownership labels and refuses direct, benchmark, or foreign
 collisions. A fixed process-local ledger retains only allowlisted request
 metadata and bounded session/model aggregates; request and response bodies,
