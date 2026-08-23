@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/process"
 	"paracetamol/internal/textmodel"
 )
@@ -231,6 +232,7 @@ func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 		if request.URL.Path != "/v1/models" {
 			t.Fatalf("path=%s", request.URL.Path)
 		}
+		writer.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
 		_, _ = writer.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash-0731-q2-imatrix"}]}`))
 	}))
 	defer server.Close()
@@ -243,6 +245,34 @@ func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 	}
 	if strings.Contains(string(plan.Config), RecommendedModel) {
 		t.Fatalf("unadvertised model leaked into Pi config: %s", plan.Config)
+	}
+}
+
+func TestGatewayDiscoveryRequiresExactIdentity(t *testing.T) {
+	tests := []struct {
+		name      string
+		marker    string
+		status    int
+		wantError string
+	}{
+		{name: "missing marker", status: http.StatusNotFound, wantError: "is not a Paracetamol gateway (HTTP 404)"},
+		{name: "wrong marker", marker: "foreign.gateway", status: http.StatusOK, wantError: "is not a Paracetamol gateway (HTTP 200)"},
+		{name: "gateway error", marker: gateway.IdentityValue, status: http.StatusServiceUnavailable, wantError: "gateway model inventory returned HTTP 503"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				if test.marker != "" {
+					writer.Header().Set(gateway.IdentityHeader, test.marker)
+				}
+				writer.WriteHeader(test.status)
+			}))
+			defer server.Close()
+			_, err := DiscoverGatewayModels(context.Background(), server.URL+"/v1")
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("err=%v, want containing %q", err, test.wantError)
+			}
+		})
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"paracetamol/internal/identity"
 	"paracetamol/internal/textmodel"
 )
 
@@ -50,6 +51,16 @@ func testGatewayServer(t *testing.T, upstream *httptest.Server) (*httptest.Serve
 	return testServer, scheduler, server
 }
 
+func requireGatewayIdentity(t *testing.T, response *http.Response) {
+	t.Helper()
+	if values := response.Header.Values("Server"); len(values) != 1 || values[0] != identity.CommandName+"/"+identity.Version {
+		t.Fatalf("Server headers=%q", values)
+	}
+	if values := response.Header.Values(IdentityHeader); len(values) != 1 || values[0] != IdentityValue {
+		t.Fatalf("%s headers=%q", IdentityHeader, values)
+	}
+}
+
 func TestServerListsExactRegistryAndRejectsUnknownModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer upstream.Close()
@@ -58,6 +69,7 @@ func TestServerListsExactRegistryAndRejectsUnknownModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireGatewayIdentity(t, response)
 	contents, _ := io.ReadAll(response.Body)
 	response.Body.Close()
 	if response.StatusCode != http.StatusOK || !bytes.Contains(contents, []byte(`"id":"fixture"`)) {
@@ -67,9 +79,19 @@ func TestServerListsExactRegistryAndRejectsUnknownModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	requireGatewayIdentity(t, response)
+	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status=%d", response.StatusCode)
+	}
+	response, err = http.Get(server.URL + "/unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireGatewayIdentity(t, response)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown route status=%d", response.StatusCode)
 	}
 }
 
@@ -79,6 +101,8 @@ func TestServerPreservesUnknownRequestFields(t *testing.T) {
 		body, _ := io.ReadAll(request.Body)
 		seen <- body
 		writer.Header().Set("Content-Type", "application/json")
+		writer.Header().Set("Server", "llama.cpp")
+		writer.Header().Set(IdentityHeader, "foreign.gateway")
 		_, _ = writer.Write([]byte(`{"choices":[]}`))
 	}))
 	defer upstream.Close()
@@ -88,6 +112,7 @@ func TestServerPreservesUnknownRequestFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requireGatewayIdentity(t, response)
 	response.Body.Close()
 	if got := <-seen; !bytes.Equal(got, body) {
 		t.Fatalf("body changed:\n got %s\nwant %s", got, body)
