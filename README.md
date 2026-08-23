@@ -1,84 +1,85 @@
 # Paracetamol
 
-Local AI without the scavenger hunt. Paracetamol makes local AI less painful
-by building and running useful GPU applications as local, rootless containers
-with pinned software and verified content. Its current hardware support is AMD
-ROCm; the product identity is intentionally not tied to one accelerator stack.
+Paracetamol builds and runs local AI applications as rootless containers. It
+pins the software, verifies the content, and keeps application data outside the
+images. Hardware support currently centers on AMD ROCm, but the project is not
+designed around the assumption that ROCm will always be its only accelerator
+stack.
 
 Bringing up a new machine should take a few commands that you can inspect and
 understand. If the host is not ready, the tool should tell you what is wrong
 and what to do next.
 
-Paracetamol targets AMD RDNA 4 discrete GPUs. That includes the 32 GB Radeon AI
-PRO R9700, RX 9070 XT, RX 9070, and RX 9070 GRE using `gfx1201`, plus the RX
-9060 XT and RX 9060 using `gfx1200`. It also targets AMD Ryzen AI Max / Strix
-Halo (`gfx1151`) and AMD Ryzen AI 300 / Strix Point (`gfx1150`). The build and
-runtime enforce all four architectures, but the project remains pre-release
-while its target-hardware acceptance matrix is being completed.
+The supported AMD targets cover RDNA 4 discrete GPUs and the two current Ryzen
+AI families. The 32 GB Radeon AI PRO R9700, RX 9070 XT, RX 9070, and RX 9070
+GRE use `gfx1201`. The RX 9060 XT and RX 9060 use `gfx1200`. Ryzen AI Max,
+also known as Strix Halo, uses `gfx1151`. Ryzen AI 300, also known as Strix
+Point, uses `gfx1150`. Builds and runtime checks cover all four architectures.
+The project is still pre-release, and work on the hardware acceptance matrix
+is ongoing.
 
-Paracetamol currently manages:
+Paracetamol currently manages these applications and services.
 
 - ComfyUI for image generation, image editing, and video on port 8188
 - llama.cpp as an OpenAI-compatible API server and interactive GGUF CLI on
   port 8080, with selectable ROCm and Vulkan backends
 - DwarfStar as an experimental, high-memory DeepSeek V4 Flash server and CLI
   on port 8000
-- a native lazy gateway that presents the verified llama.cpp and DwarfStar
+- Paracetamol's lazy gateway for the verified llama.cpp and DwarfStar
   inventory through one OpenAI-compatible port
 
 ## Hardware exercised so far
 
-These are real machines used during development. The scope column matters. A
-working workload is useful evidence, but it does not imply that every row in
-the [target-hardware acceptance matrix](docs/hardware-acceptance.md) has
-passed.
+These machines are used during development. The last column records what was
+actually exercised. It is useful evidence, not a claim that every row in the
+[target-hardware acceptance matrix](docs/hardware-acceptance.md) has passed.
 
 | Host | GPU target | Workloads exercised |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair; managed Qwen3.6 and Qwen3.8 llama.cpp MTP/tool paths, including the optional Qwen3.8 Dynamic Q4_K_XL path at 128K; managed agent-client and ROCm/Vulkan paths; Muse Glimmer dynamic and 256K runtime probes; historical Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the optional DSpark pair. Managed Qwen3.6 and Qwen3.8 llama.cpp MTP and tool paths, including Qwen3.8 Dynamic Q4_K_XL at 128K. Managed agent clients, ROCm and Vulkan paths, Muse Glimmer dynamic and 256K probes, plus historical Laguna XS and Ling controls. |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
 ## Why Paracetamol
 
-The name is a small joke with a serious design goal: local AI should involve
-less pain, and powerful machinery should remain explicit enough to use
-responsibly.
+The name is a small joke about making local AI less painful. The serious part
+is keeping powerful machinery clear enough to inspect and use responsibly.
 
 Getting a container to start is the easy part. It does not prove that PyTorch
-found the right GPU or that inference survives contact with the hardware.
-Paracetamol tries to cover the whole path.
+found the right GPU or that inference will work on the real hardware.
+Paracetamol checks the rest of that path too.
 
 - Ubuntu base images, ROCm and PyTorch versions, application commits,
-  dependencies, source patches, models, and workflows have explicit pins.
+  dependencies, source patches, models, and workflows are pinned.
 - One checkout builds for `gfx1201`, `gfx1200`, `gfx1151`, and `gfx1150`.
   Runtime checks confirm the architecture and apply the matching policy.
 - `doctor` checks Podman, GPU devices, permissions, SELinux, shared-memory
   setup, the detected architecture, and a real PyTorch tensor operation.
 - Downloads are pinned by revision or model-version ID, size, and SHA-256.
-  License state remains explicit, downloads resume, and content survives image
+  License state is recorded, downloads resume, and content survives image
   rebuilds.
 - Containers are rootless, read-only, capability-free, and expose only the
   selected GPU devices. Web applications publish on loopback by default.
 - Optional Pi and Maki launchers add a bubblewrap filesystem
   boundary around local coding-agent work.
-- `acceptance` checks more than startup. It runs small real workloads,
-  checkpoints progress, and collects visual review after unattended work.
+- `acceptance` goes beyond startup. It runs small real workloads, checkpoints
+  progress, and collects visual review after unattended work.
 
 ## Requirements
 
-The host control plane currently supports Linux and needs rootless Podman, GNU
-Make, and Go 1.26 or newer. Platform-qualified directories below `build/`
-separate local build state; they are not a claim that the complete controller
-can run on another operating system. The checkout launcher builds a
-repository-local binary when its Go or Makefile inputs change, and generated
-binaries and Go caches stay below ignored `build/`. The field-tested hosts
-above use SteamOS 3.8, Fedora 44 in conventional and Kinoite deployments, and
-Ubuntu 26.04. A minimal installation may not include Podman yet. The optional
-managed Pi client additionally requires distribution-provided Node.js 22.19
-or newer and npm; Paracetamol installs Pi itself into private application
-data.
+The host control plane supports Linux and needs rootless Podman, GNU Make, and
+Go 1.26 or newer. Platform-qualified directories below `build/` separate
+local build state. They do not imply that the complete controller runs on
+other operating systems. The checkout launcher rebuilds its repository-local
+binary when Go or Makefile inputs change. Generated binaries and Go caches
+stay below the ignored `build/` directory.
+
+Development hosts currently run SteamOS 3.8, Fedora 44 in conventional and
+Kinoite deployments, and Ubuntu 26.04. Minimal installations may not include
+Podman. The optional managed Pi client also needs distribution-provided
+Node.js 22.19 or newer and npm. Paracetamol installs Pi into its private
+application data.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -92,29 +93,26 @@ distribution `bubblewrap` package from `apt`, `dnf`, or `pacman` when possible.
 Doctor reports Ubuntu's AppArmor user-namespace policy when it can interfere
 with a launcher.
 
-### Pre-release identity and Go transition
+### Pre-release compatibility
 
-Paracetamol's host control plane is fully Go. Its command, configuration
-prefix, default data directory, image and container names, ownership labels,
-container protocol, and result schemas use one coherent product identity.
-This pre-release identity cutover does not alias or automatically migrate
-state created by a differently named checkout. Existing files are never
-deleted implicitly; select the intended `data_dir` explicitly and run the
-normal installer to validate managed content before reuse.
+The Go control plane uses the Paracetamol identity for its command,
+configuration prefix, default data directory, image and container names,
+ownership labels, container protocol, and result schemas. It does not create
+aliases or automatically migrate state from a differently named checkout.
+Existing files are never deleted as part of this transition. To reuse managed
+content, select the intended `data_dir` and run the normal installer so that
+Paracetamol can validate it.
 
-The Go transition also introduced deliberate command and checkpoint changes:
-`acceptance` is a direct leaf command, agent clients live below `agent run`,
-and benchmarks use explicit `comfyui run`, `comfyui suite`, `llama-cpp
-throughput`, and `llama-cpp speculative` modes. Earlier benchmark and
-acceptance JSON remains historical evidence but cannot be used as a current
-resume checkpoint.
+The Go transition changed a few commands and checkpoint formats. `acceptance`
+is now a direct leaf command, agent clients live below `agent run`, and
+benchmarks use the `comfyui run`, `comfyui suite`, `llama-cpp throughput`, and
+`llama-cpp speculative` modes. Older benchmark and acceptance JSON is still
+useful as historical evidence, but it cannot resume a current run.
 
 ## Quick start
 
-Clone the source and inspect the host. Paracetamol's host control plane is Go;
-Python remains appropriate for Python container code, its focused tests, and
-frozen evaluation fixtures. Paracetamol does not publish prebuilt application
-images.
+Clone the source and inspect the host. Paracetamol does not publish prebuilt
+application images.
 
 ```bash
 git clone https://github.com/fff7d1bc/paracetamol.git
@@ -125,7 +123,7 @@ cd paracetamol
 
 Before the first build, Doctor reports that its containerized PyTorch probe was
 skipped. Build all applications, inspect the available content, and choose a
-recipe:
+recipe.
 
 ```bash
 ./paracetamol build all
@@ -142,7 +140,7 @@ installation.
 ./paracetamol content install llama-cpp muse-glimmer --dry-run
 ```
 
-Use the built-in guides for short, copyable walkthroughs:
+The built-in guides provide short, copyable walkthroughs.
 
 ```bash
 ./paracetamol guide comfyui
@@ -153,7 +151,7 @@ Use the built-in guides for short, copyable walkthroughs:
 ### ComfyUI
 
 The practical image recipe installs Qwen Image FP8 Lightning and its curated
-workflow:
+workflow.
 
 ```bash
 ./paracetamol build comfyui
@@ -167,7 +165,7 @@ Manager, and multi-GPU graphs are covered in the
 
 ### llama.cpp
 
-Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default:
+Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default.
 
 ```bash
 ./paracetamol build llama-cpp
@@ -183,7 +181,7 @@ control shares the same verified artifact.
 
 A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
 family available for more constrained GPUs without changing the recipe or
-managed-client default:
+managed-client default.
 
 ```bash
 ./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl
@@ -195,8 +193,8 @@ smaller quantization as a capacity and throughput tradeoff, not an
 equivalent-quality replacement for the Dynamic Q8_K_XL default. On the
 accepted Strix Halo host its matched depth-three MTP screen generated 3.3%
 faster than the earlier preview Q4 artifact, with 1.9% slower prompt
-processing. It solved three of five fresh hidden-graded Pi tasks; the earlier
-artifact also missed both tasks used as direct failure controls, and was much
+processing. It solved three of five fresh hidden-graded Pi tasks. The earlier
+artifact also missed both tasks used as direct failure controls and was much
 slower on the harder control. ROCm remains the default backend. Dedicated 32
 GiB RDNA 4 capacity still needs acceptance on that hardware.
 
@@ -206,23 +204,23 @@ medium and `xhigh` quality results, per-task outcomes, targeted retries, and
 the limits of applying those Unsloth-specific findings to other GGUF releases.
 
 Qwen3.6 and Muse Glimmer remain separate comparison families. Their recipes
-install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic
-target/DFlash pair:
+install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic target and
+DFlash pair.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.6
 ./paracetamol content install llama-cpp muse-glimmer
 ```
 
-The Qwen3.6 recipe prints dense 27B MTP as its next step; sparse 35B-A3B MTP
-is an optional installed comparison and does not change the Qwen3.8
-managed-client default. Qwen3.6 MTP and non-MTP variants use distinct GGUFs
-and therefore appear on separate `content list models` rows. Each Qwen3.8
-quantization shares one GGUF between its base and MTP presets, so the list
-prints each pair of preset aliases on one comma-separated row. Muse's three
-presets similarly share one artifact pair.
+The Qwen3.6 recipe prints dense 27B MTP as its next step. Sparse 35B-A3B MTP
+is an optional comparison and does not change the Qwen3.8 managed-client
+default. Qwen3.6 MTP and non-MTP variants use distinct GGUFs, so they appear
+on separate `content list models` rows. Each Qwen3.8 quantization shares one
+GGUF between its base and MTP presets. The list prints each pair of
+preset aliases on one comma-separated row. Muse's three presets also share
+one artifact pair.
 
-For an API serving several installed presets, use the managed router:
+Use the managed router to serve several installed presets.
 
 ```bash
 ./paracetamol run llama-cpp server --router --models-max 1
@@ -231,8 +229,7 @@ For an API serving several installed presets, use the managed router:
 The [llama.cpp guide](docs/guides/applications.md#llamacpp) explains presets,
 contexts, MTP, DFlash, translations, the terminal CLI, tool calling, and
 choosing between the managed Qwen variants. High-memory hosts can also install
-the KAT-Coder Q8 coding-agent candidate independently without changing the
-default:
+the KAT-Coder Q8 coding-agent candidate without changing the default.
 
 ```bash
 ./paracetamol content install llama-cpp kat-coder
@@ -240,7 +237,7 @@ default:
 
 For Japanese and English translation on a high-memory host, the separate
 Shisa V2.1 recipe installs the 70B Q8_0 model and requires acknowledgment of
-the Llama 3.3 terms:
+the Llama 3.3 terms.
 
 ```bash
 ./paracetamol content install llama-cpp shisa-v2.1 --accept-license
@@ -254,7 +251,7 @@ DwarfStar serves the pinned DeepSeek V4 Flash 0731 Q2 imatrix model. It uses
 IQ2_XXS for routed gate/up weights, Q2_K for routed down weights, and Q8 for
 attention projections, shared experts, and output. The model is about 80.76
 GiB before context and working allocations, so this path is for a host with
-enough GPU-mapped memory:
+enough GPU-mapped memory.
 
 ```bash
 ./paracetamol build dwarfstar
@@ -263,7 +260,7 @@ enough GPU-mapped memory:
 ```
 
 The separate 5.58 GiB DSpark support GGUF is an opt-in speculative-decoding
-path; it does not replace the default model or improve its quality:
+path. It does not replace the default model or improve its quality.
 
 ```bash
 ./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
@@ -277,14 +274,14 @@ providers, and bounded acceptance.
 ## Everyday use
 
 Inspect local state, start an installed application, and let `auto` select the
-hardware profile:
+hardware profile.
 
 ```bash
 ./paracetamol status
 ./paracetamol run comfyui
 ```
 
-A running llama.cpp server also exposes a pasteable configuration report:
+A running llama.cpp server can also print a pasteable configuration report.
 
 ```bash
 ./paracetamol status llama-cpp
@@ -297,7 +294,7 @@ router preset. The report includes the immutable image and source identities,
 resolved hardware, model policy, sampling defaults, and exact running llama.cpp
 command without printing API-key values or host secret paths.
 
-Override the profile only when testing or diagnosing:
+Override the profile only when testing or diagnosing.
 
 ```bash
 ./paracetamol run comfyui --profile rdna4
@@ -307,7 +304,7 @@ Override the profile only when testing or diagnosing:
 ```
 
 Web applications publish on `127.0.0.1` by default. Select one exact LAN or
-Tailscale address only when unauthenticated network access is intentional:
+Tailscale address only when unauthenticated network access is intentional.
 
 ```bash
 ./paracetamol run comfyui --listen 192.168.1.50
@@ -325,11 +322,11 @@ backend.
 ./paracetamol run gateway
 export PATH="$PWD/bin:$PATH"
 pi
-# or: maki
+# Or use Maki
 ```
 
 Persistent gateway defaults are optional. Generate a complete runnable host
-configuration, or select a committed machine profile for one invocation:
+configuration, or select a committed machine profile for one invocation.
 
 ```bash
 ./paracetamol config init
@@ -337,48 +334,52 @@ configuration, or select a committed machine profile for one invocation:
 ```
 
 The configuration selector is global and may also precede the command. Flags
-override corresponding environment variables where defined; both override
-configuration values.
+override matching environment variables where those variables are defined.
+Both take precedence over configuration values.
 
 Automatic discovery includes DwarfStar when its image and compatible verified
 model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
 dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
-lazily starts the matching private backend and its container output is followed
-in the gateway terminal. A request for the other application drains active
-work, stops the current backend, and starts the other one; queued requests
-remain FIFO. llama.cpp keeps one model loaded by default because its router
-limit is count-based rather than memory-aware; opt into a larger known-fitting
-set with `--models-max`. Inspect the frozen inventory and live allocation with
-`./paracetamol status gateway`. Add `--requests 10` when diagnosing a client:
-the view shows lifetime request/model aggregates plus recent session and
-request timing, token usage when reported, and the reasoning/sampler fields the
-client actually sent without retaining prompts or response content. Managed Pi
-uses its real session UUID; Maki groups one launcher invocation.
+lazily starts the matching private backend. Its container output then appears
+in the gateway terminal.
+
+Only one backend application stays resident. A request for the other
+application drains active work, stops the current backend, and starts the new
+one. Queued requests remain FIFO. llama.cpp keeps one model loaded by default
+because its router limit counts models without considering their memory use.
+Use `--models-max` only for a larger set known to fit.
+
+`./paracetamol status gateway` shows the frozen inventory and live allocation.
+Add `--requests 10` while diagnosing a client to see lifetime aggregates and
+recent request timing. Token usage and client-supplied reasoning or sampler
+fields appear when available. Prompts and response content are not retained.
+Managed Pi uses its real session UUID. Maki groups one launcher invocation.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway
 retains its local loopback endpoint while adding the requested publication.
 It has no authentication, so select one intended address and restrict that
-port with the host firewall:
+port with the host firewall.
 
 ```bash
-# On the GPU host:
+# GPU host
 ./paracetamol run gateway -a llama-cpp \
   -a dwarfstar --listen 192.168.1.50
 
-# On a Pi or Maki client host:
+# Pi or Maki client host
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
 ```
 
 Both managed clients perform a bounded `/v1/models` probe and generate only
 the reviewed models that this gateway instance actually advertises. Direct
-llama.cpp and DwarfStar servers remain available for diagnostics, benchmarks,
-and engine-specific API work. See the [application guide](docs/guides/applications.md#inference-gateway)
-and [gateway design](docs/gateway.md).
+llama.cpp and DwarfStar servers are still available for diagnostics,
+benchmarks, and engine-specific API work. See the
+[application guide](docs/guides/applications.md#inference-gateway) and
+[gateway design](docs/gateway.md).
 
 Qwen3.8 starts at native medium effort. Pi exposes its off, low, medium, and
 xhigh choices without inventing a `high` level. Maki builds
 containing commit `a9495e1` expose the same native model controls through
-`/thinking`; unsupported names snap downward, so `high` selects Qwen3.8
+`/thinking`. Unsupported names snap downward, so `high` selects Qwen3.8
 medium. Paracetamol maps Qwen3.6 to its on/off toggle and prevents Muse from
 falling below its native low strength.
 
@@ -395,14 +396,14 @@ retries, compaction retries, and queued continuations are finished, and the
 marker never enters the model context.
 
 Both launchers keep the current directory and private client state writable
-while hiding the
-real home directory, credentials, Podman state, and GPU devices. The
+while hiding the real home directory, credentials, Podman state, and GPU
+devices. The
 [tool-using client guide](docs/guides/applications.md#tool-using-clients) documents
 models, reasoning variants, agent modes, sandbox limits, and escape hatches.
 
 On a multi-GPU host, repeat `--render-node` for every card intended for one
 supported workload. Paracetamol never guesses the set and requires matching
-architectures:
+architectures.
 
 ```bash
 ./paracetamol run llama-cpp server \
@@ -417,14 +418,14 @@ place components or work on the selected cards. See the
 [runtime tuning guide](docs/guides/tuning.md#runtime-policies).
 
 Foreground runs own the container lifecycle. Ctrl-C stops and removes the
-container. Detached runs are managed explicitly:
+container. Use the log and stop commands to manage detached runs.
 
 ```bash
 ./paracetamol logs comfyui --follow
 ./paracetamol stop comfyui
 ```
 
-Update without rewriting local work or persistent content:
+Update without rewriting local work or persistent content.
 
 ```bash
 git pull --ff-only
@@ -434,7 +435,7 @@ git pull --ff-only
 
 ## Builds, content, and storage
 
-The three main operations remain independent and retryable:
+The three main operations are independent and retryable.
 
 ```text
 build  ->  content install  ->  run
@@ -447,7 +448,7 @@ cold build. The
 [operations guide](docs/guides/operations.md#builds-and-local-caches) explains
 prerequisite images, cache boundaries, cleanup, and image transfer.
 
-Content discovery starts with practical recipes and expands only when asked:
+Content discovery starts with practical recipes and expands only when asked.
 
 ```bash
 ./paracetamol content list
@@ -466,7 +467,7 @@ verification, resumable downloads, mirrors, imports, and workflows.
 
 Persistent data defaults to
 `${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol`. Put large content on another
-filesystem with `${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`:
+filesystem with `${XDG_CONFIG_HOME:-$HOME/.config}/paracetamol/config.toml`.
 
 ```toml
 [storage]
@@ -483,7 +484,7 @@ cleaning application state, models, inputs, or outputs.
 ## Acceptance and benchmarks
 
 After onboarding a host or updating software, run the bounded checkpointed
-smoke suite:
+smoke suite.
 
 ```bash
 ./paracetamol acceptance --dry-run
@@ -496,7 +497,7 @@ left unattended. The
 explains resume behavior, result files, and what `PASS`, `FAIL`, and `BLOCKED`
 mean.
 
-Compare llama.cpp's ROCm and Vulkan backends on the exact model you use:
+Compare llama.cpp's ROCm and Vulkan backends on the exact model you use.
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
@@ -508,9 +509,9 @@ Sparse and dense models, and even different quantizations from one family,
 can prefer different backends on the same GPU. The
 [tuning guide](docs/guides/tuning.md#benchmarks) covers repeatable comparisons.
 
-Sweep the server-side MTP or DFlash draft depth separately. This path uses the
-managed chat template, reasoning, sampling, cache, and speculative policy that
-native `llama-bench` cannot exercise:
+Sweep the server-side MTP or DFlash draft depth separately. This benchmark uses
+the managed chat template, reasoning, sampling, cache, and speculative policy
+that native `llama-bench` cannot exercise.
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
@@ -523,7 +524,7 @@ interruption. Its default long-context screen is intentionally an unattended
 hardware experiment, not a routine smoke test or an automatic preset change.
 
 Evaluate a managed model as a coding agent against the frozen Go and Python
-task suite:
+task suite.
 
 ```bash
 ./paracetamol benchmark agent --list-tasks
@@ -532,18 +533,17 @@ task suite:
   --thinking medium --dry-run
 ```
 
-Reasoning selectors now follow each model's native contract: Qwen3.6 has an
-off/on toggle, Qwen3.8 has off/low/medium/xhigh effort, and Muse has
-low/medium/high/xhigh strength. The benchmark runner validates the explicit
-choice and records both the client selector and native value. There is no
-claim that one shared label is an equivalent reasoning condition across these
-families; define and record the comparison protocol before running the
-separate hardware pass.
+Reasoning selectors follow each model's native contract. Qwen3.6 has an off/on
+toggle. Qwen3.8 has off, low, medium, and xhigh effort. Muse has low, medium,
+high, and xhigh strength. The benchmark runner validates the selected value
+and records both the client selector and its native value. A shared label does
+not imply an equivalent reasoning condition across model families. Define and
+record the comparison protocol before running the separate hardware pass.
 
-This is separate from smoke acceptance and native token-speed benchmarking.
-It runs Pi against disposable single-commit fixtures, applies hidden tests
-after each implementation attempt, and preserves raw transcripts, patches,
-server logs, and a Markdown summary below managed application data. The
+Agent evaluation is separate from smoke acceptance and native token-speed
+benchmarking. It runs Pi against disposable single-commit fixtures, applies
+hidden tests after each implementation attempt, and preserves raw transcripts,
+patches, server logs, and a Markdown summary below managed application data. The
 [operations guide](docs/guides/operations.md#coding-agent-evaluation) explains the
 fixed-harness policy, review tasks, grading, repetitions, and result scope.
 
@@ -562,7 +562,7 @@ maintainer references, research snapshots, and source-of-truth pointers.
 - [Tuning and benchmarks](docs/guides/tuning.md) covers host GPU access, runtime
   policies, RDNA 3.5 shared memory, RDNA 4, and repeatable measurements.
 
-Command-specific help remains the authoritative interface reference:
+Command-specific help is the authoritative interface reference.
 
 ```bash
 ./paracetamol --help
@@ -575,7 +575,7 @@ Command-specific help remains the authoritative interface reference:
 
 Host development uses the installed Go toolchain by default and keeps its
 module cache, build cache, temporary files, telemetry state, and binaries
-below `build/`:
+below `build/`.
 
 ```bash
 make check
@@ -584,20 +584,19 @@ make -B build
 make static
 ```
 
-`make build` is the normal incremental path; the forced build is useful before
+`make build` is the normal incremental path. The forced build is useful before
 finishing Go or Makefile changes. `make clean` removes only the repository's
 ignored `build/` tree. Regular targets default to `CGO_ENABLED=0`. The optional
-native-Linux `make race` check enables CGO for the race detector and therefore
-needs a C compiler, but does not add that requirement to ordinary builds or
-tests.
+native-Linux `make race` check enables CGO for the race detector and needs a C
+compiler. Ordinary builds and tests do not have that requirement.
 
 Normal commands use `GOTOOLCHAIN=local`, so the installed Go toolchain must
 satisfy `go.mod`. Use `make GOTOOLCHAIN=auto -B build` only when automatic
-toolchain selection is intentional; its Go state still remains below
+toolchain selection is intentional. Its Go state stays below
 `build/`.
 
 To copy a checkout to a test host without transferring repository-local
-binaries or Go caches, use:
+binaries or Go caches, use the following command.
 
 ```bash
 rsync -a -v --progress --delete \
@@ -611,14 +610,14 @@ The anchored exclusions preserve the destination's own Git metadata and
 out of a deployment. `--delete` still removes obsolete source files. Do not
 add `--delete-excluded`.
 
-The pre-release product identity is centralized rather than scattered through
-Go packages. `make -B PRODUCT_ID=new-name DISPLAY_NAME='New Name' build`
+The pre-release product identity has one definition shared by the Go packages.
+`make -B PRODUCT_ID=new-name DISPLAY_NAME='New Name' build`
 changes the built command, host-configuration environment prefix (`NEW_NAME_*`),
 persistent namespace, local image namespace, container names, and
 ownership-label namespace together.
 Set `ENV_PREFIX` explicitly only when a renamed command needs another spelling.
-Changing that identity deliberately selects new state and image ownership; it
-is not an automatic migration of an existing Paracetamol data directory.
+Changing that identity selects new state and image ownership. It does not
+migrate an existing Paracetamol data directory.
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [catalog/README.md](catalog/README.md) for provenance and catalog policy.
