@@ -7,6 +7,7 @@
 
 [gateway]
 # Empty lists keep automatic backend and render-node discovery.
+# Loopback is always available; a non-loopback listen address adds publication.
 applications = []
 profile = "auto"
 render_nodes = []

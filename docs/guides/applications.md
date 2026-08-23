@@ -571,8 +571,10 @@ sessions add a full-width `Worked for 2m 56s` divider. The divider remains in
 restored scrollback but does not enter the model context.
 
 Pi or Maki can run on a client host while the gateway runs on a different GPU
-host. Publish it only on a trusted LAN address and limit its port with the host
-firewall because the gateway provides no application authentication:
+host. A non-loopback `--listen` adds that publication while preserving the
+gateway's IPv4 loopback endpoint for clients on the GPU host. Publish only on
+a trusted LAN address and limit its port with the host firewall because the
+gateway provides no application authentication:
 
 ```bash
 # GPU host

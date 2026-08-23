@@ -34,7 +34,7 @@ func (app *App) runGateway(args []string) error {
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
-	listenFlag := set.String("listen", "", "host IP on which to publish the gateway (default: 127.0.0.1)")
+	listenFlag := set.String("listen", "", "additional host IP on which to publish; loopback remains available (default: loopback only)")
 	portFlag := set.String("port", "", "gateway host port (default: 8080)")
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
@@ -140,11 +140,11 @@ func (app *App) runGateway(args []string) error {
 	if err := lifecycle.Preflight(app.Context, allocations); err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", net.JoinHostPort(listen, fmt.Sprint(port)))
+	listeners, err := openGatewayListeners(listen, port, net.Listen)
 	if err != nil {
-		return fmt.Errorf("listen for gateway on %s:%d: %w", listen, port, err)
+		return err
 	}
-	defer listener.Close()
+	defer closeGatewayListeners(listeners)
 	for _, application := range applications {
 		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime(application); err != nil {
 			return err
@@ -172,29 +172,28 @@ func (app *App) runGateway(args []string) error {
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
 	if !isLoopback(listen) {
-		fmt.Fprintf(app.Stderr, "%s gateway is published on %s:%d without authentication.\n", errorTerminal.Warning("WARNING:"), listen, port)
+		fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
 	}
+	additionalLabel, additionalEndpoint := gatewayAdditionalEndpoint(listen, port)
 	app.writeGatewayStartup(gatewayStartup{
-		Endpoint:     "http://" + net.JoinHostPort(listen, fmt.Sprint(port)) + "/v1",
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
 		Backend: *backend, ModelsMax: *modelsMax, Registry: registry, Configuration: configuration.Path,
 	})
-	serveResult := make(chan error, 1)
-	go func() { serveResult <- server.Serve(listener) }()
+	serveResults := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		go func(listener net.Listener) { serveResults <- server.Serve(listener) }(listener)
+	}
 	select {
-	case serveErr := <-serveResult:
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			handler.BeginShutdown()
-			return errors.Join(serveErr, scheduler.Shutdown(contextWithoutCancel()))
-		}
-		return scheduler.Shutdown(contextWithoutCancel())
+	case firstServeErr := <-serveResults:
+		handler.BeginShutdown()
+		shutdownErr := server.Shutdown(contextWithoutCancel())
+		serveErr := collectGatewayServeErrors(serveResults, len(listeners)-1, firstServeErr)
+		return errors.Join(serveErr, shutdownErr, scheduler.Shutdown(contextWithoutCancel()))
 	case <-app.Context.Done():
 		handler.BeginShutdown()
 		shutdownErr := server.Shutdown(contextWithoutCancel())
-		serveErr := <-serveResult
-		if errors.Is(serveErr, http.ErrServerClosed) {
-			serveErr = nil
-		}
+		serveErr := collectGatewayServeErrors(serveResults, len(listeners), nil)
 		backendErr := scheduler.Shutdown(contextWithoutCancel())
 		if err := errors.Join(shutdownErr, serveErr, backendErr); err != nil {
 			return err
@@ -205,14 +204,31 @@ func (app *App) runGateway(args []string) error {
 }
 
 type gatewayStartup struct {
-	Endpoint      string
-	Applications  []string
-	Profile       string
-	RenderNodes   []string
-	Backend       string
-	ModelsMax     int
-	Registry      gateway.Registry
-	Configuration string
+	LocalEndpoint      string
+	AdditionalLabel    string
+	AdditionalEndpoint string
+	Applications       []string
+	Profile            string
+	RenderNodes        []string
+	Backend            string
+	ModelsMax          int
+	Registry           gateway.Registry
+	Configuration      string
+}
+
+func collectGatewayServeErrors(results <-chan error, count int, initial error) error {
+	result := normalizeGatewayServeError(initial)
+	for range count {
+		result = errors.Join(result, normalizeGatewayServeError(<-results))
+	}
+	return result
+}
+
+func normalizeGatewayServeError(err error) error {
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
 }
 
 func stringValue(value *string) string {
@@ -304,12 +320,19 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	if len(summary.RenderNodes) > 0 {
 		profile += " · " + strings.Join(summary.RenderNodes, ", ")
 	}
-	rows := [][2]string{
-		{"Endpoint", summary.Endpoint},
-		{"Profile", profile},
-		{"Applications", strings.Join(summary.Applications, ", ")},
-		{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},
+	endpointLabel := "Endpoint"
+	if summary.AdditionalEndpoint != "" {
+		endpointLabel = "Local endpoint"
 	}
+	rows := [][2]string{{endpointLabel, summary.LocalEndpoint}}
+	if summary.AdditionalEndpoint != "" {
+		rows = append(rows, [2]string{summary.AdditionalLabel, summary.AdditionalEndpoint})
+	}
+	rows = append(rows,
+		[2]string{"Profile", profile},
+		[2]string{"Applications", strings.Join(summary.Applications, ", ")},
+		[2]string{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},
+	)
 	if summary.Configuration != "" {
 		rows = append(rows, [2]string{"Configuration", summary.Configuration})
 	}
@@ -321,7 +344,7 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	}
 	rows = append(rows,
 		[2]string{"Backend", terminal.State("unloaded") + " — starts with the first request"},
-		[2]string{"Inspect", terminal.Command(identity.Command("status", "gateway", "--gateway-url", summary.Endpoint))},
+		[2]string{"Inspect", terminal.Command(identity.Command("status", "gateway", "--gateway-url", summary.LocalEndpoint))},
 	)
 	fmt.Fprintln(app.Stdout, terminal.Heading(identity.DisplayName+" gateway"))
 	writeDetailRows(app.Stdout, terminal, rows)

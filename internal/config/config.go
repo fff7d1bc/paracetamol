@@ -235,6 +235,7 @@ func DefaultContents(dataDir string) []byte {
 		"data_dir = " + strconv.Quote(dataDir) + "\n\n" +
 		"[gateway]\n" +
 		"# Empty lists keep automatic backend and render-node discovery.\n" +
+		"# Loopback is always available; a non-loopback listen address adds publication.\n" +
 		"applications = []\n" +
 		"profile = \"auto\"\n" +
 		"render_nodes = []\n" +

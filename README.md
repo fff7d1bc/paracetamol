@@ -356,7 +356,8 @@ client actually sent without retaining prompts or response content. Managed Pi
 uses its real session UUID; Maki groups one launcher invocation.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway
-has no authentication, so bind it to one intended address and restrict that
+retains its local loopback endpoint while adding the requested publication.
+It has no authentication, so select one intended address and restrict that
 port with the host firewall:
 
 ```bash
