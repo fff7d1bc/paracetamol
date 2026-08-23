@@ -25,23 +25,32 @@ func projectRoot(t *testing.T) string {
 	return root
 }
 
-type sandboxRunner struct{}
+type sandboxRunner struct{ bwrap string }
 
 func (sandboxRunner) Run(context.Context, process.Command) (process.Result, error) {
 	return process.Result{Status: 1}, nil
 }
 
-func (sandboxRunner) LookPath(name string) (string, error) {
-	if name == "bwrap" {
-		return "/usr/bin/bwrap", nil
+func (runner sandboxRunner) LookPath(name string) (string, error) {
+	if name == "bwrap" && runner.bwrap != "" {
+		return runner.bwrap, nil
 	}
 	return "", errors.New("missing")
+}
+
+func newSandboxRunner(t *testing.T) sandboxRunner {
+	t.Helper()
+	bwrap := filepath.Join(t.TempDir(), "bwrap")
+	if err := os.WriteFile(bwrap, []byte("fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return sandboxRunner{bwrap: bwrap}
 }
 
 func TestSandboxPlanClearsHostEnvironmentAndMountsOnlyProjectWritable(t *testing.T) {
 	dataRoot, workdir, home := t.TempDir(), t.TempDir(), t.TempDir()
 	plan, err := CreateSandboxPlan(
-		context.Background(), sandboxRunner{}, []string{"/bin/sh", "-c", "true"},
+		context.Background(), newSandboxRunner(t), []string{"/bin/sh", "-c", "true"},
 		dataRoot, workdir, "pi", map[string]string{"PI_OFFLINE": "1"},
 		map[string]string{"HOME": home, "PATH": "/usr/bin", "SECRET": "not-forwarded", "TERM": "xterm"}, nil,
 	)
@@ -111,7 +120,7 @@ func TestSandboxRejectsWritableWorkdirInsideLinuxbrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := CreateSandboxPlan(
-		context.Background(), sandboxRunner{}, []string{executable}, t.TempDir(), workdir,
+		context.Background(), newSandboxRunner(t), []string{executable}, t.TempDir(), workdir,
 		"maki", nil, map[string]string{"HOME": t.TempDir(), "PATH": "/usr/bin"}, nil,
 	)
 	if err == nil || !strings.Contains(err.Error(), "overlaps read-only Linuxbrew prefix") {
@@ -125,7 +134,7 @@ func TestSandboxRejectsWorkdirContainingHostHome(t *testing.T) {
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, err := CreateSandboxPlan(context.Background(), sandboxRunner{}, []string{"/bin/sh"}, t.TempDir(), parent, "pi", nil, map[string]string{"HOME": home}, nil)
+	_, err := CreateSandboxPlan(context.Background(), newSandboxRunner(t), []string{"/bin/sh"}, t.TempDir(), parent, "pi", nil, map[string]string{"HOME": home}, nil)
 	if err == nil {
 		t.Fatal("sandbox accepted a workdir containing host home")
 	}
