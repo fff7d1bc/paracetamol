@@ -339,6 +339,10 @@ The configuration selector is global and may also precede the command. Flags
 override matching environment variables where those variables are defined.
 Both take precedence over configuration values.
 
+`--port` changes the shared gateway port. Used without `--listen`, it also
+selects loopback for that invocation. Supply both options to change a remote
+publication.
+
 Automatic discovery includes DwarfStar when its image and compatible verified
 model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
 dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
@@ -365,7 +369,7 @@ port with the host firewall.
 ```bash
 # GPU host
 ./paracetamol run gateway -a llama-cpp \
-  -a dwarfstar --listen 192.168.1.50
+  -a dwarfstar --listen 192.168.1.50 --port 8080
 
 # Pi or Maki client host
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi

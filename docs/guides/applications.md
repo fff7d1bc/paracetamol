@@ -574,11 +574,17 @@ Pi or Maki can run on a client host while the gateway runs on a different GPU
 host. A non-loopback `--listen` adds that publication while preserving the
 gateway's IPv4 loopback endpoint for clients on the GPU host. Publish only on
 a trusted LAN address and limit its port with the host firewall because the
-gateway provides no application authentication:
+gateway provides no application authentication.
+
+The same `--port` is used by the loopback and additional endpoint. Using
+`--port` without `--listen` selects loopback for that invocation, even when
+configuration or the environment normally publishes another address. Supply
+both options when changing a remote publication.
 
 ```bash
 # GPU host
-./paracetamol run gateway -a llama-cpp --listen 192.168.1.50
+./paracetamol run gateway -a llama-cpp \
+  --listen 192.168.1.50 --port 8080
 
 # Pi or Maki client host
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi

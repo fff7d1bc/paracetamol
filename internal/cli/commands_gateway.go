@@ -35,7 +35,7 @@ func (app *App) runGateway(args []string) error {
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	listenFlag := set.String("listen", "", "additional host IP on which to publish; loopback remains available (default: loopback only)")
-	portFlag := set.String("port", "", "gateway host port (default: 8080)")
+	portFlag := set.String("port", "", "gateway port shared by local and published endpoints. Using --port alone selects loopback (default: 8080)")
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
@@ -68,7 +68,7 @@ func (app *App) runGateway(args []string) error {
 	if *startupTimeout <= 0 {
 		return controlerr.Usage("--startup-timeout must be positive")
 	}
-	listen := gatewayStringSetting(*listenFlag, app.Environment, "GATEWAY_LISTEN", gatewayConfiguration.Listen, config.DefaultListen)
+	listen := gatewayListenSetting(set, *listenFlag, app.Environment, gatewayConfiguration.Listen)
 	if err := config.ValidateListenAddress(listen); err != nil {
 		return err
 	}
@@ -247,6 +247,13 @@ func intValue(value *int) string {
 
 func gatewayStringSetting(flagValue string, environment map[string]string, environmentName string, configured *string, fallback string) string {
 	return firstNonEmpty(flagValue, config.EnvironmentValue(environment, environmentName, ""), stringValue(configured), fallback)
+}
+
+func gatewayListenSetting(set *commandFlags, flagValue string, environment map[string]string, configured *string) string {
+	if set.changed("port") && !set.changed("listen") {
+		return config.DefaultListen
+	}
+	return gatewayStringSetting(flagValue, environment, "GATEWAY_LISTEN", configured, config.DefaultListen)
 }
 
 func gatewayIntSetting(flagValue string, environment map[string]string, environmentName string, configured *int, fallback int) string {
