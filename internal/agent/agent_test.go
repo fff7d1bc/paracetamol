@@ -189,6 +189,26 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	if len(models) != 2 || models[0].Backend != textmodel.BackendDwarfStar || models[1].Backend != textmodel.BackendLlamaCPP {
 		t.Fatalf("selected models = %#v", models)
 	}
+	provider := providers[ProviderID].(map[string]any)
+	compat := provider["compat"].(map[string]any)
+	if compat["sendSessionAffinityHeaders"] != true || compat["sessionAffinityFormat"] != "openai-nosession" {
+		t.Fatalf("Pi session correlation is not enabled: %#v", compat)
+	}
+}
+
+func TestMakiProviderAddsOnlyExplicitPerLaunchSessionHeader(t *testing.T) {
+	const session = "019fe5cc-5cad-7a92-aead-f0838931fb95"
+	withSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, session))
+	if !strings.Contains(withSession, "X-Paracetamol-Session-ID") || !strings.Contains(withSession, session) {
+		t.Fatalf("provider lacks session header: %s", withSession)
+	}
+	withoutSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, ""))
+	if strings.Contains(withoutSession, "X-Paracetamol-Session-ID") {
+		t.Fatalf("provider emitted an empty session header: %s", withoutSession)
+	}
+	if generated := newSessionID(); len(generated) != 36 || generated[14] != '4' {
+		t.Fatalf("generated session id=%q", generated)
+	}
 }
 
 func TestNormalizeGatewayURL(t *testing.T) {

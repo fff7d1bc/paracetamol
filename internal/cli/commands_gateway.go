@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -380,7 +381,36 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 	for _, line := range lines {
 		fmt.Fprintln(app.Stdout, line)
 	}
+	if status.Usage.Overall.Requests > 0 {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Usage since start"))
+		writeStatusRows(app.Stdout, terminal, [][2]string{
+			{"Requests", gatewayAggregateOutcomes(status.Usage.Overall)},
+			{"Tokens", gatewayAggregateTokens(status.Usage.Overall.Tokens, status.Usage.Overall.Requests)},
+			{"Mean timing", gatewayAggregateTiming(status.Usage.Overall.Timing)},
+		})
+		if len(status.Usage.Models) > 0 {
+			usageRows := make([][]string, 0, len(status.Usage.Models))
+			for _, model := range status.Usage.Models {
+				usageRows = append(usageRows, []string{
+					terminal.Command(model.Model),
+					fmt.Sprintf("%d requests", model.Usage.Requests),
+					terminal.Muted(gatewayAggregateTokens(model.Usage.Tokens, model.Usage.Requests)),
+				})
+			}
+			modelLines, _ := ui.ColumnLines(usageRows, nil, "  ")
+			for _, line := range modelLines {
+				fmt.Fprintln(app.Stdout, "  "+line)
+			}
+		}
+	}
 	if recentRequests > 0 {
+		if len(status.Usage.Sessions) > 0 {
+			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Recent sessions"))
+			for _, session := range status.Usage.Sessions {
+				fmt.Fprintf(app.Stdout, "  %s  %d requests · %s\n", terminal.Command(session.ID), session.Usage.Requests,
+					terminal.Muted(gatewayAggregateTokens(session.Usage.Tokens, session.Usage.Requests)))
+			}
+		}
 		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Recent requests"))
 		if len(status.RecentRequests) == 0 {
 			fmt.Fprintln(app.Stdout, terminal.Muted("No completed requests are recorded."))
@@ -408,11 +438,18 @@ func gatewayDuration(milliseconds int64) string {
 	if milliseconds < 0 {
 		milliseconds = 0
 	}
+	maxMilliseconds := int64(math.MaxInt64 / int64(time.Millisecond))
+	if milliseconds > maxMilliseconds {
+		milliseconds = maxMilliseconds
+	}
 	return (time.Duration(milliseconds) * time.Millisecond).String()
 }
 
 func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	parts := []string{firstNonEmpty(record.Application, "no application"), firstNonEmpty(record.Peer, "unknown peer")}
+	if record.SessionID != "" {
+		parts = append(parts, "session "+record.SessionID)
+	}
 	if record.UserAgent != "" {
 		parts = append(parts, record.UserAgent)
 	}
@@ -431,6 +468,9 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	if record.Tokens.Cached != nil {
 		tokens = append(tokens, fmt.Sprintf("%d cached", *record.Tokens.Cached))
 	}
+	if record.Tokens.Reasoning != nil {
+		tokens = append(tokens, fmt.Sprintf("%d reasoning", *record.Tokens.Reasoning))
+	}
 	if len(tokens) == 0 {
 		parts = append(parts, "tokens unavailable")
 	} else {
@@ -438,6 +478,70 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	}
 	parts = append(parts, gatewayControlMetadata(record.Controls))
 	return strings.Join(parts, " · ")
+}
+
+func gatewayAggregateOutcomes(usage gateway.RequestAggregate) string {
+	parts := []string{fmt.Sprintf("%d completed", usage.Requests)}
+	for _, outcome := range []struct {
+		count uint64
+		label string
+	}{
+		{usage.Outcomes.Succeeded, "succeeded"},
+		{usage.Outcomes.Rejected, "rejected"},
+		{usage.Outcomes.Canceled, "canceled"},
+		{usage.Outcomes.QueueFull, "queue-full"},
+		{usage.Outcomes.BackendStartFailed, "backend-start-failed"},
+		{usage.Outcomes.UpstreamError, "upstream-error"},
+		{usage.Outcomes.Other, "other"},
+	} {
+		if outcome.count > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", outcome.count, outcome.label))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func gatewayAggregateTokens(tokens gateway.AggregateTokens, requests uint64) string {
+	parts := []string{}
+	for _, token := range []struct {
+		metric gateway.AggregateMetric
+		label  string
+	}{
+		{tokens.Input, "input"},
+		{tokens.Output, "output"},
+		{tokens.Cached, "cached"},
+		{tokens.Reasoning, "reasoning"},
+	} {
+		if token.metric.Observations == 0 {
+			continue
+		}
+		value := fmt.Sprintf("%d %s", token.metric.Total, token.label)
+		if token.metric.Observations != requests {
+			value += fmt.Sprintf(" (%d/%d reported)", token.metric.Observations, requests)
+		}
+		parts = append(parts, value)
+	}
+	if len(parts) == 0 {
+		return "unavailable"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func gatewayAggregateTiming(timing gateway.AggregateTiming) string {
+	return fmt.Sprintf("%s wait · %s upstream · %s total",
+		gatewayMeanDuration(timing.GatewayWait), gatewayMeanDuration(timing.Upstream), gatewayMeanDuration(timing.Total))
+}
+
+func gatewayMeanDuration(metric gateway.AggregateMetric) string {
+	if metric.Observations == 0 {
+		return "unavailable"
+	}
+	mean := metric.Total / metric.Observations
+	maxMilliseconds := uint64(math.MaxInt64 / int64(time.Millisecond))
+	if mean > maxMilliseconds {
+		mean = maxMilliseconds
+	}
+	return gatewayDuration(int64(mean))
 }
 
 func gatewayControlMetadata(controls gateway.RequestControls) string {

@@ -17,6 +17,7 @@ import (
 const (
 	RecentRequestLimit       = 64
 	RequestIDHeader          = "X-Paracetamol-Request-ID"
+	SessionIDHeader          = "X-Paracetamol-Session-ID"
 	maxObservedTextRunes     = 160
 	maxObservedValueRunes    = 64
 	maxObservedJSONBytes     = 1024 * 1024
@@ -62,13 +63,15 @@ type RequestTiming struct {
 }
 
 type TokenUsage struct {
-	Input  *int64 `json:"input,omitempty"`
-	Output *int64 `json:"output,omitempty"`
-	Cached *int64 `json:"cached,omitempty"`
+	Input     *int64 `json:"input,omitempty"`
+	Output    *int64 `json:"output,omitempty"`
+	Cached    *int64 `json:"cached,omitempty"`
+	Reasoning *int64 `json:"reasoning,omitempty"`
 }
 
 type RequestRecord struct {
 	ID          string          `json:"id"`
+	SessionID   string          `json:"session_id,omitempty"`
 	Model       string          `json:"model,omitempty"`
 	Application string          `json:"application,omitempty"`
 	Peer        string          `json:"peer,omitempty"`
@@ -92,6 +95,9 @@ type requestLedger struct {
 	mu       sync.Mutex
 	sequence uint64
 	entries  [RecentRequestLimit]requestLedgerEntry
+	overall  RequestAggregate
+	models   map[string]ModelAggregate
+	sessions map[string]sessionLedgerEntry
 }
 
 func (ledger *requestLedger) Add(record RequestRecord) {
@@ -100,6 +106,7 @@ func (ledger *requestLedger) Add(record RequestRecord) {
 	ledger.sequence++
 	index := (ledger.sequence - 1) % RecentRequestLimit
 	ledger.entries[index] = requestLedgerEntry{sequence: ledger.sequence, record: record}
+	ledger.addUsage(record)
 }
 
 func (ledger *requestLedger) Recent(limit int) []RequestRecord {
@@ -111,6 +118,16 @@ func (ledger *requestLedger) Recent(limit int) []RequestRecord {
 	}
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
+	return ledger.recentLocked(limit)
+}
+
+func (ledger *requestLedger) recentLocked(limit int) []RequestRecord {
+	if limit <= 0 {
+		return nil
+	}
+	if limit > RecentRequestLimit {
+		limit = RecentRequestLimit
+	}
 	available := int(ledger.sequence)
 	if available > RecentRequestLimit {
 		available = RecentRequestLimit
@@ -320,6 +337,39 @@ func requestPeer(request *http.Request) string {
 	return boundedText(peer, maxObservedTextRunes)
 }
 
+// requestSessionID accepts only opaque UUIDs from explicit correlation
+// headers. In particular, it never derives identity from prompts or other
+// request content. Pi's OpenAI-compatible session-affinity mode supplies the
+// second header; generic callers and managed Maki use the first.
+func requestSessionID(request *http.Request) string {
+	for _, name := range []string{SessionIDHeader, "X-Session-Affinity", "X-Session-ID"} {
+		for _, value := range request.Header.Values(name) {
+			if normalized, ok := normalizeSessionID(value); ok {
+				return normalized
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeSessionID(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return "", false
+	}
+	for index, character := range value {
+		if index == 8 || index == 13 || index == 18 || index == 23 {
+			continue
+		}
+		if character < '0' || character > '9' {
+			if character < 'a' || character > 'f' {
+				return "", false
+			}
+		}
+	}
+	return value, true
+}
+
 func controlsLogSummary(controls RequestControls) string {
 	parts := controlValues(controls.Reasoning)
 	if len(parts) == 0 {
@@ -475,10 +525,20 @@ func (observer *responseObserver) observeJSON(value []byte) {
 		if token, ok := firstInteger(usage, "cache_read_input_tokens", "cached_tokens"); ok {
 			observer.tokens.Cached = token
 		}
+		if token, ok := firstInteger(usage, "reasoning_tokens"); ok {
+			observer.tokens.Reasoning = token
+		}
 		for _, name := range []string{"prompt_tokens_details", "input_tokens_details"} {
 			if details, ok := rawObject(usage[name]); ok {
 				if token, ok := firstInteger(details, "cached_tokens"); ok {
 					observer.tokens.Cached = token
+				}
+			}
+		}
+		for _, name := range []string{"completion_tokens_details", "output_tokens_details"} {
+			if details, ok := rawObject(usage[name]); ok {
+				if token, ok := firstInteger(details, "reasoning_tokens"); ok {
+					observer.tokens.Reasoning = token
 				}
 			}
 		}

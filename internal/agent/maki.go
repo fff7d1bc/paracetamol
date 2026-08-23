@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,7 +85,11 @@ func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, g
 	if err != nil {
 		return MakiPlan{}, err
 	}
-	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, Remote: remoteEndpoint(endpoint), Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" gateway", endpoint, makiModels(models))}, Mode: mode}
+	sessionID := ""
+	if mode == "session" {
+		sessionID = newSessionID()
+	}
+	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, Remote: remoteEndpoint(endpoint), Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" gateway", endpoint, makiModels(models), sessionID)}, Mode: mode}
 	tiers, _ := json.MarshalIndent(map[string]string{"compaction": provider + "/" + model, "weak": provider + "/" + model, "medium": provider + "/" + model, "strong": provider + "/" + model}, "", "  ")
 	plan.Tiers = append(tiers, '\n')
 	if mode == "session" {
@@ -123,11 +128,25 @@ func makiModels(models []textmodel.Model) []map[string]any {
 	return result
 }
 
-func makiProvider(display, endpoint string, models []map[string]any) []byte {
+func makiProvider(display, endpoint string, models []map[string]any, sessionID string) []byte {
 	info, _ := json.Marshal(map[string]any{"display_name": display, "base": "llama-cpp", "has_auth": false})
 	listed, _ := json.Marshal(models)
-	resolved, _ := json.Marshal(map[string]any{"base_url": endpoint, "headers": map[string]string{}})
+	headers := map[string]string{}
+	if sessionID != "" {
+		headers["X-Paracetamol-Session-ID"] = sessionID
+	}
+	resolved, _ := json.Marshal(map[string]any{"base_url": endpoint, "headers": headers})
 	return []byte(fmt.Sprintf("#!/bin/sh\nset -eu\ncase \"${1:-}\" in\n  info) printf '%%s\\n' %s ;;\n  models) printf '%%s\\n' %s ;;\n  resolve|refresh|reload) printf '%%s\\n' %s ;;\n  *) printf '%%s\\n' %s >&2; exit 2 ;;\nesac\n", shellQuote(string(info)), shellQuote(string(listed)), shellQuote(string(resolved)), shellQuote("unsupported "+identity.DisplayName+" provider command")))
+}
+
+func newSessionID() string {
+	var value [16]byte
+	if _, err := rand.Read(value[:]); err != nil {
+		return ""
+	}
+	value[6] = value[6]&0x0f | 0x40
+	value[8] = value[8]&0x3f | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16])
 }
 
 func luaString(value string) string { encoded, _ := json.Marshal(value); return string(encoded) }

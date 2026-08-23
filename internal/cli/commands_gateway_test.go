@@ -173,7 +173,8 @@ func TestGatewayURLRejectsCredentialsAndArbitraryPaths(t *testing.T) {
 
 func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	requested := ""
-	input, output, cached := int64(20), int64(5), int64(12)
+	input, output, cached, reasoning := int64(20), int64(5), int64(12), int64(3)
+	sessionID := "019fe5cc-5cad-7a92-aead-f0838931fb95"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requested = request.URL.RequestURI()
 		_ = json.NewEncoder(writer).Encode(gateway.Status{
@@ -184,11 +185,25 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 				ID: "qwen", Application: "llama-cpp", State: gateway.ModelUnknown,
 				Diagnostic: "llama.cpp router model status is unavailable",
 			}},
+			Usage: gateway.UsageSummary{
+				Overall: gateway.RequestAggregate{
+					Requests: 1, Outcomes: gateway.AggregateOutcomes{Succeeded: 1},
+					Tokens: gateway.AggregateTokens{
+						Input: gateway.AggregateMetric{Total: 20, Observations: 1}, Output: gateway.AggregateMetric{Total: 5, Observations: 1},
+						Cached: gateway.AggregateMetric{Total: 12, Observations: 1}, Reasoning: gateway.AggregateMetric{Total: 3, Observations: 1},
+					},
+					Timing: gateway.AggregateTiming{
+						GatewayWait: gateway.AggregateMetric{Total: 3, Observations: 1}, Upstream: gateway.AggregateMetric{Total: 40, Observations: 1}, Total: gateway.AggregateMetric{Total: 44, Observations: 1},
+					},
+				},
+				Models:   []gateway.ModelAggregate{{Model: "qwen", Application: "llama-cpp", Usage: gateway.RequestAggregate{Requests: 1, Tokens: gateway.AggregateTokens{Output: gateway.AggregateMetric{Total: 5, Observations: 1}}}}},
+				Sessions: []gateway.SessionAggregate{{ID: sessionID, Usage: gateway.RequestAggregate{Requests: 1, Tokens: gateway.AggregateTokens{Output: gateway.AggregateMetric{Total: 5, Observations: 1}}}}},
+			},
 			RecentRequests: []gateway.RequestRecord{{
-				ID: "r00000001", Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "pi/fixture",
+				ID: "r00000001", SessionID: sessionID, Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "pi/fixture",
 				Stream: true, Outcome: gateway.OutcomeSucceeded, HTTPStatus: http.StatusOK,
 				Timing: gateway.RequestTiming{GatewayWaitMilliseconds: 3, UpstreamMilliseconds: 40, TotalMilliseconds: 44},
-				Tokens: gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached},
+				Tokens: gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached, Reasoning: &reasoning},
 				Controls: gateway.RequestControls{
 					Reasoning: []gateway.ObservedControl{{Name: "reasoning_effort", Source: gateway.ControlClient, Provided: true, Value: "medium"}},
 					Sampling:  []gateway.ObservedControl{{Name: "temperature", Source: gateway.ControlDefault}},
@@ -206,7 +221,7 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"r00000001", "qwen", "succeeded", "44ms total", "20 input", "5 output", "12 cached",
-		"reasoning_effort=medium", "sampler defaults", "pi/fixture", "router model status is unavailable",
+		"3 reasoning", sessionID, "Usage since start", "Recent sessions", "reasoning_effort=medium", "sampler defaults", "pi/fixture", "router model status is unavailable",
 	} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Fatalf("status output lacks %q:\n%s", expected, stdout)

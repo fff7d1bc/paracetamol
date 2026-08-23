@@ -3,6 +3,7 @@ package gateway
 import (
 	"bytes"
 	"fmt"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,23 @@ func findControl(t *testing.T, controls []ObservedControl, name string) Observed
 	}
 	t.Fatalf("control %q was not observed: %#v", name, controls)
 	return ObservedControl{}
+}
+
+func TestRequestSessionIDAcceptsOnlyExplicitUUIDCorrelation(t *testing.T) {
+	const session = "019fe5cc-5cad-7a92-aead-f0838931fb95"
+	request := httptest.NewRequest("POST", "/v1/chat/completions", nil)
+	request.Header.Set("X-Session-Affinity", strings.ToUpper(session))
+	if got := requestSessionID(request); got != session {
+		t.Fatalf("session=%q", got)
+	}
+	request.Header.Set(SessionIDHeader, "prompt-shaped session value")
+	if got := requestSessionID(request); got != session {
+		t.Fatalf("invalid preferred header obscured valid affinity header: %q", got)
+	}
+	request.Header.Del("X-Session-Affinity")
+	if got := requestSessionID(request); got != "" {
+		t.Fatalf("accepted invalid session id %q", got)
+	}
 }
 
 func TestInspectRequestRecognizesReasoningAndSamplerSources(t *testing.T) {
@@ -141,10 +159,41 @@ func TestRequestLedgerIsBoundedNewestFirstAndConcurrent(t *testing.T) {
 	}
 }
 
+func TestRequestLedgerAggregatesLifetimeModelsAndBoundedRecentSessions(t *testing.T) {
+	var ledger requestLedger
+	input, output, reasoning := int64(10), int64(4), int64(3)
+	for index := 0; index < RecentSessionLimit+2; index++ {
+		ledger.Add(RequestRecord{
+			ID: fmt.Sprint(index), SessionID: fmt.Sprintf("00000000-0000-4000-8000-%012x", index),
+			Model: "qwen", Application: "llama-cpp", Outcome: OutcomeSucceeded,
+			StartedAt: fmt.Sprintf("start-%d", index), FinishedAt: fmt.Sprintf("finish-%d", index),
+			Tokens: TokenUsage{Input: &input, Output: &output, Reasoning: &reasoning},
+			Timing: RequestTiming{GatewayWaitMilliseconds: 1, UpstreamMilliseconds: 20, TotalMilliseconds: 22},
+		})
+	}
+	recent, summary := ledger.Snapshot(RecentRequestLimit)
+	if len(recent) != RecentRequestLimit || summary.Overall.Requests != RecentSessionLimit+2 || summary.Overall.Outcomes.Succeeded != RecentSessionLimit+2 {
+		t.Fatalf("recent=%d summary=%#v", len(recent), summary.Overall)
+	}
+	if len(summary.Models) != 1 || summary.Models[0].Model != "qwen" || summary.Models[0].Usage.Tokens.Output.Total != uint64(4*(RecentSessionLimit+2)) {
+		t.Fatalf("models=%#v", summary.Models)
+	}
+	if len(summary.Sessions) != RecentSessionLimit || summary.Sessions[0].ID != fmt.Sprintf("00000000-0000-4000-8000-%012x", RecentSessionLimit+1) {
+		t.Fatalf("sessions=%d first=%#v", len(summary.Sessions), summary.Sessions[0])
+	}
+	if summary.Overall.Tokens.Cached.Observations != 0 || summary.Overall.Tokens.Reasoning.Observations != RecentSessionLimit+2 {
+		t.Fatalf("tokens=%#v", summary.Overall.Tokens)
+	}
+}
+
 func TestResponseObserverReadsJSONAndFragmentedSSEUsage(t *testing.T) {
 	jsonObserver := newResponseObserver("application/json")
-	jsonObserver.Observe([]byte(`{"usage":{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":5}}}`))
-	assertTokens(t, jsonObserver.Finish(), 12, 7, 5)
+	jsonObserver.Observe([]byte(`{"usage":{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":5},"completion_tokens_details":{"reasoning_tokens":3}}}`))
+	jsonTokens := jsonObserver.Finish()
+	assertTokens(t, jsonTokens, 12, 7, 5)
+	if jsonTokens.Reasoning == nil || *jsonTokens.Reasoning != 3 {
+		t.Fatalf("reasoning tokens=%#v", jsonTokens)
+	}
 
 	sseObserver := newResponseObserver("text/event-stream; charset=utf-8")
 	for _, fragment := range [][]byte{
@@ -169,7 +218,7 @@ func TestResponseObserverFallsBackToLlamaTimingsAndBoundsInput(t *testing.T) {
 
 	oversized := newResponseObserver("application/json")
 	oversized.Observe(bytes.Repeat([]byte{'x'}, maxObservedJSONBytes+1))
-	if tokens := oversized.Finish(); tokens.Input != nil || tokens.Output != nil || tokens.Cached != nil {
+	if tokens := oversized.Finish(); tokens.Input != nil || tokens.Output != nil || tokens.Cached != nil || tokens.Reasoning != nil {
 		t.Fatalf("oversized response produced tokens: %#v", tokens)
 	}
 }

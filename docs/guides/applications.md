@@ -505,7 +505,9 @@ backend until the first Chat Completions request. It keeps only one application
 allocation resident: cross-application requests wait in FIFO order while
 active work drains and the private backend changes. The foreground terminal
 follows the active container's output with an application prefix. `status
-gateway` reports the snapshot and current allocation. Direct llama.cpp and
+gateway` reports the snapshot, current allocation, and process-lifetime
+privacy-safe usage totals. Add `--requests N` for recent session and request
+details. Direct llama.cpp and
 DwarfStar server commands remain useful for engine diagnostics, isolated
 benchmarks, and API features outside the gateway's intentionally small
 surface. The complete lifecycle and failure policy is in the [gateway
@@ -592,6 +594,13 @@ same revision. Pi and Maki print the selected remote endpoint and a transport
 warning before the session begins. HTTPS protects transport
 when supplied by a trusted reverse proxy; Paracetamol does not attach remote API
 credentials.
+
+Pi's real session UUID is attached through its native session-affinity support.
+Maki currently supplies a fresh correlation UUID for one launcher invocation,
+which groups its tabs and subagents without claiming to be Maki's internal
+session identity. Generic OpenAI-compatible callers may send a UUID in
+`X-Paracetamol-Session-ID`; the gateway consumes that header and does not
+forward it to the model backend.
 
 Managed Qwen servers and the remaining generated clients use these llama.cpp
 request defaults:

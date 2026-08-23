@@ -275,9 +275,12 @@ from a read-only private `/models` probe without `reload`, filters foreign
 models and router arguments, and reports bounded fixed diagnostics on malformed
 or unavailable responses. Send Pi-, Maki-, and OpenCode-shaped reasoning and
 sampler payloads, then use `status gateway --requests N` to verify that explicit
-controls, wait/upstream/total timing, and available usage tokens are credible
-while prompts, tools, authorization, response content, and forwarded peer
-headers are absent. Exercise normal JSON, fragmented SSE, client disconnect,
+controls, wait/upstream/total timing, lifetime/model aggregates, validated
+session grouping, and available input/output/cached/reasoning tokens are
+credible while prompts, tools, authorization, response content, invalid
+session values, and forwarded peer headers are absent. Confirm the private
+Paracetamol session header is not forwarded upstream. Exercise normal JSON,
+fragmented SSE, client disconnect,
 and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.

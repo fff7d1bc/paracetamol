@@ -111,6 +111,13 @@ start/finish lines; an early rejection receives one reject line. Backend and
 controller prefixes are emitted as complete physical lines, so concurrent
 output cannot splice one prefix into another.
 
+Clients may additionally correlate the requests belonging to one coding task
+with a UUID-shaped session identifier. Generic callers send
+`X-Paracetamol-Session-ID`; the gateway consumes that private header rather
+than forwarding it. It also recognizes `X-Session-Affinity` and `X-Session-ID`
+from compatible clients. Invalid values are ignored, and the gateway never
+fingerprints messages or other request content to infer a session.
+
 Requests compatible with the active allocation run concurrently, subject to
 the backend's own slots; DwarfStar is limited to one active request. A request
 for another allocation enters the bounded FIFO queue. Once existing requests
@@ -162,9 +169,14 @@ Use the human status client for the versioned endpoint:
 ./paracetamol status gateway --requests 10
 ```
 
-The v2 status schema reports the frozen applications, active allocation,
+The v3 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
-exact per-model residency. For a resident llama.cpp allocation, the gateway
+exact per-model residency. It also contains process-lifetime request, outcome,
+token, and timing aggregates for the gateway and each used frozen model. Token
+metrics carry an observation count so partial upstream reporting cannot look
+like a complete total. Timing totals are cumulative request durations, not
+aggregate inference throughput; the human client presents their per-request
+mean. For a resident llama.cpp allocation, the gateway
 performs a bounded read-only `GET /models` against the private router and keeps
 only frozen model IDs plus unloaded, loading, loaded, sleeping, failed, or
 unknown state. It never adds the router's mutating `reload` query and discards
@@ -176,9 +188,11 @@ diagnostic rather than leaking backend detail.
 Recent-request history is opt-in. `--requests N`, where N is 1 through 64,
 requests `/paracetamol/v1/status?requests=N` and prints the newest completed
 records from a fixed 64-entry in-memory ring. A record contains its correlation
-ID, frozen model and application, direct TCP peer, bounded User-Agent, stream
-mode, outcome, HTTP status, timestamps, gateway wait/upstream/total wall time,
-and input/output/cached token counts when the upstream reports them. It also
+ID, optional validated session ID, frozen model and application, direct TCP
+peer, bounded User-Agent, stream mode, outcome, HTTP status, timestamps,
+gateway wait/upstream/total wall time, and input/output/cached/reasoning token
+counts when the upstream reports them. Reasoning tokens are a detail within
+output tokens rather than an additional token total. It also
 distinguishes explicit client values for `temperature`, `top_p`, `top_k`,
 `min_p`, `presence_penalty`, `repeat_penalty`, `reasoning_effort`,
 `reasoning_strength`, and the reviewed `chat_template_kwargs` reasoning fields
@@ -186,15 +200,19 @@ from null or absent fields delegated to managed/backend defaults. Conflicting
 or malformed control values are diagnostic metadata only: the gateway neither
 rejects nor rewrites an otherwise valid request.
 
-The ledger is process-local and never retains prompts, messages, tools,
-arbitrary request fields, complete request/response bodies, response content,
-authorization headers, or forwarded-address headers. Normal JSON and SSE are
-observed through bounded incremental readers without delaying or changing
-their bytes or flushing. Missing or malformed usage data is simply reported as
-unavailable. Chat responses carry `X-Paracetamol-Request-ID` for correlation.
-Omitting `--requests` keeps the concise status response and excludes request
-history. Raw prefixed runtime output remains on gateway stderr; status exposes
-no host path or process detail.
+The ledger and aggregates are process-local and never retain prompts, messages,
+tools, arbitrary request fields, complete request/response bodies, response
+content, authorization headers, or forwarded-address headers. Normal JSON and
+SSE are observed through bounded incremental readers without delaying or
+changing their bytes or flushing. Missing or malformed usage data is simply
+reported as unavailable. Chat responses carry `X-Paracetamol-Request-ID` for
+correlation.
+At most 64 session aggregates are retained, with least-recently-used eviction;
+`--requests` returns the lifetime-since-gateway-start aggregates for sessions
+represented in that recent request window. Omitting `--requests` excludes both
+individual request history and session identifiers. Raw prefixed runtime
+output remains on gateway stderr; status exposes no host path or process
+detail.
 
 Pi and Maki accept one `--gateway-url` setting, with
 `PARACETAMOL_GATEWAY_URL` as its environment equivalent. Normal sessions query
@@ -202,6 +220,13 @@ the live inventory and intersect it with local catalog capabilities before
 generating one `paracetamol` provider. Management and informational client
 commands do not require a running gateway. Keep client and server checkouts on
 the same revision so model IDs and capability metadata agree.
+
+Managed Pi enables its native OpenAI-compatible session-affinity headers, so
+the real Pi session UUID follows session restore, fork, and switching. Maki's
+llama.cpp provider currently receives but does not transmit Maki's internal
+session ID; Paracetamol therefore gives one launcher invocation a fresh UUID
+and places it in the private Paracetamol header. All Maki tabs and subagents in
+that invocation intentionally form one launch-level correlation group.
 
 ## Deliberate current limits
 
@@ -214,8 +239,8 @@ the same revision so model IDs and capability metadata agree.
   count-limited router retains its own idle-child LRU policy.
 - It does not add authentication, TLS, retries, request rewriting, or an
   arbitrary upstream registry.
-- The in-memory ledger is not a persistent metrics store, full traffic capture,
-  Prometheus endpoint, or web UI.
+- The in-memory ledger and aggregates are not a persistent metrics store, full
+  traffic capture, Prometheus endpoint, or web UI.
 - Direct servers remain supported diagnostic surfaces, not hidden gateway
   dependencies.
 

@@ -194,8 +194,9 @@ func TestStatusRedactsLifecycleErrors(t *testing.T) {
 }
 
 func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.T) {
-	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11}}}`)
+	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":3}}}`)
 	seenBody := make(chan []byte, 1)
+	seenSessionHeader := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/models":
@@ -203,6 +204,7 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 		case "/v1/chat/completions":
 			body, _ := io.ReadAll(request.Body)
 			seenBody <- body
+			seenSessionHeader <- request.Header.Get(SessionIDHeader)
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = writer.Write(responseBody)
 		default:
@@ -233,6 +235,7 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 	payload := []byte(`{"model":"fixture","stream":false,"reasoning_effort":"medium","temperature":0.7,"messages":[{"role":"user","content":"secret prompt"}],"tools":[{"secret":"tool schema"}]}`)
 	request, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/chat/completions", bytes.NewReader(payload))
 	request.Header.Set("User-Agent", "pi/fixture")
+	request.Header.Set(SessionIDHeader, "019fe5cc-5cad-7a92-aead-f0838931fb95")
 	request.Header.Set("Authorization", "Bearer secret-token")
 	request.Header.Set("X-Forwarded-For", "203.0.113.77")
 	response, err := http.DefaultClient.Do(request)
@@ -248,6 +251,9 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 	if got := <-seenBody; !bytes.Equal(got, payload) {
 		t.Fatalf("request body changed:\n got %s\nwant %s", got, payload)
 	}
+	if got := <-seenSessionHeader; got != "" {
+		t.Fatalf("internal session header reached upstream: %q", got)
+	}
 
 	statusResponse, err := http.Get(server.URL + "/paracetamol/v1/status?requests=1")
 	if err != nil {
@@ -262,13 +268,19 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 		t.Fatalf("status=%#v", status)
 	}
 	record := status.RecentRequests[0]
-	if record.Outcome != OutcomeSucceeded || record.HTTPStatus != http.StatusOK || record.Application != "llama-cpp" || record.UserAgent != "pi/fixture" {
+	if record.Outcome != OutcomeSucceeded || record.HTTPStatus != http.StatusOK || record.Application != "llama-cpp" || record.UserAgent != "pi/fixture" || record.SessionID != "019fe5cc-5cad-7a92-aead-f0838931fb95" {
 		t.Fatalf("record=%#v", record)
 	}
 	if record.Peer != "127.0.0.1" {
 		t.Fatalf("gateway trusted a forwarded peer instead of the TCP peer: %q", record.Peer)
 	}
 	assertTokens(t, record.Tokens, 19, 4, 11)
+	if record.Tokens.Reasoning == nil || *record.Tokens.Reasoning != 3 {
+		t.Fatalf("reasoning tokens=%#v", record.Tokens)
+	}
+	if status.Usage.Overall.Requests != 1 || status.Usage.Overall.Tokens.Reasoning.Total != 3 || len(status.Usage.Models) != 1 || len(status.Usage.Sessions) != 1 {
+		t.Fatalf("usage=%#v", status.Usage)
+	}
 	if len(status.Models) != 1 || status.Models[0].State != ModelLoaded || status.Models[0].Diagnostic != "" {
 		t.Fatalf("model status=%#v", status.Models)
 	}
@@ -284,12 +296,16 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 }
 
 func TestServerOmitsRecentRequestsUnlessRequestedAndValidatesQuery(t *testing.T) {
+	const sessionID = "019fe5cc-5cad-7a92-aead-f0838931fb95"
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		_, _ = io.WriteString(writer, `{"choices":[]}`)
 	}))
 	defer upstream.Close()
 	server, _, _ := testGatewayServer(t, upstream)
-	response, err := http.Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"private-model-name","messages":[{"content":"private"}]}`))
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/chat/completions", strings.NewReader(`{"model":"private-model-name","messages":[{"content":"private"}]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(SessionIDHeader, sessionID)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +321,7 @@ func TestServerOmitsRecentRequestsUnlessRequestedAndValidatesQuery(t *testing.T)
 	}
 	contents, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if bytes.Contains(contents, []byte("recent_requests")) || bytes.Contains(contents, []byte("private")) {
+	if bytes.Contains(contents, []byte("recent_requests")) || bytes.Contains(contents, []byte("private")) || bytes.Contains(contents, []byte(sessionID)) {
 		t.Fatalf("concise status exposed request history: %s", contents)
 	}
 
@@ -320,6 +336,9 @@ func TestServerOmitsRecentRequestsUnlessRequestedAndValidatesQuery(t *testing.T)
 	response.Body.Close()
 	if len(status.RecentRequests) != 1 || status.RecentRequests[0].ID != requestID || status.RecentRequests[0].Outcome != OutcomeRejected {
 		t.Fatalf("recent requests=%#v", status.RecentRequests)
+	}
+	if len(status.Usage.Sessions) != 1 || status.Usage.Sessions[0].ID != sessionID {
+		t.Fatalf("session usage=%#v", status.Usage.Sessions)
 	}
 	if status.RecentRequests[0].Model != "" {
 		t.Fatalf("rejected unknown model was retained: %#v", status.RecentRequests[0])

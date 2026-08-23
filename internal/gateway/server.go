@@ -20,7 +20,7 @@ import (
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v2"
+	StatusSchema    = "paracetamol.gateway-status.v3"
 )
 
 type Server struct {
@@ -43,6 +43,7 @@ type Status struct {
 	Applications         []string        `json:"applications"`
 	Models               []StatusModel   `json:"models"`
 	Scheduler            SchedulerStatus `json:"scheduler"`
+	Usage                UsageSummary    `json:"usage"`
 	RecentRequests       []RequestRecord `json:"recent_requests,omitempty"`
 }
 
@@ -141,18 +142,19 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 	if !server.accepting.Load() {
 		gatewayState = "shutting_down"
 	}
+	recentRequests, usage := server.requests.Snapshot(recentLimit)
 	writeJSON(writer, http.StatusOK, Status{
 		Schema: StatusSchema, Gateway: gatewayState, InventoryFingerprint: server.registry.Fingerprint,
 		StartedAt: server.started.Format(time.RFC3339), Applications: applications,
-		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus,
-		RecentRequests: server.requests.Recent(recentLimit),
+		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus, Usage: usage,
+		RecentRequests: recentRequests,
 	})
 }
 
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	started := time.Now()
 	record := RequestRecord{
-		ID: fmt.Sprintf("r%08x", server.nextRequestID.Add(1)), Peer: requestPeer(request),
+		ID: fmt.Sprintf("r%08x", server.nextRequestID.Add(1)), SessionID: requestSessionID(request), Peer: requestPeer(request),
 		UserAgent: boundedText(request.UserAgent(), maxObservedTextRunes), StartedAt: started.UTC().Format(time.RFC3339Nano),
 	}
 	writer.Header().Set(RequestIDHeader, record.ID)
@@ -160,8 +162,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		writeAPIError(writer, status, kind, code, message)
 		record.Outcome, record.HTTPStatus = outcome, status
 		server.completeRequest(&record, started, time.Time{}, time.Time{})
-		logLine(server.log, "gateway | request %s reject outcome=%s status=%d model=%s peer=%s total=%dms",
-			record.ID, outcome, status, firstNonEmptyLog(record.Model, "unknown"), firstNonEmptyLog(record.Peer, "unknown"), record.Timing.TotalMilliseconds)
+		logLine(server.log, "gateway | request %s reject outcome=%s session=%s status=%d model=%s peer=%s total=%dms",
+			record.ID, outcome, firstNonEmptyLog(record.SessionID, "none"), status, firstNonEmptyLog(record.Model, "unknown"), firstNonEmptyLog(record.Peer, "unknown"), record.Timing.TotalMilliseconds)
 	}
 	if !server.accepting.Load() {
 		reject(http.StatusServiceUnavailable, OutcomeRejected, "gateway_error", "gateway_shutting_down", "Gateway is shutting down")
@@ -195,8 +197,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	record.Model, record.Application = model.ID, model.Application
-	logLine(server.log, "gateway | request %s start model=%s application=%s peer=%s stream=%t %s",
-		record.ID, model.ID, model.Application, firstNonEmptyLog(record.Peer, "unknown"), record.Stream, controlsLogSummary(record.Controls))
+	logLine(server.log, "gateway | request %s start session=%s model=%s application=%s peer=%s stream=%t %s",
+		record.ID, firstNonEmptyLog(record.SessionID, "none"), model.ID, model.Application, firstNonEmptyLog(record.Peer, "unknown"), record.Stream, controlsLogSummary(record.Controls))
 	waitStarted := time.Now()
 	lease, err := server.scheduler.Acquire(request.Context(), Allocation(model.Backend))
 	waitFinished := time.Now()
@@ -230,6 +232,11 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	var observer *responseObserver
 	proxyFailed := false
 	proxy := httputil.NewSingleHostReverseProxy(lease.Upstream)
+	originalDirector := proxy.Director
+	proxy.Director = func(outgoing *http.Request) {
+		originalDirector(outgoing)
+		outgoing.Header.Del(SessionIDHeader)
+	}
 	proxy.Transport = server.transport
 	proxy.FlushInterval = -1
 	proxy.ModifyResponse = func(response *http.Response) error {
@@ -318,11 +325,11 @@ func (server *Server) completeRequest(record *RequestRecord, started, waitStarte
 
 func (server *Server) logRequestFinish(record RequestRecord) {
 	tokens := "unavailable"
-	if record.Tokens.Input != nil || record.Tokens.Output != nil || record.Tokens.Cached != nil {
-		tokens = fmt.Sprintf("in:%s,out:%s,cached:%s", tokenLogValue(record.Tokens.Input), tokenLogValue(record.Tokens.Output), tokenLogValue(record.Tokens.Cached))
+	if record.Tokens.Input != nil || record.Tokens.Output != nil || record.Tokens.Cached != nil || record.Tokens.Reasoning != nil {
+		tokens = fmt.Sprintf("in:%s,out:%s,cached:%s,reasoning:%s", tokenLogValue(record.Tokens.Input), tokenLogValue(record.Tokens.Output), tokenLogValue(record.Tokens.Cached), tokenLogValue(record.Tokens.Reasoning))
 	}
-	logLine(server.log, "gateway | request %s finish outcome=%s status=%d wait=%dms upstream=%dms total=%dms tokens=%s",
-		record.ID, record.Outcome, record.HTTPStatus, record.Timing.GatewayWaitMilliseconds,
+	logLine(server.log, "gateway | request %s finish outcome=%s session=%s status=%d wait=%dms upstream=%dms total=%dms tokens=%s",
+		record.ID, record.Outcome, firstNonEmptyLog(record.SessionID, "none"), record.HTTPStatus, record.Timing.GatewayWaitMilliseconds,
 		record.Timing.UpstreamMilliseconds, record.Timing.TotalMilliseconds, tokens)
 }
 

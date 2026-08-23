@@ -740,11 +740,13 @@ when the allocation stops. The gateway owns no Podman socket and keeps only
 one application allocation resident. It reclaims only an exact stale container
 with all gateway ownership labels and refuses direct, benchmark, or foreign
 collisions. A fixed process-local ledger retains only allowlisted request
-metadata; request and response bodies, tools, authorization, and backend model
-arguments never enter it. Exact llama.cpp child residency comes from a bounded
-read-only probe of the router's private `/models` endpoint, not from allocation
-state or a model-management request. See `docs/gateway.md` for the public
-surface and current limits.
+metadata and bounded session/model aggregates; request and response bodies,
+tools, authorization, and backend model arguments never enter it. Session
+correlation accepts only explicit UUID-shaped headers and never derives an
+identifier from conversation content. Exact llama.cpp child residency comes
+from a bounded read-only probe of the router's private `/models` endpoint, not
+from allocation state or a model-management request. See `docs/gateway.md` for
+the public surface and current limits.
 
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
@@ -787,7 +789,9 @@ checks, telemetry, and project `.pi` trust while leaving normal `AGENTS.md`
 context discovery enabled. It supplies the recommended installed model and
 its catalog default thinking level as command-line defaults before forwarded
 Pi session arguments, so an explicit later `--provider`, `--model`, or
-`--thinking` remains authoritative.
+`--thinking` remains authoritative. The generated provider enables Pi's
+native session-affinity headers, allowing the gateway to correlate requests
+with Pi's real session UUID without another extension or request-body access.
 
 The completion-divider extension records the first low-level agent start and
 waits for Pi's `agent_settled` lifecycle event before adding a full-width
@@ -839,6 +843,11 @@ scripts are refreshed atomically and reject links or multiply linked files.
 Maki update, rollback, migration, and informational commands pass through to
 the real executable. Other management commands use the private state without
 requiring an installed model.
+Maki's native llama.cpp provider does not currently place its internal session
+identifier in request headers. Each managed interactive launcher therefore
+generates one UUID and publishes it through the dynamic provider as a private
+gateway correlation header. It deliberately groups all tabs and subagents
+from that launcher invocation and is not presented as Maki's own session ID.
 Maki 0.4.8 at commit `a9495e1` added this dynamic-provider `thinking_fields`
 contract. Named modes send only the selected fragment: Qwen3.6 uses nested
 `chat_template_kwargs.enable_thinking`, Qwen3.8 sends `reasoning_effort`, and
