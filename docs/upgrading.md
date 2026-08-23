@@ -445,6 +445,15 @@ streams require coordinated updates to
 `internal/runtime/llama.go`, `internal/benchmark/`, its benchmark and comparison schema
 versions, and tests.
 
+The [2026-08-23 Qwen3.8 DFlash2 Strix Halo
+snapshot](qwen3.8-dflash2-strix-halo-feasibility.md) deliberately left the
+then-open DFlash2 implementation out of the source pin and catalog. Its
+Q4_K_M draft produced a useful near-256K Vulkan result, but ROCm draft
+acceptance collapsed with both Q4_K_M and Q8_0. A future llama.cpp update that
+merges or materially changes DFlash2 is therefore a retest trigger, not
+permission to integrate it. Follow the snapshot's backend, context, quality,
+and fail-closed promotion gate before adding a managed preset.
+
 ## Upgrade DwarfStar
 
 DwarfStar is a native multi-architecture application and must stay on the
