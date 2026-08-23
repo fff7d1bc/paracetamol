@@ -128,10 +128,13 @@ directory and private XDG state are writable, and the real home, SSH agent,
 inherited token variables, ordinary client state, and GPU devices are absent.
 Confirm that the host loopback llama.cpp endpoint remains reachable. On a host
 with external connectivity, resolve one external hostname from inside the
-sandbox, especially when `/etc/resolv.conf` points into `/run`. Repeat with
-Linuxbrew client installations because their prefix lives below `/home`, which
-the sandbox otherwise hides. Confirm `AGENTS.md` loads in both clients while
-unapproved project `.pi` resources do not affect Pi.
+sandbox, especially when `/etc/resolv.conf` points into `/run`. With a standard
+Linuxbrew installation present, confirm both a managed Pi client and Maki see
+its `bin` and `sbin` tools, the complete prefix is read-only, and system tools
+retain precedence unless the client itself is installed inside a `.linuxbrew`
+prefix. Repeat with a Linuxbrew client installation because its prefix lives
+below `/home`, which the sandbox otherwise hides. Confirm `AGENTS.md` loads in
+both clients while unapproved project `.pi` resources do not affect Pi.
 
 For managed Pi picker changes, also open the configured model-selection
 shortcut and bare `/model`, confirm models remain in stable family groups,

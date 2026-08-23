@@ -912,11 +912,17 @@ audited for ordinary network commands and this boundary is not claimed as
 adversarial network containment. Grading happens outside the client sandbox
 against a copied worktree with dependency pins restored.
 
-A client executable inside Linuxbrew causes its complete
-`/home/linuxbrew/.linuxbrew` prefix to be mounted read-only. Other executables
-outside `/usr` are mounted as the exact resolved file. Pi instead supplies its
-complete content-addressed runtime as an explicit read-only mount while
-executing distribution Node.js from `/usr`. `--no-sandbox` is an
+A standard `/home/linuxbrew/.linuxbrew` installation is always mounted
+read-only when present, making its command-line toolchain available to both
+clients without allowing package or state mutation. System command directories
+remain earlier on `PATH` for a client outside Linuxbrew, so exposing the prefix
+does not replace Pi's reviewed system Node.js runtime or distribution tools. A
+client executable inside Linuxbrew keeps its own prefix first on `PATH`; a
+nonstandard `.linuxbrew` prefix needed by that executable is mounted read-only
+as well. Other executables outside `/usr` are mounted as the exact resolved
+file. Pi additionally supplies its complete content-addressed runtime as an
+explicit read-only mount while executing distribution Node.js from `/usr`.
+`--no-sandbox` is an
 explicit troubleshooting escape hatch and restores ordinary host filesystem
 access while retaining generated provider settings and private client state.
 Neither mode starts or supervises a model server.

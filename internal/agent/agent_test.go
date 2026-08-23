@@ -57,6 +57,66 @@ func TestSandboxPlanClearsHostEnvironmentAndMountsOnlyProjectWritable(t *testing
 	if strings.Contains(joined, "SECRET") || strings.Contains(joined, home) {
 		t.Fatalf("sandbox leaked host state: %s", joined)
 	}
+	if info, statErr := os.Stat(standardLinuxbrewPrefix); statErr == nil && info.IsDir() {
+		expected := "--ro-bind " + standardLinuxbrewPrefix + " " + standardLinuxbrewPrefix
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("sandbox did not expose standard Linuxbrew read-only: %s", joined)
+		}
+	}
+}
+
+func TestSandboxAlwaysExposesAvailableLinuxbrewAfterSystemTools(t *testing.T) {
+	prefix := filepath.Join(t.TempDir(), "home", "linuxbrew", ".linuxbrew")
+	if err := os.MkdirAll(filepath.Join(prefix, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prefixes := linuxbrewPrefixes("/usr/bin/node", prefix)
+	if len(prefixes) != 1 || prefixes[0] != prefix {
+		t.Fatalf("prefixes=%v", prefixes)
+	}
+	path := sandboxPath("/usr/bin/node", prefixes)
+	if !strings.Contains(path, prefix+"/bin") || strings.Index(path, "/usr/bin") > strings.Index(path, prefix+"/bin") {
+		t.Fatalf("managed client PATH does not retain system precedence before Linuxbrew: %s", path)
+	}
+}
+
+func TestSandboxKeepsClientLinuxbrewPrefixFirstWithoutDuplicates(t *testing.T) {
+	prefix := filepath.Join(t.TempDir(), ".linuxbrew")
+	executable := filepath.Join(prefix, "Cellar", "maki", "1.0", "bin", "maki")
+	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prefixes := linuxbrewPrefixes(executable, prefix)
+	if len(prefixes) != 1 || prefixes[0] != prefix {
+		t.Fatalf("prefixes=%v", prefixes)
+	}
+	if path := sandboxPath(executable, prefixes); !strings.HasPrefix(path, prefix+"/bin:"+prefix+"/sbin:") {
+		t.Fatalf("Linuxbrew client PATH does not start with its runtime: %s", path)
+	}
+}
+
+func TestSandboxRejectsWritableWorkdirInsideLinuxbrew(t *testing.T) {
+	prefix := filepath.Join(t.TempDir(), ".linuxbrew")
+	executable := filepath.Join(prefix, "Cellar", "maki", "1.0", "bin", "maki")
+	workdir := filepath.Join(prefix, "project")
+	for _, directory := range []string{filepath.Dir(executable), workdir} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(executable, []byte("fixture"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := CreateSandboxPlan(
+		context.Background(), sandboxRunner{}, []string{executable}, t.TempDir(), workdir,
+		"maki", nil, map[string]string{"HOME": t.TempDir(), "PATH": "/usr/bin"}, nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "overlaps read-only Linuxbrew prefix") {
+		t.Fatalf("err=%v", err)
+	}
 }
 
 func TestSandboxRejectsWorkdirContainingHostHome(t *testing.T) {

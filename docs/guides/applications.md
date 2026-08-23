@@ -706,9 +706,14 @@ reachable through unprivileged user namespaces, so Doctor says so alongside
 the command.
 
 System files and each resolved client installation are read-only. Pi's exact
-managed npm installation is mounted as one runtime tree. The launchers
-recognize Linuxbrew below `/home/linuxbrew/.linuxbrew` and mount that prefix
-read-only.
+managed npm installation is mounted as one runtime tree. When the standard
+`/home/linuxbrew/.linuxbrew` installation exists, the launchers always mount
+the complete prefix read-only and make its `bin` and `sbin` tools available.
+Distribution tools retain precedence for clients outside Linuxbrew; this keeps
+Pi on the reviewed system Node.js while still exposing tools absent from
+`/usr`, such as a Linuxbrew-only FFmpeg. A client installed in a nonstandard
+`.linuxbrew` prefix receives that read-only prefix too and keeps it first on
+`PATH`.
 
 Maki can load executable project configuration from `.maki/init.lua`. Treat it
 like code from the checkout. The bubblewrap boundary still prevents that code
