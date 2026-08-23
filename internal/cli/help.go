@@ -93,7 +93,7 @@ var commandExampleArguments = map[string][][]string{
 	},
 	"run dwarfstar server":            {{"run", "dwarfstar", "server"}, {"run", "dwarfstar", "server", "--dspark"}},
 	"run dwarfstar cli":               {{"run", "dwarfstar", "cli"}, {"run", "dwarfstar", "cli", "--no-thinking", "--prompt", "Say hello"}},
-	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp", "-a", "dwarfstar"}},
+	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp", "-a", "dwarfstar"}, {"run", "gateway", "--port", "18080"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},
 	"logs":                            {{"logs", "llama-cpp", "--follow"}, {"logs", "comfyui", "--all"}},
 	"stop":                            {{"stop", "llama-cpp"}, {"stop", "all"}},

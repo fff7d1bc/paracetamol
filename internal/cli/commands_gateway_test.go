@@ -32,7 +32,7 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
-	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available"} {
+	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "run gateway --port 18080"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
@@ -170,6 +170,38 @@ func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing
 	configuredPort := 18080
 	if got := gatewayIntSetting("", map[string]string{}, "GATEWAY_PORT", &configuredPort, 8080); got != "18080" {
 		t.Fatalf("configured port=%q", got)
+	}
+}
+
+func TestGatewayExplicitPortWithoutListenForcesLoopback(t *testing.T) {
+	configuredListen := "192.168.1.50"
+	environment := map[string]string{
+		"PARACETAMOL_GATEWAY_LISTEN": "192.168.1.60",
+		"PARACETAMOL_GATEWAY_PORT":   "17070",
+	}
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "resolved settings remain published", want: "192.168.1.60"},
+		{name: "port only", args: []string{"--port", "18080"}, want: config.DefaultListen},
+		{name: "listen only", args: []string{"--listen", "192.168.1.70"}, want: "192.168.1.70"},
+		{name: "listen and port", args: []string{"--port", "18080", "--listen", "192.168.1.70"}, want: "192.168.1.70"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			app, _, _ := testApp(t, &commandRunner{})
+			set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
+			listen := set.String("listen", "", "fixture")
+			_ = set.String("port", "", "fixture")
+			if err := parseFlags(set, test.args); err != nil {
+				t.Fatal(err)
+			}
+			if got := gatewayListenSetting(set, *listen, environment, &configuredListen); got != test.want {
+				t.Fatalf("listen=%q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

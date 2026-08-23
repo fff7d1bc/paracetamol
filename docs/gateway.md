@@ -72,6 +72,13 @@ Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
 command-line-only.
 
+One command-line exception keeps an ad hoc port change local. An explicit
+`--port` without an explicit `--listen` selects `127.0.0.1` for that invocation,
+even when configuration or the environment normally publishes another
+address. Supplying both options applies that address and port. A port selected
+only by configuration or the environment does not suppress the resolved
+listen address.
+
 The compact startup card shows the local endpoint, any additional publication,
 selected profile and render nodes, applications, loaded configuration path,
 verified model count, short inventory fingerprint, and the copyable local
