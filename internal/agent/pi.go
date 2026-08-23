@@ -134,7 +134,7 @@ func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Mod
 }
 
 func piProvider(name, endpoint string, models []map[string]any) map[string]any {
-	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": "paracetamol-local", "authHeader": false, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true}, "models": models}
+	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": "paracetamol-local", "authHeader": false, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true, "sendSessionAffinityHeaders": true, "sessionAffinityFormat": "openai-nosession"}, "models": models}
 }
 
 func zeroCost() map[string]int {
