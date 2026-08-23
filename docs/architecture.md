@@ -24,12 +24,13 @@ persistent storage
 ```
 
 The host control plane is a Linux Go binary. It does not import ROCm, PyTorch,
-or application dependencies and needs only Go 1.26+, GNU Make, rootless
-Podman, and access to the selected device files. Platform-qualified build
-directories separate local artifacts and caches; they do not define a
-portable non-Linux command surface. Python remains an implementation detail of
-Python application containers, their focused policy tests, and frozen
-evaluation fixtures; no host command dispatches through Python.
+or application dependencies. Building it normally needs Go 1.26+, GNU Make, a
+C compiler, glibc development headers, rootless Podman, and access to the
+selected device files. Platform-qualified build directories separate local
+artifacts and caches. They do not define a portable non-Linux command surface.
+Python remains an implementation detail of Python application containers,
+their focused policy tests, and frozen evaluation fixtures. No host command
+dispatches through Python.
 
 Data-path resolution has two explicit modes. Status, inspection, and dry-run
 commands resolve an absent path without creating it. Real installs, shells,
@@ -42,12 +43,16 @@ mounted separately and read-only below `/content`.
 `paracetamol` is a small POSIX shell bootstrap. It asks the `Makefile` for the
 current platform binary below `build/<goos>-<goarch>/bin/` and executes it.
 Make rebuilds when its Go module, source, or Makefile inputs are newer. Normal
-targets use the installed toolchain, disable CGO, and keep compiler caches,
-module state, temporary files, telemetry state, and binaries below the
-anchored ignored `build/` tree. The optional race-detector target alone enables
-CGO. `internal/project/` owns repository-root discovery for build context,
-catalog, and immutable workflow resources. Consequently a copied bare binary
-without its source checkout is not a supported installation.
+builds use the installed toolchain's native CGO support and link glibc. This
+lets Go network clients follow the host NSS policy, including mDNS modules.
+The build fails instead of silently producing a pure-Go binary when CGO is
+disabled. `make static` is the explicit exception. It builds a stripped
+pure-Go artifact that cannot consult NSS-only name sources. All targets keep
+compiler caches, module state, temporary files, telemetry state, and binaries
+below the anchored ignored `build/` tree. `internal/project/` owns
+repository-root discovery for build context, catalog, and immutable workflow
+resources. Consequently a copied bare binary without its source checkout is
+not a supported installation.
 
 `internal/identity/` and the `Makefile` own the product identity. `PRODUCT_ID`
 derives the command name, host-configuration environment prefix, persistent

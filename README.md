@@ -68,12 +68,14 @@ Paracetamol checks the rest of that path too.
 
 ## Requirements
 
-The host control plane supports Linux and needs rootless Podman, GNU Make, and
-Go 1.26 or newer. Platform-qualified directories below `build/` separate
-local build state. They do not imply that the complete controller runs on
-other operating systems. The checkout launcher rebuilds its repository-local
-binary when Go or Makefile inputs change. Generated binaries and Go caches
-stay below the ignored `build/` directory.
+The host control plane supports Linux and needs rootless Podman, GNU Make, Go
+1.26 or newer, a C compiler, and glibc development headers. The normal build
+uses glibc so network clients follow the host's NSS configuration, including
+mDNS providers. Platform-qualified directories below `build/` separate local
+build state. They do not imply that the complete controller runs on other
+operating systems. The checkout launcher rebuilds its repository-local binary
+when Go or Makefile inputs change. Generated binaries and Go caches stay below
+the ignored `build/` directory.
 
 Development hosts currently run SteamOS 3.8, Fedora 44 in conventional and
 Kinoite deployments, and Ubuntu 26.04. Minimal installations may not include
@@ -586,9 +588,10 @@ make static
 
 `make build` is the normal incremental path. The forced build is useful before
 finishing Go or Makefile changes. `make clean` removes only the repository's
-ignored `build/` tree. Regular targets default to `CGO_ENABLED=0`. The optional
-native-Linux `make race` check enables CGO for the race detector and needs a C
-compiler. Ordinary builds and tests do not have that requirement.
+ignored `build/` tree. Normal builds require CGO and use the host's glibc and
+NSS resolver. `make static` explicitly builds the optional pure-Go binary. That
+binary can use DNS and `/etc/hosts`, but it cannot use NSS-only sources such as
+mDNS. The optional native-Linux `make race` check uses CGO as well.
 
 Normal commands use `GOTOOLCHAIN=local`, so the installed Go toolchain must
 satisfy `go.mod`. Use `make GOTOOLCHAIN=auto -B build` only when automatic
