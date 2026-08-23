@@ -237,9 +237,11 @@ complete controller is portable to another operating system.
 - `make build` incrementally builds the checkout binary; use `make -B build`
   for final verification of Go or Makefile changes.
 - `make check`, `make test`, and `make static` are the routine host checks.
-- `make race` is an optional native-Linux Go race-detector pass. It alone
-  enables CGO and therefore requires a C compiler; regular targets default to
-  `CGO_ENABLED=0`.
+- Normal builds use CGO, glibc, and the host NSS resolver. They require a C
+  compiler and glibc development headers. `make static` is the explicit
+  pure-Go build and does not support NSS-only name sources such as mDNS.
+- `make race` is an optional native-Linux Go race-detector pass using the same
+  CGO toolchain as the normal build.
 - `make clean` removes only the anchored repository-local `build/` tree.
 
 Normal targets use the installed Go 1.26 toolchain through

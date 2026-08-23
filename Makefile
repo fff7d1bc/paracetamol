@@ -35,7 +35,6 @@ GOTMPDIR := $(PLATFORM_BUILD_DIR)/tmp
 GOTELEMETRYDIR := $(PLATFORM_BUILD_DIR)/telemetry
 GOENV := off
 GOFLAGS := -modcacherw -buildvcs=false
-CGO_ENABLED ?= 0
 IDENTITY_LDFLAGS := -X 'paracetamol/internal/identity.CommandName=$(PRODUCT_ID)' \
 	-X 'paracetamol/internal/identity.DisplayName=$(DISPLAY_NAME)' \
 	-X 'paracetamol/internal/identity.StateNamespace=$(STATE_NAMESPACE)' \
@@ -52,7 +51,6 @@ export GOTMPDIR
 export GOTELEMETRYDIR
 export GOENV
 export GOFLAGS
-export CGO_ENABLED
 export GOTOOLCHAIN
 export GOTELEMETRY=off
 
@@ -92,6 +90,10 @@ launcher-binary: build
 	@printf '%s\n' "$(BIN)"
 
 $(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
+	@test "$$(go env CGO_ENABLED)" = 1 || { \
+		printf '%s\n' 'normal builds require CGO; use make static for the pure-Go binary'; \
+		exit 2; \
+	}
 	@temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID).XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT INT TERM HUP; \
 	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" "$(GO_PACKAGE)"; \

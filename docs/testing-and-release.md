@@ -57,9 +57,11 @@ signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 make race
 ```
 
-This target alone enables CGO and requires a C compiler. It is not part of
-Tier 1 or the ordinary host requirements; `make check`, `make test`, `make
-build`, and `make static` continue to work with CGO disabled.
+Normal builds use CGO and require a C compiler so the host binary follows
+glibc and NSS name resolution. The race target uses the same native boundary.
+`make static` is the explicit CGO-disabled build. It remains in Tier 1 as a
+separate artifact check, but it cannot resolve names supplied only by NSS
+modules such as mDNS.
 
 ### Tier 2: CLI and dry-run checks
 
