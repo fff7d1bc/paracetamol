@@ -15,12 +15,16 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"paracetamol/internal/identity"
 )
 
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
 	StatusSchema    = "paracetamol.gateway-status.v3"
+	IdentityHeader  = "X-Paracetamol-Gateway"
+	IdentityValue   = "paracetamol.gateway.v1"
 )
 
 type Server struct {
@@ -86,6 +90,8 @@ func (server *Server) BeginShutdown() {
 }
 
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Server", identity.CommandName+"/"+identity.Version)
+	writer.Header().Set(IdentityHeader, IdentityValue)
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/health":
 		server.health(writer)
@@ -240,6 +246,10 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	proxy.Transport = server.transport
 	proxy.FlushInterval = -1
 	proxy.ModifyResponse = func(response *http.Response) error {
+		// The public endpoint identifies the gateway, not whichever private
+		// backend served this request.
+		response.Header.Del("Server")
+		response.Header.Del(IdentityHeader)
 		response.Header.Set(RequestIDHeader, record.ID)
 		observer = newResponseObserver(response.Header.Get("Content-Type"))
 		response.Body = &observedBody{ReadCloser: response.Body, observer: observer}

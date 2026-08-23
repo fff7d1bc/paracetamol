@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/textmodel"
@@ -67,6 +68,10 @@ func DiscoverGatewayModels(ctx context.Context, endpoint string) ([]string, erro
 		return nil, fmt.Errorf("cannot reach gateway model inventory: %w", err)
 	}
 	defer response.Body.Close()
+	markers := response.Header.Values(gateway.IdentityHeader)
+	if len(markers) != 1 || markers[0] != gateway.IdentityValue {
+		return nil, fmt.Errorf("%s is not a %s gateway (HTTP %d)", endpoint, identity.DisplayName, response.StatusCode)
+	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gateway model inventory returned HTTP %d", response.StatusCode)
 	}

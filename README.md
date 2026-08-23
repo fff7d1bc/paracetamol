@@ -372,9 +372,11 @@ PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
 ```
 
 Both managed clients perform a bounded `/v1/models` probe and generate only
-the reviewed models that this gateway instance actually advertises. Direct
-llama.cpp and DwarfStar servers are still available for diagnostics,
-benchmarks, and engine-specific API work. See the
+the reviewed models that this gateway instance actually advertises. They also
+require the versioned Paracetamol gateway marker, so another service on the
+configured port is rejected before its response is trusted. Direct llama.cpp
+and DwarfStar servers are still available for diagnostics, benchmarks, and
+engine-specific API work. See the
 [application guide](docs/guides/applications.md#inference-gateway) and
 [gateway design](docs/gateway.md).
 

@@ -169,6 +169,12 @@ The initial public surface is deliberately small:
 - `POST /v1/chat/completions`
 - `GET /paracetamol/v1/status`
 
+Every response identifies the public service with
+`Server: paracetamol/0.1.0-dev`, derived from the built command identity and
+version, and the stable protocol marker
+`X-Paracetamol-Gateway: paracetamol.gateway.v1`. A proxied backend cannot
+replace either value with its own identity.
+
 Use the human status client for the versioned endpoint:
 
 ```bash
@@ -224,10 +230,13 @@ detail.
 
 Pi and Maki accept one `--gateway-url` setting, with
 `PARACETAMOL_GATEWAY_URL` as its environment equivalent. Normal sessions query
-the live inventory and intersect it with local catalog capabilities before
-generating one `paracetamol` provider. Management and informational client
-commands do not require a running gateway. Keep client and server checkouts on
-the same revision so model IDs and capability metadata agree.
+the live inventory, require its exact versioned Paracetamol gateway marker,
+and intersect it with local catalog capabilities before generating one
+`paracetamol` provider. A different service on the configured host and port is
+rejected before its status or response body is treated as model inventory.
+Management and informational client commands do not require a running gateway.
+Keep client and server checkouts on the same revision so model IDs, protocol
+markers, and capability metadata agree.
 
 Managed Pi enables its native OpenAI-compatible session-affinity headers, so
 the real Pi session UUID follows session restore, fork, and switching. Maki's

@@ -587,13 +587,15 @@ PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
 The equivalent direct form is
 `./paracetamol agent run pi --gateway-url URL --` (or the matching Maki
 command). A normal session performs a bounded
-`GET /v1/models` probe before starting Pi, intersects the advertised IDs with
-the reviewed Paracetamol agent catalog, and applies the normal recommended-model
-order. It therefore needs no local GGUF installation or verification receipt
-on the client host. The generated reasoning, context, and sampling metadata
-still comes from the client's Paracetamol checkout, so keep the two hosts on the
-same revision. Pi and Maki print the selected remote endpoint and a transport
-warning before the session begins. HTTPS protects transport
+`GET /v1/models` probe before starting Pi, requires the exact versioned
+Paracetamol gateway response marker, intersects the advertised IDs with the
+reviewed Paracetamol agent catalog, and applies the normal recommended-model
+order. A different service on the configured port is rejected before its
+response body is trusted. The client therefore needs no local GGUF installation
+or verification receipt. The generated reasoning, context, and sampling
+metadata still comes from the client's Paracetamol checkout, so keep the two
+hosts on the same revision. Pi and Maki print the selected remote endpoint and
+a transport warning before the session begins. HTTPS protects transport
 when supplied by a trusted reverse proxy; Paracetamol does not attach remote API
 credentials.
 
