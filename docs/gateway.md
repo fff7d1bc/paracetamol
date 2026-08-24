@@ -72,6 +72,12 @@ Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
 command-line-only.
 
+The configuration reader intentionally implements only the forms used by this
+schema: one-line quoted strings, decimal integers, one-line string arrays,
+comments, and the documented table headers. `config init` and
+`config.example.toml` emit that supported subset. Multiline strings, multiline
+arrays, dotted assignments, and other general TOML features are rejected.
+
 One command-line exception keeps an ad hoc port change local. An explicit
 `--port` without an explicit `--listen` selects `127.0.0.1` for that invocation,
 even when configuration or the environment normally publishes another
