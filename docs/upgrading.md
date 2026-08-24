@@ -36,7 +36,6 @@ The main pin classes are:
 | Comfy dependencies | `applications/comfyui/constraints.txt` | transitive constraints |
 | Models and workflows | `catalog/` | full commits plus content hashes |
 | Managed Pi client | `agent-clients/pi/` | exact npm release plus lockfile integrity |
-| Host TOML decoder | `go.mod` and `go.sum` | exact Go module release plus checksum |
 
 AMD ROCm runtime packages belong to the lower tagged runtime; PyTorch, `pip`,
 and `wheel` policy belong to the higher shared base.

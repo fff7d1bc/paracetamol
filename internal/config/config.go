@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/BurntSushi/toml"
-
 	"paracetamol/internal/application"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/identity"
@@ -39,30 +37,30 @@ type Selection struct {
 }
 
 type Configuration struct {
-	Storage StorageConfiguration `toml:"storage"`
-	Gateway GatewayConfiguration `toml:"gateway"`
+	Storage StorageConfiguration
+	Gateway GatewayConfiguration
 
-	Path   string `toml:"-"`
-	Loaded bool   `toml:"-"`
+	Path   string
+	Loaded bool
 }
 
 type StorageConfiguration struct {
-	DataDir *string `toml:"data_dir"`
+	DataDir *string
 }
 
 type GatewayConfiguration struct {
-	Applications   []string                  `toml:"applications"`
-	Profile        *string                   `toml:"profile"`
-	RenderNodes    []string                  `toml:"render_nodes"`
-	Listen         *string                   `toml:"listen"`
-	Port           *int                      `toml:"port"`
-	StartupTimeout *string                   `toml:"startup_timeout"`
-	LlamaCPP       GatewayLlamaConfiguration `toml:"llama-cpp"`
+	Applications   []string
+	Profile        *string
+	RenderNodes    []string
+	Listen         *string
+	Port           *int
+	StartupTimeout *string
+	LlamaCPP       GatewayLlamaConfiguration
 }
 
 type GatewayLlamaConfiguration struct {
-	Backend   *string `toml:"backend"`
-	ModelsMax *int    `toml:"models_max"`
+	Backend   *string
+	ModelsMax *int
 }
 
 func ApplicationByID(identifier string) (Application, bool) { return application.ByID(identifier) }
@@ -141,17 +139,9 @@ func Load(environment map[string]string, selection Selection) (Configuration, er
 	if err != nil {
 		return Configuration{}, controlerr.New("cannot read configuration %s: %v", path, err)
 	}
-	var configuration Configuration
-	metadata, err := toml.Decode(string(contents), &configuration)
+	configuration, err := parseConfiguration(contents)
 	if err != nil {
 		return Configuration{}, controlerr.New("cannot read configuration %s: %v", path, err)
-	}
-	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, 0, len(undecoded))
-		for _, key := range undecoded {
-			keys = append(keys, key.String())
-		}
-		return Configuration{}, controlerr.New("unknown configuration setting in %s: %s", path, strings.Join(keys, ", "))
 	}
 	if err := validateConfiguration(configuration, path); err != nil {
 		return Configuration{}, err

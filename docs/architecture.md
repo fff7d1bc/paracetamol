@@ -586,9 +586,12 @@ selectors stop at the explicit `--` passthrough boundary. `config init`
 publishes one complete default file through the create-once atomic-file policy.
 Configuration lookup and dry-run resolution do not create either directory.
 The typed TOML surface is intentionally closed, all fields are optional, and
-unknown sections or keys fail closed. Command flags win over corresponding
-environment variables, which win over configuration, which wins over built-in
-defaults. Lists replace lower-precedence lists rather than merging them.
+unknown sections or keys fail closed. A schema-specific standard-library
+parser accepts the one-line strings, decimal integers, string arrays, comments,
+and table headers emitted by `config init`. It does not implement unrelated
+TOML features. Command flags win over corresponding environment variables,
+which win over configuration, which wins over built-in defaults. Lists replace
+lower-precedence lists rather than merging them.
 
 The storage boundary is:
 

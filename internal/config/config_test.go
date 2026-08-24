@@ -45,24 +45,88 @@ models_max = 2
 	}
 }
 
+func TestLoadDecodesSupportedTOMLForms(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	contents := `# Leading comments and comments after values are supported.
+[storage] # storage comment
+data_dir = '/srv/ai#literal'
+
+[gateway]
+applications = ["llama,cpp", 'dwarf#star', "quoted\"name",] # array comment
+profile = "strix\u002dhalo"
+render_nodes = ["/dev/dri/renderD128=primary"]
+listen = "127.0.0.1"
+port = 7_455
+startup_timeout = "30m"
+
+[gateway.llama-cpp]
+backend = 'rocm'
+models_max = +2
+`
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := Load(map[string]string{}, Selection{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if configuration.Storage.DataDir == nil || *configuration.Storage.DataDir != "/srv/ai#literal" ||
+		!reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama,cpp", "dwarf#star", `quoted"name`}) ||
+		configuration.Gateway.Profile == nil || *configuration.Gateway.Profile != "strix-halo" ||
+		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128=primary"}) ||
+		configuration.Gateway.Port == nil || *configuration.Gateway.Port != 7455 ||
+		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" ||
+		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 {
+		t.Fatalf("configuration=%#v", configuration)
+	}
+}
+
 func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
-	for name, contents := range map[string]string{
-		"unknown":      "[gateway]\nmodelz_max = 2\n",
-		"data path":    "[storage]\ndata_dir = 'relative'\n",
-		"port":         "[gateway]\nport = 70000\n",
-		"models":       "[gateway.llama-cpp]\nmodels_max = 0\n",
-		"invalid type": "[gateway]\nport = '8080'\n",
-		"duplicate":    "[gateway]\nport = 8080\nport = 8081\n",
+	for name, test := range map[string]struct {
+		contents string
+		contains string
+	}{
+		"unknown section":     {"[other]\n", "unknown configuration section"},
+		"unknown setting":     {"[gateway]\nmodelz_max = 2\n", "unknown configuration setting"},
+		"outside section":     {"port = 7455\n", "outside a configuration section"},
+		"data path":           {"[storage]\ndata_dir = 'relative'\n", "non-empty absolute path"},
+		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},
+		"models range":        {"[gateway.llama-cpp]\nmodels_max = 0\n", "at least 1"},
+		"invalid type":        {"[gateway]\nport = '8080'\n", "decimal integer"},
+		"duplicate setting":   {"[gateway]\nport = 8080\nport = 8081\n", "duplicate configuration setting"},
+		"duplicate section":   {"[gateway]\n[gateway]\n", "duplicate configuration section"},
+		"malformed section":   {"[gateway\n", "malformed configuration section"},
+		"array section":       {"[[gateway]]\n", "malformed configuration section"},
+		"missing value":       {"[gateway]\nport =\n", "expected key = value"},
+		"unquoted string":     {"[gateway]\nprofile = auto\n", "quoted string"},
+		"unsupported escape":  {"[gateway]\nprofile = \"a\\x62\"\n", "unsupported escape sequence"},
+		"unterminated string": {"[gateway]\nprofile = \"auto\n", "unterminated quoted value"},
+		"numeric array item":  {"[gateway]\napplications = [1]\n", "quoted string"},
+		"missing array comma": {"[gateway]\napplications = [\"llama-cpp\" \"dwarfstar\"]\n", "comma"},
+		"multiline array":     {"[gateway]\napplications = [\n  \"llama-cpp\",\n]\n", "one-line string array"},
+		"leading zero":        {"[gateway]\nport = 07455\n", "leading zero"},
+		"bad separator":       {"[gateway]\nport = 7__455\n", "decimal integer"},
+		"dotted assignment":   {"[gateway]\nllama-cpp.models_max = 2\n", "unknown configuration setting"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.toml")
-			if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Load(map[string]string{}, Selection{Path: path}); err == nil {
-				t.Fatal("invalid configuration unexpectedly loaded")
+			if _, err := Load(map[string]string{}, Selection{Path: path}); err == nil || !strings.Contains(err.Error(), test.contains) {
+				t.Fatalf("error=%v, want substring %q", err, test.contains)
 			}
 		})
+	}
+}
+
+func TestLoadRejectsInvalidUTF8(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte{'[', 'g', 'a', 't', 'e', 'w', 'a', 'y', ']', '\n', 0xff}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(map[string]string{}, Selection{Path: path}); err == nil || !strings.Contains(err.Error(), "not valid UTF-8") {
+		t.Fatalf("error=%v", err)
 	}
 }
 
