@@ -584,10 +584,10 @@ both options when changing a remote publication.
 ```bash
 # GPU host
 ./paracetamol run gateway -a llama-cpp \
-  --listen 192.168.1.50 --port 8080
+  --listen 192.168.1.50 --port 7455
 
 # Pi or Maki client host
-PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
+PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
 ```
 
 The equivalent direct form is

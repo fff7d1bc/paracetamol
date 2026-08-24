@@ -12,7 +12,7 @@ applications = []
 profile = "auto"
 render_nodes = []
 listen = "127.0.0.1"
-port = 8080
+port = 7455
 startup_timeout = "30m"
 
 [gateway.llama-cpp]

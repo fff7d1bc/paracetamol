@@ -48,7 +48,7 @@ profile = "auto"
 render_nodes = []
 # Loopback remains available when this selects another exact address.
 listen = "127.0.0.1"
-port = 8080
+port = 7455
 startup_timeout = "30m"
 
 [gateway.llama-cpp]
@@ -186,7 +186,7 @@ Use the human status client for the versioned endpoint:
 
 ```bash
 ./paracetamol status gateway
-./paracetamol status gateway --gateway-url http://aion.local:8080/v1
+./paracetamol status gateway --gateway-url http://aion.local:7455/v1
 ./paracetamol status gateway --requests 10
 ```
 

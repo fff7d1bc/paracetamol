@@ -125,6 +125,7 @@ func TestDefaultContentsIsCompleteAndRunnable(t *testing.T) {
 		configuration.Gateway.Profile == nil || *configuration.Gateway.Profile != "auto" ||
 		configuration.Gateway.Applications == nil || len(configuration.Gateway.Applications) != 0 ||
 		configuration.Gateway.RenderNodes == nil || len(configuration.Gateway.RenderNodes) != 0 ||
+		configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort ||
 		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" {
 		t.Fatalf("configuration=%#v", configuration)
 	}
@@ -139,8 +140,14 @@ func TestTrackedExampleLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Applications == nil || configuration.Gateway.RenderNodes == nil {
+	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Applications == nil || configuration.Gateway.RenderNodes == nil || configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort {
 		t.Fatalf("configuration=%#v", configuration)
+	}
+}
+
+func TestGatewayDefaultsAgree(t *testing.T) {
+	if DefaultGatewayPort != 7455 || DefaultGatewayURL != "http://127.0.0.1:7455/v1" {
+		t.Fatalf("port=%d URL=%q", DefaultGatewayPort, DefaultGatewayURL)
 	}
 }
 

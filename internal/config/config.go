@@ -25,9 +25,10 @@ var (
 )
 
 const (
-	DefaultListen     = "127.0.0.1"
-	DefaultGatewayURL = "http://127.0.0.1:8080/v1"
-	maxFileSize       = 64 * 1024
+	DefaultListen      = "127.0.0.1"
+	DefaultGatewayPort = 7455
+	DefaultGatewayURL  = "http://127.0.0.1:7455/v1"
+	maxFileSize        = 64 * 1024
 )
 
 // Selection chooses the one host configuration source. An empty selection
@@ -240,7 +241,7 @@ func DefaultContents(dataDir string) []byte {
 		"profile = \"auto\"\n" +
 		"render_nodes = []\n" +
 		"listen = \"127.0.0.1\"\n" +
-		"port = 8080\n" +
+		"port = " + strconv.Itoa(DefaultGatewayPort) + "\n" +
 		"startup_timeout = \"30m\"\n\n" +
 		"[gateway.llama-cpp]\n" +
 		"backend = \"rocm\"\n" +

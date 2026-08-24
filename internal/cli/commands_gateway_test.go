@@ -32,7 +32,7 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
-	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "run gateway --port 18080"} {
+	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
@@ -168,7 +168,7 @@ func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing
 		t.Fatalf("configuration precedence=%q", got)
 	}
 	configuredPort := 18080
-	if got := gatewayIntSetting("", map[string]string{}, "GATEWAY_PORT", &configuredPort, 8080); got != "18080" {
+	if got := gatewayIntSetting("", map[string]string{}, "GATEWAY_PORT", &configuredPort, config.DefaultGatewayPort); got != "18080" {
 		t.Fatalf("configured port=%q", got)
 	}
 }
@@ -226,7 +226,7 @@ func TestGatewayAutomaticSelectionConsidersOnlyBuiltImages(t *testing.T) {
 func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
 	app.writeGatewayStartup(gatewayStartup{
-		LocalEndpoint: "http://127.0.0.1:8080/v1", Applications: []string{"llama-cpp"},
+		LocalEndpoint: config.DefaultGatewayURL, Applications: []string{"llama-cpp"},
 		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
 		Backend: "rocm", ModelsMax: 1, Configuration: "/home/test/.config/paracetamol/config.toml",
 		Registry: gateway.Registry{
@@ -236,9 +236,9 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	})
 	output := stdout.String()
 	for _, expected := range []string{
-		"http://127.0.0.1:8080/v1", "strix-halo", "/dev/dri/renderD128",
+		config.DefaultGatewayURL, "strix-halo", "/dev/dri/renderD128",
 		"2 verified models", "1234567890ab", "up to 1 loaded model",
-		"unloaded", "status gateway --gateway-url http://127.0.0.1:8080/v1",
+		"unloaded", "status gateway --gateway-url " + config.DefaultGatewayURL,
 		"/home/test/.config/paracetamol/config.toml",
 		"Waiting for requests",
 	} {
@@ -253,16 +253,16 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 
 func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
-	label, published := gatewayAdditionalEndpoint("192.168.249.225", 8080)
+	label, published := gatewayAdditionalEndpoint("192.168.249.225", config.DefaultGatewayPort)
 	app.writeGatewayStartup(gatewayStartup{
-		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, 8080), AdditionalLabel: label, AdditionalEndpoint: published,
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, config.DefaultGatewayPort), AdditionalLabel: label, AdditionalEndpoint: published,
 		Applications: []string{"llama-cpp"}, Profile: "strix-halo", Backend: "rocm", ModelsMax: 1,
 		Registry: gateway.Registry{Fingerprint: "1234567890abcdef", Models: []gateway.Model{{ID: "qwen"}}},
 	})
 	output := stdout.String()
 	for _, expected := range []string{
-		"Local endpoint", "http://127.0.0.1:8080/v1", "Published endpoint", "http://192.168.249.225:8080/v1",
-		"status gateway --gateway-url http://127.0.0.1:8080/v1",
+		"Local endpoint", config.DefaultGatewayURL, "Published endpoint", "http://192.168.249.225:7455/v1",
+		"status gateway --gateway-url " + config.DefaultGatewayURL,
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("startup output lacks %q:\n%s", expected, output)

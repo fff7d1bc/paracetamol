@@ -341,7 +341,7 @@ than looking for a fixed backend container:
 
 ```bash
 ./paracetamol status gateway
-./paracetamol status gateway --gateway-url http://aion.local:8080/v1
+./paracetamol status gateway --gateway-url http://aion.local:7455/v1
 ./paracetamol status gateway --requests 10
 ```
 

@@ -26,7 +26,7 @@ Paracetamol currently manages these applications and services.
 - DwarfStar as an experimental, high-memory DeepSeek V4 Flash server and CLI
   on port 8000
 - Paracetamol's lazy gateway for the verified llama.cpp and DwarfStar
-  inventory through one OpenAI-compatible port
+  inventory through one OpenAI-compatible API on port 7455
 
 ## Hardware exercised so far
 
@@ -369,10 +369,10 @@ port with the host firewall.
 ```bash
 # GPU host
 ./paracetamol run gateway -a llama-cpp \
-  -a dwarfstar --listen 192.168.1.50 --port 8080
+  -a dwarfstar --listen 192.168.1.50 --port 7455
 
 # Pi or Maki client host
-PARACETAMOL_GATEWAY_URL=http://gpu-host.local:8080/v1 pi
+PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
 ```
 
 Both managed clients perform a bounded `/v1/models` probe and generate only
