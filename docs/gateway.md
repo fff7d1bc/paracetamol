@@ -160,6 +160,18 @@ policy, exact GPU device set, application data mount, and read-only content
 mount. They publish only an ephemeral `127.0.0.1` port. The gateway never
 guesses render nodes and DwarfStar still requires exactly one GPU.
 
+The backend publication is explicitly
+`127.0.0.1::CONTAINER_PORT`, where the empty host-port field asks Podman for
+an available port. The gateway discovers that assignment and connects through
+host loopback. It never connects to a container IP. A LAN peer cannot reach
+the ephemeral mapping by scanning the host because it is not bound to a LAN
+address, even when the public gateway is. The port number remains discoverable
+to local processes through the gateway log, Podman, or the host socket table.
+The current trust boundary therefore includes the gateway host and its local
+processes. Authentication on the public gateway would protect network clients,
+not create an authorization boundary against untrusted local code. That threat
+model would require independently protecting the backend transport.
+
 Before opening the public listener, startup verifies rootless Podman, every
 selected image, device policy, the receipt-backed content snapshot, and
 container collisions. A stale container may be reclaimed only when its exact
@@ -180,7 +192,9 @@ Every response identifies the public service with
 `Server: paracetamol/0.1.0-dev`, derived from the built command identity and
 version, and the stable protocol marker
 `X-Paracetamol-Gateway: paracetamol.gateway.v1`. A proxied backend cannot
-replace either value with its own identity.
+replace either value with its own identity. The marker detects an accidental
+connection to a different service. It is public and forgeable, so it is not a
+credential or proof that the endpoint is authentic.
 
 Use the human status client for the versioned endpoint:
 
