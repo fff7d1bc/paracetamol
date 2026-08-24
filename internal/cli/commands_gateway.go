@@ -35,7 +35,7 @@ func (app *App) runGateway(args []string) error {
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	listenFlag := set.String("listen", "", "additional host IP on which to publish; loopback remains available (default: loopback only)")
-	portFlag := set.String("port", "", "gateway port shared by local and published endpoints. Using --port alone selects loopback (default: 8080)")
+	portFlag := set.String("port", "", fmt.Sprintf("gateway port shared by local and published endpoints. Using --port alone selects loopback (default: %d)", config.DefaultGatewayPort))
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
@@ -72,7 +72,7 @@ func (app *App) runGateway(args []string) error {
 	if err := config.ValidateListenAddress(listen); err != nil {
 		return err
 	}
-	port, err := config.ValidatePort(gatewayIntSetting(*portFlag, app.Environment, "GATEWAY_PORT", gatewayConfiguration.Port, 8080))
+	port, err := config.ValidatePort(gatewayIntSetting(*portFlag, app.Environment, "GATEWAY_PORT", gatewayConfiguration.Port, config.DefaultGatewayPort))
 	if err != nil {
 		return err
 	}
