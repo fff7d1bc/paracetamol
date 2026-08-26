@@ -2587,9 +2587,6 @@
       "reasoning_off": true,
       "flash_attention": {
         "strix-halo": "on"
-      },
-      "kv_cache": {
-        "strix-halo": "q8_0"
       }
     },
     "qwen3.6-35b-a3b-ud-q8-k-xl": {

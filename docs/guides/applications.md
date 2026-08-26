@@ -160,12 +160,12 @@ For the Muse Glimmer comparison:
 The default Qwen3.8 preset starts at 262144 tokens and verifies up to three
 tokens from its embedded prediction heads. The dense Qwen3.6 27B MTP Q8_0 and
 sparse Qwen3.6 35B-A3B MTP Dynamic Q8_K_XL comparison presets have the same
-context and draft depth. On Strix Halo, only dense Qwen3.6 27B MTP enables
-Flash Attention and a symmetric Q8_0 target K/V cache. The sparse model
-retains F16 K/V and llama.cpp's Flash Attention default because controlled
-tests found no useful Q8 K/V gain. Other profiles retain llama.cpp's cache and
-Flash Attention defaults until separately accepted. `--context` overrides the
-catalog default.
+context and draft depth. Every managed preset retains llama.cpp's F16 target
+K/V cache. Paracetamol favors full cache precision over the modest
+long-context throughput gain previously measured with Q8 K/V on dense
+Qwen3.6. That dense MTP preset still enables Flash Attention on Strix Halo;
+other profile-specific Flash Attention behavior remains unchanged. `--context`
+overrides the catalog default.
 
 All managed Qwen3.6 presets start at their native 256K. The pinned
 [27B](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/blob/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/README.md)
@@ -1020,11 +1020,12 @@ revision, context, backend, and hardware. Use the server API for end-to-end MTP
 measurements as described in the Qwen section.
 
 Both Qwen3.6 MTP presets use three draft tokens. On Strix Halo, dense 27B
-combines that depth with Q8_0 target K/V and Flash Attention based on the
-project's 37K- and 94K-context acceptance. Sparse 35B-A3B retains F16 target
-K/V and the default Flash Attention policy because its controlled cache test
-was neutral. Inspect the resolved policy with `content list models
---details` instead of assuming one setting applies to every Qwen model.
+combines that depth with Flash Attention. Both presets retain F16 target K/V,
+as do the other managed models. The earlier dense-model Q8 cache measurements
+remain documented as tuning evidence, but are no longer managed runtime
+policy. Inspect the resolved policy with `content list models --details`
+instead of inferring cache precision from the weight quantization in a preset
+name.
 
 ### Muse Glimmer and DFlash
 

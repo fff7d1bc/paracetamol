@@ -11,6 +11,13 @@ Always inspect `Containerfile`, `catalog/catalog.json`, source, and tests for
 the current pins and policies. Hostnames, usernames, and private paths are
 intentionally omitted.
 
+On 2026-08-26, the managed Q8 target K/V exception described below was
+retired. All managed llama.cpp presets now retain the default F16 target K/V
+cache. The measured Q8 throughput gains remain valid historical evidence, but
+Paracetamol now prioritizes full cache precision over that model-specific
+performance improvement. The independently accepted MTP depth and Flash
+Attention settings remain in place.
+
 ## Conclusions
 
 Two settings merited a focused integration follow-up for the dense
@@ -47,15 +54,18 @@ subsequent accepted integration is recorded below.
 
 ## Integration acceptance
 
-Commit `9fa54a5` integrated the two Qwen27 findings without generalizing them:
+Commit `9fa54a5` originally integrated the two Qwen27 findings without
+generalizing them:
 
-- the preset now verifies up to three MTP draft tokens on every profile; and
-- only Strix Halo selects Flash Attention on with symmetric Q8_0 target K/V.
+- the preset verified up to three MTP draft tokens on every profile; and
+- only Strix Halo selected Flash Attention on with symmetric Q8_0 target K/V.
 
-The speculative draft cache remains F16. Qwen35-A3B, Strix Point, and RDNA 4
-retain their previous cache and Flash Attention defaults. The catalog rejects
-a quantized K/V declaration unless the same profile explicitly enables Flash
-Attention, and direct and router startup derive equivalent llama.cpp policy.
+The speculative draft cache remained F16. Qwen35-A3B, Strix Point, and RDNA 4
+retained their previous cache and Flash Attention defaults. The catalog
+rejects a quantized K/V declaration unless the same profile explicitly
+enables Flash Attention, and direct and router startup derive equivalent
+llama.cpp policy. The later precision-first policy removed the target Q8
+override while retaining depth three and Strix Halo Flash Attention.
 
 The exact candidate bytes were built as
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-62bf73d-r19`, image ID
@@ -363,9 +373,9 @@ strategies would require a catalog and entrypoint policy extension.
 Keep remaining follow-up changes separate so their evidence remains
 attributable:
 
-1. Repeat exact retrieval and coding-agent acceptance on `gfx1150` before
-   extending the Q8 K/V policy to Strix Point. Do the same independently for
-   either RDNA 4 architecture before extending it there.
+1. If target K/V quantization is reconsidered, repeat exact retrieval and
+   coding-agent acceptance on every proposed hardware class. Do not infer a
+   policy from the historical Strix Halo throughput result alone.
 2. Evaluate Qwen preserved reasoning separately with multi-turn tool loops and
    compare correctness, total prompt tokens, generated reasoning tokens, and
    wall time. Do not infer benefit from per-token speed.
