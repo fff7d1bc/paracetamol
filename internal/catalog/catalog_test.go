@@ -28,6 +28,13 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
 	}
+	for id, preset := range loaded.LlamaPresets {
+		for profile, cacheType := range preset.KVCache {
+			if cacheType != "f16" {
+				t.Fatalf("llama.cpp preset %s quantizes the %s target K/V cache as %s", id, profile, cacheType)
+			}
+		}
+	}
 	dwarfstar := loaded.DwarfStarPresets["deepseek-v4-flash-0731-q2-imatrix"]
 	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
 		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)

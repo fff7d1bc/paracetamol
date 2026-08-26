@@ -612,6 +612,8 @@ Observed results:
   kernel recorded no GPU fault. Qwen35-A3B and other hardware profiles remain
   unchanged. Full controls and caveats are in the
   [Qwen tuning snapshot](qwen3.6-strix-halo-llama-cpp-tuning-feasibility.md).
+  This records the tested historical candidate; the managed target cache
+  returned to F16 on 2026-08-26 as a precision-first policy decision.
 - A 2026-08-14 llama.cpp source update used Paracetamol commit `cad4588`,
   upstream release `b10430` at commit
   `4c1a0af40d88c7fbb3b15c85bf2e8016d1d5b64c`, and the same Fedora Strix
