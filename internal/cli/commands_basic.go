@@ -1160,7 +1160,10 @@ func (app *App) projectSourceIdentity() (string, error) {
 	hash := sha256.New()
 	hash.Write([]byte("paracetamol-source-v1\x00" + revision + "\x00"))
 	hash.Write(difference.Stdout)
-	paths := strings.Split(strings.TrimSuffix(string(untracked.Stdout), "\x00"), "\x00")
+	paths := []string{}
+	if len(untracked.Stdout) != 0 {
+		paths = strings.Split(strings.TrimSuffix(string(untracked.Stdout), "\x00"), "\x00")
+	}
 	sort.Strings(paths)
 	for _, relative := range paths {
 		if relative == "" || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
