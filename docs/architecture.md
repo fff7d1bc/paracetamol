@@ -437,12 +437,12 @@ patch when a reviewed future pin contains the upstream fix.
 
 The fail-closed `applications/llama-cpp/quantized-kv-flash-attention.patch`
 contains the reviewed HIP q8_0/q4_0 tile dequantize-on-load changes from
-Nathan Wilson's `strix-halo-fa-fixes` branch at commits `4355d03e` and
-`2a24abc6`. It removes repeated KV dequantization at long context while
-leaving f16 paths unchanged. Upstream llama.cpp owns the Vulkan q8_0
-dequantize-on-load path as of commit `dc72703fc`, so Paracetamol no longer
-patches that backend. The remaining HIP patch must be requalified on every
-applicable Paracetamol architecture whenever llama.cpp or ROCm moves.
+Nathan Wilson's commit `2a24abc6`. It removes repeated KV dequantization at
+long context while leaving f16 paths unchanged. Upstream llama.cpp owns the
+Vulkan q8_0 dequantize-on-load path as of commit `dc72703fc`, so Paracetamol
+no longer patches that backend. The remaining HIP patch must be requalified
+on every applicable Paracetamol architecture whenever llama.cpp or ROCm
+moves.
 
 The separate fail-closed
 `applications/llama-cpp/vulkan-f16-kv-contiguize.patch` carries the small,
