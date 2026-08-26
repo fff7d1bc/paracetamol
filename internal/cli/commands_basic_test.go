@@ -243,3 +243,27 @@ func TestProjectSourceIdentityHashesUntrackedContents(t *testing.T) {
 		t.Fatalf("identities did not bind content: %q %q", first, second)
 	}
 }
+
+func TestProjectSourceIdentityAllowsTrackedOnlyDirtyTree(t *testing.T) {
+	runner := &commandRunner{run: func(command process.Command) process.Result {
+		joined := strings.Join(command.Args, " ")
+		switch {
+		case strings.Contains(joined, "rev-parse"):
+			return process.Result{Stdout: []byte(strings.Repeat("a", 40) + "\n")}
+		case strings.Contains(joined, "diff"):
+			return process.Result{Stdout: []byte("tracked change\n")}
+		case strings.Contains(joined, "ls-files"):
+			return process.Result{}
+		default:
+			return process.Result{}
+		}
+	}}
+	app, _, _ := testApp(t, runner)
+	identity, err := app.projectSourceIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(identity, "+dirty.") {
+		t.Fatalf("tracked-only dirty identity = %q", identity)
+	}
+}
