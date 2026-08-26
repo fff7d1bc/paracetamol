@@ -313,6 +313,15 @@ uses the bounded `common_json` request API. The f16 Vulkan path now extends
 upstream's shared transpose scratch implementation and remains opt-in on
 `gfx1151`.
 
+An isolated same-day evaluation rejected open pull request
+[#26419](https://github.com/ggml-org/llama.cpp/pull/26419) as a downstream
+patch for `gfx1151`. Its head-dimension-256 AMD WMMA Flash Attention path
+reduced Qwen3.8 Q8 F16-KV prompt throughput by 5.1% at 4K, 21.7% at 32K, and
+32.9% at 128K while leaving decode unchanged. Do not infer Strix Halo benefit
+from the pull request's RDNA 4 results. The exact candidate, controls, early-
+stop decision, and retest gate are preserved in the
+[feasibility snapshot](qwen3.8-rdna-head-dim-256-flash-attention-strix-halo-feasibility.md).
+
 The bundled `muse-glimmer-atem.jinja` derives from Meta's 9,992-byte template
 at base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
 `cfc67e5f349f37690dfd31ed1f18bc4442a9dd32fe39a648f993cb4eb3cae678`.
