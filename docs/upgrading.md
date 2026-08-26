@@ -268,7 +268,7 @@ protected behavior is fixed.
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
 | `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
-| `quantized-kv-flash-attention.patch` | Provides reviewed Vulkan q8_0 and HIP q8_0/q4_0 dequantize-on-load paths. It combines commits `4edaca09`, `4355d03e`, and `2a24abc6` from the `strix-halo-fa-fixes` branch. | Matching upstream code passes the same f16 and q8_0 cache, backend, context-depth, performance, and output checks on every applicable hardware class. |
+| `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path from commits `4355d03e` and `2a24abc6` of the `strix-halo-fa-fixes` branch. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 
 The 2026-08-14 update from llama.cpp commit `62bf73d` to release `b10430`,
@@ -296,6 +296,22 @@ fallback is scoped to its reviewed template. The 23-commit range also includes
 a quadratic Jinja rendering fix and a server queue redesign; exercise
 structured tools, reasoning variants, router concurrency, and latency rather
 than treating a successful build as acceptance.
+
+The 2026-08-26 update from release `b10453`, commit `3cb7ffb`, to release
+`b10631`, commit `5d5cb4c`, classified `hip-apu-host-buffer.patch` as
+**unchanged**, `reasoning-controls.patch` and
+`vulkan-f16-kv-contiguize.patch` as **rebased**, and
+`quantized-kv-flash-attention.patch` as **partly replaced upstream and
+reduced**. Upstream commit `dc72703fc` now provides the Vulkan q8_0
+dequantize-and-transpose path, with its own dense-layout, buffer-range,
+coopmat2, and Intel gates. Paracetamol removed those duplicate Vulkan hunks
+and retains only the distinct HIP tile q8_0/q4_0 path. Upstream commit
+`60addddf3` corrects HIP unified-memory reporting but does not replace the
+integrated-GPU host-buffer safety patch. The source still has no data-driven
+per-reasoning-mode sampling defaults, so the reasoning patch remains and now
+uses the bounded `common_json` request API. The f16 Vulkan path now extends
+upstream's shared transpose scratch implementation and remains opt-in on
+`gfx1151`.
 
 The bundled `muse-glimmer-atem.jinja` derives from Meta's 9,992-byte template
 at base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
