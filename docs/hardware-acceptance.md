@@ -26,6 +26,53 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp b10631 update (2026-08-26)
+
+Pinned llama.cpp was advanced from `b10453` (`3cb7ffb1`) to upstream tag
+`b10631` (`5d5cb4c3a4ea8769490d39a275ee49a45184774d`), which was also the upstream
+default branch head when selected. The resulting image was
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm7.14-5d5cb4c-r30` (image ID
+`32d13da5104fd9ca375c8c0daa0ab4a1d221a8e221709cf09f0bb2dbed163dcf`).
+It was built and exercised on the Fedora 44 Strix Halo host with profile
+`strix-halo`, ROCm 7.14, balanced memory policy, and
+`/dev/dri/renderD128`.
+
+All four managed patches were compared with the intervening upstream changes
+before the build. The HIP host-buffer patch remained applicable without a
+semantic change. The reasoning-controls and Vulkan F16-KV patches were
+rebased onto changed upstream interfaces. Upstream now owns the Vulkan Q8-KV
+dequantization path, so that duplicate portion was removed from the managed
+quantized-KV patch while its HIP Q8 and Q4 specializations were retained.
+Both ROCm and Vulkan compiled, the image passed `pip check`, its retained
+executables and backend libraries had no unresolved dynamic dependency, and
+CPU CLI and lazy-router startup controls passed.
+
+Direct GPU benchmarks used the receipt-verified Unsloth Dynamic Q8 Qwen3.8
+27B bundle at 32K context with three repetitions. F16 KV measured 202.50
+prompt and 6.79 generation tokens/s on ROCm, versus 181.60 and 6.79 on Vulkan.
+Q8 KV measured 205.74 and 6.88 on ROCm, versus 178.80 and 6.98 on Vulkan.
+The retained HIP Q4 KV path separately measured 192.50 prompt and 6.86
+generation tokens/s. A Qwen3 0.6B smoke also completed on both backends. The
+benchmark records remain outside the source tree below
+`~/.local/share/paracetamol/apps/llama-cpp/benchmarks/` on the host.
+
+The preferred `qwen3.8-27b-mtp-ud-q8-k-xl` ROCm server then passed native
+thinking-off and medium reasoning, Chat Completions and Responses transports,
+a forced structured tool call with a tool-result continuation, and MTP draft
+decoding. The representative medium request accepted 36 of 39 draft tokens.
+A non-MTP ROCm CLI control also completed. Foreground SIGINT removed its
+container and listener, and the kernel journal for the test window contained
+no matching AMDGPU, SVM, protection-fault, general-protection-fault, or OOM
+event.
+
+Formal acceptance finished `PASS` as suite
+`20260826T070855Z-86d0c5c1`, with result JSON
+`~/.local/share/paracetamol/apps/acceptance/results/20260826T070855Z-9aded9c6.json`
+on the host. It accepted exact device isolation and tiny-model GPU offload on
+`gfx1151`. This source update remains `N/P` on `gfx1150`, `gfx1200`, and
+`gfx1201` until those hardware classes run their applicable acceptance rows;
+successful compilation for their targets is not substituted for inference.
+
 ### Fedora 44 Strix Halo native gateway (2026-08-20)
 
 Paracetamol commit `ba1cf83` was exercised between the Fedora 44 Strix Halo

@@ -88,7 +88,7 @@ diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
 index 7ed4865..3429f93 100644
 --- a/tools/server/server-common.cpp
 +++ b/tools/server/server-common.cpp
-@@ -16,6 +16,27 @@
+@@ -16,6 +16,26 @@
  #include <cstring>
  #include <type_traits>
  
@@ -106,8 +106,7 @@ index 7ed4865..3429f93 100644
 +    const auto & defaults = defaults_by_reasoning.at(
 +        enable_thinking ? "thinking" : "non_thinking");
 +    for (const auto & item : defaults.items()) {
-+        const auto it = body.find(item.key());
-+        if (it == body.end() || it->is_null()) {
++        if (!body.contains(item.key()) || body.at(item.key()).is_null()) {
 +            llama_params[item.key()] = item.value();
 +        }
 +    }
@@ -116,7 +115,7 @@ index 7ed4865..3429f93 100644
  json format_error_response(const std::string & message, const enum error_type type) {
      std::string type_str;
      int code = 500;
-@@ -1370,6 +1391,10 @@ json oaicompat_chat_params_parse(
+@@ -1370,6 +1390,10 @@ json oaicompat_chat_params_parse(
          }
      }
  
