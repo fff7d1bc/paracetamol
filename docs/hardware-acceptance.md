@@ -26,6 +26,70 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo ROCm 10.0 upgrade (2026-08-28)
+
+Paracetamol commit `1d083eb35b5646764b0925feccf0f3aed9808e64`
+advanced the complete managed stack from ROCm 7.14 to AMD's
+[ROCm 10.0 release](https://rocm.blogs.amd.com/ecosystems-and-partners/rocm-x-blog/README.html).
+The runtime and native SDK now use the documented ROCm 10 aggregate wheel
+index. PyTorch applications use the exact tuple PyTorch
+`2.13.0+rocm10.0.0`, torchvision `0.28.0+rocm10.0.0`, and torchaudio
+`2.11.0.2+rocm10.0.0`. PyTorch reports the underlying HIP version as
+`7.15.26333`; this is distinct from the ROCm 10.0 distribution and wheel
+version.
+
+Every image was built without cache on the Fedora 44 Strix Halo host. The
+ROCm-bearing outputs were:
+
+- `runtime-ubuntu26.04-rocm10.0-r3`, image
+  `31df9d6bb890d6660244b46ba127a29e76a7323394ae37168d301e57b270b661`;
+- `base-ubuntu26.04-rocm10.0-torch2.13-r6`, image
+  `578df0bfed360358f2a5460ca9d2245350b2db09ec7e78befc7ab6da10fc0328`;
+- `comfyui-ubuntu26.04-rocm10.0-0.28.0-r12`, image
+  `275debb609368c1e62f630f9fe323729f460481942177752fc81eeb9bf63d61a`;
+- `llama-cpp-ubuntu26.04-rocm10.0-5d5cb4c-r31`, image
+  `7bf44e29b485c17c175adb6554c9af60084582b6054486f1113ffb5c9e039ba6`;
+- `dwarfstar-ubuntu26.04-rocm10.0-84cc882-r8`, image
+  `e3dcac5acaece642a20c0db95e189e2182ae36dfa79f8412bb247ee5435e0380`.
+
+All five Python environments passed `pip check`. The unchanged llama.cpp and
+DwarfStar source patches applied against the existing pinned commits and both
+native builds completed with ROCm's Clang 23 toolchain. Retained llama.cpp
+HIP and Vulkan libraries and DwarfStar executables had no unresolved dynamic
+dependency. ComfyUI reached HTTP 200 in a confined CPU startup and stopped
+without leaving a container.
+
+`doctor` identified the Radeon 8060S as `gfx1151` and completed its GPU
+operation through both the PyTorch base and final ComfyUI images. Formal
+device-isolation and llama.cpp smoke acceptance finished `PASS` as suite
+`20260828T200702Z-85516a66`. Its retained result is
+`~/.local/share/paracetamol/apps/acceptance/results/20260828T200702Z-0176687e.json`
+on the host.
+
+A same-day A/B comparison retained the exact llama.cpp commit, verified
+Unsloth Dynamic Q8 Qwen3.8 27B bytes, 32K populated context, F16 K/V cache,
+Flash Attention, 512 prompt tokens, 128 generated tokens, and three
+repetitions. The old ROCm 7.14 image measured 196.21 prompt and 6.789
+generation tokens/s. The ROCm 10.0 image measured 200.48 and 6.784 tokens/s,
+respectively: prompt processing improved by 2.17%, while generation changed
+by −0.08%. The records remain at
+`~/.local/share/paracetamol/apps/llama-cpp/benchmarks/rocm-upgrades/20260828-qwen38-rocm714-f16-32k.json`
+and
+`~/.local/share/paracetamol/apps/llama-cpp/benchmarks/rocm-upgrades/20260828-qwen38-rocm100-f16-32k.json`.
+
+The preferred Qwen3.8 Q8 MTP server also returned the exact requested answer
+at medium reasoning. It generated 17.25 tokens/s and accepted 29 of 33 draft
+tokens. The server stopped cleanly, and the kernel journal for the complete
+test window contained no matching AMDGPU, SVM, page-fault, reset, timeout,
+general-protection-fault, or OOM event.
+
+This accepts the ROCm 10.0 upgrade for the current Strix Halo llama.cpp path
+and the shared PyTorch GPU operation. DwarfStar inference remains `N/P`
+because its local 80.8 GiB model was unverified and the DSpark bundle was
+partial; successful compilation and linking are not substituted for model
+execution. A ComfyUI generation workflow and inference on `gfx1150`,
+`gfx1200`, and `gfx1201` also remain pending.
+
 ### Fedora 44 Strix Halo llama.cpp b10631 update (2026-08-26)
 
 Pinned llama.cpp was advanced from `b10453` (`3cb7ffb1`) to upstream tag
