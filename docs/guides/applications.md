@@ -1160,7 +1160,7 @@ placement.
 
 DwarfStar is the deliberately narrow path for DeepSeek V4 Flash. Paracetamol
 compiles the CLI, HTTP server, and benchmark binary locally from one pinned
-`antirez/ds4` source commit against the same ROCm 7.14 runtime as the other
+`antirez/ds4` source commit against the same ROCm 10.0 runtime as the other
 applications. It does not run upstream host setup scripts or use upstream
 runtime binaries.
 

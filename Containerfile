@@ -1,11 +1,12 @@
 # docker.io/library/ubuntu:resolute-20260724.1 (26.04), resolved 2026-08-17.
-ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm7.14-r2
-ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm7.14-torch2.11-r5
+ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.0-r3
+ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.0-torch2.13-r6
 ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914d4afc7a03
-ARG ROCM_VERSION=7.14.0
-ARG TORCH_VERSION=2.11.0
-ARG TORCHVISION_VERSION=0.26.0
-ARG TORCHAUDIO_VERSION=2.11.0
+ARG ROCM_PACKAGE_INDEX=https://stable.repo.amd.com/rocm/whl-next/
+ARG ROCM_VERSION=10.0.0
+ARG TORCH_VERSION=2.13.0
+ARG TORCHVISION_VERSION=0.28.0
+ARG TORCHAUDIO_VERSION=2.11.0.2
 ARG LLAMA_CPP_COMMIT=5d5cb4c3a4ea8769490d39a275ee49a45184774d
 ARG DWARFSTAR_COMMIT=84cc882352757baf628a1776badf7cc54d584e28
 
@@ -43,6 +44,7 @@ LABEL org.opencontainers.image.title="Paracetamol content tools" \
 FROM ${UBUNTU_IMAGE} AS rocm-runtime
 
 ARG ROCM_VERSION
+ARG ROCM_PACKAGE_INDEX
 ARG PIP_NO_CACHE_DIR=true
 ARG PIP_CACHE_DIR=/var/cache/paracetamol/pip
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -60,7 +62,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     python3 -m venv "${VIRTUAL_ENV}" && \
     python -m pip install \
-        --index-url https://repo.amd.com/rocm/whl-multi-arch/ \
+        --index-url "${ROCM_PACKAGE_INDEX}" \
         "rocm[libraries,device-gfx1150,device-gfx1151,device-gfx1200,device-gfx1201]==${ROCM_VERSION}" && \
     python -m pip check
 
@@ -72,6 +74,7 @@ LABEL org.opencontainers.image.title="Paracetamol ROCm runtime" \
 FROM ${ROCM_RUNTIME_IMAGE} AS rocm-base
 
 ARG ROCM_VERSION
+ARG ROCM_PACKAGE_INDEX
 ARG TORCH_VERSION
 ARG TORCHVISION_VERSION
 ARG TORCHAUDIO_VERSION
@@ -103,7 +106,7 @@ RUN apt-get update && \
 RUN python -m pip install --upgrade pip setuptools wheel
 
 RUN python -m pip install \
-        --index-url https://repo.amd.com/rocm/whl-multi-arch/ \
+        --index-url "${ROCM_PACKAGE_INDEX}" \
         "torch[device-gfx1150,device-gfx1151,device-gfx1200,device-gfx1201]==${TORCH_VERSION}+rocm${ROCM_VERSION}" \
         "torchvision[device-gfx1150,device-gfx1151,device-gfx1200,device-gfx1201]==${TORCHVISION_VERSION}+rocm${ROCM_VERSION}" \
         "torchaudio==${TORCHAUDIO_VERSION}+rocm${ROCM_VERSION}"
@@ -208,6 +211,7 @@ FROM ${ROCM_RUNTIME_IMAGE} AS native-rocm-sdk
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ROCM_VERSION
+ARG ROCM_PACKAGE_INDEX
 ARG PIP_NO_CACHE_DIR=true
 ARG PIP_CACHE_DIR=/var/cache/paracetamol/pip
 
@@ -223,7 +227,7 @@ RUN apt-get update && \
     git config --system init.defaultBranch main && \
     rm -rf /var/lib/apt/lists/* && \
     python -m pip install \
-        --index-url https://repo.amd.com/rocm/whl-multi-arch/ \
+        --index-url "${ROCM_PACKAGE_INDEX}" \
         "rocm[devel]==${ROCM_VERSION}" && \
     python -m pip check && \
     rocm-sdk init && \
@@ -233,9 +237,9 @@ RUN apt-get update && \
 FROM native-rocm-sdk AS llama-rocm-sdk
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG GLSLC_ROCM714_VERSION=2026.1-1
-ARG VULKAN_ROCM714_VERSION=1.4.341.0-1
-ARG SPIRV_HEADERS_ROCM714_VERSION=1.6.1+1.4.341.0-1
+ARG GLSLC_VERSION=2026.1-1
+ARG VULKAN_VERSION=1.4.341.0-1
+ARG SPIRV_HEADERS_VERSION=1.6.1+1.4.341.0-1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -243,10 +247,10 @@ RUN apt-get update && \
         curl \
         libcurl4-openssl-dev \
         libomp-dev \
-        "libvulkan-dev=${VULKAN_ROCM714_VERSION}" \
+        "libvulkan-dev=${VULKAN_VERSION}" \
         ninja-build \
-        "glslc=${GLSLC_ROCM714_VERSION}" \
-        "spirv-headers=${SPIRV_HEADERS_ROCM714_VERSION}" && \
+        "glslc=${GLSLC_VERSION}" \
+        "spirv-headers=${SPIRV_HEADERS_VERSION}" && \
     rm -rf /var/lib/apt/lists/*
 
 FROM llama-rocm-sdk AS llama-builder
@@ -314,8 +318,8 @@ FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 ARG DEBIAN_FRONTEND=noninteractive
 ARG LLAMA_CPP_COMMIT
 ARG ROCM_VERSION
-ARG MESA_VULKAN_ROCM714_VERSION=26.0.3-1ubuntu1
-ARG VULKAN_ROCM714_VERSION=1.4.341.0-1
+ARG MESA_VULKAN_VERSION=26.0.3-1ubuntu1
+ARG VULKAN_VERSION=1.4.341.0-1
 ARG PIP_NO_CACHE_DIR=true
 ARG PIP_CACHE_DIR=/var/cache/paracetamol/pip
 
@@ -327,8 +331,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libcurl4t64 \
         libgomp1 \
-        "libvulkan1=${VULKAN_ROCM714_VERSION}" \
-        "mesa-vulkan-drivers=${MESA_VULKAN_ROCM714_VERSION}" && \
+        "libvulkan1=${VULKAN_VERSION}" \
+        "mesa-vulkan-drivers=${MESA_VULKAN_VERSION}" && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=llama-builder /opt/llama-install/ /usr/local/

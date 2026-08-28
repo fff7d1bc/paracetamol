@@ -154,12 +154,12 @@ Validate with:
 ```bash
 ./paracetamol build all --no-cache
 podman run --rm --entrypoint /bin/bash \
-  localhost/paracetamol:comfyui-ubuntu26.04-rocm7.14-0.28.0 \
+  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.0-0.28.0-r12 \
   -lc 'cat /etc/os-release; python --version'
 ```
 
-Use the actual current image tag from `internal/config/config.go`, not the
-example tag above, after versions change.
+Use the actual current image tag from `internal/application/registry.go`, not
+the example tag above, after versions change.
 
 Check that rootless startup, read-only filesystems, `ffmpeg`, Git certificate
 validation, Python virtual environments, and the AMD wheels still work.
@@ -178,9 +178,11 @@ device extras for gfx1150, gfx1151, gfx1200, and gfx1201
 
 Consult AMD's current
 [ROCm PyTorch installation documentation](https://rocm.docs.amd.com/en/latest/)
-and the exact package inventory at
-`https://repo.amd.com/rocm/whl-multi-arch/`. Confirm that the selected release
-still supplies all four device extras; ordinary upstream PyPI wheels are not a
+and the exact package inventory at the release's documented aggregate index.
+ROCm 10.0 and later use
+`https://stable.repo.amd.com/rocm/whl-next/`; older TheRock releases remain at
+the legacy multi-architecture index. Confirm that the selected release still
+supplies all four device extras. Ordinary upstream PyPI wheels are not a
 substitute for this multi-architecture image.
 
 Update:
@@ -188,7 +190,7 @@ Update:
 - the four global ROCm/PyTorch version arguments;
 - the shared runtime and llama.cpp SDK using the same `ROCM_VERSION`;
 - device extras if AMD renamed them;
-- every default image tag in `internal/config/config.go`;
+- every default image tag in `internal/application/registry.go`;
 - ROCm/PyTorch OCI labels if their structure changes;
 - README requirements or kernel notes;
 - tests that assert image tags or command contents.
@@ -216,8 +218,8 @@ Then run:
 ./paracetamol doctor --render-node /dev/dri/renderD128
 ```
 
-`doctor` imports PyTorch and reads device properties but does not perform
-inference. Complete acceptance still requires a real representative workflow
+`doctor` imports PyTorch, reads device properties, and performs a small GPU
+operation. Complete acceptance still requires a real representative workflow
 on an RX 9060 family card, an R9700 or RX 9070 family card, Strix Halo, and
 Strix Point.
 
@@ -232,8 +234,8 @@ applications. Treat these pins as one reviewed compatibility tuple:
 UBUNTU_IMAGE
 LLAMA_CPP_COMMIT
 ROCM_VERSION
-GLSLC_ROCM714_VERSION, SPIRV_HEADERS_ROCM714_VERSION
-VULKAN_ROCM714_VERSION, MESA_VULKAN_ROCM714_VERSION
+GLSLC_VERSION, SPIRV_HEADERS_VERSION
+VULKAN_VERSION, MESA_VULKAN_VERSION
 ```
 
 The shared runtime installs AMD's modular `rocm[libraries,device-*]` wheel at
