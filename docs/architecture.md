@@ -311,7 +311,7 @@ ComfyUI and makes a llama.cpp-only initial setup complete.
 
 `Containerfile` defines a minimal `rocm-runtime` target, which the launcher
 builds and tags as the managed local prerequisite
-`localhost/paracetamol:runtime-ubuntu26.04-rocm7.14-r2`. It owns the pinned
+`localhost/paracetamol:runtime-ubuntu26.04-rocm10.0-r3`. It owns the pinned
 Ubuntu runtime, Python environment, and AMD's modular ROCm core, libraries,
 and exact `gfx1150`, `gfx1151`, `gfx1200`, and `gfx1201` device wheels. It
 does not contain PyTorch or a compiler toolchain.
@@ -319,7 +319,7 @@ does not contain PyTorch or a compiler toolchain.
 The `rocm-base` target starts from `ROCM_RUNTIME_IMAGE`, adds PyTorch,
 torchvision, torchaudio, and the common Python-application build tools, and is
 tagged as
-`localhost/paracetamol:base-ubuntu26.04-rocm7.14-torch2.11-r5`. Each final
+`localhost/paracetamol:base-ubuntu26.04-rocm10.0-torch2.13-r6`. Each final
 PyTorch application target starts from the `ROCM_BASE_IMAGE` build argument:
 
 - `comfyui`
