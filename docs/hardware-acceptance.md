@@ -22,9 +22,78 @@ this document.
 | Host | Architecture | Observed workload scope |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets; DwarfStar generation was about 3.9 tokens/s |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol, Qwen3.8 Dynamic Q4_K_XL at 128K, OMP probe, and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol; Qwen3.8 Dynamic Q4_K_XL at 128K; Qwen3.8 Flash-Next Dynamic IQ4_XS through Vulkan at 200K; OMP probe and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
+
+### Fedora 44 Strix Halo Qwen3.8 Flash-Next (2026-08-29)
+
+Paracetamol commit `153932c` integrated the three-shard Unsloth Dynamic
+IQ4_XS conversion at revision
+`c8b5954a88c2775c546b92593eda40ea041d3176`. The files total
+93,671,559,680 bytes, or 87.2 GiB. Their pinned conversion license remains
+`NOASSERTION`, with the official Qwen source-model license recorded only as
+lineage. The managed preset is separate from the dense 27B family and leaves
+that family's Q8 MTP client default unchanged.
+
+Acceptance used Fedora Linux 44, kernel `7.1.7-200.fc44.x86_64`, the Ryzen AI
+Max+ 395 Radeon 8060S at `/dev/dri/renderD128`, and a Samsung SSD 980 PRO 2TB.
+The no-cache llama.cpp build was
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-c9ca51c-r32`, image ID
+`5101e70960002092b23865de0711a8fa6ba9171dfbe771e0a92f359b430220f5`.
+It used ROCm 10.0 and llama.cpp commit
+`c9ca51c1f6b18427cde490c7c7eba11d87a96b2d`. The image passed `pip check`,
+its retained binaries had no unresolved dynamic dependency, and both ROCm and
+Vulkan compiled with all four managed patches.
+
+The accepted preset uses Vulkan, native 262144 context, F16 K/V cache, Flash
+Attention, and mmap with lazy tensor reads. Only
+`per_layer_token_embd.weight` is assigned to CPU. Current upstream target
+support does not include the separate MTP work, so the preset has no
+speculative alias. Direct startup selected Vulkan when the backend was
+omitted. An explicit ROCm request failed before container creation. The ROCm
+router and gateway exposed 17 verified models and omitted Flash-Next. Their
+Vulkan counterparts exposed 18, loaded it on demand, and returned coherent
+responses.
+
+Vulkan thinking-off and medium requests were coherent at shallow context.
+Representative decode ranged from 23.30 to 24.99 tokens/s. A structured call
+supplied integer arguments 37 and 19 to a multiply tool, and its continuation
+reported the returned value 703. Four simultaneous non-thinking requests each
+returned a coherent two-sentence answer. This was a slot-correctness stress,
+not a concurrent throughput measurement. Managed Pi then used its sandboxed
+bash tool through the Vulkan gateway and returned exact output
+`PARACETAMOL_FLASH_NEXT_PI_OK` across the two-request tool exchange.
+
+The long-context control sent a 199,879-token non-thinking prompt. It returned
+exact key `MAGENTA-9137` and correctly stated that the key appeared before the
+final 100 filler words. Prefill measured 173.54 tokens/s over 1,151.769
+seconds. The 25-token answer decoded at 5.976 tokens/s, and whole-request wall
+time was 1,156 seconds. After completion, 51 GiB remained available and zram
+swap use was 706 MiB. The kernel journal for the test window contained no
+matching AMDGPU, SVM, page-fault, protection-fault,
+general-protection-fault, OOM, or llama process event.
+
+ROCm is `FAIL` for this exact Flash-Next tuple. It loaded the same shards and
+could return a short retrieval key, but meaningful shallow responses became
+malformed multilingual text. The failure survived resident and lazy loading,
+deterministic sampling, one server slot, the GGUF and managed templates, a
+clean GPU reset, ROCm 7.14 and 10.0 images, and a build without Paracetamol's
+llama.cpp patches. Vulkan stayed coherent with the same image, model, prompt,
+and policy. This is consistent with
+[llama.cpp issue 27797](https://github.com/ggml-org/llama.cpp/issues/27797) and
+an independent [Unsloth ROCm report](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/discussions/38).
+The managed Vulkan-only restriction remains until a later llama.cpp or ROCm
+tuple passes meaningful multi-turn and tool-call acceptance on `gfx1151`.
+
+As a regression control, `qwen3.8-27b-mtp-ud-q8-k-xl` remained coherent on
+ROCm at medium reasoning and accepted 55 of 75 MTP proposals. Flash-Next
+Vulkan is `PASS` on `gfx1151`; its ROCm path is `FAIL`; `gfx1150`, `gfx1200`,
+and `gfx1201` are `N/P` pending capacity and inference evidence. MTP remains
+`N/P` until its separate upstream support lands and passes acceptance. The
+machine-local summary is
+`~/.local/share/paracetamol/apps/llama-cpp/acceptance/20260829-qwen38-flash-next.md`,
+SHA-256 `44f585dbe6151210b881ca7436a9c2c5a30e34f02e7dd1799750731267e78c7b`.
 
 ### Fedora 44 Strix Halo ROCm 10.0 upgrade (2026-08-28)
 
