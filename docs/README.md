@@ -93,6 +93,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    - [Testing, release checks, and routine housekeeping](testing-and-release.md)
    - [Coding-agent evaluation maintenance](coding-agent-evaluation.md)
    - [Target-hardware acceptance matrix](hardware-acceptance.md)
+   - [Additive vLLM and NVIDIA integration
+     direction](vllm-integration-direction.md)
    - [DeepSeek V4 Flash llama.cpp feasibility
      snapshot](deepseek-v4-flash-llama-cpp-feasibility.md)
    - [Muse Glimmer llama.cpp agent feasibility
