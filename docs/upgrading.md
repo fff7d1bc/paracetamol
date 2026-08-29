@@ -315,6 +315,32 @@ uses the bounded `common_json` request API. The f16 Vulkan path now extends
 upstream's shared transpose scratch implementation and remains opt-in on
 `gfx1151`.
 
+The 2026-08-29 update from release `b10631`, commit `5d5cb4c`, to commit
+`c9ca51c1f6b18427cde490c7c7eba11d87a96b2d` retained all four patches
+**unchanged**. Each exact patch applied to a clean source tree and the complete
+ROCm and Vulkan image build passed. The selected source contains upstream
+Qwen4exp target-model support from
+[pull request 27742](https://github.com/ggml-org/llama.cpp/pull/27742), which
+is required for Qwen3.8 Flash-Next. Its
+[separate MTP work](https://github.com/ggml-org/llama.cpp/pull/27836) remains
+outside upstream, so the managed Flash-Next preset is intentionally
+non-speculative. Recheck that boundary before adding an MTP alias rather than
+assuming architecture support also covers the draft heads.
+
+At this pin, Flash-Next generation on `gfx1151` is accepted only through
+Vulkan. ROCm loads the same shards and can return short retrieval keys, but
+meaningful responses become malformed multilingual text at shallow context.
+The failure survives resident and lazy loading, deterministic sampling, one
+server slot, the GGUF and managed templates, a clean GPU reset, ROCm 7.14 and
+10.0 images, and a build without Paracetamol's llama.cpp patches. Vulkan is
+coherent with the same image, GGUF, prompt, and preset. This agrees with
+[upstream issue 27797](https://github.com/ggml-org/llama.cpp/issues/27797) and
+the independent [Unsloth ROCm report](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/discussions/38).
+Keep the managed preset's closed Vulkan backend list until a later llama.cpp
+or ROCm tuple passes meaningful multi-turn and tool-call acceptance on Strix
+Halo. Do not use successful loading, synthetic throughput, or a short-key
+retrieval as evidence that the ROCm output path is fixed.
+
 An isolated same-day evaluation rejected open pull request
 [#26419](https://github.com/ggml-org/llama.cpp/pull/26419) as a downstream
 patch for `gfx1151`. Its head-dimension-256 AMD WMMA Flash Attention path
@@ -380,12 +406,13 @@ the general server default. Recheck both model cards, both reasoning modes,
 and explicit-request precedence whenever the template, catalog policies, or
 server request parser changes.
 
-The bundled `qwen3.8.jinja` is an Apache-2.0 adaptation of Qwen's official
-template at base-model revision
-`1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`. The source template has SHA-256
+The bundled `qwen3.8.jinja` is an Apache-2.0 adaptation of Qwen's
+byte-identical official templates at Qwen3.8-27B revision
+`1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` and Qwen3.8-Flash-Next revision
+`de4b8e4d43b917e7706784d8bb445c9af86a3540`. The source template has SHA-256
 `c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041`;
 the managed template has SHA-256
-`7e450592d49f8ee825815fa3d7eb7f5102200d4e5e18571cc68ed66540ce9e31`.
+`eec13618752e4cc957e65efca4c052aac43683bfae884f07299022a1322d0e9a`.
 The only prompt-policy change is the omitted-effort fallback from upstream
 `xhigh` to native `medium`, with the validation message updated to identify the
 managed default. Qwen3.8 supports native low, medium, and xhigh effort plus a
@@ -398,6 +425,9 @@ presence penalty 0, and repeat penalty 1; off defaults to temperature 0.7,
 top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, and repeat penalty 1.
 Recheck both official tuples and explicit-request override precedence whenever
 the model card, template, catalog policy, or server request parser changes.
+Flash-Next uses its separate `qwen3.8-flash-next` policy. It changes thinking
+min-p from 0 to 0.05 while retaining the other Qwen3.8 thinking and
+non-thinking defaults. Recheck the two families independently.
 
 The 2026-08-14 community-template candidate at
 `froggeric/Qwen-Fixed-Chat-Templates` revision

@@ -184,6 +184,16 @@ is the pinned upstream implementation. Keep generated INI input catalog-only,
 atomic, and mounted as one exact read-only file; do not expose arbitrary
 user-supplied presets through the managed router.
 
+Use the preset's optional closed `backends` list only when one compiled
+llama.cpp backend is unsafe for the exact model and policy tuple. Omission
+means ROCm and Vulkan are both supported. A restricted preset must be rejected
+by direct explicit startup and managed benchmarks, and omitted from routers
+and gateways configured for an incompatible backend. Require meaningful
+multi-turn generation and a complete function-tool exchange on every declared
+backend. A successful load, synthetic throughput result, or short retrieval
+answer is not sufficient. Record the upstream retest condition so a temporary
+restriction does not become folklore.
+
 For speculative decoding, use the preset schema's closed
 `speculative_type` and bounded `draft_tokens` fields. `draft-mtp` accepts up
 to eight draft tokens and may use embedded prediction heads;
@@ -220,6 +230,14 @@ quantized cache requires Flash Attention explicitly on for the same profile.
 Keep draft-cache behavior independent. Validate long-context retrieval and
 generation on every listed architecture rather than carrying a Strix Halo
 result to Strix Point or RDNA 4.
+
+A model whose size depends on lazy access to its per-layer token embedding may
+use the closed `model_load` profile map. `mmap-lazy-token-embedding` is
+accepted only for Strix Halo or Strix Point and maps one exact tensor name to
+CPU with lazy mmap reads. It is not permission to expose arbitrary llama.cpp
+overrides. Keep ordinary models resident, verify direct and router parity, and
+require cold, warm, long-context, memory-headroom, output-coherence, and
+kernel-journal evidence before adding a profile.
 
 If the embedded GGUF template cannot express the managed API contract, add a
 named `chat_template` only when one fixed, reviewable adapter is enough. Keep

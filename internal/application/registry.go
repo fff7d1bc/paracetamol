@@ -73,7 +73,7 @@ var specs = []Spec{
 	{
 		ID: string(LlamaCPP), DisplayName: "llama.cpp",
 		Summary:       "local GGUF inference, routing, and native throughput tests",
-		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.0-5d5cb4c-r31"),
+		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.0-c9ca51c-r32"),
 		ContainerName: identity.Container("llama-cpp"), Build: BuildLlamaCPP, Port: 8080,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
 		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8"}, Description: "install the reviewed Qwen3.8 family"}},

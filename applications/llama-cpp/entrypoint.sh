@@ -24,6 +24,8 @@ flash_attn_strix_point="${PARACETAMOL_LLAMA_FLASH_ATTN_STRIX_POINT:-}"
 kv_cache_rdna4="${PARACETAMOL_LLAMA_KV_CACHE_RDNA4:-}"
 kv_cache_strix_halo="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_HALO:-}"
 kv_cache_strix_point="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_POINT:-}"
+model_load_strix_halo="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_HALO:-}"
+model_load_strix_point="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_POINT:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
 listen="${PARACETAMOL_LISTEN:-0.0.0.0}"
@@ -113,6 +115,14 @@ case "$kv_cache_strix_point" in
     ""|f16|q8_0|q4_0) ;;
     *) die "invalid Strix Point K/V cache setting '$kv_cache_strix_point'" ;;
 esac
+case "$model_load_strix_halo" in
+    ""|resident|mmap-lazy-token-embedding) ;;
+    *) die "invalid Strix Halo model-load policy '$model_load_strix_halo'" ;;
+esac
+case "$model_load_strix_point" in
+    ""|resident|mmap-lazy-token-embedding) ;;
+    *) die "invalid Strix Point model-load policy '$model_load_strix_point'" ;;
+esac
 case "$router" in
     0)
         [[ -n "$model" ]] || die "no GGUF model was selected"
@@ -195,9 +205,17 @@ else
     fi
     profile="$detected_profile"
     case "$profile" in
-        rdna4) kv_cache="$kv_cache_rdna4" ;;
-        strix-halo) kv_cache="$kv_cache_strix_halo" ;;
-        strix-point) kv_cache="$kv_cache_strix_point" ;;
+        rdna4)
+            kv_cache="$kv_cache_rdna4"
+            ;;
+        strix-halo)
+            kv_cache="$kv_cache_strix_halo"
+            model_load="$model_load_strix_halo"
+            ;;
+        strix-point)
+            kv_cache="$kv_cache_strix_point"
+            model_load="$model_load_strix_point"
+            ;;
     esac
     case "$backend" in
         rocm) device_prefix=ROCm ;;
@@ -241,8 +259,20 @@ else
     if [[ "$profile" == strix-halo || "$profile" == strix-point ]]; then
         export GGML_CUDA_ENABLE_UNIFIED_MEMORY=1
         unified_memory=1
-        profile_args+=(--load-mode none)
         bench_profile_args+=(--load-mode none)
+        case "$model_load" in
+            ""|resident)
+                profile_args+=(--load-mode none)
+                model_load=resident
+                ;;
+            mmap-lazy-token-embedding)
+                profile_args+=(--load-mode mmap)
+                model_policy_args+=(
+                    --tensor-read-lazy on
+                    --override-tensor per_layer_token_embd.weight=CPU
+                )
+                ;;
+        esac
     fi
     if [[ "$profile" == strix-halo ]]; then
         if [[ "$backend" == vulkan ]]; then
@@ -339,6 +369,12 @@ else
     if [[ -n "${kv_cache:-}" ]]; then
         printf '  K/V cache:     %s\n' "$kv_cache"
     fi
+    if [[ -n "${model_load:-}" ]]; then
+        case "$model_load" in
+            resident) printf '  model load:    resident\n' ;;
+            mmap-lazy-token-embedding) printf '  model load:    mmap; lazy per-layer token embedding\n' ;;
+        esac
+    fi
 fi
 if [[ "$mode" == server ]]; then
     printf '  container bind: %s:%s\n' "$listen" "$port"
@@ -406,6 +442,32 @@ if [[ "$mode" == server ]]; then
                         }
                         next
                     }
+                    /^paracetamol-model-load-strix-halo = / {
+                        if (profile == "strix-halo") {
+                            sub(/^paracetamol-model-load-strix-halo = /, "")
+                            if ($0 == "resident") {
+                                print "load-mode = none"
+                            } else if ($0 == "mmap-lazy-token-embedding") {
+                                print "load-mode = mmap"
+                                print "tensor-read-lazy = on"
+                                print "override-tensor = per_layer_token_embd.weight=CPU"
+                            }
+                        }
+                        next
+                    }
+                    /^paracetamol-model-load-strix-point = / {
+                        if (profile == "strix-point") {
+                            sub(/^paracetamol-model-load-strix-point = /, "")
+                            if ($0 == "resident") {
+                                print "load-mode = none"
+                            } else if ($0 == "mmap-lazy-token-embedding") {
+                                print "load-mode = mmap"
+                                print "tensor-read-lazy = on"
+                                print "override-tensor = per_layer_token_embd.weight=CPU"
+                            }
+                        }
+                        next
+                    }
                     /^\[[^*].*\]$/ {
                         print
                         print "offline = true"
@@ -416,10 +478,6 @@ if [[ "$mode" == server ]]; then
                             print "device = " backend_devices
                             if (gpu_count > 1) {
                                 print "split-mode = layer"
-                            }
-                            if (profile == "strix-halo" ||
-                                profile == "strix-point") {
-                                print "load-mode = none"
                             }
                         }
                         next

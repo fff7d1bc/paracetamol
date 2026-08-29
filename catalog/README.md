@@ -30,14 +30,17 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   numeric tuples or encoding them in Jinja.
 - `llama_presets` connects one llama.cpp bundle and target GGUF artifact to a
   stable router model ID and a conservative `default_context`. A preset may
+  restrict compatibility to a closed ROCm/Vulkan backend list when hardware
+  acceptance proves another built backend unsafe. Direct runs, routers,
+  gateways, and managed benchmarks enforce that same boundary. A preset may
   additionally own constrained `draft-mtp` or `draft-dflash` speculative
   decoding with an optional closed ROCm/Vulkan draft-depth override, embedded
   Jinja or project-bundled chat-template policy, profile-specific Flash
-  Attention and symmetric K/V-cache policy, and one verified draft GGUF from
-  the same bundle. A reviewed experimental preset
-  may narrowly override the target and draft `context_length` metadata while
-  disabling automatic fitting. `agent_tools` records the smaller reviewed set
-  maintained for function-tool agent clients.
+  Attention, symmetric K/V-cache policy, a narrowly validated model-load
+  policy, and one verified draft GGUF from the same bundle. A reviewed
+  experimental preset may narrowly override the target and draft
+  `context_length` metadata while disabling automatic fitting. `agent_tools`
+  records the smaller reviewed set maintained for function-tool agent clients.
   `reasoning_control` records a reviewed native toggle, effort, or strength
   contract; companion level, default, and off-mode fields define the exact
   client surface without inventing cross-model reasoning levels.

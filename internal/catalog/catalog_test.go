@@ -21,12 +21,16 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 51 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 3 || len(loaded.LlamaPresets) != 17 || len(loaded.DwarfStarPresets) != 1 {
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 69 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
+	}
+	flashNext := loaded.LlamaPresets["qwen3.8-flash-next-125b-a6b-ud-iq4-xs"]
+	if flashNext.DefaultContext != 262144 || strings.Join(flashNext.Backends, ",") != "vulkan" || flashNext.ModelLoad["strix-halo"] != LlamaModelLoadMMapLazyTokenEmbedding || flashNext.SpeculativeType != "" {
+		t.Fatalf("unexpected Qwen3.8 Flash-Next preset: %#v", flashNext)
 	}
 	for id, preset := range loaded.LlamaPresets {
 		for profile, cacheType := range preset.KVCache {
@@ -38,6 +42,28 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	dwarfstar := loaded.DwarfStarPresets["deepseek-v4-flash-0731-q2-imatrix"]
 	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
 		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
+	}
+}
+
+func TestLlamaPresetRejectsUnknownOrDuplicateBackends(t *testing.T) {
+	for _, raw := range []string{
+		`{"bundle":"fixture","artifact":"fixture","backends":["cuda"],"default_context":4096}`,
+		`{"bundle":"fixture","artifact":"fixture","backends":["vulkan","vulkan"],"default_context":4096}`,
+	} {
+		if _, err := loadLlamaPreset("fixture", json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid backend policy: %s", raw)
+		}
+	}
+}
+
+func TestLlamaPresetRejectsUnknownModelLoadPolicy(t *testing.T) {
+	for _, raw := range []string{
+		`{"bundle":"fixture","artifact":"fixture","default_context":4096,"model_load":{"rdna4":"mmap-lazy-token-embedding"}}`,
+		`{"bundle":"fixture","artifact":"fixture","default_context":4096,"model_load":{"strix-halo":"lazy"}}`,
+	} {
+		if _, err := loadLlamaPreset("fixture", json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid model-load policy: %s", raw)
+		}
 	}
 }
 

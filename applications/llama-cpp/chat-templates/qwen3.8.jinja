@@ -42,7 +42,7 @@
 {%- if not messages %}
     {{- raise_exception('No messages provided.') }}
 {%- endif %}
-{# Apache-2.0 adaptation of Qwen3.8-27B revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0. #}
+{# Apache-2.0 adaptation shared by Qwen3.8-27B revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 and Qwen3.8-Flash-Next revision de4b8e4d43b917e7706784d8bb445c9af86a3540. #}
 {# Paracetamol defaults reasoning to native medium instead of upstream xhigh. #}
 {%- set reasoning_instructions = '' %}
 {%- if enable_thinking is undefined or enable_thinking is true %}

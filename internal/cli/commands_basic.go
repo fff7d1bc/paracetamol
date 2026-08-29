@@ -596,6 +596,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		return controlerr.Usage("run llama-cpp %s does not accept positional arguments", mode)
 	}
 	contextExplicit := setWasSet(set, "context")
+	backendExplicit := setWasSet(set, "backend")
 	modelsMaxExplicit := setWasSet(set, "models-max")
 	selectedSources := boolCount(*model != "", *presetID != "", routerMode)
 	if selectedSources != 1 {
@@ -662,6 +663,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		options.Context = *contextSize
 	}
 	displayModel := ""
+	backendSelectedByPreset := false
 	if *model != "" {
 		resolved, resolveErr := regularFile(*model, "GGUF model")
 		if resolveErr != nil {
@@ -677,6 +679,14 @@ func (app *App) runLlama(mode string, args []string) error {
 		preset, ok := managed.LlamaPresets[*presetID]
 		if !ok {
 			return controlerr.Usage("unknown llama.cpp preset %q", *presetID)
+		}
+		if !preset.SupportsBackend(*backend) {
+			if backendExplicit || len(preset.Backends) == 0 {
+				return controlerr.Usage("llama.cpp preset %q does not support backend %s; choose one of: %s", *presetID, *backend, strings.Join(preset.Backends, ", "))
+			}
+			*backend = preset.Backends[0]
+			options.Backend = *backend
+			backendSelectedByPreset = true
 		}
 		bundle := managed.Bundles[preset.Bundle]
 		if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
@@ -695,6 +705,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		options.ChatTemplate = preset.ChatTemplate
 		options.ProfileFlashAttention = preset.FlashAttention
 		options.ProfileKVCache = preset.KVCache
+		options.ProfileModelLoad = preset.ModelLoad
 		if preset.SamplingPolicy != "" {
 			policy := managed.SamplingPolicies[preset.SamplingPolicy]
 			options.SamplingDefaults = map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
@@ -740,7 +751,11 @@ func (app *App) runLlama(mode string, args []string) error {
 		fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
 	}
 	terminal := app.terminal(app.Stdout)
-	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("llama-cpp"), terminal.Label("Backend:"), options.Backend, terminal.Label("Model:"), displayModel)
+	backendDisplay := options.Backend
+	if backendSelectedByPreset {
+		backendDisplay += " (required by preset)"
+	}
+	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("llama-cpp"), terminal.Label("Backend:"), backendDisplay, terminal.Label("Model:"), displayModel)
 	if mode == "server" {
 		status := []string{"status", "llama-cpp"}
 		if *presetID != "" {

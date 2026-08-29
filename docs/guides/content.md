@@ -29,7 +29,7 @@ Recipes are organized by their consuming application:
 comfyui
   image  edit  t2v  i2v
 llama-cpp
-  qwen3.6  qwen3.8  kat-coder  muse-glimmer
+  qwen3.6  qwen3.8  qwen3.8-flash-next  kat-coder  muse-glimmer
   shisa-v2.1  translation-gemma  translation-hy
 dwarfstar
   flash-0731-q2-imatrix  flash-0731-q2-imatrix-dspark
@@ -42,6 +42,8 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install comfyui image
 ./paracetamol content install llama-cpp qwen3.6
 ./paracetamol content install llama-cpp qwen3.8
+./paracetamol content install llama-cpp qwen3.8-flash-next \
+  --accept-license --acknowledge-license-risk
 ./paracetamol content install llama-cpp muse-glimmer
 ./paracetamol content install llama-cpp shisa-v2.1 --accept-license
 ./paracetamol content install llama-cpp translation-gemma --accept-license
@@ -76,6 +78,18 @@ second quantization:
 Its base and embedded-MTP presets start at a reviewed 128K context for more
 constrained hardware. The smaller quantization is optional and never
 displaces Dynamic Q8_K_XL as the managed-client default.
+
+The separate `qwen3.8-flash-next` recipe installs three Unsloth Dynamic
+IQ4_XS shards totaling 87.2 GiB. It is an experimental 125B-A6B path for a
+128 GB Strix Halo host with fast local SSD storage, not another quantization
+of the dense 27B default. The preset uses SSD-backed lazy loading for the
+model's unusually large per-layer token embedding and has no MTP mode in the
+current pinned llama.cpp. The preset is Vulkan-only because the pinned ROCm
+path produces corrupt generated text on Strix Halo. Direct startup selects
+Vulkan when the backend is omitted, while a ROCm router or gateway leaves the
+model out of its inventory. Its pinned conversion repository declares license
+metadata but does not contain the referenced license text, so Paracetamol
+keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
 
 The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
 matching DFlash draft. The next-step command starts the forced-256K DFlash

@@ -12,7 +12,7 @@ import (
 )
 
 func TestRegistryRequiresExplicitApplications(t *testing.T) {
-	if _, _, err := BuildRegistry(catalog.Catalog{}, t.TempDir(), nil, "cpu", nil); err == nil {
+	if _, _, err := BuildRegistry(catalog.Catalog{}, t.TempDir(), nil, "cpu", nil, "rocm"); err == nil {
 		t.Fatal("empty application selection succeeded")
 	}
 }
@@ -33,7 +33,7 @@ func TestRegistryIncludesOnlyReceiptVerifiedModels(t *testing.T) {
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil); err == nil {
+	if _, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm"); err == nil {
 		t.Fatal("unverified model was schedulable")
 	}
 	store, err := verification.Load(root)
@@ -46,7 +46,7 @@ func TestRegistryIncludesOnlyReceiptVerifiedModels(t *testing.T) {
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
-	registry, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil)
+	registry, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,12 +54,16 @@ func TestRegistryIncludesOnlyReceiptVerifiedModels(t *testing.T) {
 		t.Fatalf("registry=%#v diagnostics=%#v", registry, diagnostics)
 	}
 	managed.LlamaPresets["fixture"] = catalog.LlamaPreset{ID: "fixture", Bundle: "bundle", Artifact: "model", DefaultContext: 8192}
-	changed, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil)
+	changed, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if changed.Fingerprint == registry.Fingerprint {
 		t.Fatal("model policy change did not alter the inventory fingerprint")
+	}
+	managed.LlamaPresets["fixture"] = catalog.LlamaPreset{ID: "fixture", Bundle: "bundle", Artifact: "model", DefaultContext: 8192, Backends: []string{"vulkan"}}
+	if _, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm"); err == nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Reason, "backend rocm") {
+		t.Fatalf("backend restriction err=%v diagnostics=%#v", err, diagnostics)
 	}
 }
 
@@ -67,7 +71,7 @@ func TestRegistryRejectsDwarfStarWithoutOneGPU(t *testing.T) {
 	managed := catalog.Catalog{LlamaPresets: map[string]catalog.LlamaPreset{}, DwarfStarPresets: map[string]catalog.DwarfStarPreset{
 		"deepseek": {ID: "deepseek", Bundle: "bundle", DefaultContext: 4096, MaxOutputTokens: 1024},
 	}}
-	if _, diagnostics, err := BuildRegistry(managed, t.TempDir(), []string{"dwarfstar"}, "cpu", nil); err == nil || len(diagnostics) != 1 {
+	if _, diagnostics, err := BuildRegistry(managed, t.TempDir(), []string{"dwarfstar"}, "cpu", nil, "rocm"); err == nil || len(diagnostics) != 1 {
 		t.Fatalf("err=%v diagnostics=%#v", err, diagnostics)
 	}
 }
@@ -108,7 +112,7 @@ func TestDiscoverRegistrySelectsOnlyApplicationsWithVerifiedModels(t *testing.T)
 	}
 
 	registry, applications, diagnostics, err := DiscoverRegistry(
-		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"},
+		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"}, "rocm",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +141,7 @@ func TestDiscoverRegistrySelectsOnlyApplicationsWithVerifiedModels(t *testing.T)
 		t.Fatal(err)
 	}
 	registry, applications, diagnostics, err = DiscoverRegistry(
-		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"},
+		managed, root, []string{"llama-cpp", "dwarfstar"}, "strix-halo", []string{"/dev/dri/renderD128"}, "rocm",
 	)
 	if err != nil {
 		t.Fatal(err)

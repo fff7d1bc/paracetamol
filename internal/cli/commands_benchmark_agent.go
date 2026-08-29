@@ -115,6 +115,12 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 		if !ok || !preset.AgentTools {
 			return controlerr.Usage("preset %q is not reviewed for agent tools", *presetID)
 		}
+		if !setWasSet(set, "backend") && !preset.SupportsBackend(*backend) && len(preset.Backends) > 0 {
+			*backend = preset.Backends[0]
+		}
+		if !preset.SupportsBackend(*backend) {
+			return controlerr.Usage("llama.cpp preset %q does not support backend %s", *presetID, *backend)
+		}
 		model = *presetID
 		if level == "" {
 			level = agent.ReasoningDefault(preset)
@@ -311,7 +317,7 @@ func (app *App) agentEvaluationServer(managed catalog.Catalog, dataRoot, profile
 		return nil, "", err
 	}
 	artifact := managed.Artifacts[preset.Artifact]
-	options := runtime.LlamaOptions{Image: configApplicationImage("llama-cpp"), Profile: profile, Mode: "server", DataDir: dataRoot, Backend: backend, ManagedModel: artifact.Destination, SpeculativeType: preset.SpeculativeType, DraftTokens: preset.DraftTokensForBackend(backend), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, ProfileFlashAttention: preset.FlashAttention, ProfileKVCache: preset.KVCache, RenderNodes: nodes, Listen: "127.0.0.1", Port: port, Context: contextSize, Detach: true, AutoRemove: true}
+	options := runtime.LlamaOptions{Image: configApplicationImage("llama-cpp"), Profile: profile, Mode: "server", DataDir: dataRoot, Backend: backend, ManagedModel: artifact.Destination, SpeculativeType: preset.SpeculativeType, DraftTokens: preset.DraftTokensForBackend(backend), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, ProfileFlashAttention: preset.FlashAttention, ProfileKVCache: preset.KVCache, ProfileModelLoad: preset.ModelLoad, RenderNodes: nodes, Listen: "127.0.0.1", Port: port, Context: contextSize, Detach: true, AutoRemove: true}
 	if preset.DraftArtifact != "" {
 		options.ManagedDraft = managed.Artifacts[preset.DraftArtifact].Destination
 	}
