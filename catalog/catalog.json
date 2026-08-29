@@ -1266,6 +1266,90 @@
         "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
+    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
+      "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 1 of 4 for llama.cpp",
+      "source": {
+        "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
+        "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
+      },
+      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "target": "llama-models",
+      "size": 10946624,
+      "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/c8b5954a88c2775c546b92593eda40ea041d3176",
+        "warning": "The Unsloth GGUF repack declares the Qwen Community License in repository metadata but does not publish its license text at the pinned revision. Paracetamol cannot assert that Qwen's upstream terms cover the converted files.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2": {
+      "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 2 of 4 for llama.cpp",
+      "source": {
+        "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
+        "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf"
+      },
+      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "target": "llama-models",
+      "size": 49859583136,
+      "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/c8b5954a88c2775c546b92593eda40ea041d3176",
+        "warning": "The Unsloth GGUF repack declares the Qwen Community License in repository metadata but does not publish its license text at the pinned revision. Paracetamol cannot assert that Qwen's upstream terms cover the converted files.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3": {
+      "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 3 of 4 for llama.cpp",
+      "source": {
+        "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
+        "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf"
+      },
+      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+      "target": "llama-models",
+      "size": 49376141504,
+      "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/c8b5954a88c2775c546b92593eda40ea041d3176",
+        "warning": "The Unsloth GGUF repack declares the Qwen Community License in repository metadata but does not publish its license text at the pinned revision. Paracetamol cannot assert that Qwen's upstream terms cover the converted files.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4": {
+      "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 4 of 4 for llama.cpp",
+      "source": {
+        "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
+        "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
+        "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf"
+      },
+      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+      "target": "llama-models",
+      "size": 12087983520,
+      "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/c8b5954a88c2775c546b92593eda40ea041d3176",
+        "warning": "The Unsloth GGUF repack declares the Qwen Community License in repository metadata but does not publish its license text at the pinned revision. Paracetamol cannot assert that Qwen's upstream terms cover the converted files.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
     "gemma4-31b-it-q8-gguf": {
       "description": "Gemma 4 31B instruction-tuned Q8_0 GGUF from the llama.cpp project",
       "source": {
@@ -1982,6 +2066,20 @@
         "qwen3.8-flash-next-125b-a6b-ud-iq4-xs-gguf-1",
         "qwen3.8-flash-next-125b-a6b-ud-iq4-xs-gguf-2",
         "qwen3.8-flash-next-125b-a6b-ud-iq4-xs-gguf-3"
+      ],
+      "groups": [
+        "all",
+        "llama"
+      ]
+    },
+    "llama-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
+      "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL llama.cpp model",
+      "application": "llama-cpp",
+      "artifacts": [
+        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
+        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
+        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4"
       ],
       "groups": [
         "all",
@@ -2782,6 +2880,32 @@
     "qwen3.8-flash-next-125b-a6b-ud-iq4-xs": {
       "bundle": "llama-qwen3.8-flash-next-125b-a6b-ud-iq4-xs",
       "artifact": "qwen3.8-flash-next-125b-a6b-ud-iq4-xs-gguf-1",
+      "backends": [
+        "vulkan"
+      ],
+      "default_context": 262144,
+      "chat_template": "qwen3.8",
+      "sampling_policy": "qwen3.8-flash-next",
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "reasoning_default": "medium",
+      "reasoning_off": true,
+      "reasoning_preserve": true,
+      "flash_attention": {
+        "strix-halo": "on"
+      },
+      "model_load": {
+        "strix-halo": "mmap-lazy-token-embedding"
+      }
+    },
+    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
+      "bundle": "llama-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
+      "artifact": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
       "backends": [
         "vulkan"
       ],

@@ -21,7 +21,7 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 69 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 73 || len(loaded.Bundles) != 53 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 19 || len(loaded.DwarfStarPresets) != 1 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["qwen3.8-27b-mtp-ud-q8-k-xl"]
@@ -31,6 +31,10 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	flashNext := loaded.LlamaPresets["qwen3.8-flash-next-125b-a6b-ud-iq4-xs"]
 	if flashNext.DefaultContext != 262144 || strings.Join(flashNext.Backends, ",") != "vulkan" || flashNext.ModelLoad["strix-halo"] != LlamaModelLoadMMapLazyTokenEmbedding || flashNext.SpeculativeType != "" {
 		t.Fatalf("unexpected Qwen3.8 Flash-Next preset: %#v", flashNext)
+	}
+	flashNextQ4 := loaded.LlamaPresets["qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
+	if flashNextQ4.DefaultContext != 262144 || strings.Join(flashNextQ4.Backends, ",") != "vulkan" || flashNextQ4.ModelLoad["strix-halo"] != LlamaModelLoadMMapLazyTokenEmbedding || flashNextQ4.SpeculativeType != "" {
+		t.Fatalf("unexpected Qwen3.8 Flash-Next Q4_K_XL preset: %#v", flashNextQ4)
 	}
 	for id, preset := range loaded.LlamaPresets {
 		for profile, cacheType := range preset.KVCache {
