@@ -235,7 +235,8 @@ speculative decoding:
 | `qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
 | `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
-| `qwen3.8-flash-next-125b-a6b-ud-iq4-xs` | Sparse 125B-A6B Dynamic IQ4_XS, no MTP | Experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
+| `qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
+| `qwen3.8-flash-next-125b-a6b-ud-iq4-xs` | Sparse 125B-A6B Dynamic IQ4_XS, no MTP | Smaller exact-bundle alternative for the same experimental path |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
@@ -245,14 +246,24 @@ The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
 
-The Flash-Next family has its own guided recipe because it is an 87.2 GiB,
-three-shard model with a different architecture and operating envelope:
+The Flash-Next family has its own guided recipe because it has a different
+architecture and operating envelope. The recipe installs the accepted
+103.7 GiB, four-shard Dynamic Q4_K_XL variant:
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-flash-next-125b-a6b-ud-iq4-xs
+  --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
+```
+
+Dynamic IQ4_XS remains available without making the guided recipe download
+both large conversions:
+
+```bash
+./paracetamol content install \
+  llama-qwen3.8-flash-next-125b-a6b-ud-iq4-xs \
+  --acknowledge-license-risk
 ```
 
 Flash-Next has 125B total parameters, about 6B active model parameters, and a
@@ -265,21 +276,25 @@ device in unified memory. Other Strix Halo presets retain resident loading,
 and other hardware profiles do not inherit this policy. The target K/V cache
 remains F16 and Flash Attention is enabled on Strix Halo.
 
-The pinned Flash-Next preset supports only Vulkan. Direct startup selects it
+The pinned Flash-Next presets support only Vulkan. Direct startup selects Vulkan
 automatically when `--backend` is omitted and rejects an explicit ROCm choice.
 The restriction is a correctness boundary, not a performance preference:
 meaningful ROCm responses were corrupt at shallow context while the same image,
 GGUF, prompt, and preset were coherent through Vulkan. A ROCm router or gateway
-therefore omits the model. Start `run gateway --backend vulkan` to expose it
+therefore omits the models. Start `run gateway --backend vulkan` to expose them
 through the shared endpoint.
 
-The preset starts at the model's native 262144-token context and exposes off,
+Both presets start at the model's native 262144-token context and expose off,
 low, medium, and xhigh reasoning with medium as the default. Thinking uses
 temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
 0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
 upstream llama.cpp supports the target architecture but not its MTP heads, so
 Paracetamol deliberately provides no speculative alias. This experimental
-path does not replace the dense 27B MTP default.
+path does not replace the dense 27B MTP default. Q4_K_XL is preferred on the
+accepted 128 GB Strix Halo host because it improves Unsloth's quant-fidelity
+measurements over IQ4_XS while retaining 34 GiB of available memory after a
+199872-token retrieval run. The Q5_K_XL payload exceeds the measured remaining
+capacity margin.
 
 On the accepted Fedora Strix Halo host, start the optional MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:

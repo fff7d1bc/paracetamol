@@ -206,26 +206,27 @@ medium and `xhigh` quality results, per-task outcomes, targeted retries, and
 the limits of applying those Unsloth-specific findings to other GGUF releases.
 
 Qwen3.8 Flash-Next 125B-A6B is a separate experimental family for 128 GB
-Strix Halo hosts with fast local storage. Its three-shard Unsloth Dynamic
-IQ4_XS conversion occupies 87.2 GiB. Paracetamol leaves the model's large
-per-layer token embedding on SSD-backed mmap and loads it lazily while keeping
-the remaining tensors on the unified GPU through Vulkan. This is a capacity
-path, not a claim that SSD becomes GPU memory. Current upstream llama.cpp does
-not yet expose the model's MTP heads.
+Strix Halo hosts with fast local storage. Its guided four-shard Unsloth
+Dynamic Q4_K_XL conversion occupies 103.7 GiB. Paracetamol leaves the model's
+large per-layer token embedding on SSD-backed mmap and loads it lazily while
+keeping the remaining tensors on the unified GPU through Vulkan. This is a
+capacity path, not a claim that SSD becomes GPU memory. Current upstream
+llama.cpp does not yet expose the model's MTP heads. The smaller 87.2 GiB
+Dynamic IQ4_XS conversion remains available as an exact bundle and preset.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-flash-next-125b-a6b-ud-iq4-xs
+  --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
 ```
 
-The preset is Vulkan-only at the pinned llama.cpp revision. Its output is
+Both presets are Vulkan-only at the pinned llama.cpp revision. Their output is
 coherent through Vulkan on the accepted Strix Halo host, while ROCm produces
 corrupt text even at shallow context. Omitting `--backend` selects Vulkan for
-this preset. An explicit unsupported backend is rejected. A ROCm router or
-gateway leaves it out of `/v1/models`. Use `run gateway --backend vulkan` when
-the gateway should expose it.
+either preset. An explicit unsupported backend is rejected. A ROCm router or
+gateway leaves them out of `/v1/models`. Use `run gateway --backend vulkan`
+when the gateway should expose them.
 
 The pinned conversion's license metadata could not be verified against a
 license file at its exact revision, so installation requires the explicit
