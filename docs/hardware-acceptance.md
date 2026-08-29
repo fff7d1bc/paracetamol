@@ -39,8 +39,11 @@ that family's Q8 MTP client default unchanged.
 Paracetamol commit `b8900bc` added the four-shard Unsloth Dynamic Q4_K_XL
 conversion from the same revision. Its 111,334,654,784 bytes, or 103.7 GiB,
 retain the same provenance and license-risk boundary. The guided Flash-Next
-recipe now selects Q4_K_XL, while IQ4_XS remains an exact optional bundle and
-preset. Neither changes the dense 27B Q8 MTP client default.
+recipe selects Q4_K_XL. The catalog subsequently retired IQ4_XS because its
+87.2 GiB payload does not fit practical 32 or 64 GB device classes, while the
+accepted Q4_K_XL fits the 128 GB target and provides materially better
+publisher-reported quantization fidelity. Neither change affects the dense
+27B Q8 MTP client default.
 
 Acceptance used Fedora Linux 44, kernel `7.1.7-200.fc44.x86_64`, the Ryzen AI
 Max+ 395 Radeon 8060S at `/dev/dri/renderD128`, and a Samsung SSD 980 PRO 2TB.
@@ -108,7 +111,7 @@ scores, but they establish a material quantization improvement. Q5_K_XL is
 43.73 GiB larger than Q4_K_XL, exceeding the Q4 run's 34 GiB available-memory
 margin before changed runtime allocation. Q4_K_XL is therefore the highest
 accepted reasonable Flash-Next quant on this Aion configuration; IQ4_XS
-remains the smaller accepted fallback.
+is retained here only as a historical accepted comparison.
 
 ROCm is `FAIL` for this exact Flash-Next tuple. It loaded the same shards and
 could return a short retrieval key, but meaningful shallow responses became
@@ -123,11 +126,13 @@ The managed Vulkan-only restriction remains until a later llama.cpp or ROCm
 tuple passes meaningful multi-turn and tool-call acceptance on `gfx1151`.
 
 As a regression control, `qwen3.8-27b-mtp-ud-q8-k-xl` remained coherent on
-ROCm at medium reasoning and accepted 55 of 75 MTP proposals. Both Flash-Next
-Vulkan presets are `PASS` on `gfx1151`; their ROCm path is `FAIL`; `gfx1150`,
-`gfx1200`, and `gfx1201` are `N/P` pending capacity and inference evidence.
-MTP remains `N/P` until its separate upstream support lands and passes
-acceptance. The IQ4_XS machine-local summary is
+ROCm at medium reasoning and accepted 55 of 75 MTP proposals. The managed
+Q4_K_XL Vulkan preset is `PASS` on `gfx1151`; its ROCm path is `FAIL`;
+`gfx1150`, `gfx1200`, and `gfx1201` are `N/P` pending capacity and inference
+evidence. The retired IQ4_XS preset was also `PASS` through Vulkan and `FAIL`
+through ROCm on this host. MTP remains `N/P` until its separate upstream
+support lands and passes acceptance. The historical IQ4_XS machine-local
+summary is
 `~/.local/share/paracetamol/apps/llama-cpp/acceptance/20260829-qwen38-flash-next.md`,
 SHA-256 `44f585dbe6151210b881ca7436a9c2c5a30e34f02e7dd1799750731267e78c7b`.
 The Q4_K_XL summary is

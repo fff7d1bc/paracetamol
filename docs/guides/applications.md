@@ -236,7 +236,6 @@ speculative decoding:
 | `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
 | `qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
-| `qwen3.8-flash-next-125b-a6b-ud-iq4-xs` | Sparse 125B-A6B Dynamic IQ4_XS, no MTP | Smaller exact-bundle alternative for the same experimental path |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
@@ -257,15 +256,6 @@ architecture and operating envelope. The recipe installs the accepted
   --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
 ```
 
-Dynamic IQ4_XS remains available without making the guided recipe download
-both large conversions:
-
-```bash
-./paracetamol content install \
-  llama-qwen3.8-flash-next-125b-a6b-ud-iq4-xs \
-  --acknowledge-license-risk
-```
-
 Flash-Next has 125B total parameters, about 6B active model parameters, and a
 large ngram token embedding, as described by the pinned
 [official model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/README.md).
@@ -276,15 +266,15 @@ device in unified memory. Other Strix Halo presets retain resident loading,
 and other hardware profiles do not inherit this policy. The target K/V cache
 remains F16 and Flash Attention is enabled on Strix Halo.
 
-The pinned Flash-Next presets support only Vulkan. Direct startup selects Vulkan
+The pinned Flash-Next preset supports only Vulkan. Direct startup selects Vulkan
 automatically when `--backend` is omitted and rejects an explicit ROCm choice.
 The restriction is a correctness boundary, not a performance preference:
 meaningful ROCm responses were corrupt at shallow context while the same image,
 GGUF, prompt, and preset were coherent through Vulkan. A ROCm router or gateway
-therefore omits the models. Start `run gateway --backend vulkan` to expose them
+therefore omits the model. Start `run gateway --backend vulkan` to expose it
 through the shared endpoint.
 
-Both presets start at the model's native 262144-token context and expose off,
+The preset starts at the model's native 262144-token context and exposes off,
 low, medium, and xhigh reasoning with medium as the default. Thinking uses
 temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
 0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
@@ -294,7 +284,9 @@ path does not replace the dense 27B MTP default. Q4_K_XL is preferred on the
 accepted 128 GB Strix Halo host because it improves Unsloth's quant-fidelity
 measurements over IQ4_XS while retaining 34 GiB of available memory after a
 199872-token retrieval run. The Q5_K_XL payload exceeds the measured remaining
-capacity margin.
+capacity margin. The 87.2 GiB IQ4_XS conversion was retired because it still
+exceeds practical 32 and 64 GB device classes while Q4_K_XL fits the accepted
+128 GB system and provides the stronger quantization.
 
 On the accepted Fedora Strix Halo host, start the optional MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:
