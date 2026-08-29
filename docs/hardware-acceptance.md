@@ -22,7 +22,7 @@ this document.
 | Host | Architecture | Observed workload scope |
 | --- | --- | --- |
 | Fedora Kinoite 44, Ryzen AI 9 HX 370, 128 GB DDR5-5600 SODIMM | Strix Point, `gfx1150` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets; DwarfStar generation was about 3.9 tokens/s |
-| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol; Qwen3.8 Dynamic Q4_K_XL at 128K; Qwen3.8 Flash-Next Dynamic IQ4_XS through Vulkan at 200K; OMP probe and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
+| Fedora Linux 44 (non-OSTree), Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash at 4K and 128K context, including the exact DSpark pair; Qwen3.6 MTP tool protocol; Qwen3.8 Dynamic Q4_K_XL at 128K; Qwen3.8 Flash-Next Dynamic IQ4_XS and Q4_K_XL through Vulkan at 200K; OMP probe and fixed ROCm/Vulkan llama.cpp benchmarks; Muse Glimmer runtime probes; Laguna XS and Ling feasibility controls |
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
@@ -31,10 +31,16 @@ this document.
 Paracetamol commit `153932c` integrated the three-shard Unsloth Dynamic
 IQ4_XS conversion at revision
 `c8b5954a88c2775c546b92593eda40ea041d3176`. The files total
-93,671,559,680 bytes, or 87.2 GiB. Their pinned conversion license remains
+93,682,584,224 bytes, or 87.2 GiB. Their pinned conversion license remains
 `NOASSERTION`, with the official Qwen source-model license recorded only as
 lineage. The managed preset is separate from the dense 27B family and leaves
 that family's Q8 MTP client default unchanged.
+
+Paracetamol commit `b8900bc` added the four-shard Unsloth Dynamic Q4_K_XL
+conversion from the same revision. Its 111,334,654,784 bytes, or 103.7 GiB,
+retain the same provenance and license-risk boundary. The guided Flash-Next
+recipe now selects Q4_K_XL, while IQ4_XS remains an exact optional bundle and
+preset. Neither changes the dense 27B Q8 MTP client default.
 
 Acceptance used Fedora Linux 44, kernel `7.1.7-200.fc44.x86_64`, the Ryzen AI
 Max+ 395 Radeon 8060S at `/dev/dri/renderD128`, and a Samsung SSD 980 PRO 2TB.
@@ -74,6 +80,36 @@ swap use was 706 MiB. The kernel journal for the test window contained no
 matching AMDGPU, SVM, page-fault, protection-fault,
 general-protection-fault, OOM, or llama process event.
 
+Q4_K_XL then passed the same acceptance ladder. Native 262144-context Vulkan
+startup completed in 38.44 seconds with 33 GiB available before inference.
+Thinking-off returned exact `Q4-OK`; medium reasoning produced a correct
+two-sentence Go channel-ownership answer at 23.83 tokens/s. A structured call
+supplied integer arguments 37 and 19 and continued with result 703. Four
+simultaneous requests returned their exact sentinels at 13.12 to 13.14
+tokens/s per slot. The Vulkan gateway exposed 19 verified presets and managed
+Pi returned exact `PARACETAMOL_FLASH_NEXT_Q4_PI_OK` through a sandboxed bash
+tool exchange.
+
+The Q4_K_XL long-context control sent 199,872 non-thinking prompt tokens. It
+returned exact key `COBALT-8421`, correctly located it before the final 100
+blue filler words, and was not truncated. Prefill measured 164.58 tokens/s
+over 1,214.446 seconds; the 27-token answer decoded at 5.783 tokens/s; curl
+measured 1,219.113 seconds wall time. Afterward, 34 GiB remained available and
+zram swap use was 822 MiB. The kernel journal remained clear of the same fault
+classes. The earlier IQ4_XS prompt used different filler, so its roughly 5.5%
+shorter wall time is an operating-envelope reference, not a controlled quant
+A/B.
+
+The publisher's [quant-fidelity
+table](https://unsloth.ai/docs/models/qwen3.8-next) reports 92.255% top-1
+agreement and 0.046893 mean KLD for Q4_K_XL, versus 89.554% and 0.083630 for
+IQ4_XS. These are logit-fidelity measurements rather than downstream agent
+scores, but they establish a material quantization improvement. Q5_K_XL is
+43.73 GiB larger than Q4_K_XL, exceeding the Q4 run's 34 GiB available-memory
+margin before changed runtime allocation. Q4_K_XL is therefore the highest
+accepted reasonable Flash-Next quant on this Aion configuration; IQ4_XS
+remains the smaller accepted fallback.
+
 ROCm is `FAIL` for this exact Flash-Next tuple. It loaded the same shards and
 could return a short retrieval key, but meaningful shallow responses became
 malformed multilingual text. The failure survived resident and lazy loading,
@@ -87,13 +123,16 @@ The managed Vulkan-only restriction remains until a later llama.cpp or ROCm
 tuple passes meaningful multi-turn and tool-call acceptance on `gfx1151`.
 
 As a regression control, `qwen3.8-27b-mtp-ud-q8-k-xl` remained coherent on
-ROCm at medium reasoning and accepted 55 of 75 MTP proposals. Flash-Next
-Vulkan is `PASS` on `gfx1151`; its ROCm path is `FAIL`; `gfx1150`, `gfx1200`,
-and `gfx1201` are `N/P` pending capacity and inference evidence. MTP remains
-`N/P` until its separate upstream support lands and passes acceptance. The
-machine-local summary is
+ROCm at medium reasoning and accepted 55 of 75 MTP proposals. Both Flash-Next
+Vulkan presets are `PASS` on `gfx1151`; their ROCm path is `FAIL`; `gfx1150`,
+`gfx1200`, and `gfx1201` are `N/P` pending capacity and inference evidence.
+MTP remains `N/P` until its separate upstream support lands and passes
+acceptance. The IQ4_XS machine-local summary is
 `~/.local/share/paracetamol/apps/llama-cpp/acceptance/20260829-qwen38-flash-next.md`,
 SHA-256 `44f585dbe6151210b881ca7436a9c2c5a30e34f02e7dd1799750731267e78c7b`.
+The Q4_K_XL summary is
+`~/.local/share/paracetamol/apps/llama-cpp/acceptance/20260829-qwen38-flash-next-q4-k-xl.md`,
+SHA-256 `3225e813f97e9b8ec2f7a73546ed2931f390d8da41faebb756484f969e7817ed`.
 
 ### Fedora 44 Strix Halo ROCm 10.0 upgrade (2026-08-28)
 
