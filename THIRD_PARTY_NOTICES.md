@@ -29,7 +29,7 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `5d5cb4c3a4ea8769490d39a275ee49a45184774d`. The license is installed
+  commit `c9ca51c1f6b18427cde490c7c7eba11d87a96b2d`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally with RPC and remote UI
   assets disabled. It applies the narrowly scoped host-buffer correction from
@@ -70,14 +70,23 @@ revisions recorded in `catalog/catalog.json`.
   retains later system and developer messages and omits empty historical
   reasoning blocks. Paracetamol records every GGUF shard's exact size and
   SHA-256 and does not redistribute those weights.
-- The managed Qwen3.8 27B Dynamic Q8_K_XL and Q4_K_M GGUFs are downloaded
-  from one full pinned Unsloth revision whose model card declares Apache-2.0.
+- The managed Qwen3.8 27B Dynamic Q8_K_XL and Q4_K_XL GGUFs are downloaded
+  from full pinned Unsloth revisions whose model cards declare Apache-2.0.
   Paracetamol records each file's exact size and SHA-256 and does not
   redistribute the weights.
   The llama.cpp image includes an Apache-2.0 adaptation of Qwen's chat template
   from base-model revision
   `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`; it changes the omitted-effort
   fallback from native xhigh to native medium.
+- Qwen3.8 Flash-Next 125B-A6B Dynamic IQ4_XS is downloaded in three shards
+  from one full pinned Unsloth revision. That repository declares the Qwen
+  Community License in metadata but does not contain the referenced license
+  text at the pinned revision. Paracetamol therefore records the conversion
+  as `NOASSERTION`, preserves the official Qwen source-model license as
+  lineage only, and requires explicit acknowledgment before downloading it.
+  The managed Qwen3.8 template also matches Qwen3.8 Flash-Next revision
+  `de4b8e4d43b917e7706784d8bb445c9af86a3540` before Paracetamol's common
+  medium-default adaptation.
 - KAT-Coder V2.5 Dev Q8_0 is downloaded from one full pinned Bartowski GGUF
   revision derived from Kwaipilot's public text-only checkpoint. The
   conversion repository declares Apache-2.0 and records its upstream model

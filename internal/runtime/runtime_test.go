@@ -42,12 +42,13 @@ func TestLlamaServerExposesOnlySelectedGPUAndOnePort(t *testing.T) {
 		Image: "image", Profile: "strix-halo", Mode: "server", Backend: "rocm",
 		DataDir: "/data", ManagedModel: "model.gguf", RenderNodes: []string{"/dev/dri/renderD129"},
 		Listen: "127.0.0.1", Port: 8080, AutoRemove: true,
+		ProfileModelLoad: map[string]string{"strix-halo": catalog.LlamaModelLoadMMapLazyTokenEmbedding},
 	}, ":rw")
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(command, " ")
-	for _, required := range []string{"--read-only", "--cap-drop all", "no-new-privileges", "--device /dev/kfd", "--device /dev/dri/renderD129", "--publish 127.0.0.1:8080:8080/tcp", "/data/content/llama-cpp/models:/content/models:ro"} {
+	for _, required := range []string{"--read-only", "--cap-drop all", "no-new-privileges", "--device /dev/kfd", "--device /dev/dri/renderD129", "--publish 127.0.0.1:8080:8080/tcp", "/data/content/llama-cpp/models:/content/models:ro", "PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_HALO=mmap-lazy-token-embedding"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("server command lacks %q: %s", required, joined)
 		}
@@ -98,7 +99,7 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 		},
 		LlamaPresets: map[string]catalog.LlamaPreset{
 			"one": {ID: "one", Artifact: "one", DefaultContext: 4096},
-			"two": {ID: "two", Artifact: "two", DefaultContext: 8192},
+			"two": {ID: "two", Artifact: "two", DefaultContext: 8192, ModelLoad: map[string]string{"strix-halo": catalog.LlamaModelLoadMMapLazyTokenEmbedding}},
 		},
 	}
 	contents, err := RenderRouterModels(managed, "rocm", []string{"two"})
@@ -108,8 +109,17 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 	if strings.Contains(contents, "[one]") || !strings.Contains(contents, "[two]") {
 		t.Fatalf("unexpected frozen router contents:\n%s", contents)
 	}
+	for _, required := range []string{"paracetamol-model-load-strix-halo = mmap-lazy-token-embedding", "paracetamol-model-load-strix-point = resident"} {
+		if !strings.Contains(contents, required) {
+			t.Fatalf("router contents lack %q:\n%s", required, contents)
+		}
+	}
 	if _, err := RenderRouterModels(managed, "rocm", []string{"missing"}); err == nil {
 		t.Fatal("unknown selected preset was accepted")
+	}
+	managed.LlamaPresets["two"] = catalog.LlamaPreset{ID: "two", Artifact: "two", DefaultContext: 8192, Backends: []string{"vulkan"}}
+	if _, err := RenderRouterModels(managed, "rocm", []string{"two"}); err == nil || !strings.Contains(err.Error(), "does not support backend rocm") {
+		t.Fatalf("backend-incompatible router preset err=%v", err)
 	}
 }
 

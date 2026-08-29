@@ -40,8 +40,8 @@ type Registry struct {
 	byID        map[string]Model
 }
 
-func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string) (Registry, []Diagnostic, error) {
-	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, applications, profile, renderNodes)
+func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string, llamaBackend string) (Registry, []Diagnostic, error) {
+	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, applications, profile, renderNodes, llamaBackend)
 	if err != nil {
 		return Registry{}, nil, err
 	}
@@ -57,8 +57,8 @@ func BuildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 // least one receipt-verified model compatible with the selected hardware. A
 // caller can therefore use it for an automatic default while retaining the
 // strict BuildRegistry contract for explicit user selections.
-func DiscoverRegistry(managed catalog.Catalog, dataRoot string, candidates []string, profile string, renderNodes []string) (Registry, []string, []Diagnostic, error) {
-	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, candidates, profile, renderNodes)
+func DiscoverRegistry(managed catalog.Catalog, dataRoot string, candidates []string, profile string, renderNodes []string, llamaBackend string) (Registry, []string, []Diagnostic, error) {
+	registry, diagnostics, readyByApplication, err := buildRegistry(managed, dataRoot, candidates, profile, renderNodes, llamaBackend)
 	if err != nil {
 		return Registry{}, nil, nil, err
 	}
@@ -80,7 +80,7 @@ func DiscoverRegistry(managed catalog.Catalog, dataRoot string, candidates []str
 	return registry, applications, filtered, nil
 }
 
-func buildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string) (Registry, []Diagnostic, map[string]int, error) {
+func buildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string, llamaBackend string) (Registry, []Diagnostic, map[string]int, error) {
 	selected := make(map[string]bool, len(applications))
 	for _, application := range applications {
 		if application != string(textmodel.BackendLlamaCPP) && application != string(textmodel.BackendDwarfStar) {
@@ -113,6 +113,13 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 		if candidate.Backend == textmodel.BackendDwarfStar && (profile == "cpu" || len(renderNodes) != 1) {
 			diagnostics = append(diagnostics, Diagnostic{Application: application, Model: candidate.ID, Reason: "requires exactly one GPU render node"})
 			continue
+		}
+		if candidate.Backend == textmodel.BackendLlamaCPP {
+			preset := managed.LlamaPresets[candidate.ID]
+			if !preset.SupportsBackend(llamaBackend) {
+				diagnostics = append(diagnostics, Diagnostic{Application: application, Model: candidate.ID, Reason: "does not support llama.cpp backend " + llamaBackend})
+				continue
+			}
 		}
 		bundle, ok := managed.Bundles[candidate.Bundle]
 		if !ok {

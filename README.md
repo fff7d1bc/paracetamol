@@ -205,6 +205,33 @@ comparison](docs/guides/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
 medium and `xhigh` quality results, per-task outcomes, targeted retries, and
 the limits of applying those Unsloth-specific findings to other GGUF releases.
 
+Qwen3.8 Flash-Next 125B-A6B is a separate experimental family for 128 GB
+Strix Halo hosts with fast local storage. Its three-shard Unsloth Dynamic
+IQ4_XS conversion occupies 87.2 GiB. Paracetamol leaves the model's large
+per-layer token embedding on SSD-backed mmap and loads it lazily while keeping
+the remaining tensors on the unified GPU through Vulkan. This is a capacity
+path, not a claim that SSD becomes GPU memory. Current upstream llama.cpp does
+not yet expose the model's MTP heads.
+
+```bash
+./paracetamol content install llama-cpp qwen3.8-flash-next \
+  --accept-license --acknowledge-license-risk
+./paracetamol run llama-cpp server \
+  --preset qwen3.8-flash-next-125b-a6b-ud-iq4-xs
+```
+
+The preset is Vulkan-only at the pinned llama.cpp revision. Its output is
+coherent through Vulkan on the accepted Strix Halo host, while ROCm produces
+corrupt text even at shallow context. Omitting `--backend` selects Vulkan for
+this preset. An explicit unsupported backend is rejected. A ROCm router or
+gateway leaves it out of `/v1/models`. Use `run gateway --backend vulkan` when
+the gateway should expose it.
+
+The pinned conversion's license metadata could not be verified against a
+license file at its exact revision, so installation requires the explicit
+unverified-license acknowledgment. The preset stays outside all defaults and
+is accepted only on `gfx1151`.
+
 Qwen3.6 and Muse Glimmer remain separate comparison families. Their recipes
 install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic target and
 DFlash pair.

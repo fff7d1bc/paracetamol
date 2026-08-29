@@ -291,6 +291,15 @@ and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
 
+For a backend-restricted llama.cpp preset, verify direct startup automatically
+selects its declared backend only when `--backend` was omitted. An explicit
+incompatible choice and a managed benchmark must fail before container start.
+Confirm an incompatible router and gateway omit the preset, while the declared
+backend advertises and serves it. Hardware acceptance must include coherent
+multi-turn output and a complete function-tool round trip. Treat a successful
+load, synthetic `llama-bench` result, or short retrieval key as capacity or
+performance evidence only.
+
 For host-configuration changes, load the complete generated example and
 partial files with every table omitted in turn. Confirm unknown keys,
 duplicates, oversized files, non-regular paths, invalid scalar types, and an

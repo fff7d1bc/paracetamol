@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"paracetamol/internal/catalog"
 )
 
 const validLlamaRuntimeReport = `schema=1
@@ -72,5 +74,39 @@ func TestParseLlamaProcessCommandRedactsSecretPath(t *testing.T) {
 	}
 	if _, err := parseLlamaProcessCommand([]byte{0xff}); err == nil {
 		t.Fatal("invalid UTF-8 process command was accepted")
+	}
+}
+
+func TestLlamaModelLoadStatusUsesResidentStrixDefault(t *testing.T) {
+	if got := llamaModelLoadStatus("", "strix-halo"); got != "resident" {
+		t.Fatalf("Strix Halo default = %q", got)
+	}
+	if got := llamaModelLoadStatus("mmap-lazy-token-embedding", "strix-halo"); got != "mmap; lazy per-layer token embedding" {
+		t.Fatalf("lazy policy = %q", got)
+	}
+	if got := llamaModelLoadStatus("", "rdna4"); got != "llama.cpp default" {
+		t.Fatalf("RDNA 4 default = %q", got)
+	}
+}
+
+func TestDirectLlamaPresetIgnoresBackendIncompatibleMatch(t *testing.T) {
+	managed := catalog.Catalog{
+		Artifacts: map[string]catalog.Artifact{
+			"model": {ID: "model", Destination: "model.gguf"},
+		},
+		LlamaPresets: map[string]catalog.LlamaPreset{
+			"vulkan-only": {ID: "vulkan-only", Artifact: "model", Backends: []string{"vulkan"}},
+		},
+	}
+	environment := map[string]string{
+		"PARACETAMOL_LLAMA_MODEL":        "/content/models/model.gguf",
+		"PARACETAMOL_LLAMA_DRAFT_TOKENS": "0",
+	}
+	if preset, err := directLlamaPreset(managed, environment, "rocm", ""); err != nil || preset != nil {
+		t.Fatalf("ROCm match preset=%#v err=%v", preset, err)
+	}
+	preset, err := directLlamaPreset(managed, environment, "vulkan", "")
+	if err != nil || preset == nil || preset.ID != "vulkan-only" {
+		t.Fatalf("Vulkan match preset=%#v err=%v", preset, err)
 	}
 }

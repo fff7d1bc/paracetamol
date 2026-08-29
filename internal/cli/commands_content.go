@@ -836,13 +836,34 @@ func (app *App) printLlamaModelDetails(managed catalog.Catalog, models []modelin
 			writeDetailRows(app.Stdout, terminal, [][2]string{
 				{"Model", path}, {"Bundle", bundle.ID}, {"Catalog size", humanSize(managed.BundleSize(bundle))},
 				{"Files", strconv.Itoa(files)}, {"Default context", fmt.Sprintf("%d tokens", preset.DefaultContext)},
+				{"Backends", llamaBackendPolicy(preset)},
 				{"Context policy", llamaContextPolicy(preset)}, {"Template", llamaTemplatePolicy(preset)},
 				{"Speculation", llamaSpeculationPolicy(preset)}, {"Reasoning", llamaInventoryReasoningPolicy(preset)},
 				{"Sampling", llamaSamplingPolicy(preset)}, {"Flash Attention", llamaProfilePolicy(preset.FlashAttention)},
-				{"K/V cache", llamaProfilePolicy(preset.KVCache)},
+				{"K/V cache", llamaProfilePolicy(preset.KVCache)}, {"Model load", llamaModelLoadInventoryPolicy(preset.ModelLoad)},
 			})
 		}
 	}
+}
+
+func llamaBackendPolicy(preset catalog.LlamaPreset) string {
+	if len(preset.Backends) == 0 {
+		return "rocm, vulkan"
+	}
+	return strings.Join(preset.Backends, ", ")
+}
+
+func llamaModelLoadInventoryPolicy(policy map[string]string) string {
+	values := make(map[string]string, len(policy)+2)
+	for profile, value := range policy {
+		values[profile] = value
+	}
+	for _, profile := range []string{"strix-halo", "strix-point"} {
+		if values[profile] == "" {
+			values[profile] = catalog.LlamaModelLoadResident
+		}
+	}
+	return llamaProfilePolicy(values)
 }
 
 func (app *App) printDwarfStarModelInventory(managed catalog.Catalog, dataRoot string, details bool) error {

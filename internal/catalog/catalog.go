@@ -18,7 +18,12 @@ import (
 	"paracetamol/internal/platform"
 )
 
-const SchemaVersion = 25
+const SchemaVersion = 26
+
+const (
+	LlamaModelLoadResident               = "resident"
+	LlamaModelLoadMMapLazyTokenEmbedding = "mmap-lazy-token-embedding"
+)
 
 var (
 	identifierPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -118,6 +123,7 @@ type LlamaPreset struct {
 	ID                           string
 	Bundle                       string
 	Artifact                     string
+	Backends                     []string
 	DefaultContext               int64
 	SpeculativeType              string
 	DraftTokens                  int64
@@ -135,6 +141,7 @@ type LlamaPreset struct {
 	SamplingPolicy               string
 	FlashAttention               map[string]string
 	KVCache                      map[string]string
+	ModelLoad                    map[string]string
 }
 
 type DwarfStarPreset struct {
@@ -155,6 +162,10 @@ func (preset LlamaPreset) DraftTokensForBackend(backend string) int64 {
 		return value
 	}
 	return preset.DraftTokens
+}
+
+func (preset LlamaPreset) SupportsBackend(backend string) bool {
+	return len(preset.Backends) == 0 || contains(preset.Backends, backend)
 }
 
 type Catalog struct {
@@ -310,6 +321,7 @@ type rawSamplingPolicy struct {
 type rawLlamaPreset struct {
 	Bundle                       string            `json:"bundle"`
 	Artifact                     string            `json:"artifact"`
+	Backends                     []string          `json:"backends"`
 	DefaultContext               int64             `json:"default_context"`
 	SpeculativeType              string            `json:"speculative_type"`
 	DraftTokens                  int64             `json:"draft_tokens"`
@@ -327,6 +339,7 @@ type rawLlamaPreset struct {
 	SamplingPolicy               string            `json:"sampling_policy"`
 	FlashAttention               map[string]string `json:"flash_attention"`
 	KVCache                      map[string]string `json:"kv_cache"`
+	ModelLoad                    map[string]string `json:"model_load"`
 }
 
 type rawDwarfStarPreset struct {
@@ -796,7 +809,20 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s quantized KV cache requires flash attention", id)
 		}
 	}
-	return LlamaPreset{ID: id, Bundle: raw.Bundle, Artifact: raw.Artifact, DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType, DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend), DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...), Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl, ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault, ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve, ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy, FlashAttention: cloneMap(raw.FlashAttention), KVCache: cloneMap(raw.KVCache)}, nil
+	for profile, policy := range raw.ModelLoad {
+		if (profile != "strix-halo" && profile != "strix-point") || (policy != LlamaModelLoadResident && policy != LlamaModelLoadMMapLazyTokenEmbedding) {
+			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has invalid model_load policy", id)
+		}
+	}
+	if err := uniqueIdentifiers(raw.Backends, id+" backends"); err != nil {
+		return LlamaPreset{}, err
+	}
+	for _, backend := range raw.Backends {
+		if backend != "rocm" && backend != "vulkan" {
+			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has unsupported backend %q", id, backend)
+		}
+	}
+	return LlamaPreset{ID: id, Bundle: raw.Bundle, Artifact: raw.Artifact, Backends: append([]string(nil), raw.Backends...), DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType, DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend), DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...), Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl, ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault, ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve, ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy, FlashAttention: cloneMap(raw.FlashAttention), KVCache: cloneMap(raw.KVCache), ModelLoad: cloneMap(raw.ModelLoad)}, nil
 }
 
 func loadDwarfStarPreset(id string, value json.RawMessage) (DwarfStarPreset, error) {

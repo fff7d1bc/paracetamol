@@ -52,7 +52,7 @@ func TestGuidedContentCanBrowseExactApplicationBundles(t *testing.T) {
 	var output bytes.Buffer
 	app := App{
 		Context: context.Background(), Environment: map[string]string{},
-		Stdin: terminalPromptReader{Reader: strings.NewReader("8\n1\n")}, Stdout: &output,
+		Stdin: terminalPromptReader{Reader: strings.NewReader("9\n1\n")}, Stdout: &output,
 	}
 	target, selection, err := app.guidedContentSelection(managed, "llama-cpp")
 	if err != nil {
@@ -99,6 +99,17 @@ func TestContentModelInventoryIncludesAliasesDwarfStarAndDetailedPolicy(t *testi
 	} {
 		if !bytes.Contains(stdout.Bytes(), []byte(expected)) {
 			t.Fatalf("inventory lacks %q:\n%s", expected, stdout.String())
+		}
+	}
+}
+
+func TestLlamaModelLoadInventoryPolicyIncludesResidentStrixDefaults(t *testing.T) {
+	got := llamaModelLoadInventoryPolicy(map[string]string{
+		"strix-halo": catalog.LlamaModelLoadMMapLazyTokenEmbedding,
+	})
+	for _, expected := range []string{"strix-halo=mmap-lazy-token-embedding", "strix-point=resident"} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("model-load policy %q lacks %q", got, expected)
 		}
 	}
 }

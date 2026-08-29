@@ -459,6 +459,23 @@ binary must not make both available devices part of one workload
 accidentally. This native check intentionally does not import or depend on
 PyTorch.
 
+Managed llama.cpp presets normally force resident loading on Strix Halo and
+Strix Point. The catalog may opt one preset into the closed
+`mmap-lazy-token-embedding` policy for one of those profiles. The entrypoint
+maps it to mmap, lazy reads, and CPU placement of only
+`per_layer_token_embd.weight`; direct launches and generated router sections
+use the same mapping. This keeps an exceptional capacity policy visible and
+reviewable without exposing arbitrary tensor overrides. It does not alter
+benchmark mode, which remains resident for comparable measurements.
+
+A llama.cpp preset can additionally declare a closed backend compatibility
+list. Omission means both built backends are supported. Direct startup selects
+the first declared backend only when the caller did not choose one and rejects
+an explicit mismatch. Router rendering, gateway inventory construction, and
+managed benchmarks filter or reject the same mismatch before starting a
+container. Backend compatibility remains separate from hardware profile,
+model-load, cache, and speculative-decoding policy.
+
 `applications/dwarfstar/entrypoint.sh` is intentionally smaller. It accepts
 only server or CLI mode, verifies that exactly one supported architecture is
 visible, resolves or checks the matching hardware profile, and constructs the

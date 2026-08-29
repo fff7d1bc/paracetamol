@@ -145,9 +145,9 @@ exact model configuration:
 
 This reports the live image, resolved GPU profile, GGUF provenance, context,
 template, reasoning and sampling policies, MTP or DFlash depth, cache and
-Flash Attention choices, and the exact running llama.cpp command. Explicit
-request sampling values remain authoritative over the reported server
-defaults.
+Flash Attention choices, model-load policy, and the exact running llama.cpp
+command. Explicit request sampling values remain authoritative over the
+reported server defaults.
 
 For the Muse Glimmer comparison:
 
@@ -206,7 +206,7 @@ A model and a Paracetamol preset are related, but they are not interchangeable:
 | Layer | What it owns | Examples |
 | --- | --- | --- |
 | GGUF model | Architecture, trained weights, and quantization | Qwen3.6 27B Q8_0 or 35B-A3B Dynamic Q8_K_XL |
-| Paracetamol preset | Model artifact, context size, and required model runtime policy | Chat template, Jinja, profile-specific Flash Attention and K/V cache, MTP or DFlash settings |
+| Paracetamol preset | Model artifact, context size, and required model runtime policy | Chat template, Jinja, profile-specific Flash Attention, K/V cache and model loading, MTP or DFlash settings |
 | Server launch | Machine and service policy for this run | ROCm or Vulkan, hardware profile, render nodes, listen address, port |
 | API request or client | The current task and generation behavior | System message, conversation history, temperature, top-p, maximum tokens |
 
@@ -235,6 +235,7 @@ speculative decoding:
 | `qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
 | `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
+| `qwen3.8-flash-next-125b-a6b-ud-iq4-xs` | Sparse 125B-A6B Dynamic IQ4_XS, no MTP | Experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
@@ -243,6 +244,42 @@ The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
 `./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
+
+The Flash-Next family has its own guided recipe because it is an 87.2 GiB,
+three-shard model with a different architecture and operating envelope:
+
+```bash
+./paracetamol content install llama-cpp qwen3.8-flash-next \
+  --accept-license --acknowledge-license-risk
+./paracetamol run llama-cpp server \
+  --preset qwen3.8-flash-next-125b-a6b-ud-iq4-xs
+```
+
+Flash-Next has 125B total parameters, about 6B active model parameters, and a
+large ngram token embedding, as described by the pinned
+[official model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/README.md).
+On the accepted Strix Halo profile Paracetamol uses llama.cpp mmap with lazy
+tensor reads and places only
+`per_layer_token_embd.weight` on CPU. The remaining tensors stay on the Vulkan
+device in unified memory. Other Strix Halo presets retain resident loading,
+and other hardware profiles do not inherit this policy. The target K/V cache
+remains F16 and Flash Attention is enabled on Strix Halo.
+
+The pinned Flash-Next preset supports only Vulkan. Direct startup selects it
+automatically when `--backend` is omitted and rejects an explicit ROCm choice.
+The restriction is a correctness boundary, not a performance preference:
+meaningful ROCm responses were corrupt at shallow context while the same image,
+GGUF, prompt, and preset were coherent through Vulkan. A ROCm router or gateway
+therefore omits the model. Start `run gateway --backend vulkan` to expose it
+through the shared endpoint.
+
+The preset starts at the model's native 262144-token context and exposes off,
+low, medium, and xhigh reasoning with medium as the default. Thinking uses
+temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
+0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
+upstream llama.cpp supports the target architecture but not its MTP heads, so
+Paracetamol deliberately provides no speculative alias. This experimental
+path does not replace the dense 27B MTP default.
 
 On the accepted Fedora Strix Halo host, start the optional MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:

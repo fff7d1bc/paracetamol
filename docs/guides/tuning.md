@@ -386,6 +386,13 @@ a llama.cpp, ROCm, Mesa, kernel, or firmware change instead of carrying an old
 winner forward forever. Use `--backend rocm` or `--backend vulkan` for a
 single-backend result.
 
+A managed preset can restrict its supported llama.cpp backends when hardware
+acceptance finds a correctness failure. The benchmark honors that boundary.
+An omitted `--backend` selects the preset's declared backend, an explicit
+incompatible backend fails, and `--compare-backends` refuses a preset that
+cannot safely run both. Use a local `--model` path only for controlled research
+outside the managed acceptance claim.
+
 Short empty-context runs are useful for a quick backend comparison, but they
 do not describe an agent session after its context has grown. Populate the KV
 cache before each measured prompt and generation run with `--context-depth`:
@@ -420,6 +427,13 @@ experimental and check task output as well as throughput. These flags affect
 only the one-shot benchmark. A managed application preset changes cache type
 only when its catalog entry contains an explicit profile-specific `kv_cache`
 policy; inspect that policy with `content list models --details`.
+
+The benchmark path always uses resident loading, even when an application
+preset declares `mmap-lazy-token-embedding`. This keeps ordinary throughput
+records comparable. Evaluate an SSD-backed model through its server preset
+instead, and report cold versus warm prefill, populated context depth, storage
+device, whole-request wall time, and retrieval correctness. Decode rate alone
+hides the cost of fetching a large embedding table as the prompt advances.
 
 Treat the result as specific to that non-MTP preset too. Nearby variants are
 not interchangeable performance evidence. Quantization, dense or

@@ -202,6 +202,7 @@ connect it to a stable router identity:
   "model-id": {
     "bundle": "llama-bundle-id",
     "artifact": "llama-artifact-id",
+    "backends": ["vulkan"],
     "default_context": 4096,
     "speculative_type": "draft-mtp",
     "draft_tokens": 4,
@@ -223,6 +224,9 @@ connect it to a stable router identity:
     },
     "kv_cache": {
       "strix-halo": "q8_0"
+    },
+    "model_load": {
+      "strix-halo": "mmap-lazy-token-embedding"
     }
   }
 }
@@ -261,6 +265,16 @@ A user can override it for one launch with `--context`; the preset keeps the
 repeatable, tested starting point.
 
 The referenced artifact must belong to that bundle and end in `.gguf`.
+`backends` is an optional closed list containing `rocm`, `vulkan`, or both.
+Omitting it supports both backends. Add a restriction only when target-hardware
+acceptance establishes that another compiled backend is unsafe for that exact
+preset. Direct startup may select the first declared backend only when the
+caller omitted `--backend`; an explicit incompatible choice fails. Managed
+routers and gateways omit incompatible presets from their frozen inventory.
+Throughput and coding-agent benchmarks enforce the same boundary. Validate
+coherent multi-turn output and tool calls because startup, prompt processing,
+or a short retrieval key alone cannot establish backend compatibility.
+
 `speculative_type` is optional and accepts only `draft-mtp` or
 `draft-dflash`. The matching positive `draft_tokens` value is limited to
 eight for MTP and fifteen for DFlash. An optional `draft_artifact` must be a
@@ -309,6 +323,16 @@ This policy does not change the separate speculative draft cache. Add a
 profile only after long-context throughput and retrieval acceptance on that
 hardware class. Omitted profiles retain llama.cpp's default rather than
 inheriting a nearby architecture's result.
+
+`model_load` is an optional profile map for a model whose measured capacity
+path cannot use the normal resident policy. It currently accepts only
+`strix-halo` or `strix-point`, with `resident` or
+`mmap-lazy-token-embedding`. The latter
+maps to llama.cpp mmap, lazy tensor reads, and CPU placement of the exact
+`per_layer_token_embd.weight` tensor. It is intentionally not a generic
+tensor-override surface. Add it only after cold and warm startup, long-context
+retrieval, output coherence, host-memory headroom, and kernel-journal checks
+on the named hardware profile. Omitted Strix profiles retain resident loading.
 
 `agent_tools` is an optional, explicit compatibility decision. Set it only
 when the model, pinned GGUF template, and llama.cpp policy are maintained for

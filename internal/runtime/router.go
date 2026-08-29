@@ -29,6 +29,9 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 	installed := make([]string, 0, len(identifiers))
 	for _, identifier := range identifiers {
 		preset := managed.LlamaPresets[identifier]
+		if !preset.SupportsBackend(backend) {
+			continue
+		}
 		bundle := managed.Bundles[preset.Bundle]
 		statuses, inspectErr := content.InspectBundle(store, managed, bundle, dataRoot, false)
 		if inspectErr != nil {
@@ -49,7 +52,7 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 		installed = append(installed, identifier)
 	}
 	if len(installed) == 0 {
-		return "", nil, fmt.Errorf("no managed llama.cpp presets are installed")
+		return "", nil, fmt.Errorf("no installed managed llama.cpp preset supports backend %s", backend)
 	}
 	contents, err := RenderRouterModels(managed, backend, installed)
 	return contents, installed, err
@@ -68,8 +71,12 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 		if index > 0 && selected[index-1] == identifier {
 			return "", fmt.Errorf("duplicate llama.cpp router preset %q", identifier)
 		}
-		if _, ok := managed.LlamaPresets[identifier]; !ok {
+		preset, ok := managed.LlamaPresets[identifier]
+		if !ok {
 			return "", fmt.Errorf("unknown llama.cpp router preset %q", identifier)
+		}
+		if !preset.SupportsBackend(backend) {
+			return "", fmt.Errorf("llama.cpp router preset %q does not support backend %s", identifier, backend)
 		}
 	}
 	sections := []string{"version = 1", ""}
@@ -110,6 +117,15 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 			}
 			if value := preset.KVCache[profile]; value != "" {
 				section = append(section, "paracetamol-kv-cache-"+profile+" = "+value)
+			}
+			modelLoad := preset.ModelLoad[profile]
+			// The router can mix resident and lazy models in one process, so its
+			// generated sections must make the Strix default explicit per model.
+			if modelLoad == "" && (profile == "strix-halo" || profile == "strix-point") {
+				modelLoad = catalog.LlamaModelLoadResident
+			}
+			if modelLoad != "" {
+				section = append(section, "paracetamol-model-load-"+profile+" = "+modelLoad)
 			}
 		}
 		if preset.SpeculativeType != "" {

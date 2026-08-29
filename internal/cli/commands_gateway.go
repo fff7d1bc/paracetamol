@@ -95,9 +95,9 @@ func (app *App) runGateway(args []string) error {
 	var registry gateway.Registry
 	var diagnostics []gateway.Diagnostic
 	if len(applications) == 0 {
-		registry, applications, diagnostics, err = app.discoverGatewayRegistry(managed, dataRoot, profile, selectedNodes)
+		registry, applications, diagnostics, err = app.discoverGatewayRegistry(managed, dataRoot, profile, selectedNodes, *backend)
 	} else {
-		registry, diagnostics, err = gateway.BuildRegistry(managed, dataRoot, applications, profile, selectedNodes)
+		registry, diagnostics, err = gateway.BuildRegistry(managed, dataRoot, applications, profile, selectedNodes, *backend)
 	}
 	errorTerminal := app.terminal(app.Stderr)
 	if err != nil {
@@ -290,7 +290,7 @@ func applyGatewayConfiguration(set *commandFlags, environment map[string]string,
 	return nil
 }
 
-func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profile string, renderNodes []string) (gateway.Registry, []string, []gateway.Diagnostic, error) {
+func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profile string, renderNodes []string, backend string) (gateway.Registry, []string, []gateway.Diagnostic, error) {
 	candidates, err := app.builtGatewayApplications()
 	if err != nil {
 		return gateway.Registry{}, nil, nil, err
@@ -298,7 +298,7 @@ func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profi
 	if len(candidates) == 0 {
 		return gateway.Registry{}, nil, nil, fmt.Errorf("no gateway application image is built; build llama-cpp or dwarfstar first")
 	}
-	return gateway.DiscoverRegistry(managed, dataRoot, candidates, profile, renderNodes)
+	return gateway.DiscoverRegistry(managed, dataRoot, candidates, profile, renderNodes, backend)
 }
 
 func (app *App) builtGatewayApplications() ([]string, error) {

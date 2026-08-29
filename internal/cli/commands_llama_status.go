@@ -331,6 +331,9 @@ func parseLlamaProcessCommand(raw []byte) ([]string, error) {
 func directLlamaPreset(managed catalog.Catalog, environment map[string]string, backend, requested string) (*catalog.LlamaPreset, error) {
 	var candidates []catalog.LlamaPreset
 	for _, candidate := range managed.LlamaPresets {
+		if !candidate.SupportsBackend(backend) {
+			continue
+		}
 		artifact := managed.Artifacts[candidate.Artifact]
 		draft := ""
 		if candidate.DraftArtifact != "" {
@@ -366,7 +369,7 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 
 func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, section, environment, runtimeReport map[string]string) ([][2]string, error) {
 	profile := runtimeReport["profile"]
-	modelPath, contextValue, template, reasoningOutput, speculativeType, draftTokens, flashAttention, kvCache, sampling := "", runtimeReport["context"], "", "", "", "0", "", "", ""
+	modelPath, contextValue, template, reasoningOutput, speculativeType, draftTokens, flashAttention, kvCache, modelLoad, sampling := "", runtimeReport["context"], "", "", "", "0", "", "", "", ""
 	if section != nil {
 		modelPath = section["model"]
 		if contextValue == "" {
@@ -380,6 +383,7 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		}
 		speculativeType, draftTokens = section["spec-type"], firstNonEmpty(section["spec-draft-n-max"], "0")
 		flashAttention, kvCache = section["paracetamol-flash-attn-"+profile], section["paracetamol-kv-cache-"+profile]
+		modelLoad = section["paracetamol-model-load-"+profile]
 		sampling = section["sampling-defaults-by-reasoning"]
 	} else {
 		modelPath = environment["PARACETAMOL_LLAMA_MODEL"]
@@ -392,6 +396,7 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		speculativeType, draftTokens = environment["PARACETAMOL_LLAMA_SPECULATIVE_TYPE"], firstNonEmpty(environment["PARACETAMOL_LLAMA_DRAFT_TOKENS"], "0")
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
 		flashAttention, kvCache = environment["PARACETAMOL_LLAMA_FLASH_ATTN_"+key], environment["PARACETAMOL_LLAMA_KV_CACHE_"+key]
+		modelLoad = environment["PARACETAMOL_LLAMA_MODEL_LOAD_"+key]
 		sampling = environment["PARACETAMOL_LLAMA_SAMPLING_DEFAULTS"]
 	}
 	rows := make([][2]string, 0, 20)
@@ -434,9 +439,24 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		[2]string{"Template", template}, [2]string{"Reasoning", reasoning},
 		[2]string{"Reasoning output", reasoningOutput}, [2]string{"Speculation", speculation},
 		[2]string{"Flash Attention", firstNonEmpty(flashAttention, "llama.cpp default")},
-		[2]string{"K/V cache", firstNonEmpty(kvCache, "llama.cpp default")})
+		[2]string{"K/V cache", firstNonEmpty(kvCache, "llama.cpp default")},
+		[2]string{"Model load", llamaModelLoadStatus(modelLoad, profile)})
 	samplingRows, err := llamaSamplingRows(managed, preset, sampling)
 	return append(rows, samplingRows...), err
+}
+
+func llamaModelLoadStatus(policy, profile string) string {
+	if policy == "" {
+		if profile == "strix-halo" || profile == "strix-point" {
+			policy = catalog.LlamaModelLoadResident
+		} else {
+			return "llama.cpp default"
+		}
+	}
+	if policy == catalog.LlamaModelLoadMMapLazyTokenEmbedding {
+		return "mmap; lazy per-layer token embedding"
+	}
+	return policy
 }
 
 func llamaReasoningPolicy(preset catalog.LlamaPreset) string {

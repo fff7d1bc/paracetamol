@@ -167,7 +167,7 @@ func TestLlamaServerPrintsItsShareableConfigurationCommand(t *testing.T) {
 	managed := catalog.Catalog{
 		Artifacts:    map[string]catalog.Artifact{artifact.ID: artifact},
 		Bundles:      map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{artifact.ID}}},
-		LlamaPresets: map[string]catalog.LlamaPreset{"test": {ID: "test", Bundle: "bundle", Artifact: artifact.ID, DefaultContext: 4096}},
+		LlamaPresets: map[string]catalog.LlamaPreset{"test": {ID: "test", Bundle: "bundle", Artifact: artifact.ID, Backends: []string{"vulkan"}, DefaultContext: 4096}},
 	}
 	path := filepath.Join((storage.Layout{Root: dataRoot}).LlamaModels(), artifact.Destination)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -194,6 +194,14 @@ func TestLlamaServerPrintsItsShareableConfigurationCommand(t *testing.T) {
 	want := "Configuration: " + identity.Command("status", "llama-cpp", "--model", "test")
 	if !strings.Contains(stdout.String(), want) {
 		t.Fatalf("output lacks %q:\n%s", want, stdout.String())
+	}
+	for _, required := range []string{"Backend: vulkan (required by preset)", "PARACETAMOL_LLAMA_BACKEND=vulkan"} {
+		if !strings.Contains(stdout.String(), required) {
+			t.Fatalf("output lacks %q:\n%s", required, stdout.String())
+		}
+	}
+	if err := app.runLlama("server", []string{"--preset", "test", "--backend", "rocm", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err == nil || !strings.Contains(err.Error(), "does not support backend rocm") {
+		t.Fatalf("explicit unsupported backend err=%v", err)
 	}
 }
 

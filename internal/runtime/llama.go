@@ -32,6 +32,7 @@ type LlamaOptions struct {
 	SamplingDefaults             map[string]any
 	ProfileFlashAttention        map[string]string
 	ProfileKVCache               map[string]string
+	ProfileModelLoad             map[string]string
 	RouterPreset                 string
 	ModelsMax                    int
 	RenderNodes                  []string
@@ -136,6 +137,7 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
 		command = env(command, "PARACETAMOL_LLAMA_FLASH_ATTN_"+key, options.ProfileFlashAttention[profile])
 		command = env(command, "PARACETAMOL_LLAMA_KV_CACHE_"+key, options.ProfileKVCache[profile])
+		command = env(command, "PARACETAMOL_LLAMA_MODEL_LOAD_"+key, options.ProfileModelLoad[profile])
 	}
 	if options.Mode != "server" {
 		command = append(command, "--network", "none")

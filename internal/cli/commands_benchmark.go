@@ -203,6 +203,18 @@ func (app *App) benchmarkLlama(args []string) error {
 	if *compare {
 		backends = []string{"rocm", "vulkan"}
 	}
+	if *presetFlag != "" {
+		preset := managed.LlamaPresets[*presetFlag]
+		if !*compare && !setWasSet(set, "backend") && !preset.SupportsBackend(*backend) && len(preset.Backends) > 0 {
+			*backend = preset.Backends[0]
+			backends = []string{*backend}
+		}
+		for _, candidate := range backends {
+			if !preset.SupportsBackend(candidate) {
+				return controlerr.Usage("llama.cpp preset %q does not support backend %s", *presetFlag, candidate)
+			}
+		}
+	}
 	parameters := benchmark.LlamaParameters{Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash}
 	commands := make(map[string][]string)
 	for _, candidate := range backends {
