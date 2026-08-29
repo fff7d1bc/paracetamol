@@ -82,17 +82,14 @@ displaces Dynamic Q8_K_XL as the managed-client default.
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
 Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a
 128 GB Strix Halo host with fast local SSD storage, not another quantization
-of the dense 27B default. The accepted 87.2 GiB Dynamic IQ4_XS conversion
-remains available through exact bundle
-`llama-qwen3.8-flash-next-125b-a6b-ud-iq4-xs`; the guided recipe does not
-download both. Both presets use SSD-backed lazy loading for the model's
-unusually large per-layer token embedding and have no MTP mode in the current
-pinned llama.cpp. They are Vulkan-only because the pinned ROCm path produces
-corrupt generated text on Strix Halo. Direct startup selects Vulkan when the
-backend is omitted, while a ROCm router or gateway leaves both models out of
-its inventory. Their pinned conversion repository declares license metadata
-but does not contain the referenced license text, so Paracetamol keeps them at
-`NOASSERTION` and requires explicit risk acknowledgment.
+of the dense 27B default. The preset uses SSD-backed lazy loading for the
+model's unusually large per-layer token embedding and has no MTP mode in the
+current pinned llama.cpp. It is Vulkan-only because the pinned ROCm path
+produces corrupt generated text on Strix Halo. Direct startup selects Vulkan
+when the backend is omitted, while a ROCm router or gateway leaves the model
+out of its inventory. Its pinned conversion repository declares license
+metadata but does not contain the referenced license text, so Paracetamol
+keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
 
 The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
 matching DFlash draft. The next-step command starts the forced-256K DFlash

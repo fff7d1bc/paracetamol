@@ -78,8 +78,8 @@ revisions recorded in `catalog/catalog.json`.
   from base-model revision
   `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`; it changes the omitted-effort
   fallback from native xhigh to native medium.
-- Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL and IQ4_XS are downloaded in
-  four and three shards, respectively, from one full pinned Unsloth revision.
+- Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL is downloaded in four shards
+  from one full pinned Unsloth revision.
   That repository declares the Qwen
   Community License in metadata but does not contain the referenced license
   text at the pinned revision. Paracetamol therefore records the conversion
