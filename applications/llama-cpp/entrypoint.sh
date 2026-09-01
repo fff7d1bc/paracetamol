@@ -268,7 +268,7 @@ else
             mmap-lazy-token-embedding)
                 profile_args+=(--load-mode mmap)
                 model_policy_args+=(
-                    --tensor-read-lazy on
+                    --lazy-mode on
                     --override-tensor per_layer_token_embd.weight=CPU
                 )
                 ;;
@@ -449,7 +449,7 @@ if [[ "$mode" == server ]]; then
                                 print "load-mode = none"
                             } else if ($0 == "mmap-lazy-token-embedding") {
                                 print "load-mode = mmap"
-                                print "tensor-read-lazy = on"
+                                print "lazy-mode = on"
                                 print "override-tensor = per_layer_token_embd.weight=CPU"
                             }
                         }
@@ -462,7 +462,7 @@ if [[ "$mode" == server ]]; then
                                 print "load-mode = none"
                             } else if ($0 == "mmap-lazy-token-embedding") {
                                 print "load-mode = mmap"
-                                print "tensor-read-lazy = on"
+                                print "lazy-mode = on"
                                 print "override-tensor = per_layer_token_embd.weight=CPU"
                             }
                         }

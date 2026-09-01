@@ -327,6 +327,20 @@ outside upstream, so the managed Flash-Next preset is intentionally
 non-speculative. Recheck that boundary before adding an MTP alias rather than
 assuming architecture support also covers the draft heads.
 
+The 2026-09-01 update from commit `c9ca51c` to commit
+`0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0` retained all four patches
+**unchanged**. Each exact patch applied cleanly to the selected 48-commit
+range. Upstream renamed `--tensor-read-lazy` to `--lazy-mode`, so the managed
+direct-model and router configuration emit the new spelling while preserving
+the same lazy token-embedding policy. This range adds Qwen4exp indexer-head
+prompt-processing work, ROCm long-row radix top-k, Strix Halo Vulkan batched
+inference tuning, and recurrent-state rollback for Qwen3.8 Flash-Next. The
+rollback support removes a target-side speculative-decoding bottleneck, but
+does not add a draft-model loader. Flash-Next MTP remains in
+[draft pull request 27836](https://github.com/ggml-org/llama.cpp/pull/27836)
+and is not part of this pin. Keep base-model ROCm acceptance and MTP acceptance
+as separate gates.
+
 At this pin, Flash-Next generation on `gfx1151` is accepted only through
 Vulkan. ROCm loads the same shards and can return short retrieval keys, but
 meaningful responses become malformed multilingual text at shallow context.

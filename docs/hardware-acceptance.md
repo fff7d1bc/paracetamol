@@ -139,6 +139,65 @@ The Q4_K_XL summary is
 `~/.local/share/paracetamol/apps/llama-cpp/acceptance/20260829-qwen38-flash-next-q4-k-xl.md`,
 SHA-256 `3225e813f97e9b8ec2f7a73546ed2931f390d8da41faebb756484f969e7817ed`.
 
+### Fedora 44 Strix Halo llama.cpp `0eadefe` retest (2026-09-01)
+
+The llama.cpp source update from `c9ca51c` to
+`0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0` was built without layer cache on
+the Fedora 44 Strix Halo host. The accepted image was
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-0eadefe-r33`, image ID
+`2ac38332bea33fce4f5c885a74b59d02a2808da3312010274b335500cee82ed6`.
+Both HIP and Vulkan compiled for all four managed GPU targets, all four
+Paracetamol patches applied unchanged, `pip check` passed, and the retained
+llama.cpp binaries had no unresolved dynamic dependency. Upstream renamed
+the lazy tensor option, so direct and router presets now use `--lazy-mode on`
+with the same mmap and CPU token-embedding policy.
+
+The dense `qwen3.8-27b-mtp-ud-q8-k-xl` ROCm control returned its exact
+sentinel with coherent medium reasoning. The Qwen3.8 Flash-Next Q4_K_XL
+model still failed meaningful ROCm generation immediately with malformed
+multilingual text. Vulkan returned coherent text through both the direct
+server and lazy router, and the router emitted the new `--lazy-mode on`
+argument. The managed Vulkan-only restriction therefore remains correct.
+The kernel journal contained no AMDGPU, SVM, page-fault,
+general-protection-fault, OOM, or llama process event during the test window.
+
+An isolated candidate then applied the three commits from draft llama.cpp
+[pull request 27836](https://github.com/ggml-org/llama.cpp/pull/27836) and the
+detached-head loader correction at commit
+`a82a58a57fc307e5cec0dc68db64d143339be4f2`. It used Unsloth's
+2,786,204,800-byte `mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf` from repository
+revision `eb2a07ecb33b5495cbc8dc3183b9421a1dda4b46`, SHA-256
+`b646ef60eaae2a9ed849e75f15f399629ca22633555e99e809959e95f22a1575`.
+The base model remained the managed Dynamic Q4_K_XL conversion. This was a
+Vulkan-only feasibility test because the base model's ROCm output is invalid.
+
+At a shallow 4K ceiling, no speculation decoded at 22.61 tokens/s. MTP depth
+2 reached 25.08 tokens/s with 45.4% acceptance, while depth 3 reached 28.43
+tokens/s with 47.2% acceptance. At a 262144-token server ceiling, a seeded
+512-token medium-reasoning request improved from 23.52 to 34.30 tokens/s at
+depth 3, with 59.9% draft acceptance. The generated reasoning remained
+coherent.
+
+The long-history control populated 46,857 prompt tokens at the same 262144
+ceiling and requested 512 non-thinking tokens. Without MTP, prefill was
+245.80 tokens/s, decode was 15.54 tokens/s, and total server time was 223.505
+seconds. Depth-3 MTP measured 227.82 prompt tokens/s, 26.15 decode tokens/s,
+60.9% draft acceptance, and 225.212 seconds total. MTP therefore improved
+deep-context decode by 68.3%, but reduced cold prefill by 7.3%. The two effects
+cancelled for this one-shot request. Cached multi-turn use can retain the
+decode benefit without paying full history prefill on every turn.
+
+The MTP responses were coherent and terminated normally, but a
+temperature-zero response was not byte-identical to the non-speculative
+control. Disabling backend draft sampling did not restore equivalence. The
+loader and model support are also still outside upstream master. The
+candidate is therefore not part of the managed image or catalog, and managed
+Flash-Next MTP remains `N/P` pending an upstream implementation and a repeat
+of the greedy-equivalence, multi-turn, structured-tool, and long-context
+gates. The separate recurrent-state rollback merged in
+[pull request 28123](https://github.com/ggml-org/llama.cpp/pull/28123) is
+retained in the accepted non-MTP source pin.
+
 ### Fedora 44 Strix Halo ROCm 10.0 upgrade (2026-08-28)
 
 Paracetamol commit `1d083eb35b5646764b0925feccf0f3aed9808e64`
