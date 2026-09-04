@@ -25,6 +25,26 @@ type AggregateTiming struct {
 	Total       AggregateMetric `json:"total_ms"`
 }
 
+type AggregateThroughput struct {
+	TimedTokens     uint64   `json:"timed_tokens"`
+	Milliseconds    float64  `json:"milliseconds"`
+	Observations    uint64   `json:"observations"`
+	TokensPerSecond *float64 `json:"tokens_per_second,omitempty"`
+}
+
+type AggregateDraft struct {
+	DraftTokens     uint64   `json:"draft_tokens"`
+	AcceptedTokens  uint64   `json:"accepted_tokens"`
+	Observations    uint64   `json:"observations"`
+	AcceptanceRatio *float64 `json:"acceptance_ratio,omitempty"`
+}
+
+type AggregateBackendTimings struct {
+	PromptProcessing AggregateThroughput `json:"prompt_processing"`
+	TokenGeneration  AggregateThroughput `json:"token_generation"`
+	SpeculativeDraft AggregateDraft      `json:"speculative_draft"`
+}
+
 type AggregateOutcomes struct {
 	Succeeded          uint64 `json:"succeeded"`
 	Rejected           uint64 `json:"rejected"`
@@ -36,10 +56,11 @@ type AggregateOutcomes struct {
 }
 
 type RequestAggregate struct {
-	Requests uint64            `json:"requests"`
-	Outcomes AggregateOutcomes `json:"outcomes"`
-	Tokens   AggregateTokens   `json:"tokens"`
-	Timing   AggregateTiming   `json:"timing"`
+	Requests       uint64                  `json:"requests"`
+	Outcomes       AggregateOutcomes       `json:"outcomes"`
+	Tokens         AggregateTokens         `json:"tokens"`
+	Timing         AggregateTiming         `json:"timing"`
+	BackendTimings AggregateBackendTimings `json:"backend_timings"`
 }
 
 type ModelAggregate struct {
@@ -129,6 +150,9 @@ func addAggregate(aggregate *RequestAggregate, record RequestRecord) {
 	addDurationMetric(&aggregate.Timing.GatewayWait, record.Timing.GatewayWaitMilliseconds)
 	addDurationMetric(&aggregate.Timing.Upstream, record.Timing.UpstreamMilliseconds)
 	addDurationMetric(&aggregate.Timing.Total, record.Timing.TotalMilliseconds)
+	addThroughputMetric(&aggregate.BackendTimings.PromptProcessing, record.BackendTimings.PromptTokens, record.BackendTimings.PromptMilliseconds, false)
+	addThroughputMetric(&aggregate.BackendTimings.TokenGeneration, record.BackendTimings.GeneratedTokens, record.BackendTimings.GeneratedMilliseconds, true)
+	addDraftMetric(&aggregate.BackendTimings.SpeculativeDraft, record.BackendTimings.DraftTokens, record.BackendTimings.DraftAcceptedTokens)
 }
 
 func addTokenMetric(metric *AggregateMetric, value *int64) {
@@ -147,6 +171,38 @@ func addDurationMetric(metric *AggregateMetric, value int64) {
 	metric.Observations = saturatingAdd(metric.Observations, 1)
 }
 
+func addThroughputMetric(metric *AggregateThroughput, tokens *int64, milliseconds *float64, firstTokenIsFree bool) {
+	if tokens == nil || milliseconds == nil || *tokens < 0 || *milliseconds < 0 || math.IsInf(*milliseconds, 0) || math.IsNaN(*milliseconds) {
+		return
+	}
+	timedTokens := uint64(*tokens)
+	// llama.cpp's final prompt logits produce the first generated token. Its
+	// predicted_ms therefore times n-1 decode steps, matching the backend's own
+	// predicted_per_second calculation.
+	if firstTokenIsFree && timedTokens > 0 {
+		timedTokens--
+	}
+	metric.TimedTokens = saturatingAdd(metric.TimedTokens, timedTokens)
+	metric.Milliseconds = saturatingAddFloat(metric.Milliseconds, *milliseconds)
+	metric.Observations = saturatingAdd(metric.Observations, 1)
+}
+
+func addDraftMetric(metric *AggregateDraft, drafted, accepted *int64) {
+	if drafted == nil || accepted == nil || *drafted < 0 || *accepted < 0 || *accepted > *drafted {
+		return
+	}
+	metric.DraftTokens = saturatingAdd(metric.DraftTokens, uint64(*drafted))
+	metric.AcceptedTokens = saturatingAdd(metric.AcceptedTokens, uint64(*accepted))
+	metric.Observations = saturatingAdd(metric.Observations, 1)
+}
+
+func saturatingAddFloat(current, value float64) float64 {
+	if math.MaxFloat64-current < value {
+		return math.MaxFloat64
+	}
+	return current + value
+}
+
 func saturatingAdd(current, value uint64) uint64 {
 	if math.MaxUint64-current < value {
 		return math.MaxUint64
@@ -158,8 +214,9 @@ func (ledger *requestLedger) Snapshot(recentLimit int) ([]RequestRecord, UsageSu
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 	recent := ledger.recentLocked(recentLimit)
-	summary := UsageSummary{Overall: ledger.overall}
+	summary := UsageSummary{Overall: finalizedAggregate(ledger.overall)}
 	for _, model := range ledger.models {
+		model.Usage = finalizedAggregate(model.Usage)
 		summary.Models = append(summary.Models, model)
 	}
 	sort.Slice(summary.Models, func(left, right int) bool { return summary.Models[left].Model < summary.Models[right].Model })
@@ -170,8 +227,24 @@ func (ledger *requestLedger) Snapshot(recentLimit int) ([]RequestRecord, UsageSu
 		}
 		seenSessions[record.SessionID] = true
 		if session, ok := ledger.sessions[record.SessionID]; ok {
+			session.summary.Usage = finalizedAggregate(session.summary.Usage)
 			summary.Sessions = append(summary.Sessions, session.summary)
 		}
 	}
 	return recent, summary
+}
+
+func finalizedAggregate(aggregate RequestAggregate) RequestAggregate {
+	for _, metric := range []*AggregateThroughput{&aggregate.BackendTimings.PromptProcessing, &aggregate.BackendTimings.TokenGeneration} {
+		if metric.Observations > 0 && metric.Milliseconds > 0 {
+			rate := float64(metric.TimedTokens) * 1000 / metric.Milliseconds
+			metric.TokensPerSecond = &rate
+		}
+	}
+	draft := &aggregate.BackendTimings.SpeculativeDraft
+	if draft.Observations > 0 && draft.DraftTokens > 0 {
+		ratio := float64(draft.AcceptedTokens) / float64(draft.DraftTokens)
+		draft.AcceptanceRatio = &ratio
+	}
+	return aggregate
 }

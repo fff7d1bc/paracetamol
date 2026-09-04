@@ -189,10 +189,10 @@ func TestRequestLedgerAggregatesLifetimeModelsAndBoundedRecentSessions(t *testin
 func TestResponseObserverReadsJSONAndFragmentedSSEUsage(t *testing.T) {
 	jsonObserver := newResponseObserver("application/json")
 	jsonObserver.Observe([]byte(`{"usage":{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":5},"completion_tokens_details":{"reasoning_tokens":3}}}`))
-	jsonTokens := jsonObserver.Finish()
-	assertTokens(t, jsonTokens, 12, 7, 5)
-	if jsonTokens.Reasoning == nil || *jsonTokens.Reasoning != 3 {
-		t.Fatalf("reasoning tokens=%#v", jsonTokens)
+	jsonObservation := jsonObserver.Finish()
+	assertTokens(t, jsonObservation.Tokens, 12, 7, 5)
+	if jsonObservation.Tokens.Reasoning == nil || *jsonObservation.Tokens.Reasoning != 3 {
+		t.Fatalf("reasoning tokens=%#v", jsonObservation.Tokens)
 	}
 
 	sseObserver := newResponseObserver("text/event-stream; charset=utf-8")
@@ -205,21 +205,65 @@ func TestResponseObserverReadsJSONAndFragmentedSSEUsage(t *testing.T) {
 	} {
 		sseObserver.Observe(fragment)
 	}
-	assertTokens(t, sseObserver.Finish(), 21, 8, 13)
+	assertTokens(t, sseObserver.Finish().Tokens, 21, 8, 13)
 }
 
 func TestResponseObserverFallsBackToLlamaTimingsAndBoundsInput(t *testing.T) {
 	observer := newResponseObserver("application/json")
-	observer.Observe([]byte(`{"timings":{"prompt_n":33,"predicted_n":9}}`))
-	tokens := observer.Finish()
-	if tokens.Input == nil || *tokens.Input != 33 || tokens.Output == nil || *tokens.Output != 9 || tokens.Cached != nil {
-		t.Fatalf("tokens=%#v", tokens)
+	observer.Observe([]byte(`{"timings":{"prompt_n":33,"prompt_ms":125.5,"predicted_n":9,"predicted_ms":750,"draft_n":12,"draft_n_accepted":7}}`))
+	observation := observer.Finish()
+	if observation.Tokens.Input == nil || *observation.Tokens.Input != 33 || observation.Tokens.Output == nil || *observation.Tokens.Output != 9 || observation.Tokens.Cached != nil {
+		t.Fatalf("tokens=%#v", observation.Tokens)
+	}
+	if observation.Timings.PromptMilliseconds == nil || *observation.Timings.PromptMilliseconds != 125.5 ||
+		observation.Timings.GeneratedMilliseconds == nil || *observation.Timings.GeneratedMilliseconds != 750 ||
+		observation.Timings.DraftTokens == nil || *observation.Timings.DraftTokens != 12 ||
+		observation.Timings.DraftAcceptedTokens == nil || *observation.Timings.DraftAcceptedTokens != 7 {
+		t.Fatalf("timings=%#v", observation.Timings)
 	}
 
 	oversized := newResponseObserver("application/json")
 	oversized.Observe(bytes.Repeat([]byte{'x'}, maxObservedJSONBytes+1))
-	if tokens := oversized.Finish(); tokens.Input != nil || tokens.Output != nil || tokens.Cached != nil || tokens.Reasoning != nil {
-		t.Fatalf("oversized response produced tokens: %#v", tokens)
+	if result := oversized.Finish(); result.Tokens.Input != nil || result.Tokens.Output != nil || result.Tokens.Cached != nil || result.Tokens.Reasoning != nil || result.Timings.PromptTokens != nil {
+		t.Fatalf("oversized response produced observations: %#v", result)
+	}
+}
+
+func TestResponseObserverReadsFragmentedSSETimingsAndIgnoresMalformedFields(t *testing.T) {
+	observer := newResponseObserver("text/event-stream; charset=utf-8")
+	for _, fragment := range [][]byte{
+		[]byte("data: {\"timings\":{\"prompt_n\":100,\"prompt_ms\":400,"),
+		[]byte("\"predicted_n\":20,\"predicted_ms\":\"bad\",\"draft_n\":25,\"draft_n_accepted\":15}}\n\n"),
+		[]byte("data: [DONE]\n\n"),
+	} {
+		observer.Observe(fragment)
+	}
+	result := observer.Finish()
+	if result.Timings.PromptTokens == nil || *result.Timings.PromptTokens != 100 || result.Timings.PromptMilliseconds == nil || *result.Timings.PromptMilliseconds != 400 {
+		t.Fatalf("prompt timings=%#v", result.Timings)
+	}
+	if result.Timings.GeneratedTokens == nil || *result.Timings.GeneratedTokens != 20 || result.Timings.GeneratedMilliseconds != nil {
+		t.Fatalf("generation timings=%#v", result.Timings)
+	}
+	if result.Timings.DraftTokens == nil || *result.Timings.DraftTokens != 25 || result.Timings.DraftAcceptedTokens == nil || *result.Timings.DraftAcceptedTokens != 15 {
+		t.Fatalf("draft timings=%#v", result.Timings)
+	}
+}
+
+func TestRequestLedgerDerivesWeightedBackendRatesAndLeavesDwarfStarUnavailable(t *testing.T) {
+	var ledger requestLedger
+	firstTokens, secondTokens := int64(100), int64(100)
+	firstMS, secondMS := 1000.0, 9000.0
+	ledger.Add(RequestRecord{Model: "qwen", Application: "llama-cpp", BackendTimings: BackendTimings{GeneratedTokens: &firstTokens, GeneratedMilliseconds: &firstMS}})
+	ledger.Add(RequestRecord{Model: "qwen", Application: "llama-cpp", BackendTimings: BackendTimings{GeneratedTokens: &secondTokens, GeneratedMilliseconds: &secondMS}})
+	ledger.Add(RequestRecord{Model: "deepseek", Application: "dwarfstar"})
+	_, summary := ledger.Snapshot(0)
+	metric := summary.Overall.BackendTimings.TokenGeneration
+	if metric.TimedTokens != 198 || metric.Milliseconds != 10000 || metric.Observations != 2 || metric.TokensPerSecond == nil || *metric.TokensPerSecond != 19.8 {
+		t.Fatalf("weighted metric=%#v", metric)
+	}
+	if len(summary.Models) != 2 || summary.Models[0].Model != "deepseek" || summary.Models[0].Usage.BackendTimings.TokenGeneration.TokensPerSecond != nil {
+		t.Fatalf("model aggregates=%#v", summary.Models)
 	}
 }
 

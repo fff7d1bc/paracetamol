@@ -349,10 +349,15 @@ This reports the frozen inventory fingerprint, exposed applications and
 models, current lazy allocation, lifecycle state, and active/queued request
 counts. Model rows use the private backend's exact residency when available;
 an unavailable probe is shown as `unknown`, not guessed from allocation state.
+Each row includes its configured context, while a loaded llama.cpp row adds
+effective context, training context, parameter count, byte size, and
+quantization when reported by the private router.
 The opt-in `--requests N` view adds up to 64 newest process-local records with
 correlation IDs, timing, reported token counts, and explicit client
-reasoning/sampler controls. It never retains prompts, tools, response content,
-authorization, or complete request/response bodies. Backend startup detail and
+reasoning/sampler controls. llama.cpp timing metadata also produces weighted
+prompt-processing and token-generation rates and speculative-token acceptance.
+It never retains prompts, tools, response content, authorization, or complete
+request/response bodies. Backend startup detail and
 correlated `gateway | request` lines remain on the foreground gateway stderr.
 
 For a running llama.cpp server, select the application scope to print a

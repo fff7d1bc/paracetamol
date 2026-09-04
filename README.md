@@ -384,9 +384,13 @@ Use `--models-max` only for a larger set known to fit.
 
 `./paracetamol status gateway` shows the frozen inventory and live allocation.
 Add `--requests 10` while diagnosing a client to see lifetime aggregates and
-recent request timing. Token usage and client-supplied reasoning or sampler
-fields appear when available. Prompts and response content are not retained.
-Managed Pi uses its real session UUID. Maki groups one launcher invocation.
+recent request timing. Loaded llama.cpp rows include their effective context,
+training context, parameter count, size, and quantization when the router
+reports them. Completion timing metadata supplies weighted prompt-processing
+and token-generation rates plus speculative acceptance. Token usage and
+client-supplied reasoning or sampler fields appear when available. Prompts and
+response content are not retained. Managed Pi uses its real session UUID.
+Maki groups one launcher invocation.
 
 Pi and Maki can instead use a gateway on another trusted host. The gateway
 retains its local loopback endpoint while adding the requested publication.

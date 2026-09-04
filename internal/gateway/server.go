@@ -22,7 +22,7 @@ import (
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v3"
+	StatusSchema    = "paracetamol.gateway-status.v4"
 	IdentityHeader  = "X-Paracetamol-Gateway"
 	IdentityValue   = "paracetamol.gateway.v1"
 )
@@ -52,10 +52,20 @@ type Status struct {
 }
 
 type StatusModel struct {
-	ID          string     `json:"id"`
-	Application string     `json:"application"`
-	State       ModelState `json:"state"`
-	Diagnostic  string     `json:"diagnostic,omitempty"`
+	ID                string        `json:"id"`
+	Application       string        `json:"application"`
+	ConfiguredContext int64         `json:"configured_context"`
+	State             ModelState    `json:"state"`
+	Runtime           *ModelRuntime `json:"runtime,omitempty"`
+	Diagnostic        string        `json:"diagnostic,omitempty"`
+}
+
+type ModelRuntime struct {
+	Context         *int64  `json:"context,omitempty"`
+	TrainingContext *int64  `json:"training_context,omitempty"`
+	Parameters      *uint64 `json:"parameters,omitempty"`
+	ModelBytes      *uint64 `json:"model_bytes,omitempty"`
+	Quantization    string  `json:"quantization,omitempty"`
 }
 
 func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server, error) {
@@ -251,6 +261,9 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		response.Header.Del("Server")
 		response.Header.Del(IdentityHeader)
 		response.Header.Set(RequestIDHeader, record.ID)
+		if isEventStream(response.Header.Get("Content-Type")) {
+			response.Header.Set("X-Accel-Buffering", "no")
+		}
 		observer = newResponseObserver(response.Header.Get("Content-Type"))
 		response.Body = &observedBody{ReadCloser: response.Body, observer: observer}
 		return nil
@@ -274,7 +287,8 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		logLine(server.log, "gateway | request %s proxy %s through %s: response stream aborted", record.ID, model.ID, model.Application)
 	}
 	if observer != nil {
-		record.Tokens = observer.Finish()
+		observation := observer.Finish()
+		record.Tokens, record.BackendTimings = observation.Tokens, observation.Timings
 	}
 	record.HTTPStatus = observedWriter.status
 	switch {
