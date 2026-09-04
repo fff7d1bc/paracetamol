@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -288,6 +290,30 @@ func TestStatusGatewayUsesVersionedEndpoint(t *testing.T) {
 	}
 	if requested != "/paracetamol/v1/status" || !strings.Contains(stdout.String(), "fixture") {
 		t.Fatalf("path=%q output=%s", requested, stdout)
+	}
+}
+
+func TestStatusGatewayUsesConfiguredClientURL(t *testing.T) {
+	requested := ""
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requested = request.URL.Path
+		_ = json.NewEncoder(writer).Encode(gateway.Status{
+			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
+			Scheduler: gateway.SchedulerStatus{State: gateway.StateUnloaded},
+		})
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[gateway.client]\nurl = \""+server.URL+"/v1\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app, _, _ := testApp(t, &commandRunner{})
+	app.ConfigSelection = config.Selection{Path: path}
+	if err := app.commandStatus([]string{"gateway"}); err != nil {
+		t.Fatal(err)
+	}
+	if requested != "/paracetamol/v1/status" {
+		t.Fatalf("path=%q", requested)
 	}
 }
 

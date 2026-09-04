@@ -51,6 +51,10 @@ listen = "127.0.0.1"
 port = 7455
 startup_timeout = "30m"
 
+[gateway.client]
+# Used by managed Pi, Maki, and `status gateway`.
+url = "http://127.0.0.1:7455/v1"
+
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
@@ -71,6 +75,13 @@ selected missing file, an unknown key, or a malformed value is an error.
 Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
 command-line-only.
+
+Gateway clients resolve their endpoint in this order: `--gateway-url`,
+`PARACETAMOL_GATEWAY_URL`, `[gateway.client].url`, then the built-in loopback
+default. The client URL is independent of `[gateway].listen` and
+`[gateway].port`. This lets one checkout hold a client profile for another
+host without changing how a local gateway would publish itself. URLs must use
+HTTP or HTTPS, contain no credentials, query, or fragment, and end in `/v1`.
 
 The configuration reader intentionally implements only the forms used by this
 schema: one-line quoted strings, decimal integers, one-line string arrays,
@@ -256,7 +267,8 @@ output remains on gateway stderr; status exposes no host path or process
 detail.
 
 Pi and Maki accept one `--gateway-url` setting, with
-`PARACETAMOL_GATEWAY_URL` as its environment equivalent. Normal sessions query
+`PARACETAMOL_GATEWAY_URL` and `[gateway.client].url` as durable alternatives.
+Normal sessions query
 the live inventory, require its exact versioned Paracetamol gateway marker,
 and intersect it with local catalog capabilities before generating one
 `paracetamol` provider. A different service on the configured host and port is

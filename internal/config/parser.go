@@ -74,7 +74,7 @@ func parseConfigurationSection(line string) (string, error) {
 	}
 	section := strings.TrimSpace(line[1 : len(line)-1])
 	switch section {
-	case "storage", "gateway", "gateway.llama-cpp":
+	case "storage", "gateway", "gateway.client", "gateway.llama-cpp":
 		return section, nil
 	default:
 		return "", fmt.Errorf("unknown configuration section [%s]", section)
@@ -126,6 +126,12 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 			return invalidConfigurationValue(setting, err)
 		}
 		configuration.Gateway.StartupTimeout = &value
+	case "gateway.client.url":
+		value, err := parseConfigurationString(rawValue)
+		if err != nil {
+			return invalidConfigurationValue(setting, err)
+		}
+		configuration.Gateway.Client.URL = &value
 	case "gateway.llama-cpp.backend":
 		value, err := parseConfigurationString(rawValue)
 		if err != nil {

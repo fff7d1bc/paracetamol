@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/textmodel"
@@ -66,7 +67,7 @@ func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, g
 	if mode == "passthrough" {
 		return MakiPlan{Command: append([]string{executable}, arguments...), Mode: mode}, nil
 	}
-	endpoint, err := NormalizeGatewayURL(gatewayURL)
+	endpoint, err := config.NormalizeGatewayURL(gatewayURL)
 	if err != nil {
 		return MakiPlan{}, err
 	}

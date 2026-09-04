@@ -212,17 +212,6 @@ func TestMakiProviderAddsOnlyExplicitPerLaunchSessionHeader(t *testing.T) {
 	}
 }
 
-func TestNormalizeGatewayURL(t *testing.T) {
-	if value, err := NormalizeGatewayURL("http://gateway.test:8080/v1/"); err != nil || value != "http://gateway.test:8080/v1" {
-		t.Fatalf("value = %q, err = %v", value, err)
-	}
-	for _, value := range []string{"gateway.test:8080/v1", "http://user@gateway.test/v1", "http://gateway.test/other"} {
-		if _, err := NormalizeGatewayURL(value); err == nil {
-			t.Fatalf("accepted %q", value)
-		}
-	}
-}
-
 func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
 	if err != nil {

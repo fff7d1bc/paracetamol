@@ -359,7 +359,15 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 }
 
 func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
-	base, err := parseGatewayURL(firstNonEmpty(rawURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL)))
+	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return err
+	}
+	selected, err := config.SelectGatewayClientURL(rawURL, app.Environment, configuration)
+	if err != nil {
+		return controlerr.Usage("invalid gateway client URL: %v", err)
+	}
+	base, err := parseGatewayURL(selected)
 	if err != nil {
 		return err
 	}
@@ -608,13 +616,13 @@ func explicitGatewayControls(controls []gateway.ObservedControl) []string {
 }
 
 func parseGatewayURL(value string) (*url.URL, error) {
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return nil, controlerr.Usage("--gateway-url must be an HTTP(S) URL without credentials, query, or fragment")
+	normalized, err := config.NormalizeGatewayURL(value)
+	if err != nil {
+		return nil, controlerr.Usage("invalid gateway client URL: %v", err)
 	}
-	if parsed.Path != "" && parsed.Path != "/" && parsed.Path != "/v1" && parsed.Path != "/v1/" {
-		return nil, controlerr.Usage("--gateway-url path must be /v1")
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return nil, controlerr.Usage("invalid gateway client URL: %v", err)
 	}
-	parsed.Path = "/v1"
 	return parsed, nil
 }

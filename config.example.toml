@@ -15,6 +15,9 @@ listen = "127.0.0.1"
 port = 7455
 startup_timeout = "30m"
 
+[gateway.client]
+url = "http://127.0.0.1:7455/v1"
+
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1

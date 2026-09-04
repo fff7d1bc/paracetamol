@@ -115,7 +115,14 @@ func (app *App) agentPi(args []string) error {
 	if setWasSet(set, "sandbox") && *noSandbox {
 		return controlerr.Usage("--sandbox and --no-sandbox are mutually exclusive")
 	}
-	endpoint := firstNonEmpty(*gatewayURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL))
+	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return err
+	}
+	endpoint, err := config.SelectGatewayClientURL(*gatewayURL, app.Environment, configuration)
+	if err != nil {
+		return controlerr.Usage("invalid gateway client URL: %v", err)
+	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
 		return err
@@ -188,7 +195,14 @@ func (app *App) agentMaki(args []string) error {
 	if setWasSet(set, "sandbox") && *noSandbox {
 		return controlerr.Usage("--sandbox and --no-sandbox are mutually exclusive")
 	}
-	endpoint := firstNonEmpty(*gatewayURL, config.EnvironmentValue(app.Environment, "GATEWAY_URL", config.DefaultGatewayURL))
+	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return err
+	}
+	endpoint, err := config.SelectGatewayClientURL(*gatewayURL, app.Environment, configuration)
+	if err != nil {
+		return controlerr.Usage("invalid gateway client URL: %v", err)
+	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
 		return err
