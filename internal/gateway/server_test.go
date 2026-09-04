@@ -61,6 +61,12 @@ func requireGatewayIdentity(t *testing.T, response *http.Response) {
 	}
 }
 
+func TestGatewayStatusSchemaIsVersionFour(t *testing.T) {
+	if StatusSchema != "paracetamol.gateway-status.v4" {
+		t.Fatalf("status schema=%q", StatusSchema)
+	}
+}
+
 func TestServerListsExactRegistryAndRejectsUnknownModels(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer upstream.Close()
@@ -80,6 +86,9 @@ func TestServerListsExactRegistryAndRejectsUnknownModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireGatewayIdentity(t, response)
+	if got := response.Header.Get("X-Accel-Buffering"); got != "" {
+		t.Fatalf("non-stream response gained X-Accel-Buffering=%q", got)
+	}
 	response.Body.Close()
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("status=%d", response.StatusCode)
@@ -113,6 +122,9 @@ func TestServerPreservesUnknownRequestFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireGatewayIdentity(t, response)
+	if got := response.Header.Get("X-Accel-Buffering"); got != "" {
+		t.Fatalf("proxied JSON response gained X-Accel-Buffering=%q", got)
+	}
 	response.Body.Close()
 	if got := <-seen; !bytes.Equal(got, body) {
 		t.Fatalf("body changed:\n got %s\nwant %s", got, body)
@@ -134,6 +146,9 @@ func TestServerFlushesStreamingResponses(t *testing.T) {
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := response.Header.Get("X-Accel-Buffering"); got != "no" {
+		t.Fatalf("X-Accel-Buffering=%q", got)
 	}
 	reader := bufio.NewReader(response.Body)
 	line := make(chan string, 1)
@@ -219,13 +234,13 @@ func TestStatusRedactsLifecycleErrors(t *testing.T) {
 }
 
 func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.T) {
-	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":3}}}`)
+	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":3}},"timings":{"prompt_n":19,"prompt_ms":95,"predicted_n":4,"predicted_ms":200,"draft_n":6,"draft_n_accepted":4}}`)
 	seenBody := make(chan []byte, 1)
 	seenSessionHeader := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/models":
-			_, _ = io.WriteString(writer, `{"data":[{"id":"fixture","path":"/secret/model.gguf","status":{"value":"loaded","args":["--secret"]}}]}`)
+			_, _ = io.WriteString(writer, `{"data":[{"id":"fixture","path":"/secret/model.gguf","status":{"value":"loaded","args":["--secret"]},"meta":{"n_ctx":262144,"n_ctx_train":32768,"n_params":27000000000,"size":29000000000,"ftype":"Q8_0"}}]}`)
 		case "/v1/chat/completions":
 			body, _ := io.ReadAll(request.Body)
 			seenBody <- body
@@ -243,9 +258,9 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 		t.Fatal(err)
 	}
 	registry := Registry{
-		Models:      []Model{{ID: "fixture", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP}},
+		Models:      []Model{{ID: "fixture", Application: "llama-cpp", Context: 262144, Backend: textmodel.BackendLlamaCPP}},
 		Fingerprint: "fixture",
-		byID:        map[string]Model{"fixture": {ID: "fixture", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP}},
+		byID:        map[string]Model{"fixture": {ID: "fixture", Application: "llama-cpp", Context: 262144, Backend: textmodel.BackendLlamaCPP}},
 	}
 	var logs bytes.Buffer
 	handler, err := NewServer(registry, scheduler, &logs)
@@ -303,10 +318,16 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 	if record.Tokens.Reasoning == nil || *record.Tokens.Reasoning != 3 {
 		t.Fatalf("reasoning tokens=%#v", record.Tokens)
 	}
+	if record.BackendTimings.GeneratedMilliseconds == nil || *record.BackendTimings.GeneratedMilliseconds != 200 || record.BackendTimings.DraftAcceptedTokens == nil || *record.BackendTimings.DraftAcceptedTokens != 4 {
+		t.Fatalf("backend timings=%#v", record.BackendTimings)
+	}
 	if status.Usage.Overall.Requests != 1 || status.Usage.Overall.Tokens.Reasoning.Total != 3 || len(status.Usage.Models) != 1 || len(status.Usage.Sessions) != 1 {
 		t.Fatalf("usage=%#v", status.Usage)
 	}
-	if len(status.Models) != 1 || status.Models[0].State != ModelLoaded || status.Models[0].Diagnostic != "" {
+	if status.Usage.Overall.BackendTimings.TokenGeneration.TokensPerSecond == nil || *status.Usage.Overall.BackendTimings.TokenGeneration.TokensPerSecond != 15 {
+		t.Fatalf("backend aggregate=%#v", status.Usage.Overall.BackendTimings)
+	}
+	if len(status.Models) != 1 || status.Models[0].ConfiguredContext != 262144 || status.Models[0].State != ModelLoaded || status.Models[0].Runtime == nil || status.Models[0].Runtime.Quantization != "Q8_0" || status.Models[0].Diagnostic != "" {
 		t.Fatalf("model status=%#v", status.Models)
 	}
 	encoded, _ := json.Marshal(status)

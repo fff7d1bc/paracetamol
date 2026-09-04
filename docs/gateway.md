@@ -221,18 +221,30 @@ Use the human status client for the versioned endpoint:
 ./paracetamol status gateway --requests 10
 ```
 
-The v3 status schema reports the frozen applications, active allocation,
+The v4 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
-exact per-model residency. It also contains process-lifetime request, outcome,
-token, and timing aggregates for the gateway and each used frozen model. Token
+exact per-model residency. Every model reports its catalog-configured context.
+For a resident llama.cpp allocation, the gateway performs a bounded read-only
+`GET /models` against the private router. Loaded models may also provide
+effective context, training context, parameter count, model byte size, and
+quantization type. The decoder keeps only those fields plus frozen model IDs
+and unloaded, loading, loaded, sleeping, failed, or unknown state. It never
+adds the router's mutating `reload` query and discards paths, child arguments,
+presets, and models outside the frozen inventory.
+
+Status also contains process-lifetime request, outcome, token, timing, and
+backend-inference aggregates for the gateway and each used frozen model. Token
 metrics carry an observation count so partial upstream reporting cannot look
-like a complete total. Timing totals are cumulative request durations, not
-aggregate inference throughput; the human client presents their per-request
-mean. For a resident llama.cpp allocation, the gateway
-performs a bounded read-only `GET /models` against the private router and keeps
-only frozen model IDs plus unloaded, loading, loaded, sleeping, failed, or
-unknown state. It never adds the router's mutating `reload` query and discards
-paths, child arguments, presets, and models outside the frozen inventory.
+like a complete total. Request timing totals are cumulative gateway wall
+times, and the human client presents their per-request mean. llama.cpp prompt
+processing and token generation rates come from the sum of reported token
+counts divided by the sum of their matching durations. They are not averages
+of per-request rates. For token generation, llama.cpp's first sampled token
+comes from the final prompt logits and is not part of `predicted_ms`, so the
+aggregate uses `predicted_n - 1` timed decode steps for each completion.
+Speculative decoding totals include drafted and accepted tokens when both are
+reported.
+
 DwarfStar residency follows its single allocation lifecycle. An unavailable,
 malformed, missing, or contradictory result becomes `unknown` with a fixed
 diagnostic rather than leaking backend detail.
@@ -243,8 +255,12 @@ records from a fixed 64-entry in-memory ring. A record contains its correlation
 ID, optional validated session ID, frozen model and application, direct TCP
 peer, bounded User-Agent, stream mode, outcome, HTTP status, timestamps,
 gateway wait/upstream/total wall time, and input/output/cached/reasoning token
-counts when the upstream reports them. Reasoning tokens are a detail within
-output tokens rather than an additional token total. It also
+counts when the upstream reports them. llama.cpp records may also contain
+prompt and generation token counts with their durations, plus drafted and
+accepted token counts. A malformed or missing timing field makes only that
+measurement unavailable. DwarfStar currently reports no compatible inference
+timings. Reasoning tokens are a detail within output tokens rather than an
+additional token total. The record also
 distinguishes explicit client values for `temperature`, `top_p`, `top_k`,
 `min_p`, `presence_penalty`, `repeat_penalty`, `reasoning_effort`,
 `reasoning_strength`, and the reviewed `chat_template_kwargs` reasoning fields
@@ -256,9 +272,10 @@ The ledger and aggregates are process-local and never retain prompts, messages,
 tools, arbitrary request fields, complete request/response bodies, response
 content, authorization headers, or forwarded-address headers. Normal JSON and
 SSE are observed through bounded incremental readers without delaying or
-changing their bytes or flushing. Missing or malformed usage data is simply
-reported as unavailable. Chat responses carry `X-Paracetamol-Request-ID` for
-correlation.
+changing their bytes or flushing. Proxied SSE responses add
+`X-Accel-Buffering: no` so compatible reverse proxies do not coalesce events.
+Missing or malformed usage data is simply reported as unavailable. Chat
+responses carry `X-Paracetamol-Request-ID` for correlation.
 At most 64 session aggregates are retained, with least-recently-used eviction;
 `--requests` returns the lifetime-since-gateway-start aggregates for sessions
 represented in that recent request window. Omitting `--requests` excludes both
@@ -297,6 +314,8 @@ that invocation intentionally form one launch-level correlation group.
   arbitrary upstream registry.
 - The in-memory ledger and aggregates are not a persistent metrics store, full
   traffic capture, Prometheus endpoint, or web UI.
+- It does not retain a persistent key-value history or provide a remote
+  backend-log API. Runtime logs remain attached to the foreground process.
 - Direct servers remain supported diagnostic surfaces, not hidden gateway
   dependencies.
 

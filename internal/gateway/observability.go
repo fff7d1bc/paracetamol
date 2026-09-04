@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
@@ -69,21 +70,39 @@ type TokenUsage struct {
 	Reasoning *int64 `json:"reasoning,omitempty"`
 }
 
+// BackendTimings is the closed subset of llama.cpp completion timing metadata
+// retained by the gateway. Counts stay paired with their source durations so
+// lifetime throughput can be derived from totals instead of averaging rates.
+type BackendTimings struct {
+	PromptTokens          *int64   `json:"prompt_tokens,omitempty"`
+	PromptMilliseconds    *float64 `json:"prompt_ms,omitempty"`
+	GeneratedTokens       *int64   `json:"generated_tokens,omitempty"`
+	GeneratedMilliseconds *float64 `json:"generated_ms,omitempty"`
+	DraftTokens           *int64   `json:"draft_tokens,omitempty"`
+	DraftAcceptedTokens   *int64   `json:"draft_accepted_tokens,omitempty"`
+}
+
+type responseObservation struct {
+	Tokens  TokenUsage
+	Timings BackendTimings
+}
+
 type RequestRecord struct {
-	ID          string          `json:"id"`
-	SessionID   string          `json:"session_id,omitempty"`
-	Model       string          `json:"model,omitempty"`
-	Application string          `json:"application,omitempty"`
-	Peer        string          `json:"peer,omitempty"`
-	UserAgent   string          `json:"user_agent,omitempty"`
-	Stream      bool            `json:"stream"`
-	Outcome     RequestOutcome  `json:"outcome"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	StartedAt   string          `json:"started_at"`
-	FinishedAt  string          `json:"finished_at"`
-	Timing      RequestTiming   `json:"timing"`
-	Tokens      TokenUsage      `json:"tokens"`
-	Controls    RequestControls `json:"controls"`
+	ID             string          `json:"id"`
+	SessionID      string          `json:"session_id,omitempty"`
+	Model          string          `json:"model,omitempty"`
+	Application    string          `json:"application,omitempty"`
+	Peer           string          `json:"peer,omitempty"`
+	UserAgent      string          `json:"user_agent,omitempty"`
+	Stream         bool            `json:"stream"`
+	Outcome        RequestOutcome  `json:"outcome"`
+	HTTPStatus     int             `json:"http_status,omitempty"`
+	StartedAt      string          `json:"started_at"`
+	FinishedAt     string          `json:"finished_at"`
+	Timing         RequestTiming   `json:"timing"`
+	Tokens         TokenUsage      `json:"tokens"`
+	BackendTimings BackendTimings  `json:"backend_timings"`
+	Controls       RequestControls `json:"controls"`
 }
 
 type requestLedgerEntry struct {
@@ -416,10 +435,16 @@ type responseObserver struct {
 	event         []byte
 	eventOversize bool
 	tokens        TokenUsage
+	timings       BackendTimings
 }
 
 func newResponseObserver(contentType string) *responseObserver {
-	return &responseObserver{stream: strings.Contains(strings.ToLower(contentType), "text/event-stream")}
+	return &responseObserver{stream: isEventStream(contentType)}
+}
+
+func isEventStream(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	return err == nil && strings.EqualFold(mediaType, "text/event-stream")
 }
 
 func (observer *responseObserver) Observe(value []byte) {
@@ -438,7 +463,7 @@ func (observer *responseObserver) Observe(value []byte) {
 	observer.jsonBuffer = append(observer.jsonBuffer, value...)
 }
 
-func (observer *responseObserver) Finish() TokenUsage {
+func (observer *responseObserver) Finish() responseObservation {
 	if observer.stream {
 		if len(observer.line) > 0 {
 			observer.consumeSSELine(observer.line)
@@ -448,7 +473,7 @@ func (observer *responseObserver) Finish() TokenUsage {
 	} else if !observer.jsonOversized {
 		observer.observeJSON(observer.jsonBuffer)
 	}
-	return observer.tokens
+	return responseObservation{Tokens: observer.tokens, Timings: observer.timings}
 }
 
 func (observer *responseObserver) observeSSE(value []byte) {
@@ -544,15 +569,29 @@ func (observer *responseObserver) observeJSON(value []byte) {
 		}
 	}
 	if timings, ok := rawObject(object["timings"]); ok {
-		if observer.tokens.Input == nil {
-			if token, ok := firstInteger(timings, "prompt_n"); ok {
+		if token, ok := firstInteger(timings, "prompt_n"); ok {
+			observer.timings.PromptTokens = token
+			if observer.tokens.Input == nil {
 				observer.tokens.Input = token
 			}
 		}
-		if observer.tokens.Output == nil {
-			if token, ok := firstInteger(timings, "predicted_n"); ok {
+		if milliseconds, ok := firstNumber(timings, "prompt_ms"); ok {
+			observer.timings.PromptMilliseconds = milliseconds
+		}
+		if token, ok := firstInteger(timings, "predicted_n"); ok {
+			observer.timings.GeneratedTokens = token
+			if observer.tokens.Output == nil {
 				observer.tokens.Output = token
 			}
+		}
+		if milliseconds, ok := firstNumber(timings, "predicted_ms"); ok {
+			observer.timings.GeneratedMilliseconds = milliseconds
+		}
+		if token, ok := firstInteger(timings, "draft_n"); ok {
+			observer.timings.DraftTokens = token
+		}
+		if token, ok := firstInteger(timings, "draft_n_accepted"); ok {
+			observer.timings.DraftAcceptedTokens = token
 		}
 	}
 }
@@ -590,6 +629,21 @@ func firstInteger(object map[string]json.RawMessage, names ...string) (*int64, b
 		}
 		value, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
 		if err == nil && value >= 0 {
+			resolved := value
+			return &resolved, true
+		}
+	}
+	return nil, false
+}
+
+func firstNumber(object map[string]json.RawMessage, names ...string) (*float64, bool) {
+	for _, name := range names {
+		raw := object[name]
+		if len(raw) == 0 || isJSONNull(raw) {
+			continue
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(string(raw)), 64)
+		if err == nil && value >= 0 && !math.IsInf(value, 0) && !math.IsNaN(value) {
 			resolved := value
 			return &resolved, true
 		}

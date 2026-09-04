@@ -328,6 +328,9 @@ func TestGatewayURLRejectsCredentialsAndArbitraryPaths(t *testing.T) {
 func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	requested := ""
 	input, output, cached, reasoning := int64(20), int64(5), int64(12), int64(3)
+	promptMS, generatedMS := 100.0, 250.0
+	parameters, modelBytes := uint64(27_400_000_000), uint64(29_192_355_840)
+	context, trainingContext := int64(262144), int64(32768)
 	sessionID := "019fe5cc-5cad-7a92-aead-f0838931fb95"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		requested = request.URL.RequestURI()
@@ -336,7 +339,8 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 			Applications: []string{"llama-cpp"}, InventoryFingerprint: "fixture",
 			Scheduler: gateway.SchedulerStatus{State: gateway.StateReady, Allocation: gateway.AllocationLlamaCPP},
 			Models: []gateway.StatusModel{{
-				ID: "qwen", Application: "llama-cpp", State: gateway.ModelUnknown,
+				ID: "qwen", Application: "llama-cpp", ConfiguredContext: 262144, State: gateway.ModelUnknown,
+				Runtime:    &gateway.ModelRuntime{Context: &context, TrainingContext: &trainingContext, Parameters: &parameters, ModelBytes: &modelBytes, Quantization: "Q8_0"},
 				Diagnostic: "llama.cpp router model status is unavailable",
 			}},
 			Usage: gateway.UsageSummary{
@@ -349,6 +353,11 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 					Timing: gateway.AggregateTiming{
 						GatewayWait: gateway.AggregateMetric{Total: 3, Observations: 1}, Upstream: gateway.AggregateMetric{Total: 40, Observations: 1}, Total: gateway.AggregateMetric{Total: 44, Observations: 1},
 					},
+					BackendTimings: gateway.AggregateBackendTimings{
+						PromptProcessing: gateway.AggregateThroughput{TimedTokens: 20, Milliseconds: 100, Observations: 1, TokensPerSecond: floatPointer(200)},
+						TokenGeneration:  gateway.AggregateThroughput{TimedTokens: 4, Milliseconds: 250, Observations: 1, TokensPerSecond: floatPointer(16)},
+						SpeculativeDraft: gateway.AggregateDraft{DraftTokens: 8, AcceptedTokens: 5, Observations: 1, AcceptanceRatio: floatPointer(0.625)},
+					},
 				},
 				Models:   []gateway.ModelAggregate{{Model: "qwen", Application: "llama-cpp", Usage: gateway.RequestAggregate{Requests: 1, Tokens: gateway.AggregateTokens{Output: gateway.AggregateMetric{Total: 5, Observations: 1}}}}},
 				Sessions: []gateway.SessionAggregate{{ID: sessionID, Usage: gateway.RequestAggregate{Requests: 1, Tokens: gateway.AggregateTokens{Output: gateway.AggregateMetric{Total: 5, Observations: 1}}}}},
@@ -356,8 +365,9 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 			RecentRequests: []gateway.RequestRecord{{
 				ID: "r00000001", SessionID: sessionID, Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "pi/fixture",
 				Stream: true, Outcome: gateway.OutcomeSucceeded, HTTPStatus: http.StatusOK,
-				Timing: gateway.RequestTiming{GatewayWaitMilliseconds: 3, UpstreamMilliseconds: 40, TotalMilliseconds: 44},
-				Tokens: gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached, Reasoning: &reasoning},
+				Timing:         gateway.RequestTiming{GatewayWaitMilliseconds: 3, UpstreamMilliseconds: 40, TotalMilliseconds: 44},
+				Tokens:         gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached, Reasoning: &reasoning},
+				BackendTimings: gateway.BackendTimings{PromptTokens: &input, PromptMilliseconds: &promptMS, GeneratedTokens: &output, GeneratedMilliseconds: &generatedMS},
 				Controls: gateway.RequestControls{
 					Reasoning: []gateway.ObservedControl{{Name: "reasoning_effort", Source: gateway.ControlClient, Provided: true, Value: "medium"}},
 					Sampling:  []gateway.ObservedControl{{Name: "temperature", Source: gateway.ControlDefault}},
@@ -376,12 +386,15 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	for _, expected := range []string{
 		"r00000001", "qwen", "succeeded", "44ms total", "20 input", "5 output", "12 cached",
 		"3 reasoning", sessionID, "Usage since start", "Recent sessions", "reasoning_effort=medium", "sampler defaults", "pi/fixture", "router model status is unavailable",
+		"256K configured context", "32K trained", "27.4B params", "27.2 GiB", "Q8_0", "PP 200.00 tok/s", "TG 16.00 tok/s", "draft 5/8 accepted (62.5%)",
 	} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Fatalf("status output lacks %q:\n%s", expected, stdout)
 		}
 	}
 }
+
+func floatPointer(value float64) *float64 { return &value }
 
 func TestStatusGatewayValidatesRecentRequestCountAndScope(t *testing.T) {
 	for _, arguments := range [][]string{

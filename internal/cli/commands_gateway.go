@@ -410,6 +410,9 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 	rows := make([][]string, 0, len(status.Models))
 	for _, model := range status.Models {
 		detail := terminal.Command(model.ID)
+		if metadata := gatewayModelMetadata(model); metadata != "" {
+			detail += " · " + terminal.Muted(metadata)
+		}
 		if model.Diagnostic != "" {
 			detail += " — " + terminal.Muted(model.Diagnostic)
 		}
@@ -424,6 +427,7 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 		writeStatusRows(app.Stdout, terminal, [][2]string{
 			{"Requests", gatewayAggregateOutcomes(status.Usage.Overall)},
 			{"Tokens", gatewayAggregateTokens(status.Usage.Overall.Tokens, status.Usage.Overall.Requests)},
+			{"Inference", gatewayAggregateBackend(status.Usage.Overall.BackendTimings, status.Usage.Overall.Requests)},
 			{"Mean timing", gatewayAggregateTiming(status.Usage.Overall.Timing)},
 		})
 		if len(status.Usage.Models) > 0 {
@@ -432,7 +436,7 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 				usageRows = append(usageRows, []string{
 					terminal.Command(model.Model),
 					fmt.Sprintf("%d requests", model.Usage.Requests),
-					terminal.Muted(gatewayAggregateTokens(model.Usage.Tokens, model.Usage.Requests)),
+					terminal.Muted(gatewayAggregateTokens(model.Usage.Tokens, model.Usage.Requests) + " · " + gatewayAggregateBackend(model.Usage.BackendTimings, model.Usage.Requests)),
 				})
 			}
 			modelLines, _ := ui.ColumnLines(usageRows, nil, "  ")
@@ -514,8 +518,68 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	} else {
 		parts = append(parts, strings.Join(tokens, ", "))
 	}
+	parts = append(parts, gatewayRequestBackend(record.BackendTimings))
 	parts = append(parts, gatewayControlMetadata(record.Controls))
 	return strings.Join(parts, " · ")
+}
+
+func gatewayModelMetadata(model gateway.StatusModel) string {
+	parts := []string{gatewayContextSize(model.ConfiguredContext) + " configured context"}
+	if runtime := model.Runtime; runtime != nil {
+		if runtime.Context != nil {
+			parts = append(parts, gatewayContextSize(*runtime.Context)+" effective")
+		}
+		if runtime.TrainingContext != nil {
+			parts = append(parts, gatewayContextSize(*runtime.TrainingContext)+" trained")
+		}
+		if runtime.Parameters != nil {
+			parts = append(parts, gatewayDecimalSize(*runtime.Parameters, "params"))
+		}
+		if runtime.ModelBytes != nil {
+			parts = append(parts, gatewayBinaryBytes(*runtime.ModelBytes))
+		}
+		if runtime.Quantization != "" {
+			parts = append(parts, runtime.Quantization)
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func gatewayContextSize(value int64) string {
+	if value <= 0 {
+		return "unknown"
+	}
+	if value%(1024*1024) == 0 {
+		return fmt.Sprintf("%dM", value/(1024*1024))
+	}
+	if value%1024 == 0 {
+		return fmt.Sprintf("%dK", value/1024)
+	}
+	return fmt.Sprint(value)
+}
+
+func gatewayDecimalSize(value uint64, suffix string) string {
+	scale, unit := float64(1), ""
+	switch {
+	case value >= 1_000_000_000:
+		scale, unit = 1_000_000_000, "B"
+	case value >= 1_000_000:
+		scale, unit = 1_000_000, "M"
+	case value >= 1_000:
+		scale, unit = 1_000, "K"
+	}
+	if unit == "" {
+		return fmt.Sprintf("%d %s", value, suffix)
+	}
+	return fmt.Sprintf("%.1f%s %s", float64(value)/scale, unit, suffix)
+}
+
+func gatewayBinaryBytes(value uint64) string {
+	const gibibyte = uint64(1024 * 1024 * 1024)
+	if value >= gibibyte {
+		return fmt.Sprintf("%.1f GiB", float64(value)/float64(gibibyte))
+	}
+	return fmt.Sprintf("%d bytes", value)
 }
 
 func gatewayAggregateOutcomes(usage gateway.RequestAggregate) string {
@@ -568,6 +632,66 @@ func gatewayAggregateTokens(tokens gateway.AggregateTokens, requests uint64) str
 func gatewayAggregateTiming(timing gateway.AggregateTiming) string {
 	return fmt.Sprintf("%s wait · %s upstream · %s total",
 		gatewayMeanDuration(timing.GatewayWait), gatewayMeanDuration(timing.Upstream), gatewayMeanDuration(timing.Total))
+}
+
+func gatewayAggregateBackend(backend gateway.AggregateBackendTimings, requests uint64) string {
+	parts := []string{}
+	for _, item := range []struct {
+		metric gateway.AggregateThroughput
+		label  string
+	}{
+		{backend.PromptProcessing, "PP"},
+		{backend.TokenGeneration, "TG"},
+	} {
+		if item.metric.TokensPerSecond == nil {
+			continue
+		}
+		value := fmt.Sprintf("%s %.2f tok/s", item.label, *item.metric.TokensPerSecond)
+		if item.metric.Observations != requests {
+			value += fmt.Sprintf(" (%d/%d reported)", item.metric.Observations, requests)
+		}
+		parts = append(parts, value)
+	}
+	draft := backend.SpeculativeDraft
+	if draft.AcceptanceRatio != nil {
+		value := fmt.Sprintf("draft %d/%d accepted (%.1f%%)", draft.AcceptedTokens, draft.DraftTokens, *draft.AcceptanceRatio*100)
+		if draft.Observations != requests {
+			value += fmt.Sprintf(" (%d/%d reported)", draft.Observations, requests)
+		}
+		parts = append(parts, value)
+	}
+	if len(parts) == 0 {
+		return "unavailable"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func gatewayRequestBackend(backend gateway.BackendTimings) string {
+	parts := []string{}
+	for _, item := range []struct {
+		tokens       *int64
+		milliseconds *float64
+		label        string
+		firstIsFree  bool
+	}{
+		{backend.PromptTokens, backend.PromptMilliseconds, "PP", false},
+		{backend.GeneratedTokens, backend.GeneratedMilliseconds, "TG", true},
+	} {
+		if item.tokens != nil && item.milliseconds != nil && *item.milliseconds > 0 {
+			timedTokens := *item.tokens
+			if item.firstIsFree && timedTokens > 0 {
+				timedTokens--
+			}
+			parts = append(parts, fmt.Sprintf("%s %.2f tok/s", item.label, float64(timedTokens)*1000 / *item.milliseconds))
+		}
+	}
+	if backend.DraftTokens != nil && backend.DraftAcceptedTokens != nil && *backend.DraftTokens > 0 && *backend.DraftAcceptedTokens <= *backend.DraftTokens {
+		parts = append(parts, fmt.Sprintf("draft %d/%d accepted", *backend.DraftAcceptedTokens, *backend.DraftTokens))
+	}
+	if len(parts) == 0 {
+		return "inference timings unavailable"
+	}
+	return strings.Join(parts, " · ")
 }
 
 func gatewayMeanDuration(metric gateway.AggregateMetric) string {
