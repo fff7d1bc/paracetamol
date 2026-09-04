@@ -4,10 +4,12 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"paracetamol/internal/application"
 	"paracetamol/internal/controlerr"
@@ -55,7 +57,12 @@ type GatewayConfiguration struct {
 	Listen         *string
 	Port           *int
 	StartupTimeout *string
+	Client         GatewayClientConfiguration
 	LlamaCPP       GatewayLlamaConfiguration
+}
+
+type GatewayClientConfiguration struct {
+	URL *string
 }
 
 type GatewayLlamaConfiguration struct {
@@ -164,6 +171,7 @@ func validateConfiguration(configuration Configuration, path string) error {
 		{"[gateway].profile", configuration.Gateway.Profile},
 		{"[gateway].listen", configuration.Gateway.Listen},
 		{"[gateway].startup_timeout", configuration.Gateway.StartupTimeout},
+		{"[gateway.client].url", configuration.Gateway.Client.URL},
 		{"[gateway.llama-cpp].backend", configuration.Gateway.LlamaCPP.Backend},
 	}
 	for _, setting := range stringsToValidate {
@@ -176,6 +184,11 @@ func validateConfiguration(configuration Configuration, path string) error {
 	}
 	if value := configuration.Gateway.LlamaCPP.ModelsMax; value != nil && *value < 1 {
 		return controlerr.New("[gateway.llama-cpp].models_max must be at least 1: %s", path)
+	}
+	if value := configuration.Gateway.Client.URL; value != nil {
+		if _, err := NormalizeGatewayURL(*value); err != nil {
+			return controlerr.New("invalid [gateway.client].url in %s: %v", path, err)
+		}
 	}
 	return nil
 }
@@ -233,9 +246,54 @@ func DefaultContents(dataDir string) []byte {
 		"listen = \"127.0.0.1\"\n" +
 		"port = " + strconv.Itoa(DefaultGatewayPort) + "\n" +
 		"startup_timeout = \"30m\"\n\n" +
+		"[gateway.client]\n" +
+		"url = " + strconv.Quote(DefaultGatewayURL) + "\n\n" +
 		"[gateway.llama-cpp]\n" +
 		"backend = \"rocm\"\n" +
 		"models_max = 1\n")
+}
+
+// SelectGatewayClientURL applies the public client precedence and returns a
+// canonical OpenAI-compatible gateway base URL.
+func SelectGatewayClientURL(flagValue string, environment map[string]string, configuration Configuration) (string, error) {
+	configured := ""
+	if configuration.Gateway.Client.URL != nil {
+		configured = *configuration.Gateway.Client.URL
+	}
+	for _, candidate := range []string{flagValue, EnvironmentValue(environment, "GATEWAY_URL", ""), configured, DefaultGatewayURL} {
+		if candidate != "" {
+			return NormalizeGatewayURL(candidate)
+		}
+	}
+	panic("gateway client URL precedence lacks a default")
+}
+
+// NormalizeGatewayURL validates the intentionally narrow client endpoint
+// contract shared by configuration, status, and managed coding agents.
+func NormalizeGatewayURL(value string) (string, error) {
+	if value == "" || strings.IndexFunc(value, func(character rune) bool {
+		return unicode.IsSpace(character) || unicode.IsControl(character)
+	}) >= 0 {
+		return "", fmt.Errorf("gateway URL must not be empty or contain whitespace")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Opaque != "" || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("gateway URL must be a credential-free HTTP(S) URL without a query or fragment")
+	}
+	if strings.HasSuffix(parsed.Host, ":") {
+		return "", fmt.Errorf("invalid gateway URL port")
+	}
+	if port := parsed.Port(); port != "" {
+		parsedPort, err := strconv.Atoi(port)
+		if err != nil || parsedPort < 1 || parsedPort > 65535 {
+			return "", fmt.Errorf("invalid gateway URL port")
+		}
+	}
+	if strings.TrimRight(parsed.EscapedPath(), "/") != "/v1" {
+		return "", fmt.Errorf("gateway URL path must be /v1")
+	}
+	parsed.Path, parsed.RawPath = "/v1", ""
+	return parsed.String(), nil
 }
 
 func ValidatePort(value string) (int, error) {

@@ -212,17 +212,6 @@ func TestMakiProviderAddsOnlyExplicitPerLaunchSessionHeader(t *testing.T) {
 	}
 }
 
-func TestNormalizeGatewayURL(t *testing.T) {
-	if value, err := NormalizeGatewayURL("http://aion.local:8080/v1/"); err != nil || value != "http://aion.local:8080/v1" {
-		t.Fatalf("value = %q, err = %v", value, err)
-	}
-	for _, value := range []string{"aion.local:8080/v1", "http://user@aion.local/v1", "http://aion.local/other"} {
-		if _, err := NormalizeGatewayURL(value); err == nil {
-			t.Fatalf("accepted %q", value)
-		}
-	}
-}
-
 func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
 	if err != nil {

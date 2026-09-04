@@ -24,6 +24,9 @@ listen = "192.168.1.50"
 port = 18080
 startup_timeout = "45m"
 
+[gateway.client]
+url = "https://gateway.example.test:7443/v1/"
+
 [gateway.llama-cpp]
 backend = "vulkan"
 models_max = 2
@@ -40,6 +43,7 @@ models_max = 2
 	}
 	if !reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama-cpp", "dwarfstar"}) ||
 		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128"}) ||
+		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != "https://gateway.example.test:7443/v1/" ||
 		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 {
 		t.Fatalf("gateway=%#v", configuration.Gateway)
 	}
@@ -92,6 +96,10 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"data path":           {"[storage]\ndata_dir = 'relative'\n", "non-empty absolute path"},
 		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},
 		"models range":        {"[gateway.llama-cpp]\nmodels_max = 0\n", "at least 1"},
+		"client scheme":       {"[gateway.client]\nurl = 'ftp://example.test/v1'\n", "credential-free HTTP(S)"},
+		"client credentials":  {"[gateway.client]\nurl = 'http://user@example.test/v1'\n", "credential-free HTTP(S)"},
+		"client path":         {"[gateway.client]\nurl = 'http://example.test/other'\n", "path must be /v1"},
+		"client query":        {"[gateway.client]\nurl = 'http://example.test/v1?key=value'\n", "credential-free HTTP(S)"},
 		"invalid type":        {"[gateway]\nport = '8080'\n", "decimal integer"},
 		"duplicate setting":   {"[gateway]\nport = 8080\nport = 8081\n", "duplicate configuration setting"},
 		"duplicate section":   {"[gateway]\n[gateway]\n", "duplicate configuration section"},
@@ -146,7 +154,7 @@ func TestLoadRejectsNonRegularAndOversizedFiles(t *testing.T) {
 
 func TestLoadTreatsEverySettingAsOptional(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("[storage]\n[gateway]\n[gateway.llama-cpp]\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[storage]\n[gateway]\n[gateway.client]\n[gateway.llama-cpp]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	configuration, err := Load(map[string]string{}, Selection{Path: path})
@@ -190,6 +198,7 @@ func TestDefaultContentsIsCompleteAndRunnable(t *testing.T) {
 		configuration.Gateway.Applications == nil || len(configuration.Gateway.Applications) != 0 ||
 		configuration.Gateway.RenderNodes == nil || len(configuration.Gateway.RenderNodes) != 0 ||
 		configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort ||
+		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != DefaultGatewayURL ||
 		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" {
 		t.Fatalf("configuration=%#v", configuration)
 	}
@@ -212,6 +221,43 @@ func TestTrackedExampleLoads(t *testing.T) {
 func TestGatewayDefaultsAgree(t *testing.T) {
 	if DefaultGatewayPort != 7455 || DefaultGatewayURL != "http://127.0.0.1:7455/v1" {
 		t.Fatalf("port=%d URL=%q", DefaultGatewayPort, DefaultGatewayURL)
+	}
+}
+
+func TestGatewayClientURLPrecedenceAndNormalization(t *testing.T) {
+	configured := "http://configured.example.test:7455/v1/"
+	configuration := Configuration{Gateway: GatewayConfiguration{Client: GatewayClientConfiguration{URL: &configured}}}
+	environment := map[string]string{"PARACETAMOL_GATEWAY_URL": "http://environment.example.test:7455/v1"}
+	for name, test := range map[string]struct {
+		flag          string
+		environment   map[string]string
+		configuration Configuration
+		want          string
+	}{
+		"flag":          {"https://flag.example.test/v1/", environment, configuration, "https://flag.example.test/v1"},
+		"environment":   {"", environment, configuration, "http://environment.example.test:7455/v1"},
+		"configuration": {"", nil, configuration, "http://configured.example.test:7455/v1"},
+		"default":       {"", nil, Configuration{}, DefaultGatewayURL},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := SelectGatewayClientURL(test.flag, test.environment, test.configuration)
+			if err != nil || got != test.want {
+				t.Fatalf("URL=%q err=%v want=%q", got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeGatewayURLRejectsUnsafeOrAmbiguousEndpoints(t *testing.T) {
+	for _, value := range []string{
+		"", "aion.local:7455/v1", "ftp://aion.local/v1", "http://user@aion.local/v1",
+		"http://aion.local/other", "http://aion.local/v1?", "http://aion.local/v1#fragment",
+		"http://aion.local:/v1", "http://aion.local:0/v1", "http://aion.local:65536/v1",
+		"http://aion.local/%76%31", "http://aion.local/v1\u00a0",
+	} {
+		if _, err := NormalizeGatewayURL(value); err == nil {
+			t.Fatalf("accepted %q", value)
+		}
 	}
 }
 

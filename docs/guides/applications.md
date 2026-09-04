@@ -634,9 +634,11 @@ both options when changing a remote publication.
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
 ```
 
-The equivalent direct form is
+For a durable remote choice, set `[gateway.client].url` in the client host's
+selected `config.toml`. The equivalent direct form is
 `./paracetamol agent run pi --gateway-url URL --` (or the matching Maki
-command). A normal session performs a bounded
+command). Resolution is command flag, `PARACETAMOL_GATEWAY_URL`, configured
+client URL, then the built-in loopback default. A normal session performs a bounded
 `GET /v1/models` probe before starting Pi, requires the exact versioned
 Paracetamol gateway response marker, intersects the advertised IDs with the
 reviewed Paracetamol agent catalog, and applies the normal recommended-model

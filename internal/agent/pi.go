@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/config"
 	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/storage"
@@ -31,28 +31,6 @@ type PiPlan struct {
 	CompletionDivider []byte
 	Mode              string
 	Remote            bool
-}
-
-func NormalizeGatewayURL(value string) (string, error) {
-	if value == "" || strings.IndexFunc(value, func(r rune) bool { return r <= 32 }) >= 0 {
-		return "", fmt.Errorf("gateway URL must not be empty or contain whitespace")
-	}
-	parsed, err := url.Parse(value)
-	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", fmt.Errorf("gateway URL must be a credential-free HTTP(S) URL")
-	}
-	if parsed.Port() != "" {
-		port, err := parsePort(parsed.Port())
-		if err != nil || port == 0 {
-			return "", fmt.Errorf("invalid gateway URL port")
-		}
-	}
-	path := strings.TrimRight(parsed.Path, "/")
-	if path != "/v1" {
-		return "", fmt.Errorf("gateway URL path must be /v1")
-	}
-	parsed.Path, parsed.RawPath = "/v1", ""
-	return parsed.String(), nil
 }
 
 func DiscoverGatewayModels(ctx context.Context, endpoint string) ([]string, error) {
@@ -175,7 +153,7 @@ func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 		plan.Command = append(prefix, arguments...)
 		return plan, nil
 	}
-	endpoint, err := NormalizeGatewayURL(gatewayURL)
+	endpoint, err := config.NormalizeGatewayURL(gatewayURL)
 	if err != nil {
 		return PiPlan{}, err
 	}
@@ -276,13 +254,4 @@ func cloneEnvironment(source map[string]string) map[string]string {
 		result[key] = value
 	}
 	return result
-}
-
-func parsePort(value string) (int, error) {
-	var port int
-	_, err := fmt.Sscan(value, &port)
-	if err != nil || port < 1 || port > 65535 {
-		return 0, fmt.Errorf("invalid port")
-	}
-	return port, nil
 }

@@ -402,6 +402,14 @@ port with the host firewall.
 PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
 ```
 
+For a durable client choice, put the endpoint in the client host's selected
+configuration. A command flag or `PARACETAMOL_GATEWAY_URL` still overrides it.
+
+```toml
+[gateway.client]
+url = "http://gpu-host.local:7455/v1"
+```
+
 Both managed clients perform a bounded `/v1/models` probe and generate only
 the reviewed models that this gateway instance actually advertises. They also
 require the versioned Paracetamol gateway marker, so another service on the
