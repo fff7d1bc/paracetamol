@@ -340,6 +340,8 @@ requests with both valid counts, sum their counts before dividing, and report
 how many paired requests contributed. A missing cache count is not a cache
 miss. llama.cpp's `timings.cache_n` is a fallback when standard usage metadata
 is absent, and `prompt_n` counts only the newly evaluated part of that input.
+Fallback counts use the final observed metadata when usage and timings arrive
+in separate streaming events. Standard usage counts take precedence.
 
 These measurements do not invent detailed loading phases. Gateway wait combines
 scheduling, allocation switching and backend readiness. Upstream time can also

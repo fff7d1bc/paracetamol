@@ -441,7 +441,6 @@ type responseObserver struct {
 	timings        BackendTimings
 	now            func() time.Time
 	firstOutputAt  time.Time
-	inputFromUsage bool
 	cacheFromUsage bool
 }
 
@@ -480,7 +479,26 @@ func (observer *responseObserver) Finish() responseObservation {
 	} else if !observer.jsonOversized {
 		observer.observeJSON(observer.jsonBuffer)
 	}
-	return responseObservation{Tokens: observer.tokens, Timings: observer.timings, FirstOutputAt: observer.firstOutputAt}
+	// Timings and standard usage can arrive in separate SSE events. Derive
+	// fallback counts only after the final event so later cache/decode updates
+	// cannot leave a stale total. Standard usage always takes precedence.
+	tokens := observer.tokens
+	if tokens.Input == nil && observer.timings.PromptTokens != nil {
+		// llama.cpp prompt_n excludes the cached prefix.
+		input := *observer.timings.PromptTokens
+		cached := int64(0)
+		if tokens.Cached != nil {
+			cached = *tokens.Cached
+		}
+		if input <= math.MaxInt64-cached {
+			input += cached
+			tokens.Input = &input
+		}
+	}
+	if tokens.Output == nil {
+		tokens.Output = observer.timings.GeneratedTokens
+	}
+	return responseObservation{Tokens: tokens, Timings: observer.timings, FirstOutputAt: observer.firstOutputAt}
 }
 
 func (observer *responseObserver) observeSSE(value []byte) {
@@ -555,7 +573,6 @@ func (observer *responseObserver) observeJSON(value []byte) {
 	if usage, ok := rawObject(object["usage"]); ok {
 		if token, ok := firstInteger(usage, "prompt_tokens", "input_tokens"); ok {
 			observer.tokens.Input = token
-			observer.inputFromUsage = true
 		}
 		if token, ok := firstInteger(usage, "completion_tokens", "output_tokens"); ok {
 			observer.tokens.Output = token
@@ -590,28 +607,11 @@ func (observer *responseObserver) observeJSON(value []byte) {
 		if token, ok := firstInteger(timings, "cache_n"); ok && !observer.cacheFromUsage {
 			observer.tokens.Cached = token
 		}
-		if !observer.inputFromUsage && observer.timings.PromptTokens != nil {
-			// llama.cpp prompt_n counts evaluated tokens, not the cached prefix.
-			input := *observer.timings.PromptTokens
-			if cached := observer.tokens.Cached; cached != nil {
-				if input > math.MaxInt64-*cached {
-					observer.tokens.Input = nil
-				} else {
-					input += *cached
-					observer.tokens.Input = &input
-				}
-			} else {
-				observer.tokens.Input = &input
-			}
-		}
 		if milliseconds, ok := firstNumber(timings, "prompt_ms"); ok {
 			observer.timings.PromptMilliseconds = milliseconds
 		}
 		if token, ok := firstInteger(timings, "predicted_n"); ok {
 			observer.timings.GeneratedTokens = token
-			if observer.tokens.Output == nil {
-				observer.tokens.Output = token
-			}
 		}
 		if milliseconds, ok := firstNumber(timings, "predicted_ms"); ok {
 			observer.timings.GeneratedMilliseconds = milliseconds
