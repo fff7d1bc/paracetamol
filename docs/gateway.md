@@ -221,7 +221,7 @@ Use the human status client for the versioned endpoint:
 ./paracetamol status gateway --requests 10
 ```
 
-The v4 status schema reports the frozen applications, active allocation,
+The v5 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
 exact per-model residency. Every model reports its catalog-configured context.
 For a resident llama.cpp allocation, the gateway performs a bounded read-only
@@ -245,6 +245,36 @@ aggregate uses `predicted_n - 1` timed decode steps for each completion.
 Speculative decoding totals include drafted and accepted tokens when both are
 reported.
 
+Streaming requests also report time to first generated output, measured from
+gateway receipt to the first complete SSE event containing text, reasoning,
+refusal text, or a function name/argument fragment. Empty role chunks,
+keepalives and usage events do not count. This is observed first-output latency,
+not the backend's exact first-token timestamp. It includes scheduler wait,
+loading, processing and transport. Non-streaming requests and streams without
+an observed generated event leave it unavailable. The mean carries its own
+observation count rather than counting missing measurements as zero.
+
+Cache reuse is the cached fraction of total input tokens. Aggregates use only
+requests with both valid counts, sum their counts before dividing, and report
+how many paired requests contributed. A missing cache count is not a cache
+miss. llama.cpp's `timings.cache_n` is a fallback when standard usage metadata
+is absent, and `prompt_n` counts only the newly evaluated part of that input.
+
+These measurements do not invent detailed loading phases. Gateway wait combines
+scheduling, allocation switching and backend readiness. Upstream time can also
+contain llama.cpp router child loading, prompt processing and generation.
+Backend-reported prompt and generation durations remain separately labelled.
+
+Each status request also takes a read-only host resource snapshot. It reports
+system `MemAvailable` and total RAM, plus activity, temperature and supported
+SoC power sensors for only the gateway-selected render nodes. There is no
+background sampler or monitoring subprocess. Missing or malformed readings are
+unavailable, not zero. CPU mode samples no GPU. RAM is host-wide, not a model's
+footprint. VRAM/GTT counters are deliberately not used to estimate model memory
+because they do not cover every unified-memory allocation on Strix Halo.
+The [kernel's amdgpu power sensors](https://docs.kernel.org/gpu/amdgpu/thermal.html#hwmon-interfaces)
+include CPU power on APUs and are not wall-socket readings.
+
 DwarfStar residency follows its single allocation lifecycle. An unavailable,
 malformed, missing, or contradictory result becomes `unknown` with a fixed
 diagnostic rather than leaking backend detail.
@@ -255,7 +285,8 @@ records from a fixed 64-entry in-memory ring. A record contains its correlation
 ID, optional validated session ID, frozen model and application, direct TCP
 peer, bounded User-Agent, stream mode, outcome, HTTP status, timestamps,
 gateway wait/upstream/total wall time, and input/output/cached/reasoning token
-counts when the upstream reports them. llama.cpp records may also contain
+counts when the upstream reports them. Stream records may also contain observed
+first-output latency. llama.cpp records may also contain
 prompt and generation token counts with their durations, plus drafted and
 accepted token counts. A malformed or missing timing field makes only that
 measurement unavailable. DwarfStar currently reports no compatible inference

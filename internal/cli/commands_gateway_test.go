@@ -396,6 +396,25 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 
 func floatPointer(value float64) *float64 { return &value }
 
+func TestGatewayTimingAndCachePresentation(t *testing.T) {
+	first, input, cached := int64(2300), int64(100), int64(75)
+	metadata := gatewayRequestMetadata(gateway.RequestRecord{Stream: true, Timing: gateway.RequestTiming{FirstOutputMilliseconds: &first}, Tokens: gateway.TokenUsage{Input: &input, Cached: &cached}})
+	for _, want := range []string{"2.3s first output", "75.0% cache reuse"} {
+		if !strings.Contains(metadata, want) {
+			t.Fatalf("metadata lacks %q: %s", want, metadata)
+		}
+	}
+	if got := gatewayFirstOutputMean(gateway.AggregateMetric{Total: 4600, Observations: 2}, 4); got != "2.3s mean (2/4 requests observed)" {
+		t.Fatal(got)
+	}
+	if got := gatewayCacheReuse(gateway.AggregateCacheReuse{InputTokens: 100, CachedTokens: 75, Observations: 1, Ratio: floatPointer(.75)}); got != "75.0% (75/100 input tokens, 1 paired request)" {
+		t.Fatal(got)
+	}
+	if got := gatewayCacheReuse(gateway.AggregateCacheReuse{}); got != "unavailable" {
+		t.Fatal(got)
+	}
+}
+
 func TestStatusGatewayValidatesRecentRequestCountAndScope(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"gateway", "--requests", "0"},

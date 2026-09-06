@@ -16,13 +16,14 @@ import (
 	"sync/atomic"
 	"time"
 
+	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/identity"
 )
 
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v4"
+	StatusSchema    = "paracetamol.gateway-status.v5"
 	IdentityHeader  = "X-Paracetamol-Gateway"
 	IdentityValue   = "paracetamol.gateway.v1"
 )
@@ -37,18 +38,24 @@ type Server struct {
 	accepting       atomic.Bool
 	nextRequestID   atomic.Uint64
 	requests        requestLedger
+	resources       func() hostdoctor.ResourceSnapshot
+}
+
+type ServerOptions struct {
+	Resources func() hostdoctor.ResourceSnapshot
 }
 
 type Status struct {
-	Schema               string          `json:"schema"`
-	Gateway              string          `json:"gateway"`
-	InventoryFingerprint string          `json:"inventory_fingerprint"`
-	StartedAt            string          `json:"started_at"`
-	Applications         []string        `json:"applications"`
-	Models               []StatusModel   `json:"models"`
-	Scheduler            SchedulerStatus `json:"scheduler"`
-	Usage                UsageSummary    `json:"usage"`
-	RecentRequests       []RequestRecord `json:"recent_requests,omitempty"`
+	Schema               string                       `json:"schema"`
+	Gateway              string                       `json:"gateway"`
+	InventoryFingerprint string                       `json:"inventory_fingerprint"`
+	StartedAt            string                       `json:"started_at"`
+	Applications         []string                     `json:"applications"`
+	Models               []StatusModel                `json:"models"`
+	Scheduler            SchedulerStatus              `json:"scheduler"`
+	Usage                UsageSummary                 `json:"usage"`
+	RecentRequests       []RequestRecord              `json:"recent_requests,omitempty"`
+	Resources            *hostdoctor.ResourceSnapshot `json:"resources,omitempty"`
 }
 
 type StatusModel struct {
@@ -68,7 +75,7 @@ type ModelRuntime struct {
 	Quantization    string  `json:"quantization,omitempty"`
 }
 
-func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server, error) {
+func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options ServerOptions) (*Server, error) {
 	if scheduler == nil || len(registry.Models) == 0 {
 		return nil, fmt.Errorf("gateway server requires a scheduler and model inventory")
 	}
@@ -85,6 +92,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer) (*Server,
 	residencyTransport.Proxy = nil
 	server := &Server{
 		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
+		resources:       options.Resources,
 		residencyClient: &http.Client{Transport: residencyTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 	server.accepting.Store(true)
@@ -159,11 +167,16 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 		gatewayState = "shutting_down"
 	}
 	recentRequests, usage := server.requests.Snapshot(recentLimit)
+	var resources *hostdoctor.ResourceSnapshot
+	if server.resources != nil {
+		snapshot := server.resources()
+		resources = &snapshot
+	}
 	writeJSON(writer, http.StatusOK, Status{
 		Schema: StatusSchema, Gateway: gatewayState, InventoryFingerprint: server.registry.Fingerprint,
 		StartedAt: server.started.Format(time.RFC3339), Applications: applications,
 		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus, Usage: usage,
-		RecentRequests: recentRequests,
+		RecentRequests: recentRequests, Resources: resources,
 	})
 }
 
@@ -289,6 +302,10 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	if observer != nil {
 		observation := observer.Finish()
 		record.Tokens, record.BackendTimings = observation.Tokens, observation.Timings
+		if !observation.FirstOutputAt.IsZero() && observedWriter.status >= 200 && observedWriter.status < 300 {
+			milliseconds := elapsedMilliseconds(started, observation.FirstOutputAt)
+			record.Timing.FirstOutputMilliseconds = &milliseconds
+		}
 	}
 	record.HTTPStatus = observedWriter.status
 	switch {
@@ -352,9 +369,9 @@ func (server *Server) logRequestFinish(record RequestRecord) {
 	if record.Tokens.Input != nil || record.Tokens.Output != nil || record.Tokens.Cached != nil || record.Tokens.Reasoning != nil {
 		tokens = fmt.Sprintf("in:%s,out:%s,cached:%s,reasoning:%s", tokenLogValue(record.Tokens.Input), tokenLogValue(record.Tokens.Output), tokenLogValue(record.Tokens.Cached), tokenLogValue(record.Tokens.Reasoning))
 	}
-	logLine(server.log, "gateway | request %s finish outcome=%s session=%s status=%d wait=%dms upstream=%dms total=%dms tokens=%s",
+	logLine(server.log, "gateway | request %s finish outcome=%s session=%s status=%d wait=%dms upstream=%dms total=%dms first-output=%sms tokens=%s",
 		record.ID, record.Outcome, firstNonEmptyLog(record.SessionID, "none"), record.HTTPStatus, record.Timing.GatewayWaitMilliseconds,
-		record.Timing.UpstreamMilliseconds, record.Timing.TotalMilliseconds, tokens)
+		record.Timing.UpstreamMilliseconds, record.Timing.TotalMilliseconds, tokenLogValue(record.Timing.FirstOutputMilliseconds), tokens)
 }
 
 func tokenLogValue(value *int64) string {

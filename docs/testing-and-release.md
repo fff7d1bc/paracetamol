@@ -291,6 +291,15 @@ and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
 
+First-output timing must ignore role-only and usage-only SSE chunks and remain
+unavailable for non-streaming responses. Check text, reasoning and tool-call
+streams, plus fragmented, malformed and oversized events. Cache-reuse totals
+must use paired input/cache observations, not all input counts divided by a
+partially reported cache count. Verify status reads only selected GPU sensors,
+preserves unavailable values, reports host RAM rather than estimated model
+memory, and labels APU SoC power as including the CPU. No sensor sampling may
+start a backend or run in the inference proxy path.
+
 For a backend-restricted llama.cpp preset, verify direct startup automatically
 selects its declared backend only when `--backend` was omitted. An explicit
 incompatible choice and a managed benchmark must fail before container start.
