@@ -139,7 +139,10 @@ them:
   lists and container-side Python or shell mappings must agree with it.
 - Web applications use private rootless networking and publish exactly one
   TCP port. The default host address is `127.0.0.1`. An explicit non-loopback
-  address has no authentication and must remain visibly warned about.
+  address must remain visibly warned about. Direct applications remain
+  unauthenticated unless their reviewed mode explicitly provides it. The
+  gateway supports optional Bearer authentication, which does not encrypt HTTP
+  or protect private backend ports from untrusted local processes.
 - The foreground inference gateway exposes only its selected applications and
   a frozen receipt-verified startup inventory. Omitted application selection
   discovers every built application with at least one schedulable verified

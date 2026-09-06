@@ -132,6 +132,16 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 			return invalidConfigurationValue(setting, err)
 		}
 		configuration.Gateway.Client.URL = &value
+	case "gateway.api_key_file", "gateway.client.api_key_file":
+		value, err := parseConfigurationString(rawValue)
+		if err != nil {
+			return invalidConfigurationValue(setting, err)
+		}
+		if section == "gateway" {
+			configuration.Gateway.APIKeyFile = &value
+		} else {
+			configuration.Gateway.Client.APIKeyFile = &value
+		}
 	case "gateway.llama-cpp.backend":
 		value, err := parseConfigurationString(rawValue)
 		if err != nil {

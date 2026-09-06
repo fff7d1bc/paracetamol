@@ -300,6 +300,18 @@ preserves unavailable values, reports host RAM rather than estimated model
 memory, and labels APU SoC power as including the CPU. No sensor sampling may
 start a backend or run in the inference proxy path.
 
+With optional gateway authentication, test every route with missing, wrong,
+duplicate and correct Bearer headers on both loopback and publication
+listeners. Rejected requests must not read bodies, sample resources, query
+model residency or start a backend. Confirm credentials do not reach backend
+requests, logs, status or process arguments. Metadata clients must refuse
+redirects, distinguish HTTP 401 from a wrong service, and bound response reads.
+Check server/client key-file precedence independently, private file modes,
+symlink/FIFO/empty/malformed rejection and key rotation by restart. Run managed
+Pi and Maki against an authenticated endpoint using private test state and
+verify actual inference headers, not only generated configuration. Anonymous
+operation must remain unchanged when no key is configured.
+
 For a backend-restricted llama.cpp preset, verify direct startup automatically
 selects its declared backend only when `--backend` was omitted. An explicit
 incompatible choice and a managed benchmark must fail before container start.

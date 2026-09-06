@@ -69,7 +69,7 @@ publishes, rather than ComfyUI's unavoidable wildcard bind inside the private
 container network. Registered custom-node installation is available when the
 host publication is loopback. A non-loopback listener can run already
 installed nodes, but Manager keeps software installation disabled because
-Paracetamol does not add authentication.
+Paracetamol does not add authentication to ComfyUI.
 
 For remote administration, keep the default loopback publication and carry it
 through SSH:
@@ -617,8 +617,10 @@ restored scrollback but does not enter the model context.
 Pi or Maki can run on a client host while the gateway runs on a different GPU
 host. A non-loopback `--listen` adds that publication while preserving the
 gateway's IPv4 loopback endpoint for clients on the GPU host. Publish only on
-a trusted LAN address and limit its port with the host firewall because the
-gateway provides no application authentication.
+a trusted LAN address and limit its port with the host firewall. The gateway
+supports [optional Bearer authentication](../gateway.md#optional-authentication),
+disabled by default. Configure the matching client key for managed Pi, Maki and
+`status gateway`. Plain HTTP still exposes keys and prompts to the network.
 
 The same `--port` is used by the loopback and additional endpoint. Using
 `--port` without `--listen` selects loopback for that invocation, even when

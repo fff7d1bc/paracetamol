@@ -57,12 +57,14 @@ type GatewayConfiguration struct {
 	Listen         *string
 	Port           *int
 	StartupTimeout *string
+	APIKeyFile     *string
 	Client         GatewayClientConfiguration
 	LlamaCPP       GatewayLlamaConfiguration
 }
 
 type GatewayClientConfiguration struct {
-	URL *string
+	URL        *string
+	APIKeyFile *string
 }
 
 type GatewayLlamaConfiguration struct {
@@ -159,6 +161,14 @@ func Load(environment map[string]string, selection Selection) (Configuration, er
 }
 
 func validateConfiguration(configuration Configuration, path string) error {
+	for _, setting := range []struct {
+		name  string
+		value *string
+	}{{"[gateway].api_key_file", configuration.Gateway.APIKeyFile}, {"[gateway.client].api_key_file", configuration.Gateway.Client.APIKeyFile}} {
+		if setting.value != nil && (*setting.value == "" || !filepath.IsAbs(*setting.value)) {
+			return controlerr.New("%s must be a non-empty absolute path: %s", setting.name, path)
+		}
+	}
 	if value := configuration.Storage.DataDir; value != nil {
 		if *value == "" || !filepath.IsAbs(*value) {
 			return controlerr.New("[storage].data_dir must be a non-empty absolute path: %s", path)
@@ -245,9 +255,13 @@ func DefaultContents(dataDir string) []byte {
 		"render_nodes = []\n" +
 		"listen = \"127.0.0.1\"\n" +
 		"port = " + strconv.Itoa(DefaultGatewayPort) + "\n" +
-		"startup_timeout = \"30m\"\n\n" +
+		"startup_timeout = \"30m\"\n" +
+		"# Optional Bearer authentication. Use a private file containing a random key.\n" +
+		"# api_key_file = \"/absolute/path/to/gateway.key\"\n\n" +
 		"[gateway.client]\n" +
-		"url = " + strconv.Quote(DefaultGatewayURL) + "\n\n" +
+		"url = " + strconv.Quote(DefaultGatewayURL) + "\n" +
+		"# Client credentials are separate, including for a local gateway.\n" +
+		"# api_key_file = \"/absolute/path/to/gateway.key\"\n\n" +
 		"[gateway.llama-cpp]\n" +
 		"backend = \"rocm\"\n" +
 		"models_max = 1\n")

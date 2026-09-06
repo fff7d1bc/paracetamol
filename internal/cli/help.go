@@ -26,6 +26,7 @@ var metavarByFlag = map[string]string{
 	"flash-attn":             "POLICY",
 	"from-file":              "PATH",
 	"gateway-url":            "URL",
+	"gateway-api-key-file":   "PATH",
 	"generation-tokens":      "TOKENS",
 	"image":                  "TAG",
 	"image-tag":              "TAG",

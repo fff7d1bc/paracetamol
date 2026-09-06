@@ -4,12 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"path/filepath"
-	"time"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
@@ -31,52 +28,15 @@ type PiPlan struct {
 	CompletionDivider []byte
 	Mode              string
 	Remote            bool
+	Authenticated     bool
 }
 
-func DiscoverGatewayModels(ctx context.Context, endpoint string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/models", nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Accept", "application/json")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("cannot reach gateway model inventory: %w", err)
-	}
-	defer response.Body.Close()
-	markers := response.Header.Values(gateway.IdentityHeader)
-	if len(markers) != 1 || markers[0] != gateway.IdentityValue {
-		return nil, fmt.Errorf("%s is not a %s gateway (HTTP %d)", endpoint, identity.DisplayName, response.StatusCode)
-	}
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gateway model inventory returned HTTP %d", response.StatusCode)
-	}
-	raw, err := io.ReadAll(io.LimitReader(response.Body, 1024*1024+1))
-	if err != nil || len(raw) > 1024*1024 {
-		return nil, fmt.Errorf("gateway model inventory is unreadable or too large")
-	}
-	var document struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &document); err != nil || document.Data == nil {
-		return nil, fmt.Errorf("gateway returned an invalid model inventory")
-	}
-	seen := make(map[string]bool)
-	var result []string
-	for _, item := range document.Data {
-		if item.ID != "" && !seen[item.ID] {
-			seen[item.ID] = true
-			result = append(result, item.ID)
+func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Model, apiKey string) ([]byte, error) {
+	if apiKey != "" {
+		if err := config.ValidateGatewayKey(apiKey); err != nil {
+			return nil, err
 		}
 	}
-	return result, nil
-}
-
-func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Model) ([]byte, error) {
 	models := make([]map[string]any, 0, len(selected))
 	for _, model := range selected {
 		entry := map[string]any{
@@ -111,30 +71,47 @@ func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Mod
 		}
 		models = append(models, entry)
 	}
-	document := map[string]any{"providers": map[string]any{ProviderID: piProvider(identity.DisplayName+" gateway", endpoint, models)}}
+	document := map[string]any{"providers": map[string]any{ProviderID: piProvider(identity.DisplayName+" gateway", endpoint, models, apiKey)}}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	return append(encoded, '\n'), err
 }
 
-func piProvider(name, endpoint string, models []map[string]any) map[string]any {
-	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": "paracetamol-local", "authHeader": false, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true, "sendSessionAffinityHeaders": true, "sessionAffinityFormat": "openai-nosession"}, "models": models}
+func piProvider(name, endpoint string, models []map[string]any, apiKey string) map[string]any {
+	authenticated := apiKey != ""
+	if !authenticated {
+		apiKey = "paracetamol-local"
+	}
+	return map[string]any{"name": name, "baseUrl": endpoint, "api": "openai-completions", "apiKey": apiKey, "authHeader": authenticated, "compat": map[string]any{"supportsDeveloperRole": false, "supportsReasoningEffort": true, "sendSessionAffinityHeaders": true, "sessionAffinityFormat": "openai-nosession"}, "models": models}
 }
 
 func zeroCost() map[string]int {
 	return map[string]int{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
 }
 
-func CreatePiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime) (PiPlan, error) {
-	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, nil, true)
+func PiMode(arguments []string) string {
+	if len(arguments) > 0 && arguments[0] == "--" {
+		arguments = arguments[1:]
+	}
+	if len(arguments) > 0 && contains([]string{"--help", "-h", "--version", "-v"}, arguments[0]) {
+		return "passthrough"
+	}
+	if len(arguments) > 0 && contains([]string{"install", "remove", "uninstall", "update", "list", "config", "auth"}, arguments[0]) {
+		return "management"
+	}
+	return "session"
+}
+
+func CreatePiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, apiKey string) (PiPlan, error) {
+	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, nil, true, apiKey)
 }
 
 // CreatePiPlanForModels is the deterministic benchmark seam. Normal sessions
 // must discover the live gateway inventory instead of supplying it themselves.
 func CreatePiPlanForModels(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, advertised []string) (PiPlan, error) {
-	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, advertised, false)
+	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, advertised, false, "")
 }
 
-func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, advertised []string, discover bool) (PiPlan, error) {
+func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, advertised []string, discover bool, apiKey string) (PiPlan, error) {
 	if len(arguments) > 0 && arguments[0] == "--" {
 		arguments = arguments[1:]
 	}
@@ -142,13 +119,8 @@ func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 		return PiPlan{}, fmt.Errorf("Pi is managed by %s; update the checkout and run %s", identity.DisplayName, identity.Command("agent", "install", "pi"))
 	}
 	prefix := []string{runtime.Node, runtime.Entrypoint}
-	mode := "session"
-	if len(arguments) > 0 && contains([]string{"--help", "-h", "--version", "-v"}, arguments[0]) {
-		mode = "passthrough"
-	} else if len(arguments) > 0 && contains([]string{"install", "remove", "uninstall", "update", "list", "config", "auth"}, arguments[0]) {
-		mode = "management"
-	}
-	plan := PiPlan{RuntimeRoot: runtime.Root, Mode: mode}
+	mode := PiMode(arguments)
+	plan := PiPlan{RuntimeRoot: runtime.Root, Mode: mode, Authenticated: apiKey != ""}
 	if mode == "passthrough" {
 		plan.Command = append(prefix, arguments...)
 		return plan, nil
@@ -159,7 +131,7 @@ func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 	}
 	plan.Endpoint, plan.Remote = endpoint, remoteEndpoint(endpoint)
 	if mode == "session" && discover {
-		advertised, err = DiscoverGatewayModels(ctx, endpoint)
+		advertised, err = gateway.FetchModelIDs(ctx, endpoint, apiKey)
 		if err != nil {
 			return PiPlan{}, err
 		}
@@ -171,7 +143,7 @@ func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 	if err != nil {
 		return PiPlan{}, err
 	}
-	plan.Config, err = PiConfig(managed, endpoint, models)
+	plan.Config, err = PiConfig(managed, endpoint, models, apiKey)
 	if err != nil {
 		return PiPlan{}, err
 	}

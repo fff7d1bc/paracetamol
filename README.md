@@ -392,10 +392,15 @@ client-supplied reasoning or sampler fields appear when available. Prompts and
 response content are not retained. Managed Pi uses its real session UUID.
 Maki groups one launcher invocation.
 
+Status also shows observed streaming first-output latency, prompt-cache reuse
+and a host RAM/GPU sensor snapshot. Missing measurements stay unavailable.
+
 Pi and Maki can instead use a gateway on another trusted host. The gateway
 retains its local loopback endpoint while adding the requested publication.
-It has no authentication, so select one intended address and restrict that
-port with the host firewall.
+Authentication is optional and off by default. Select one intended address and
+restrict that port with the host firewall. See
+[gateway authentication](docs/gateway.md#optional-authentication) to require a
+Bearer key for Pi, Maki and other HTTP clients.
 
 ```bash
 # GPU host

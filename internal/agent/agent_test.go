@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +25,99 @@ func projectRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func TestClientKeyStaysInPrivateProviderFiles(t *testing.T) {
+	const key = "test-key-0123456789abcdef0123456789abcdef"
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := PiConfig(managed, "http://127.0.0.1:7455/v1", nil, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Providers map[string]struct {
+			APIKey     string `json:"apiKey"`
+			AuthHeader bool   `json:"authHeader"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(configuration, &document); err != nil {
+		t.Fatal(err)
+	}
+	if provider := document.Providers[ProviderID]; provider.APIKey != key || !provider.AuthHeader {
+		t.Fatal("Pi auth not configured")
+	}
+	dataRoot := t.TempDir()
+	dir, err := PreparePiState(PiPlan{Config: configuration}, dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "models.json")
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("Pi private mode: %v", err)
+	}
+	provider := makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", nil, "", key)
+	paths, err := PrepareMakiState(MakiPlan{Providers: map[string][]byte{ProviderID: provider}}, dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path = filepath.Join(paths.Config, "maki", "providers", ProviderID)
+	info, err = os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("Maki private mode: %v", err)
+	}
+	output, err := exec.Command("/bin/sh", path, "resolve").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resolved struct {
+		Headers map[string]string `json:"headers"`
+	}
+	if err := json.Unmarshal(output, &resolved); err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Headers["Authorization"] != "Bearer "+key {
+		t.Fatal("Maki resolver did not supply key")
+	}
+	configuration, err = PiConfig(managed, "http://127.0.0.1:7455/v1", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = PreparePiState(PiPlan{Config: configuration}, dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = PrepareMakiState(MakiPlan{Providers: map[string][]byte{ProviderID: makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", nil, "", "")}}, dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(dir, "models.json"), filepath.Join(paths.Config, "maki/providers", ProviderID)} {
+		contents, err := os.ReadFile(path)
+		if err != nil || strings.Contains(string(contents), key) {
+			t.Fatal("relaunch retained old key")
+		}
+	}
+}
+
+func TestClientModeKeepsManagementIndependentOfGatewayCredentials(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"install", "plugin"}, {"update", "--extensions"}, {"auth"}} {
+		if PiMode(args) == "session" {
+			t.Fatalf("Pi mode for %v", args)
+		}
+	}
+	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"models"}, {"update"}, {"index", "src"}} {
+		if MakiMode(args) == "session" {
+			t.Fatalf("Maki mode for %v", args)
+		}
+	}
+	for _, args := range [][]string{nil, {"--print", "hello"}, {"--", "hello"}} {
+		if PiMode(args) != "session" || MakiMode(args) != "session" {
+			t.Fatalf("session mode for %v", args)
+		}
+	}
 }
 
 type sandboxRunner struct{ bwrap string }
@@ -175,7 +269,7 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := PiConfig(managed, "http://127.0.0.1:8080/v1", models)
+	encoded, err := PiConfig(managed, "http://127.0.0.1:8080/v1", models, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,11 +293,11 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 
 func TestMakiProviderAddsOnlyExplicitPerLaunchSessionHeader(t *testing.T) {
 	const session = "019fe5cc-5cad-7a92-aead-f0838931fb95"
-	withSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, session))
+	withSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, session, ""))
 	if !strings.Contains(withSession, "X-Paracetamol-Session-ID") || !strings.Contains(withSession, session) {
 		t.Fatalf("provider lacks session header: %s", withSession)
 	}
-	withoutSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, ""))
+	withoutSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, "", ""))
 	if strings.Contains(withoutSession, "X-Paracetamol-Session-ID") {
 		t.Fatalf("provider emitted an empty session header: %s", withoutSession)
 	}
@@ -225,7 +319,7 @@ func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 		_, _ = writer.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash-0731-q2-imatrix"}]}`))
 	}))
 	defer server.Close()
-	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), server.URL+"/v1", nil, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"})
+	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), server.URL+"/v1", nil, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +340,7 @@ func TestGatewayDiscoveryRequiresExactIdentity(t *testing.T) {
 	}{
 		{name: "missing marker", status: http.StatusNotFound, wantError: "is not a Paracetamol gateway (HTTP 404)"},
 		{name: "wrong marker", marker: "foreign.gateway", status: http.StatusOK, wantError: "is not a Paracetamol gateway (HTTP 200)"},
-		{name: "gateway error", marker: gateway.IdentityValue, status: http.StatusServiceUnavailable, wantError: "gateway model inventory returned HTTP 503"},
+		{name: "gateway error", marker: gateway.IdentityValue, status: http.StatusServiceUnavailable, wantError: "gateway returned HTTP 503"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -257,7 +351,7 @@ func TestGatewayDiscoveryRequiresExactIdentity(t *testing.T) {
 				writer.WriteHeader(test.status)
 			}))
 			defer server.Close()
-			_, err := DiscoverGatewayModels(context.Background(), server.URL+"/v1")
+			_, err := gateway.FetchModelIDs(context.Background(), server.URL+"/v1", "")
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("err=%v, want containing %q", err, test.wantError)
 			}
@@ -270,7 +364,7 @@ func TestPiManagementDoesNotContactGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:1/v1", []string{"list"}, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"})
+	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:1/v1", []string{"list"}, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

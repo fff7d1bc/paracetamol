@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -99,6 +100,7 @@ func (app *App) agentInstall(args []string) error {
 func (app *App) agentPi(args []string) error {
 	set := app.flags("agent run pi", usage("agent", "run", "pi", "[OPTIONS]", "[-- PI-ARGS]"))
 	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1 (default: "+config.DefaultGatewayURL+")")
+	keyFile := set.String("gateway-api-key-file", "", "private gateway client Bearer-key file")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Pi to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -135,7 +137,17 @@ func (app *App) agentPi(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreatePiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, runtime)
+	if set.changed("gateway-api-key-file") && *keyFile == "" {
+		return controlerr.Usage("--gateway-api-key-file must name a private key file")
+	}
+	apiKey := ""
+	if agent.PiMode(upstreamArgs) == "session" {
+		apiKey, err = config.SelectGatewayClientKey(*keyFile, app.Environment, configuration)
+		if err != nil {
+			return err
+		}
+	}
+	plan, err := agent.CreatePiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, runtime, apiKey)
 	if err != nil {
 		return err
 	}
@@ -153,10 +165,7 @@ func (app *App) agentPi(args []string) error {
 	command := plan.Command
 	environment := agent.PiEnvironment(app.Environment, agentDir, plan.Mode == "session")
 	if plan.Remote {
-		terminal := app.terminal(app.Stderr)
-		fmt.Fprintln(app.Stderr, terminal.Heading("Pi remote gateway"))
-		writeDetailRows(app.Stderr, terminal, [][2]string{{"Endpoint", plan.Endpoint}})
-		fmt.Fprintf(app.Stderr, "%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Warning("WARNING:"))
+		app.writeAgentRemoteGateway("Pi", plan.Endpoint, plan.Authenticated)
 	}
 	if *sandbox {
 		child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
@@ -179,6 +188,7 @@ func (app *App) agentPi(args []string) error {
 func (app *App) agentMaki(args []string) error {
 	set := app.flags("agent run maki", usage("agent", "run", "maki", "[OPTIONS]", "[-- MAKI-ARGS]"))
 	gatewayURL := set.String("gateway-url", "", "gateway base URL ending in /v1 (default: "+config.DefaultGatewayURL+")")
+	keyFile := set.String("gateway-api-key-file", "", "private gateway client Bearer-key file")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	sandbox := set.Bool("sandbox", true, "confine Maki to the working directory")
 	noSandbox := set.Bool("no-sandbox", false, "use the normal host filesystem")
@@ -211,7 +221,17 @@ func (app *App) agentMaki(args []string) error {
 	if err != nil {
 		return err
 	}
-	plan, err := agent.CreateMakiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, app.Environment)
+	if set.changed("gateway-api-key-file") && *keyFile == "" {
+		return controlerr.Usage("--gateway-api-key-file must name a private key file")
+	}
+	apiKey := ""
+	if agent.MakiMode(upstreamArgs) == "session" {
+		apiKey, err = config.SelectGatewayClientKey(*keyFile, app.Environment, configuration)
+		if err != nil {
+			return err
+		}
+	}
+	plan, err := agent.CreateMakiPlan(app.Context, managed, app.Root, endpoint, upstreamArgs, app.Environment, apiKey)
 	if err != nil {
 		return err
 	}
@@ -232,10 +252,7 @@ func (app *App) agentMaki(args []string) error {
 		return err
 	}
 	if plan.Remote {
-		terminal := app.terminal(app.Stderr)
-		fmt.Fprintln(app.Stderr, terminal.Heading("Maki remote gateway"))
-		writeDetailRows(app.Stderr, terminal, [][2]string{{"Endpoint", plan.Endpoint}})
-		fmt.Fprintf(app.Stderr, "%s prompts and tool results cross this unauthenticated connection. Trust the remote host and network boundary.\n", terminal.Warning("WARNING:"))
+		app.writeAgentRemoteGateway("Maki", plan.Endpoint, plan.Authenticated)
 	}
 	if *sandbox {
 		sandboxPlan, err := agent.CreateSandboxPlan(app.Context, app.Runner, command, dataRoot, mustWorkingDirectory(), "maki", map[string]string{}, app.Environment, nil)
@@ -257,6 +274,22 @@ func mustWorkingDirectory() string {
 		return "."
 	}
 	return value
+}
+
+func (app *App) writeAgentRemoteGateway(client, endpoint string, authenticated bool) {
+	terminal := app.terminal(app.Stderr)
+	authentication := "no key supplied"
+	if authenticated {
+		authentication = "Bearer key supplied"
+	}
+	fmt.Fprintln(app.Stderr, terminal.Heading(client+" remote gateway"))
+	writeDetailRows(app.Stderr, terminal, [][2]string{{"Endpoint", endpoint}, {"Authentication", authentication}})
+	parsed, _ := url.Parse(endpoint)
+	if parsed.Scheme == "http" {
+		fmt.Fprintf(app.Stderr, "%s HTTP does not encrypt credentials, prompts or tool results. Trust the remote host and network boundary.\n", terminal.Warning("WARNING:"))
+	} else {
+		fmt.Fprintln(app.Stderr, terminal.Muted("Prompts and tool results are sent to the remote host over HTTPS."))
+	}
 }
 
 func (app *App) execProcess(command []string, environment map[string]string) error {

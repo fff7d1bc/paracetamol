@@ -15,6 +15,7 @@ import (
 
 	"paracetamol/internal/config"
 	"paracetamol/internal/gateway"
+	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/process"
 )
 
@@ -275,6 +276,7 @@ func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
 func TestStatusGatewayUsesVersionedEndpoint(t *testing.T) {
 	requested := ""
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
 		requested = request.URL.Path
 		_ = json.NewEncoder(writer).Encode(gateway.Status{
 			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
@@ -296,6 +298,7 @@ func TestStatusGatewayUsesVersionedEndpoint(t *testing.T) {
 func TestStatusGatewayUsesConfiguredClientURL(t *testing.T) {
 	requested := ""
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
 		requested = request.URL.Path
 		_ = json.NewEncoder(writer).Encode(gateway.Status{
 			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
@@ -319,8 +322,70 @@ func TestStatusGatewayUsesConfiguredClientURL(t *testing.T) {
 
 func TestGatewayURLRejectsCredentialsAndArbitraryPaths(t *testing.T) {
 	for _, value := range []string{"ftp://example.test/v1", "http://user@example.test/v1", "http://example.test/other"} {
-		if _, err := parseGatewayURL(value); err == nil {
+		if _, err := config.NormalizeGatewayURL(value); err == nil {
 			t.Fatalf("URL %q was accepted", value)
+		}
+	}
+}
+
+func TestStatusGatewayAuthenticationAndResourcePresentation(t *testing.T) {
+	const key = "client-key-0123456789abcdef0123456789abcdef"
+	keyFile := filepath.Join(t.TempDir(), "client.key")
+	if err := os.WriteFile(keyFile, []byte(key), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	total, available := uint64(128<<30), uint64(32<<30)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
+		if r.Header.Get("Authorization") != "Bearer "+key {
+			w.WriteHeader(401)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(gateway.Status{Schema: gateway.StatusSchema, Gateway: "ready", AuthenticationEnabled: true,
+			Resources: &hostdoctor.ResourceSnapshot{CollectedAt: "sample", MemoryTotalBytes: &total, MemoryAvailableBytes: &available, GPUs: []hostdoctor.GPUResources{{Device: "renderD128", BusyPercent: floatPointer(90), TemperatureCelsius: floatPointer(65), SoCPowerWatts: floatPointer(87), PowerSample: "average"}}}})
+	}))
+	defer server.Close()
+	app, stdout, _ := testApp(t, &commandRunner{})
+	if err := app.commandStatus([]string{"gateway", "--gateway-url", server.URL + "/v1"}); err == nil || !strings.Contains(err.Error(), "authentication failed") {
+		t.Fatalf("401=%v", err)
+	}
+	if err := app.commandStatus([]string{"gateway", "--gateway-url", server.URL + "/v1", "--gateway-api-key-file", keyFile}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Bearer key required", "Host resources", "32.0 GiB available / 128.0 GiB total", "90% busy", "65.0 °C", "87.0 W SoC (average)", "not model memory"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("output lacks %q", want)
+		}
+	}
+	if strings.Contains(stdout.String(), key) || strings.Contains(stdout.String(), keyFile) {
+		t.Fatal("status leaked credentials")
+	}
+}
+
+func TestGatewayCredentialFlagsRejectEmptyOrWrongScope(t *testing.T) {
+	app, _, _ := testApp(t, &commandRunner{})
+	for _, args := range [][]string{{"gateway", "--gateway-api-key-file="}, {"llama-cpp", "--gateway-api-key-file=/unused/key"}} {
+		if err := app.commandStatus(args); err == nil || !strings.Contains(err.Error(), "--gateway-api-key-file") {
+			t.Fatalf("status %v: %v", args, err)
+		}
+	}
+	if err := app.runGateway([]string{"--api-key-file="}); err == nil || !strings.Contains(err.Error(), "--api-key-file") {
+		t.Fatalf("run gateway: %v", err)
+	}
+}
+
+func TestRemoteGatewayWarningSeparatesAuthenticationFromEncryption(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		for _, scheme := range []string{"http", "https"} {
+			app, _, stderr := testApp(t, &commandRunner{})
+			app.writeAgentRemoteGateway("Pi", scheme+"://gateway.example.test/v1", authenticated)
+			want := "no key supplied"
+			if authenticated {
+				want = "Bearer key supplied"
+			}
+			if !strings.Contains(stderr.String(), want) || strings.Contains(stderr.String(), "HTTP does not encrypt") != (scheme == "http") {
+				t.Fatalf("warning=%s", stderr)
+			}
 		}
 	}
 }
@@ -333,6 +398,7 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	context, trainingContext := int64(262144), int64(32768)
 	sessionID := "019fe5cc-5cad-7a92-aead-f0838931fb95"
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
 		requested = request.URL.RequestURI()
 		_ = json.NewEncoder(writer).Encode(gateway.Status{
 			Schema: gateway.StatusSchema, Gateway: "ready", StartedAt: "2026-01-01T00:00:00Z",
