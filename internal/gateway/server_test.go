@@ -12,9 +12,11 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/textmodel"
 )
@@ -39,7 +41,7 @@ func testGatewayServer(t *testing.T, upstream *httptest.Server) (*httptest.Serve
 		t.Fatal(err)
 	}
 	registry := Registry{Models: []Model{{ID: "fixture", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP}}, Fingerprint: "fixture", byID: map[string]Model{"fixture": {ID: "fixture", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP}}}
-	server, err := NewServer(registry, scheduler, io.Discard)
+	server, err := NewServer(registry, scheduler, io.Discard, ServerOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,9 +63,45 @@ func requireGatewayIdentity(t *testing.T, response *http.Response) {
 	}
 }
 
-func TestGatewayStatusSchemaIsVersionFour(t *testing.T) {
-	if StatusSchema != "paracetamol.gateway-status.v4" {
+func TestGatewayStatusSchemaIsVersionFive(t *testing.T) {
+	if StatusSchema != "paracetamol.gateway-status.v5" {
 		t.Fatalf("status schema=%q", StatusSchema)
+	}
+}
+
+func TestServerReportsStreamingFirstOutputAndOnDemandResources(t *testing.T) {
+	const stream = "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"reasoning_content\":\"private thought\"}}]}\n\ndata: {\"usage\":{\"prompt_tokens\":100,\"prompt_tokens_details\":{\"cached_tokens\":80}}}\n\ndata: [DONE]\n\n"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, stream)
+	}))
+	defer upstream.Close()
+	_, _, handler := testGatewayServer(t, upstream)
+	var samples atomic.Int32
+	handler.resources = func() hostdoctor.ResourceSnapshot {
+		samples.Add(1)
+		return hostdoctor.ResourceSnapshot{CollectedAt: "sample-time", GPUs: []hostdoctor.GPUResources{{Device: "renderD128"}}}
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"fixture","stream":true}`)))
+	if response.Body.String() != stream || samples.Load() != 0 {
+		t.Fatal("observation changed streaming bytes or sampled during inference")
+	}
+	recent := handler.requests.Recent(1)
+	if len(recent) != 1 || recent[0].Timing.FirstOutputMilliseconds == nil || *recent[0].Timing.FirstOutputMilliseconds > recent[0].Timing.TotalMilliseconds {
+		t.Fatalf("record=%+v", recent)
+	}
+	statusResponse := httptest.NewRecorder()
+	handler.ServeHTTP(statusResponse, httptest.NewRequest(http.MethodGet, "/paracetamol/v1/status?requests=1", nil))
+	var status Status
+	if err := json.Unmarshal(statusResponse.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if samples.Load() != 1 || status.Resources == nil || status.Resources.CollectedAt != "sample-time" || status.Usage.Overall.Timing.FirstOutput.Observations != 1 {
+		t.Fatalf("status=%+v", status)
+	}
+	if strings.Contains(statusResponse.Body.String(), "private thought") {
+		t.Fatal("generation content leaked into status")
 	}
 }
 
@@ -263,7 +301,7 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 		byID:        map[string]Model{"fixture": {ID: "fixture", Application: "llama-cpp", Context: 262144, Backend: textmodel.BackendLlamaCPP}},
 	}
 	var logs bytes.Buffer
-	handler, err := NewServer(registry, scheduler, &logs)
+	handler, err := NewServer(registry, scheduler, &logs, ServerOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +450,7 @@ func TestServerRecordsBackendStartFailure(t *testing.T) {
 		byID:   map[string]Model{"fixture": {ID: "fixture", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP}},
 	}
 	var logs bytes.Buffer
-	handler, _ := NewServer(registry, scheduler, &logs)
+	handler, _ := NewServer(registry, scheduler, &logs, ServerOptions{})
 	server := httptest.NewServer(handler)
 	defer func() {
 		server.Close()
@@ -459,7 +497,7 @@ func TestServerRecordsQueueFullAndQueuedCancellation(t *testing.T) {
 			"dwarf": {ID: "dwarf", Application: "dwarfstar", Backend: textmodel.BackendDwarfStar},
 		},
 	}
-	handler, _ := NewServer(registry, scheduler, io.Discard)
+	handler, _ := NewServer(registry, scheduler, io.Discard, ServerOptions{})
 	server := httptest.NewServer(handler)
 	defer func() {
 		server.Close()

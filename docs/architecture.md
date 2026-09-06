@@ -775,7 +775,12 @@ tools, authorization, and backend model arguments never enter it. Session
 correlation accepts only explicit UUID-shaped headers and never derives an
 identifier from conversation content. Exact llama.cpp child residency comes
 from a bounded read-only probe of the router's private `/models` endpoint, not
-from allocation state or a model-management request. See `docs/gateway.md` for
+from allocation state or a model-management request. Streaming first-output
+latency is observed from generated SSE deltas without retaining their content.
+Cache-reuse aggregates keep matched input/cache counts. `internal/hostdoctor/`
+owns the on-demand `/proc` and selected-device sysfs resource snapshot. It does
+not estimate model memory from unified-memory GPU counters or alter power
+policy. See `docs/gateway.md` for
 the public surface and current limits.
 
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and

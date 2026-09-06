@@ -18,6 +18,7 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/gateway"
+	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/runtime"
@@ -163,7 +164,9 @@ func (app *App) runGateway(args []string) error {
 	if err != nil {
 		return err
 	}
-	handler, err := gateway.NewServer(registry, scheduler, gatewayLog)
+	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
+		Resources: func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
+	})
 	if err != nil {
 		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
 	}
@@ -407,6 +410,11 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 		{"Requests", fmt.Sprintf("%d active, %d queued", status.Scheduler.ActiveRequests, status.Scheduler.QueuedRequests)},
 		{"Inventory", status.InventoryFingerprint},
 	})
+	if status.Resources != nil {
+		fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Host resources"))
+		writeStatusRows(app.Stdout, terminal, gatewayResourceRows(*status.Resources))
+		fmt.Fprintf(app.Stdout, "  %s\n\n", terminal.Muted("Host-wide RAM, not model memory. SoC power includes the CPU on APUs."))
+	}
 	rows := make([][]string, 0, len(status.Models))
 	for _, model := range status.Models {
 		detail := terminal.Command(model.ID)
@@ -429,6 +437,8 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 			{"Tokens", gatewayAggregateTokens(status.Usage.Overall.Tokens, status.Usage.Overall.Requests)},
 			{"Inference", gatewayAggregateBackend(status.Usage.Overall.BackendTimings, status.Usage.Overall.Requests)},
 			{"Mean timing", gatewayAggregateTiming(status.Usage.Overall.Timing)},
+			{"First output", gatewayFirstOutputMean(status.Usage.Overall.Timing.FirstOutput, status.Usage.Overall.Requests)},
+			{"Cache reuse", gatewayCacheReuse(status.Usage.Overall.CacheReuse)},
 		})
 		if len(status.Usage.Models) > 0 {
 			usageRows := make([][]string, 0, len(status.Usage.Models))
@@ -438,6 +448,9 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 					fmt.Sprintf("%d requests", model.Usage.Requests),
 					terminal.Muted(gatewayAggregateTokens(model.Usage.Tokens, model.Usage.Requests) + " · " + gatewayAggregateBackend(model.Usage.BackendTimings, model.Usage.Requests)),
 				})
+				if model.Usage.Timing.FirstOutput.Observations > 0 || model.Usage.CacheReuse.Observations > 0 {
+					usageRows = append(usageRows, []string{"", "", terminal.Muted("First output " + gatewayFirstOutputMean(model.Usage.Timing.FirstOutput, model.Usage.Requests) + " · cache " + gatewayCacheReuse(model.Usage.CacheReuse))})
+				}
 			}
 			modelLines, _ := ui.ColumnLines(usageRows, nil, "  ")
 			for _, line := range modelLines {
@@ -472,6 +485,7 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 			fmt.Fprintln(app.Stdout, requestRows[0])
 			fmt.Fprintf(app.Stdout, "    %s\n", terminal.Muted(gatewayRequestMetadata(record)))
 		}
+		fmt.Fprintln(app.Stdout, terminal.Muted("Wait includes scheduling and backend readiness. First output includes wait and is observed only for streams. Upstream also includes router loading and processing."))
 	}
 	return nil
 }
@@ -497,6 +511,11 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	}
 	if record.Stream {
 		parts = append(parts, "stream")
+		if record.Timing.FirstOutputMilliseconds != nil {
+			parts = append(parts, gatewayDuration(*record.Timing.FirstOutputMilliseconds)+" first output")
+		} else {
+			parts = append(parts, "first output unavailable")
+		}
 	} else {
 		parts = append(parts, "non-stream")
 	}
@@ -509,6 +528,9 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	}
 	if record.Tokens.Cached != nil {
 		tokens = append(tokens, fmt.Sprintf("%d cached", *record.Tokens.Cached))
+		if input := record.Tokens.Input; input != nil && *input > 0 && *record.Tokens.Cached >= 0 && *record.Tokens.Cached <= *input {
+			tokens = append(tokens, fmt.Sprintf("%.1f%% cache reuse", float64(*record.Tokens.Cached)*100/float64(*input)))
+		}
 	}
 	if record.Tokens.Reasoning != nil {
 		tokens = append(tokens, fmt.Sprintf("%d reasoning", *record.Tokens.Reasoning))
@@ -521,6 +543,47 @@ func gatewayRequestMetadata(record gateway.RequestRecord) string {
 	parts = append(parts, gatewayRequestBackend(record.BackendTimings))
 	parts = append(parts, gatewayControlMetadata(record.Controls))
 	return strings.Join(parts, " · ")
+}
+
+func gatewayResourceRows(snapshot hostdoctor.ResourceSnapshot) [][2]string {
+	bytes := func(value *uint64) string {
+		if value == nil {
+			return "unavailable"
+		}
+		return gatewayBinaryBytes(*value)
+	}
+	rows := [][2]string{{"Sampled", snapshot.CollectedAt}, {"RAM", bytes(snapshot.MemoryAvailableBytes) + " available / " + bytes(snapshot.MemoryTotalBytes) + " total"}}
+	for _, gpu := range snapshot.GPUs {
+		parts := []string{}
+		if gpu.BusyPercent != nil {
+			parts = append(parts, fmt.Sprintf("%.0f%% busy", *gpu.BusyPercent))
+		}
+		if gpu.TemperatureCelsius != nil {
+			parts = append(parts, fmt.Sprintf("%.1f °C", *gpu.TemperatureCelsius))
+		}
+		if gpu.SoCPowerWatts != nil {
+			parts = append(parts, fmt.Sprintf("%.1f W SoC (%s)", *gpu.SoCPowerWatts, gpu.PowerSample))
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "sensors unavailable")
+		}
+		rows = append(rows, [2]string{gpu.Device, strings.Join(parts, " · ")})
+	}
+	return rows
+}
+
+func gatewayFirstOutputMean(metric gateway.AggregateMetric, requests uint64) string {
+	if metric.Observations == 0 {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%s mean (%d/%d requests observed)", gatewayMeanDuration(metric), metric.Observations, requests)
+}
+
+func gatewayCacheReuse(cache gateway.AggregateCacheReuse) string {
+	if cache.Ratio == nil {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%.1f%% (%d/%d input tokens, %d paired %s)", *cache.Ratio*100, cache.CachedTokens, cache.InputTokens, cache.Observations, plural(int(cache.Observations), "request", "requests"))
 }
 
 func gatewayModelMetadata(model gateway.StatusModel) string {

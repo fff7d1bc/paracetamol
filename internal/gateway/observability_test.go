@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func findControl(t *testing.T, controls []ObservedControl, name string) ObservedControl {
@@ -18,6 +19,68 @@ func findControl(t *testing.T, controls []ObservedControl, name string) Observed
 	}
 	t.Fatalf("control %q was not observed: %#v", name, controls)
 	return ObservedControl{}
+}
+
+func TestFirstOutputObservesGeneratedStreamingDeltaOnly(t *testing.T) {
+	for _, delta := range []string{`{"content":"answer"}`, `{"reasoning_content":"thought"}`, `{"reasoning":"thought"}`, `{"tool_calls":[{"function":{"name":"read"}}]}`, `{"tool_calls":[{"function":{"arguments":"{"}}]}`} {
+		t.Run(delta, func(t *testing.T) {
+			observer := newResponseObserver("text/event-stream")
+			instant := time.Unix(100, 0)
+			observer.now = func() time.Time { return instant }
+			observer.Observe([]byte(": keepalive\n\ndata: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}]}\n\ndata: {\"usage\":{\"prompt_tokens\":10}}\n\n"))
+			if !observer.firstOutputAt.IsZero() {
+				t.Fatal("metadata counted as output")
+			}
+			payload := "data: {\"choices\":[{\"delta\":" + delta + "}]}\n\n"
+			for _, character := range []byte(payload) {
+				observer.Observe([]byte{character})
+			}
+			instant = instant.Add(10 * time.Second)
+			observer.Observe([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"later\"}}]}\n\ndata: [DONE]\n\n"))
+			if got := observer.Finish().FirstOutputAt; !got.Equal(time.Unix(100, 0)) {
+				t.Fatalf("first=%v", got)
+			}
+		})
+	}
+	for _, payload := range []string{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-id","type":"function"}]}}]}`, `{"choices":[{"delta":{"content":null}}]}`, `{"choices":[],"usage":{"completion_tokens":10}}`, `{"error":"failed"}`, `not json`} {
+		observer := newResponseObserver("text/event-stream")
+		observer.Observe([]byte("data: " + payload + "\n\n"))
+		if !observer.Finish().FirstOutputAt.IsZero() {
+			t.Fatalf("counted %s as output", payload)
+		}
+	}
+	observer := newResponseObserver("application/json")
+	observer.Observe([]byte(`{"choices":[{"delta":{"content":"not a stream"}}]}`))
+	if !observer.Finish().FirstOutputAt.IsZero() {
+		t.Fatal("invented non-streaming first output")
+	}
+}
+
+func TestCacheFallbackAndPairedAggregates(t *testing.T) {
+	observer := newResponseObserver("application/json")
+	observer.Observe([]byte(`{"timings":{"prompt_n":20,"cache_n":80}}`))
+	got := observer.Finish().Tokens
+	if got.Input == nil || *got.Input != 100 || got.Cached == nil || *got.Cached != 80 {
+		t.Fatalf("tokens=%+v", got)
+	}
+	observer = newResponseObserver("application/json")
+	observer.Observe([]byte(`{"usage":{"prompt_tokens":200,"prompt_tokens_details":{"cached_tokens":50}},"timings":{"prompt_n":20,"cache_n":80}}`))
+	got = observer.Finish().Tokens
+	if got.Input == nil || *got.Input != 200 || got.Cached == nil || *got.Cached != 50 {
+		t.Fatalf("usage precedence=%+v", got)
+	}
+	var ledger requestLedger
+	first, input, cached := int64(50), int64(100), int64(80)
+	ledger.Add(RequestRecord{Timing: RequestTiming{FirstOutputMilliseconds: &first}, Tokens: TokenUsage{Input: &input, Cached: &cached}})
+	ledger.Add(RequestRecord{Tokens: TokenUsage{Input: &input}})
+	ledger.Add(RequestRecord{Tokens: TokenUsage{Input: &cached, Cached: &input}})
+	_, summary := ledger.Snapshot(0)
+	if metric := summary.Overall.Timing.FirstOutput; metric.Total != 50 || metric.Observations != 1 {
+		t.Fatalf("TTFT=%+v", metric)
+	}
+	if cache := summary.Overall.CacheReuse; cache.InputTokens != 100 || cache.CachedTokens != 80 || cache.Observations != 1 || cache.Ratio == nil || *cache.Ratio != .8 {
+		t.Fatalf("cache=%+v", cache)
+	}
 }
 
 func TestRequestSessionIDAcceptsOnlyExplicitUUIDCorrelation(t *testing.T) {

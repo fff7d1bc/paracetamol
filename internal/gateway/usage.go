@@ -23,6 +23,15 @@ type AggregateTiming struct {
 	GatewayWait AggregateMetric `json:"gateway_wait_ms"`
 	Upstream    AggregateMetric `json:"upstream_ms"`
 	Total       AggregateMetric `json:"total_ms"`
+	FirstOutput AggregateMetric `json:"first_output_ms"`
+}
+
+// Only paired, valid input/cache observations enter the denominator.
+type AggregateCacheReuse struct {
+	InputTokens  uint64   `json:"input_tokens"`
+	CachedTokens uint64   `json:"cached_tokens"`
+	Observations uint64   `json:"observations"`
+	Ratio        *float64 `json:"ratio,omitempty"`
 }
 
 type AggregateThroughput struct {
@@ -61,6 +70,7 @@ type RequestAggregate struct {
 	Tokens         AggregateTokens         `json:"tokens"`
 	Timing         AggregateTiming         `json:"timing"`
 	BackendTimings AggregateBackendTimings `json:"backend_timings"`
+	CacheReuse     AggregateCacheReuse     `json:"cache_reuse"`
 }
 
 type ModelAggregate struct {
@@ -150,6 +160,12 @@ func addAggregate(aggregate *RequestAggregate, record RequestRecord) {
 	addDurationMetric(&aggregate.Timing.GatewayWait, record.Timing.GatewayWaitMilliseconds)
 	addDurationMetric(&aggregate.Timing.Upstream, record.Timing.UpstreamMilliseconds)
 	addDurationMetric(&aggregate.Timing.Total, record.Timing.TotalMilliseconds)
+	addTokenMetric(&aggregate.Timing.FirstOutput, record.Timing.FirstOutputMilliseconds)
+	if input, cached := record.Tokens.Input, record.Tokens.Cached; input != nil && cached != nil && *input >= 0 && *cached >= 0 && *cached <= *input {
+		aggregate.CacheReuse.InputTokens = saturatingAdd(aggregate.CacheReuse.InputTokens, uint64(*input))
+		aggregate.CacheReuse.CachedTokens = saturatingAdd(aggregate.CacheReuse.CachedTokens, uint64(*cached))
+		aggregate.CacheReuse.Observations = saturatingAdd(aggregate.CacheReuse.Observations, 1)
+	}
 	addThroughputMetric(&aggregate.BackendTimings.PromptProcessing, record.BackendTimings.PromptTokens, record.BackendTimings.PromptMilliseconds, false)
 	addThroughputMetric(&aggregate.BackendTimings.TokenGeneration, record.BackendTimings.GeneratedTokens, record.BackendTimings.GeneratedMilliseconds, true)
 	addDraftMetric(&aggregate.BackendTimings.SpeculativeDraft, record.BackendTimings.DraftTokens, record.BackendTimings.DraftAcceptedTokens)
@@ -235,6 +251,10 @@ func (ledger *requestLedger) Snapshot(recentLimit int) ([]RequestRecord, UsageSu
 }
 
 func finalizedAggregate(aggregate RequestAggregate) RequestAggregate {
+	if cache := &aggregate.CacheReuse; cache.Observations > 0 && cache.InputTokens > 0 {
+		ratio := float64(cache.CachedTokens) / float64(cache.InputTokens)
+		cache.Ratio = &ratio
+	}
 	for _, metric := range []*AggregateThroughput{&aggregate.BackendTimings.PromptProcessing, &aggregate.BackendTimings.TokenGeneration} {
 		if metric.Observations > 0 && metric.Milliseconds > 0 {
 			rate := float64(metric.TimedTokens) * 1000 / metric.Milliseconds

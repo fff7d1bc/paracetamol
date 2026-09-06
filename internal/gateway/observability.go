@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -58,9 +59,10 @@ type RequestControls struct {
 }
 
 type RequestTiming struct {
-	GatewayWaitMilliseconds int64 `json:"gateway_wait_ms"`
-	UpstreamMilliseconds    int64 `json:"upstream_ms"`
-	TotalMilliseconds       int64 `json:"total_ms"`
+	GatewayWaitMilliseconds int64  `json:"gateway_wait_ms"`
+	UpstreamMilliseconds    int64  `json:"upstream_ms"`
+	TotalMilliseconds       int64  `json:"total_ms"`
+	FirstOutputMilliseconds *int64 `json:"first_output_ms,omitempty"`
 }
 
 type TokenUsage struct {
@@ -83,8 +85,9 @@ type BackendTimings struct {
 }
 
 type responseObservation struct {
-	Tokens  TokenUsage
-	Timings BackendTimings
+	Tokens        TokenUsage
+	Timings       BackendTimings
+	FirstOutputAt time.Time
 }
 
 type RequestRecord struct {
@@ -428,18 +431,22 @@ func controlValues(controls []ObservedControl) []string {
 // buffers are bounded and parse failures are intentionally silent, so metrics
 // can never delay, reject, or reshape an upstream response.
 type responseObserver struct {
-	stream        bool
-	jsonBuffer    []byte
-	jsonOversized bool
-	line          []byte
-	event         []byte
-	eventOversize bool
-	tokens        TokenUsage
-	timings       BackendTimings
+	stream         bool
+	jsonBuffer     []byte
+	jsonOversized  bool
+	line           []byte
+	event          []byte
+	eventOversize  bool
+	tokens         TokenUsage
+	timings        BackendTimings
+	now            func() time.Time
+	firstOutputAt  time.Time
+	inputFromUsage bool
+	cacheFromUsage bool
 }
 
 func newResponseObserver(contentType string) *responseObserver {
-	return &responseObserver{stream: isEventStream(contentType)}
+	return &responseObserver{stream: isEventStream(contentType), now: time.Now}
 }
 
 func isEventStream(contentType string) bool {
@@ -473,7 +480,7 @@ func (observer *responseObserver) Finish() responseObservation {
 	} else if !observer.jsonOversized {
 		observer.observeJSON(observer.jsonBuffer)
 	}
-	return responseObservation{Tokens: observer.tokens, Timings: observer.timings}
+	return responseObservation{Tokens: observer.tokens, Timings: observer.timings, FirstOutputAt: observer.firstOutputAt}
 }
 
 func (observer *responseObserver) observeSSE(value []byte) {
@@ -540,15 +547,22 @@ func (observer *responseObserver) observeJSON(value []byte) {
 	if !ok {
 		return
 	}
+	// Role-only chunks, keepalives and usage metadata are not generation.
+	// Non-streaming JSON cannot reveal when its first token was produced.
+	if observer.stream && observer.firstOutputAt.IsZero() && hasGeneratedDelta(object["choices"]) {
+		observer.firstOutputAt = observer.now()
+	}
 	if usage, ok := rawObject(object["usage"]); ok {
 		if token, ok := firstInteger(usage, "prompt_tokens", "input_tokens"); ok {
 			observer.tokens.Input = token
+			observer.inputFromUsage = true
 		}
 		if token, ok := firstInteger(usage, "completion_tokens", "output_tokens"); ok {
 			observer.tokens.Output = token
 		}
 		if token, ok := firstInteger(usage, "cache_read_input_tokens", "cached_tokens"); ok {
 			observer.tokens.Cached = token
+			observer.cacheFromUsage = true
 		}
 		if token, ok := firstInteger(usage, "reasoning_tokens"); ok {
 			observer.tokens.Reasoning = token
@@ -557,6 +571,7 @@ func (observer *responseObserver) observeJSON(value []byte) {
 			if details, ok := rawObject(usage[name]); ok {
 				if token, ok := firstInteger(details, "cached_tokens"); ok {
 					observer.tokens.Cached = token
+					observer.cacheFromUsage = true
 				}
 			}
 		}
@@ -571,8 +586,22 @@ func (observer *responseObserver) observeJSON(value []byte) {
 	if timings, ok := rawObject(object["timings"]); ok {
 		if token, ok := firstInteger(timings, "prompt_n"); ok {
 			observer.timings.PromptTokens = token
-			if observer.tokens.Input == nil {
-				observer.tokens.Input = token
+		}
+		if token, ok := firstInteger(timings, "cache_n"); ok && !observer.cacheFromUsage {
+			observer.tokens.Cached = token
+		}
+		if !observer.inputFromUsage && observer.timings.PromptTokens != nil {
+			// llama.cpp prompt_n counts evaluated tokens, not the cached prefix.
+			input := *observer.timings.PromptTokens
+			if cached := observer.tokens.Cached; cached != nil {
+				if input > math.MaxInt64-*cached {
+					observer.tokens.Input = nil
+				} else {
+					input += *cached
+					observer.tokens.Input = &input
+				}
+			} else {
+				observer.tokens.Input = &input
 			}
 		}
 		if milliseconds, ok := firstNumber(timings, "prompt_ms"); ok {
@@ -594,6 +623,38 @@ func (observer *responseObserver) observeJSON(value []byte) {
 			observer.timings.DraftAcceptedTokens = token
 		}
 	}
+}
+
+func hasGeneratedDelta(raw json.RawMessage) bool {
+	var choices []struct {
+		Delta struct {
+			Content          string `json:"content"`
+			Reasoning        string `json:"reasoning"`
+			ReasoningContent string `json:"reasoning_content"`
+			Refusal          string `json:"refusal"`
+			ToolCalls        []struct {
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"delta"`
+	}
+	if json.Unmarshal(raw, &choices) != nil {
+		return false
+	}
+	for _, choice := range choices {
+		delta := choice.Delta
+		if delta.Content != "" || delta.Reasoning != "" || delta.ReasoningContent != "" || delta.Refusal != "" {
+			return true
+		}
+		for _, call := range delta.ToolCalls {
+			if call.Function.Name != "" || call.Function.Arguments != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func responseObject(value []byte) (map[string]json.RawMessage, bool) {
