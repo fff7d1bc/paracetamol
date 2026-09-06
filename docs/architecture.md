@@ -783,6 +783,18 @@ not estimate model memory from unified-memory GPU counters or alter power
 policy. See `docs/gateway.md` for
 the public surface and current limits.
 
+Optional gateway Bearer authentication is enforced before every route on every
+listener. A private configured server key is loaded once and reduced to a
+digest for constant-time comparison. Client key selection is independent of
+server key selection. Bounded inventory and status probes share the gateway
+identity check and never follow redirects. Public authorization headers are
+stripped before backend proxying. Managed Pi and Maki receive their selected
+client key through their existing private generated provider files, never
+process arguments or sandbox environment passthrough. The key is necessarily
+readable by that client's own tools. Authentication changes neither backend
+loopback publication nor the trusted-local-process boundary, and does not
+provide transport encryption.
+
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream

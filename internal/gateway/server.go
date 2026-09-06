@@ -39,23 +39,26 @@ type Server struct {
 	nextRequestID   atomic.Uint64
 	requests        requestLedger
 	resources       func() hostdoctor.ResourceSnapshot
+	auth            bearerAuth
 }
 
 type ServerOptions struct {
 	Resources func() hostdoctor.ResourceSnapshot
+	APIKey    string
 }
 
 type Status struct {
-	Schema               string                       `json:"schema"`
-	Gateway              string                       `json:"gateway"`
-	InventoryFingerprint string                       `json:"inventory_fingerprint"`
-	StartedAt            string                       `json:"started_at"`
-	Applications         []string                     `json:"applications"`
-	Models               []StatusModel                `json:"models"`
-	Scheduler            SchedulerStatus              `json:"scheduler"`
-	Usage                UsageSummary                 `json:"usage"`
-	RecentRequests       []RequestRecord              `json:"recent_requests,omitempty"`
-	Resources            *hostdoctor.ResourceSnapshot `json:"resources,omitempty"`
+	Schema                string                       `json:"schema"`
+	Gateway               string                       `json:"gateway"`
+	InventoryFingerprint  string                       `json:"inventory_fingerprint"`
+	StartedAt             string                       `json:"started_at"`
+	Applications          []string                     `json:"applications"`
+	Models                []StatusModel                `json:"models"`
+	Scheduler             SchedulerStatus              `json:"scheduler"`
+	Usage                 UsageSummary                 `json:"usage"`
+	RecentRequests        []RequestRecord              `json:"recent_requests,omitempty"`
+	Resources             *hostdoctor.ResourceSnapshot `json:"resources,omitempty"`
+	AuthenticationEnabled bool                         `json:"authentication_enabled"`
 }
 
 type StatusModel struct {
@@ -82,6 +85,10 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	if log == nil {
 		log = os.Stderr
 	}
+	auth, err := newBearerAuth(options.APIKey)
+	if err != nil {
+		return nil, err
+	}
 	sharedLog := atomicLogWriter(log)
 	transport := &http.Transport{
 		Proxy:             http.ProxyFromEnvironment,
@@ -93,6 +100,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	server := &Server{
 		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
 		resources:       options.Resources,
+		auth:            auth,
 		residencyClient: &http.Client{Transport: residencyTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 	server.accepting.Store(true)
@@ -110,6 +118,11 @@ func (server *Server) BeginShutdown() {
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Server", identity.CommandName+"/"+identity.Version)
 	writer.Header().Set(IdentityHeader, IdentityValue)
+	// Apply the same policy on loopback and LAN, before reading any request
+	// body, exposing inventory/status, or touching the scheduler.
+	if !server.auth.allow(writer, request) {
+		return
+	}
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/health":
 		server.health(writer)
@@ -176,7 +189,7 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 		Schema: StatusSchema, Gateway: gatewayState, InventoryFingerprint: server.registry.Fingerprint,
 		StartedAt: server.started.Format(time.RFC3339), Applications: applications,
 		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus, Usage: usage,
-		RecentRequests: recentRequests, Resources: resources,
+		RecentRequests: recentRequests, Resources: resources, AuthenticationEnabled: server.auth.enabled,
 	})
 }
 
@@ -265,6 +278,9 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	proxy.Director = func(outgoing *http.Request) {
 		originalDirector(outgoing)
 		outgoing.Header.Del(SessionIDHeader)
+		// Public gateway credentials are never backend credentials.
+		outgoing.Header.Del("Authorization")
+		outgoing.Header.Del("Proxy-Authorization")
 	}
 	proxy.Transport = server.transport
 	proxy.FlushInterval = -1

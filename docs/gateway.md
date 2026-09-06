@@ -109,8 +109,89 @@ listener is all-or-nothing.
 There is no daemon or detach mode. The foreground process owns listener and
 backend cleanup, and Ctrl-C stops accepting work on every address, drains
 active HTTP requests, removes its exact private backend container, prints a
-successful stop, and exits cleanly. A non-loopback `--listen` is an
-unauthenticated trusted-LAN publication and is visibly warned about.
+successful stop, and exits cleanly. A non-loopback `--listen` is visibly warned
+about. Without a configured key it is an unauthenticated trusted-LAN
+publication. With a key, the warning still identifies unencrypted HTTP.
+
+## Optional authentication
+
+Authentication is off unless a server key file is explicitly configured. When
+enabled, every route requires `Authorization: Bearer KEY`, including health,
+model inventory and status. Loopback and LAN listeners enforce the same rule.
+Missing, incorrect or duplicate authorization headers receive HTTP 401 before
+body parsing, resource inspection or backend scheduling. There are no user
+accounts, roles, remote key-management endpoints or anonymous health bypass.
+
+Create a private random key outside the checkout. For example, on the server,
+choose an unused file and run these commands. Shell noclobber prevents replacing
+an existing key.
+
+```bash
+mkdir -p "$HOME/.config/paracetamol"
+(umask 077; set -C; openssl rand -hex 32 > "$HOME/.config/paracetamol/gateway.key")
+```
+
+The file must be regular, not a symlink, and inaccessible to group/other users
+(`chmod 600`). It contains one 32 to 512 character token using letters,
+digits or `-._~+/=`, with an optional final newline. An empty, missing, public
+or malformed configured file is an error, never a fallback to anonymous access.
+Generate random bytes, not a memorable password.
+
+Configure the GPU host with its absolute path, or use
+`run gateway --api-key-file /absolute/path/to/gateway.key`.
+
+```toml
+[gateway]
+api_key_file = "/home/USER/.config/paracetamol/gateway.key"
+```
+
+Securely copy the same key to each authorized client host, then configure its
+client section. Local Pi and Maki clients also need this section. It can point
+to the same local file as the server section.
+
+```toml
+[gateway.client]
+url = "http://gpu-host.local:7455/v1"
+api_key_file = "/home/USER/.config/paracetamol/gateway.key"
+```
+
+`agent run pi`, `agent run maki` and `status gateway` also accept
+`--gateway-api-key-file PATH`. Server precedence is the command flag,
+`PARACETAMOL_GATEWAY_API_KEY_FILE`, then `[gateway].api_key_file`. Client
+precedence is its command flag, `PARACETAMOL_GATEWAY_CLIENT_API_KEY_FILE`, then
+`[gateway.client].api_key_file`. All paths must be absolute. Client credentials
+never implicitly inherit the server key because the selected client URL can
+point to another host. There is no command-line flag containing the key itself.
+
+Generic HTTP clients use their ordinary API-key/Bearer setting. For curl, this
+example passes the header over stdin so the key does not appear in process
+arguments.
+
+```bash
+printf 'Authorization: Bearer %s\n' "$(< "$HOME/.config/paracetamol/gateway.key")" |
+  curl --fail --header @- http://gpu-host.local:7455/v1/models
+```
+
+The server reads its key once at startup and retains only a SHA-256 digest for
+constant-time comparison. Restart it to rotate or disable the key. Managed
+clients read their key on session launch and place it only in their existing
+private generated provider files, with mode `0600` for Pi or `0700` for Maki's
+provider script under a `0700` state directory. These files are credentials
+and should not be shared. A normal relaunch refreshes or removes that copy.
+Informational and package-management commands do not read the key or contact
+the gateway. Agent tools run as the same user and can read their own client's
+credential, so this is not a secret boundary against the agent itself.
+
+Keys are not printed in startup/status output, request logs or the request
+ledger. Inventory and status probes refuse redirects and validate the gateway
+marker. Authorization headers are consumed at the public gateway and stripped
+before proxying to either backend. The startup card and status show only
+whether authentication is enabled.
+
+A Bearer key restricts access but does not encrypt it. Use HTTPS through a
+trusted reverse proxy or an encrypted network/tunnel for untrusted links.
+Keep the firewall rules. Gateway authentication does not protect direct
+application servers or the loopback-only backend ports from local processes.
 
 ## Frozen inventory
 
@@ -185,9 +266,9 @@ the ephemeral mapping by scanning the host because it is not bound to a LAN
 address, even when the public gateway is. The port number remains discoverable
 to local processes through the gateway log, Podman, or the host socket table.
 The current trust boundary therefore includes the gateway host and its local
-processes. Authentication on the public gateway would protect network clients,
-not create an authorization boundary against untrusted local code. That threat
-model would require independently protecting the backend transport.
+processes. Gateway authentication restricts access to the public endpoint. It
+does not create an authorization boundary against untrusted local code. That
+threat model would require independently protecting the backend transport.
 
 Before opening the public listener, startup verifies rootless Podman, every
 selected image, device policy, the receipt-backed content snapshot, and
@@ -341,7 +422,7 @@ that invocation intentionally form one launch-level correlation group.
 - It adds no manual unload operation or gateway idle timer. Allocation switches
   and foreground shutdown retain their existing lifecycle, while llama.cpp's
   count-limited router retains its own idle-child LRU policy.
-- It does not add authentication, TLS, retries, request rewriting, or an
+- It does not add TLS, retries, request rewriting, or an
   arbitrary upstream registry.
 - The in-memory ledger and aggregates are not a persistent metrics store, full
   traffic capture, Prometheus endpoint, or web UI.

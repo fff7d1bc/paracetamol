@@ -231,11 +231,12 @@ func (app *App) commandGuide(args []string) error {
 }
 
 func (app *App) commandStatus(args []string) error {
-	set := app.flags("status", usage("status", "[APPLICATION]", "[--model PRESET]", "[--data-dir PATH]", "[--gateway-url URL]", "[--requests COUNT]"))
+	set := app.flags("status", usage("status", "[APPLICATION]", "[OPTIONS]"))
 	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gateway; omit for the host dashboard")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
+	keyFile := set.String("gateway-api-key-file", "", "private gateway client Bearer-key file")
 	requests := set.Int("requests", 0, "include 1-64 recent gateway requests")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
@@ -254,16 +255,22 @@ func (app *App) commandStatus(args []string) error {
 		}
 	}
 	if application == "gateway" {
+		if set.changed("gateway-api-key-file") && *keyFile == "" {
+			return controlerr.Usage("--gateway-api-key-file must name a private key file")
+		}
 		if *model != "" || *dataFlag != "" {
 			return controlerr.Usage("status gateway does not accept --model or --data-dir")
 		}
 		if set.changed("requests") && (*requests < 1 || *requests > gateway.RecentRequestLimit) {
 			return controlerr.Usage("--requests must be from 1 through %d", gateway.RecentRequestLimit)
 		}
-		return app.gatewayStatus(*gatewayURL, *requests)
+		return app.gatewayStatus(*gatewayURL, *keyFile, *requests)
 	}
 	if *gatewayURL != "" {
 		return controlerr.Usage("--gateway-url requires 'status gateway'")
+	}
+	if set.changed("gateway-api-key-file") {
+		return controlerr.Usage("--gateway-api-key-file requires 'status gateway'")
 	}
 	if set.changed("requests") {
 		return controlerr.Usage("--requests requires 'status gateway'")

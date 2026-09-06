@@ -11,6 +11,7 @@ import (
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/textmodel"
@@ -27,6 +28,7 @@ type MakiPlan struct {
 	Tiers           []byte
 	Mode            string
 	Remote          bool
+	Authenticated   bool
 }
 
 func FindRealExecutable(name, wrapper string, environment map[string]string) (string, error) {
@@ -50,7 +52,20 @@ func FindRealExecutable(name, wrapper string, environment map[string]string) (st
 	return "", fmt.Errorf("%s executable not found outside %s's bin directory", name, identity.DisplayName)
 }
 
-func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, environment map[string]string) (MakiPlan, error) {
+func MakiMode(arguments []string) string {
+	if len(arguments) > 0 && arguments[0] == "--" {
+		arguments = arguments[1:]
+	}
+	if len(arguments) > 0 && contains([]string{"--help", "-h", "--version", "-V", "update", "rollback", "migrate"}, arguments[0]) {
+		return "passthrough"
+	}
+	if len(arguments) > 0 && contains([]string{"auth", "models", "index", "mcp", "prompt"}, arguments[0]) {
+		return "management"
+	}
+	return "session"
+}
+
+func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, environment map[string]string, apiKey string) (MakiPlan, error) {
 	if len(arguments) > 0 && arguments[0] == "--" {
 		arguments = arguments[1:]
 	}
@@ -58,12 +73,7 @@ func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, g
 	if err != nil {
 		return MakiPlan{}, err
 	}
-	mode := "session"
-	if len(arguments) > 0 && contains([]string{"--help", "-h", "--version", "-V", "update", "rollback", "migrate"}, arguments[0]) {
-		mode = "passthrough"
-	} else if len(arguments) > 0 && contains([]string{"auth", "models", "index", "mcp", "prompt"}, arguments[0]) {
-		mode = "management"
-	}
+	mode := MakiMode(arguments)
 	if mode == "passthrough" {
 		return MakiPlan{Command: append([]string{executable}, arguments...), Mode: mode}, nil
 	}
@@ -71,9 +81,14 @@ func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, g
 	if err != nil {
 		return MakiPlan{}, err
 	}
+	if apiKey != "" {
+		if err := config.ValidateGatewayKey(apiKey); err != nil {
+			return MakiPlan{}, err
+		}
+	}
 	var advertised []string
 	if mode == "session" {
-		advertised, err = DiscoverGatewayModels(ctx, endpoint)
+		advertised, err = gateway.FetchModelIDs(ctx, endpoint, apiKey)
 		if err != nil {
 			return MakiPlan{}, err
 		}
@@ -90,7 +105,7 @@ func CreateMakiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, g
 	if mode == "session" {
 		sessionID = newSessionID()
 	}
-	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, Remote: remoteEndpoint(endpoint), Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" gateway", endpoint, makiModels(models), sessionID)}, Mode: mode}
+	plan := MakiPlan{Command: append([]string{executable}, arguments...), Endpoint: endpoint, Remote: remoteEndpoint(endpoint), Authenticated: apiKey != "", Init: []byte(fmt.Sprintf("maki.setup({\n  always_thinking = \"adaptive\",\n  provider = { default_model = %s },\n  plugins = { task = { max_concurrent = 1 } },\n})\n", luaString(provider+"/"+model))), Providers: map[string][]byte{ProviderID: makiProvider(identity.DisplayName+" gateway", endpoint, makiModels(models), sessionID, apiKey)}, Mode: mode}
 	tiers, _ := json.MarshalIndent(map[string]string{"compaction": provider + "/" + model, "weak": provider + "/" + model, "medium": provider + "/" + model, "strong": provider + "/" + model}, "", "  ")
 	plan.Tiers = append(tiers, '\n')
 	if mode == "session" {
@@ -129,10 +144,13 @@ func makiModels(models []textmodel.Model) []map[string]any {
 	return result
 }
 
-func makiProvider(display, endpoint string, models []map[string]any, sessionID string) []byte {
+func makiProvider(display, endpoint string, models []map[string]any, sessionID, apiKey string) []byte {
 	info, _ := json.Marshal(map[string]any{"display_name": display, "base": "llama-cpp", "has_auth": false})
 	listed, _ := json.Marshal(models)
 	headers := map[string]string{}
+	if apiKey != "" {
+		headers["Authorization"] = "Bearer " + apiKey
+	}
 	if sessionID != "" {
 		headers["X-Paracetamol-Session-ID"] = sessionID
 	}

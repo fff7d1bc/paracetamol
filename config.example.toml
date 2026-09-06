@@ -14,9 +14,13 @@ render_nodes = []
 listen = "127.0.0.1"
 port = 7455
 startup_timeout = "30m"
+# Optional Bearer authentication. Use a private file containing a random key.
+# api_key_file = "/absolute/path/to/gateway.key"
 
 [gateway.client]
 url = "http://127.0.0.1:7455/v1"
+# Client credentials are separate, including for a local gateway.
+# api_key_file = "/absolute/path/to/gateway.key"
 
 [gateway.llama-cpp]
 backend = "rocm"

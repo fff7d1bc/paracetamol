@@ -23,9 +23,11 @@ render_nodes = ["/dev/dri/renderD128"]
 listen = "192.168.1.50"
 port = 18080
 startup_timeout = "45m"
+api_key_file = "/etc/paracetamol/server.key"
 
 [gateway.client]
 url = "https://gateway.example.test:7443/v1/"
+api_key_file = "/etc/paracetamol/client.key"
 
 [gateway.llama-cpp]
 backend = "vulkan"
@@ -42,6 +44,8 @@ models_max = 2
 		t.Fatalf("configuration=%#v", configuration)
 	}
 	if !reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama-cpp", "dwarfstar"}) ||
+		configuration.Gateway.APIKeyFile == nil || *configuration.Gateway.APIKeyFile != "/etc/paracetamol/server.key" ||
+		configuration.Gateway.Client.APIKeyFile == nil || *configuration.Gateway.Client.APIKeyFile != "/etc/paracetamol/client.key" ||
 		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128"}) ||
 		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != "https://gateway.example.test:7443/v1/" ||
 		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 {
@@ -97,6 +101,9 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},
 		"models range":        {"[gateway.llama-cpp]\nmodels_max = 0\n", "at least 1"},
 		"client scheme":       {"[gateway.client]\nurl = 'ftp://example.test/v1'\n", "credential-free HTTP(S)"},
+		"server key path":     {"[gateway]\napi_key_file = ''\n", "non-empty absolute path"},
+		"client key path":     {"[gateway.client]\napi_key_file = 'relative'\n", "non-empty absolute path"},
+		"key type":            {"[gateway]\napi_key_file = 123\n", "quoted string"},
 		"client credentials":  {"[gateway.client]\nurl = 'http://user@example.test/v1'\n", "credential-free HTTP(S)"},
 		"client path":         {"[gateway.client]\nurl = 'http://example.test/other'\n", "path must be /v1"},
 		"client query":        {"[gateway.client]\nurl = 'http://example.test/v1?key=value'\n", "credential-free HTTP(S)"},

@@ -1,15 +1,12 @@
 package cli
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -40,6 +37,7 @@ func (app *App) runGateway(args []string) error {
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
+	keyFile := set.String("api-key-file", "", "private file containing the optional gateway Bearer key")
 	unconfined := set.Bool("unconfined", false, "disable backend seccomp")
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -48,6 +46,13 @@ func (app *App) runGateway(args []string) error {
 		return controlerr.Usage("run gateway does not accept positional arguments")
 	}
 	configuration, err := app.hostConfiguration()
+	if err != nil {
+		return err
+	}
+	if set.changed("api-key-file") && *keyFile == "" {
+		return controlerr.Usage("--api-key-file must name a private key file")
+	}
+	apiKey, err := config.SelectGatewayServerKey(*keyFile, app.Environment, configuration)
 	if err != nil {
 		return err
 	}
@@ -166,6 +171,7 @@ func (app *App) runGateway(args []string) error {
 	}
 	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
 		Resources: func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
+		APIKey:    apiKey,
 	})
 	if err != nil {
 		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
@@ -175,13 +181,18 @@ func (app *App) runGateway(args []string) error {
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
 	if !isLoopback(listen) {
-		fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
+		if apiKey == "" {
+			fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
+		} else {
+			fmt.Fprintf(app.Stderr, "%s gateway on %s requires a Bearer key, but HTTP does not encrypt keys or prompts. Use a trusted network or TLS reverse proxy.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
+		}
 	}
 	additionalLabel, additionalEndpoint := gatewayAdditionalEndpoint(listen, port)
 	app.writeGatewayStartup(gatewayStartup{
 		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
 		Backend: *backend, ModelsMax: *modelsMax, Registry: registry, Configuration: configuration.Path,
+		Authenticated: apiKey != "",
 	})
 	serveResults := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -217,6 +228,7 @@ type gatewayStartup struct {
 	ModelsMax          int
 	Registry           gateway.Registry
 	Configuration      string
+	Authenticated      bool
 }
 
 func collectGatewayServeErrors(results <-chan error, count int, initial error) error {
@@ -343,6 +355,11 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 		[2]string{"Applications", strings.Join(summary.Applications, ", ")},
 		[2]string{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},
 	)
+	authentication := "disabled"
+	if summary.Authenticated {
+		authentication = "Bearer key required"
+	}
+	rows = append(rows, [2]string{"Authentication", authentication})
 	if summary.Configuration != "" {
 		rows = append(rows, [2]string{"Configuration", summary.Configuration})
 	}
@@ -361,7 +378,7 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Muted("Waiting for requests. Press Ctrl-C to stop."))
 }
 
-func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
+func (app *App) gatewayStatus(rawURL, keyFile string, recentRequests int) error {
 	configuration, err := app.hostConfiguration()
 	if err != nil {
 		return err
@@ -370,39 +387,23 @@ func (app *App) gatewayStatus(rawURL string, recentRequests int) error {
 	if err != nil {
 		return controlerr.Usage("invalid gateway client URL: %v", err)
 	}
-	base, err := parseGatewayURL(selected)
+	apiKey, err := config.SelectGatewayClientKey(keyFile, app.Environment, configuration)
 	if err != nil {
 		return err
 	}
-	statusURL := *base
-	statusURL.Path = "/paracetamol/v1/status"
-	statusURL.RawQuery = ""
-	if recentRequests > 0 {
-		statusURL.RawQuery = url.Values{"requests": []string{fmt.Sprint(recentRequests)}}.Encode()
-	}
-	statusURL.Fragment = ""
-	ctx, cancel := context.WithTimeout(app.Context, 5*time.Second)
-	defer cancel()
-	request, _ := http.NewRequestWithContext(ctx, http.MethodGet, statusURL.String(), nil)
-	response, err := http.DefaultClient.Do(request)
+	status, err := gateway.FetchStatus(app.Context, selected, apiKey, recentRequests)
 	if err != nil {
-		return controlerr.New("cannot reach gateway at %s: %v", base, err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return controlerr.New("gateway status returned HTTP %d", response.StatusCode)
-	}
-	var status gateway.Status
-	if err := json.NewDecoder(response.Body).Decode(&status); err != nil {
-		return controlerr.New("cannot decode gateway status: %v", err)
-	}
-	if status.Schema != gateway.StatusSchema {
-		return controlerr.New("gateway returned unsupported status schema %q", status.Schema)
+		return err
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintf(app.Stdout, "%s\n", terminal.Heading(identity.DisplayName+" gateway"))
+	authentication := "disabled"
+	if status.AuthenticationEnabled {
+		authentication = "Bearer key required"
+	}
 	writeStatusRows(app.Stdout, terminal, [][2]string{
 		{"State", status.Gateway},
+		{"Authentication", authentication},
 		{"Started", status.StartedAt},
 		{"Applications", strings.Join(status.Applications, ", ")},
 		{"Allocation", firstNonEmpty(string(status.Scheduler.Allocation), "none")},
@@ -800,16 +801,4 @@ func explicitGatewayControls(controls []gateway.ObservedControl) []string {
 		}
 	}
 	return result
-}
-
-func parseGatewayURL(value string) (*url.URL, error) {
-	normalized, err := config.NormalizeGatewayURL(value)
-	if err != nil {
-		return nil, controlerr.Usage("invalid gateway client URL: %v", err)
-	}
-	parsed, err := url.Parse(normalized)
-	if err != nil {
-		return nil, controlerr.Usage("invalid gateway client URL: %v", err)
-	}
-	return parsed, nil
 }
