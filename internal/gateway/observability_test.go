@@ -56,6 +56,29 @@ func TestFirstOutputObservesGeneratedStreamingDeltaOnly(t *testing.T) {
 	}
 }
 
+func TestNativeUsageFallbackWaitsForFinalStreamMetadata(t *testing.T) {
+	for _, events := range [][]string{
+		{`{"timings":{"prompt_n":20,"cache_n":50,"predicted_n":2}}`, `{"usage":{"prompt_tokens_details":{"cached_tokens":80}}}`, `{"timings":{"predicted_n":7}}`},
+		{`{"timings":{"prompt_n":20,"cache_n":50,"predicted_n":2}}`, `{"timings":{"predicted_n":7}}`, `{"usage":{"prompt_tokens_details":{"cached_tokens":80}}}`},
+	} {
+		observer := newResponseObserver("text/event-stream")
+		for _, event := range events {
+			observer.Observe([]byte("data: " + event + "\n\n"))
+		}
+		assertTokens(t, observer.Finish().Tokens, 100, 7, 80)
+	}
+	observer := newResponseObserver("text/event-stream")
+	observer.Observe([]byte("data: {\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":10}}\n\n"))
+	observer.Observe([]byte("data: {\"timings\":{\"prompt_n\":20,\"cache_n\":80,\"predicted_n\":7}}\n\n"))
+	assertTokens(t, observer.Finish().Tokens, 100, 10, 80)
+	observer = newResponseObserver("text/event-stream")
+	observer.Observe([]byte("data: {\"timings\":{\"prompt_n\":9223372036854775807}}\n\n"))
+	observer.Observe([]byte("data: {\"timings\":{\"cache_n\":1}}\n\n"))
+	if observer.Finish().Tokens.Input != nil {
+		t.Fatal("overflowed native input count")
+	}
+}
+
 func TestCacheFallbackAndPairedAggregates(t *testing.T) {
 	observer := newResponseObserver("application/json")
 	observer.Observe([]byte(`{"timings":{"prompt_n":20,"cache_n":80}}`))
