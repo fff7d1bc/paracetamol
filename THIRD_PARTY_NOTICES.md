@@ -38,9 +38,12 @@ revisions recorded in `catalog/catalog.json`.
   `ROCm_Host` computation on integrated HIP devices while preserving pinned
   host allocation.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
-  commit `84cc882352757baf628a1776badf7cc54d584e28`. The final image keeps only
-  its CLI, HTTP server, benchmark binary, and license. The managed DeepSeek V4
-  Flash 0731 IQ2XXS GGUF is downloaded separately from
+  commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
+  its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice
+  includes the vendored ggml kernel authors. The separately bundled Iris image
+  decoder's MIT notice is retained as `iris.LICENSE` alongside the DwarfStar
+  license under `/usr/local/share/licenses/paracetamol/dwarfstar`.
+  The managed DeepSeek V4 Flash 0731 IQ2XXS GGUF is downloaded separately from
   `antirez/deepseek-v4-gguf` revision
   `1cd7b564460821938add0475a60b942c409295e0`, which declares MIT. Paracetamol
   records its exact size and SHA-256 and does not redistribute it. The
