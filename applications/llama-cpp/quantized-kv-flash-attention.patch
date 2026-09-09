@@ -1,5 +1,5 @@
 diff --git a/ggml/src/ggml-cuda/fattn-tile.cu b/ggml/src/ggml-cuda/fattn-tile.cu
-index e563729..b7057cc 100644
+index e563729a2..b7057cccf 100644
 --- a/ggml/src/ggml-cuda/fattn-tile.cu
 +++ b/ggml/src/ggml-cuda/fattn-tile.cu
 @@ -11,7 +11,13 @@ void ggml_cuda_flash_attn_ext_tile(ggml_backend_cuda_context & ctx, ggml_tensor
@@ -48,7 +48,7 @@ index e563729..b7057cc 100644
          case 320: {
              GGML_ASSERT(V->ne[0] == 256);
 diff --git a/ggml/src/ggml-cuda/fattn-tile.cuh b/ggml/src/ggml-cuda/fattn-tile.cuh
-index d1164b8..b4b1bd2 100644
+index 8981ab804..340a14712 100644
 --- a/ggml/src/ggml-cuda/fattn-tile.cuh
 +++ b/ggml/src/ggml-cuda/fattn-tile.cuh
 @@ -479,14 +479,96 @@ static __device__ __forceinline__ void flash_attn_tile_load_tile(
@@ -302,8 +302,8 @@ index d1164b8..b4b1bd2 100644
 -            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
              launch_fattn<DV, cols_per_block/ncols2, ncols2>
--                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
              return;
          }
      }
@@ -314,8 +314,8 @@ index d1164b8..b4b1bd2 100644
 -            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
              launch_fattn<DV, cols_per_block/ncols2, ncols2>
--                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
              return;
          }
      }
@@ -326,8 +326,8 @@ index d1164b8..b4b1bd2 100644
 -            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
              launch_fattn<DV, cols_per_block/ncols2, ncols2>
--                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
              return;
          }
      }
@@ -338,8 +338,8 @@ index d1164b8..b4b1bd2 100644
 -            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
              launch_fattn<DV, cols_per_block/ncols2, ncols2>
--                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
              return;
          }
      }
@@ -350,8 +350,8 @@ index d1164b8..b4b1bd2 100644
 -            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +            fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
              launch_fattn<DV, cols_per_block/ncols2, ncols2>
--                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++                (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
              return;
          }
      }
@@ -362,8 +362,8 @@ index d1164b8..b4b1bd2 100644
 -        fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap>;
 +        fattn_kernel_t fattn_kernel = flash_attn_tile<DKQ, DV, cols_per_block/ncols2, ncols2, use_logit_softcap, type_K, type_V>;
          launch_fattn<DV, cols_per_block/ncols2, ncols2>
--            (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, warp_size);
-+            (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, warp_size);
+-            (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, true, true, false, false, warp_size);
++            (ctx, dst, fattn_kernel, nwarps, nbytes_shared, nbatch_fa, type_K == GGML_TYPE_F16, type_V == GGML_TYPE_F16, false, false, warp_size);
          return;
      }
  
@@ -452,10 +452,10 @@ index d1164b8..b4b1bd2 100644
  extern DECL_FATTN_TILE_CASE( 64,  64);
  extern DECL_FATTN_TILE_CASE( 72,  72);
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index ab7a3b2..de78e5c 100644
+index d11a964d5..c48289da4 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
-@@ -525,6 +525,17 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+@@ -660,6 +660,17 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
                  }
              }
          } else {
@@ -474,7 +474,7 @@ index ab7a3b2..de78e5c 100644
                  return BEST_FATTN_KERNEL_VEC;
              }
 diff --git a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq128-dv128.cu b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq128-dv128.cu
-index 1da1810..b229c4d 100644
+index 1da181055..b229c4d6e 100644
 --- a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq128-dv128.cu
 +++ b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq128-dv128.cu
 @@ -3,3 +3,5 @@
@@ -484,7 +484,7 @@ index 1da1810..b229c4d 100644
 +DECL_FATTN_TILE_CASE_Q(128, 128, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0);
 +DECL_FATTN_TILE_CASE_Q(128, 128, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0);
 diff --git a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq256-dv256.cu b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq256-dv256.cu
-index bc65c72..c25ddd8 100644
+index bc65c723e..c25ddd806 100644
 --- a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq256-dv256.cu
 +++ b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq256-dv256.cu
 @@ -3,3 +3,5 @@
@@ -494,7 +494,7 @@ index bc65c72..c25ddd8 100644
 +DECL_FATTN_TILE_CASE_Q(256, 256, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0);
 +DECL_FATTN_TILE_CASE_Q(256, 256, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0);
 diff --git a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq64-dv64.cu b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq64-dv64.cu
-index 5caffac..da5e2a4 100644
+index 5caffac04..da5e2a46e 100644
 --- a/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq64-dv64.cu
 +++ b/ggml/src/ggml-cuda/template-instances/fattn-tile-instance-dkq64-dv64.cu
 @@ -3,3 +3,5 @@
@@ -503,4 +503,3 @@ index 5caffac..da5e2a4 100644
  DECL_FATTN_TILE_CASE(64, 64);
 +DECL_FATTN_TILE_CASE_Q( 64,  64, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0);
 +DECL_FATTN_TILE_CASE_Q( 64,  64, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0);
-

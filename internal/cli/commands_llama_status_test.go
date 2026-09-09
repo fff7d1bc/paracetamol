@@ -89,6 +89,37 @@ func TestLlamaModelLoadStatusUsesResidentStrixDefault(t *testing.T) {
 	}
 }
 
+func TestLlamaStatusReportsExplicitReasoningHistoryPolicy(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		section map[string]string
+		env     map[string]string
+		want    string
+	}{
+		{"router on", map[string]string{"reasoning-preserve": "true"}, nil, "preserved across turns when supported"},
+		{"router off", map[string]string{"reasoning-preserve": "false"}, nil, "earlier reasoning preservation disabled"},
+		{"direct on", nil, map[string]string{"PARACETAMOL_LLAMA_REASONING_PRESERVE": "1"}, "preserved across turns when supported"},
+		{"direct off", nil, map[string]string{"PARACETAMOL_LLAMA_REASONING_PRESERVE": "0"}, "earlier reasoning preservation disabled"},
+		{"unknown", nil, nil, "llama.cpp default"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rows, err := llamaModelStatusRows(catalog.Catalog{}, nil, test.section, test.env, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range rows {
+				if row[0] == "Reasoning history" {
+					if row[1] != test.want {
+						t.Fatalf("history = %q, want %q", row[1], test.want)
+					}
+					return
+				}
+			}
+			t.Fatal("reasoning-history row missing")
+		})
+	}
+}
+
 func TestDirectLlamaPresetIgnoresBackendIncompatibleMatch(t *testing.T) {
 	managed := catalog.Catalog{
 		Artifacts: map[string]catalog.Artifact{

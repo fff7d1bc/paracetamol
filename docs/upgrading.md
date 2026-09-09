@@ -273,6 +273,25 @@ protected behavior is fixed.
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 
+The 2026-09-09 update to `6d9c82ea2bb34e277c0664b8dd3434bfb4dcfb27`
+rebases the reasoning, quantized-KV, and Vulkan-contiguization patches. The
+HIP quantized tile calls now pass upstream's new sparse-attention argument
+explicitly as false. The host-buffer patch still applies unchanged. Upstream
+[PR 28604](https://github.com/ggml-org/llama.cpp/pull/28604) conservatively
+disables the internal integrated-device flag again, which also prevents the
+unsafe direct host-buffer computation. The local guard and pinned-allocation
+handling remain in place pending the full cross-APU removal gate.
+
+Upstream also enables reasoning-history preservation by default. Both direct
+launches and router presets now explicitly apply the catalog's boolean policy
+instead of inheriting that default. Qwen3.6 still drops earlier reasoning,
+while Qwen3.8 and Muse keep it. This is distinct from the request's thinking
+level and from sampling defaults.
+The [Strix Halo acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-6d9c82e-update-2026-09-09)
+includes the fixed ROCm/Vulkan comparison, default Q8 MTP control, API and
+client checks, and deferred architecture handoff. The observed Vulkan
+Q8_0-cache prefill regression is recorded separately from the F16 improvement.
+
 The 2026-08-14 update from llama.cpp commit `62bf73d` to release `b10430`,
 commit `4c1a0af`, initially classified all four then-current patches as
 **rebased**. None was replaced upstream. A subsequent native-reasoning audit
@@ -504,10 +523,11 @@ For presets with `context_override_architectures`, also confirm that
 `--override-kv` remains valid in direct launches and router INI sections, that
 `--fit off` retains its meaning, and that the target and draft architecture
 keys have not changed.
-For presets with `reasoning_preserve`, confirm that `llama-server` and
-`llama-cli` still expose `--reasoning-preserve`, that router INI accepts
-`reasoning-preserve = true`, and that a multi-turn tool exchange retains the
-intended reasoning history. Do not replace this with or infer support for the
+For every preset, confirm that `llama-server` and `llama-cli` still expose
+`--reasoning-preserve` and `--no-reasoning-preserve`, that router INI accepts
+`reasoning-preserve = true` and `reasoning-preserve = false`, and that a
+multi-turn exchange follows the intended reasoning-history policy. Do not
+replace this with or infer support for the
 separate model-native reasoning controls or their server compatibility bridge.
 Inspect `llama-bench --help`, `--list-devices`, and JSON output as well.
 Changes to option names, backend device names, result shape, or progress

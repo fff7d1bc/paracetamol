@@ -1136,7 +1136,10 @@ client scaffold and prompt. Test the actual workflow before granting
 unattended write access.
 
 All three presets enable llama.cpp reasoning preservation so parsed reasoning
-remains available to multi-turn history. Muse does not have a native off mode.
+remains available to multi-turn history. Direct launches and router presets
+set this policy explicitly, and `status llama-cpp` reports it under
+`Reasoning history`. It controls retained conversation history, not whether
+the current reply thinks. Muse does not have a native off mode.
 It exposes low, medium, high, and xhigh `Reasoning strength`, defaulting to
 high. Pi exposes the named levels. Maki maps its generic selector to Muse's
 native strength field, and adaptive selects the managed high default.
