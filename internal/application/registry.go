@@ -85,7 +85,7 @@ var specs = []Spec{
 	{
 		ID: string(DwarfStar), DisplayName: "DwarfStar",
 		Summary:       "experimental high-memory DeepSeek V4 Flash inference",
-		Image:         identity.Image("dwarfstar-ubuntu26.04-rocm10.0-84cc882-r8"),
+		Image:         identity.Image("dwarfstar-ubuntu26.04-rocm10.0-6289c51-r9"),
 		ContainerName: identity.Container("dwarfstar"), Build: BuildDwarfStar, Port: 8000,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true,
 		AfterBuild:   []Action{{Arguments: []string{"content", "install", "dwarfstar", "flash-0731-q2-imatrix"}, Description: "install the reviewed high-memory model"}},

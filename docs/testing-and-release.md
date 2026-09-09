@@ -184,7 +184,7 @@ cache. It is suitable for repeated local build testing where downloading the
 same multi-gigabyte AMD wheels adds no coverage.
 
 Check installed dependency consistency. Read the current image references from
-`internal/config/config.go`; for every Python application image run:
+`internal/application/registry.go`; for every Python application image run:
 
 ```bash
 podman run --rm --entrypoint /opt/venv/bin/python CURRENT_COMFY_IMAGE \

@@ -97,7 +97,9 @@ common=(
     --tokens "$output_tokens"
 )
 if [[ "$dspark" == 1 ]]; then
-    common+=(--mtp "$dspark_model" --dspark)
+    # Upstream reserves --mtp for an embedded GLM drafter. DeepSeek's
+    # independently verified support file uses the explicit model option.
+    common+=(--mtp-model "$dspark_model" --dspark)
 fi
 
 if [[ "$mode" == server ]]; then

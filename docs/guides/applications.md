@@ -1235,13 +1235,13 @@ workflow passed at this setting. At 100 GiB, a 32K server could start but a
 roughly 6K-token tool prefill ran out of mapping space on a transient 320 MiB
 allocation. The bounded
 acceptance smoke still uses a 4K context so routine checks remain short. The
-[pinned upstream Strix Halo guide](https://github.com/antirez/ds4/blob/84cc882352757baf628a1776badf7cc54d584e28/STRIXHALO.md)
+[pinned upstream Strix Halo guide](https://github.com/antirez/ds4/blob/6289c516273979173abbc062209a81dd3706b804/docs/STRIX_HALO.md)
 uses `amdgpu.gttsize=126976`, `ttm.pages_limit=32505856`, and
-`ttm.page_pool_size=32505856`, which is roughly a 124 GiB ceiling. It also uses
-`amd_iommu=off`. The 112 GiB manual 128K run also used that setting. It can
-improve this particular unified-memory workload but reduces DMA isolation, so
-treat it as an explicit host security tradeoff, not an automatic Paracetamol
-setting.
+`ttm.page_pool_size=32505856`, which is roughly a 124 GiB ceiling. These are
+reference settings, not a requirement to copy them. The current guide warns
+against disabling the IOMMU merely to reproduce another host's configuration.
+Paracetamol does not change these host settings. The August 17 DSpark check
+passed at the ordinary 112 GiB ceiling with the IOMMU enabled.
 
 Build, install, and run it explicitly:
 
@@ -1288,10 +1288,13 @@ DSpark contract. The support model increases installed content to about
 as hardware- and workload-specific, and check output quality rather than
 assuming speculative decoding is always faster.
 
-The first fixed Strix Halo screen confirmed correct output and 128K operation,
-but its short 64-token decode was about 17% slower with DSpark enabled. That is
-why this path remains opt-in rather than the default. Longer or different
-workloads may behave differently and require their own controlled comparison.
+The [September 9 Strix Halo retest](../hardware-acceptance.md#fedora-44-strix-halo-dwarfstar-6289c51-update-2026-09-09)
+confirmed ordinary and DSpark operation at a 128K ceiling. The updated DSpark
+path took 26% less wall time than the previous DSpark build on three fixed
+256-token requests, but was only level with the updated ordinary path.
+It was slower on the tested 6K-token input. This is not a reason to enable it
+by default, and the outputs were not byte-identical. Measure the actual
+workload before choosing it.
 
 A different DwarfStar-compatible local GGUF can be selected explicitly; its
 containing directory is mounted read-only:

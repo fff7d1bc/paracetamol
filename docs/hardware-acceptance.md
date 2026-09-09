@@ -26,6 +26,111 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo DwarfStar `6289c51` update (2026-09-09)
+
+The DwarfStar source update from `84cc882352757baf628a1776badf7cc54d584e28`
+to `6289c516273979173abbc062209a81dd3706b804` passed the checks below on
+`gfx1151`. The control-plane source was based on Paracetamol `300cc510`,
+with the upgrade changes recorded in this section's introducing commit.
+Models, ROCm, context defaults, and host tuning were held fixed.
+
+The host was Fedora Linux 44, kernel `7.1.7-200.fc44.x86_64`, Ryzen AI Max+
+395 Radeon 8060S at `/dev/dri/renderD128`, with 128 GB LPDDR5X-8000 and a
+112 GiB TTM/GTT ceiling. IOMMU remained enabled, platform profile remained
+`balanced`, and CPU energy preference remained `balance_performance`.
+The shared runtime remained ROCm 10.0.
+
+The final `--no-layer-cache` build produced
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm10.0-6289c51-r9`, image ID
+`1c2841f6899e648260313cce63188b4fa468bfd3e6ce8fea2c5dbc11f9234d8e`.
+The retained baseline was `dwarfstar-ubuntu26.04-rocm10.0-84cc882-r8`, image
+ID `2022f91220c5107889b65e409377095e635e77ed8d876b5ec8b33d8d3c9cad34`.
+The new image passed `pip check`, dynamic dependency checks for all three
+retained executables, and device-code inspection for all four managed HIP
+targets. No source checkout, development dependency closure, PyTorch payload,
+or extra agent/evaluation executable leaked into the final stage. The
+upstream MIT notice and separate Iris MIT notice are retained.
+
+The upgrade required direct rocBLAS linkage, rebasing the gfx11-only WMMA
+fallback, and changing the external DSpark support argument to
+`--mtp-model`. Bare `--mtp` now selects an embedded GLM drafter upstream.
+The managed DeepSeek target and support pins did not change. Model-free
+upstream CPU tests passed for memory, sampling, session state, server
+protocol, and image decoding. Extracted production-helper fixtures also
+passed 7,217 DSpark EOS cases and 162 cache-window metadata assertions.
+Those are code checks, not GPU inference evidence.
+
+GPU acceptance passed ordinary and DSpark CLI at a 4K ceiling. Ordinary and
+DSpark servers at the managed 131072-token ceiling both passed thinking-off
+and thinking-on answers, a 6,618-token retrieval input, nested tool arguments
+and tool-result continuation, streaming usage and completion termination,
+the Responses endpoint, continuation-cache reuse, and cancellation followed
+by a fresh correct response. The DSpark support file reported all 81 tensors
+with no missing, invalid, or metadata-error entries. These checks exercise a
+128K allocation, not 128K of populated conversation history.
+
+The controlled short-generation screen sent the same 33-token prompt three
+times sequentially, each with temperature zero, seed 42, a 256-token output
+limit, and no prompt-cache hits. Each output was a partial Go worker-pool
+implementation used to hold generation length fixed, not a graded coding
+task. Only one GPU workload ran at a time and no build overlapped a timed run.
+
+| Path | Three request wall times, seconds | Total wall time, seconds |
+| --- | --- | --- |
+| Previous ordinary | 18.663, 16.996, 16.994 | 52.653 |
+| Updated ordinary | 19.965, 17.154, 17.153 | 54.272 |
+| Previous DSpark | 24.815, 24.599, 24.119 | 73.533 |
+| Updated DSpark | 20.832, 16.687, 16.662 | 54.181 |
+
+Ordinary generation took 3.1% more total wall time, with the warmed requests
+about 1% slower. DSpark took 26.3% less wall time than the old DSpark build,
+but only caught up with ordinary generation overall. Output was not
+byte-identical across source versions or between ordinary and DSpark paths.
+This is not evidence of identical greedy decoding or sampled distributions.
+
+One matched 6,618-token retrieval request returned the same three-token
+answer in 33.540 seconds on the old ordinary path and 24.599 seconds on the
+updated ordinary path, a 26.7% wall-time reduction. Updated DSpark took
+48.980 seconds for that request. This is a useful prefill observation, not a
+multi-workload performance claim. DSpark remains opt-in at temperature zero.
+
+Managed Pi and Maki both completed actual file-read and shell-tool exchanges
+through the gateway using the ordinary DeepSeek model. The gateway switched
+from llama.cpp to DwarfStar on demand and removed its owned backend on clean
+shutdown. The kernel journal for the test window had no matching AMDGPU,
+SVM, page-fault, protection-fault, reset, timeout, or OOM event.
+
+Results, exact commands, raw API requests/responses, and backend logs are
+retained under
+`~/.local/share/paracetamol/apps/acceptance/results/20260909-native-upgrade/`.
+The `dwarfstar-*-perf`, `dwarfstar-*-full`, continuation-cache and cancellation
+artifacts distinguish ordinary and DSpark cases. An initial cache assertion
+incorrectly expected DwarfStar to rewind a completed live prefix when the
+same independent prompt was resent. Both source versions reject that reuse.
+The corrected conversation-continuation probe reused 713 cached tokens.
+
+`gfx1150`, `gfx1200`, and `gfx1201` inference remains `BLOCKED` for this
+source update because representative hardware was unavailable. Compiled
+device code is not acceptance. On a sufficiently provisioned host, start
+with the following commands, replacing the profile and exact render node
+with `strix-point` or `rdna4` and the verified device path.
+
+```bash
+./paracetamol build dwarfstar --no-layer-cache
+./paracetamol acceptance --application dwarfstar --profile strix-point \
+  --render-node /dev/dri/renderD128 --non-interactive
+./paracetamol run dwarfstar server --profile strix-point \
+  --render-node /dev/dri/renderD128 --context 131072
+```
+
+Use the unchanged `flash-0731-q2-imatrix` and optional
+`flash-0731-q2-imatrix-dspark` content. Replay the retained temperature-zero
+API probes with ordinary and `--dspark` servers, compare the same fixed
+three-request workload, and inspect kernel logs. Expect correct tool and
+multi-turn behavior, clean interruption, and no GPU or memory faults.
+Discrete GPUs need explicitly provisioned host-memory capacity for the
+80.76 GiB target. A small VRAM device alone cannot satisfy this handoff.
+
 ### Fedora 44 Strix Halo Qwen3.8 Flash-Next (2026-08-29)
 
 Paracetamol commit `153932c` integrated the three-shard Unsloth Dynamic

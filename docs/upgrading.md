@@ -533,7 +533,7 @@ model, and acceptance case form one reviewed compatibility unit:
 ```text
 DWARFSTAR_COMMIT
 ROCM_VERSION
-the dwarfstar image in internal/config/config.go
+the dwarfstar image in internal/application/registry.go
 dwarfstar-deepseek-v4-flash-0731-q2-imatrix
 dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark
 applications/dwarfstar/entrypoint.sh
@@ -569,6 +569,9 @@ For an upstream source update:
    executables. The minimal ROCm core wheel itself includes its HIP compiler
    driver and LLVM runtime, so their presence is not evidence that the
    development closure leaked into the image.
+   The current source directly links rocBLAS as well as hipBLAS and hipBLASLt.
+   Retain the upstream MIT notice, which includes the vendored ggml authors,
+   and the separate `third_party/iris/LICENSE` in the final image.
 7. Re-run
    `content install dwarfstar flash-0731-q2-imatrix --dry-run`. Change the
    model pin only after reviewing the exact replacement model card, license,
@@ -589,6 +592,20 @@ integration pins the separate 0731 support GGUF and exposes only the exact
 managed target/support pair through `--dspark`. Revalidate temperature-zero
 sampling, target/support compatibility, output quality, throughput, memory,
 and kernel logs whenever the source or either artifact changes.
+
+The 2026-09-09 update to `6289c516273979173abbc062209a81dd3706b804`
+incorporates upstream ROCm prefill and DSpark work, usable-pinned-memory
+allocation checks, and server/tool parser fixes. The multi-architecture
+fallback now guards the renamed 8-wave and 16-wave Q8 row-tile kernels.
+Version-specific hipBLASLt/rocBLAS solutions remain upstream-gated rather
+than being forced for an unknown library build. DSpark stays opt-in and its
+managed contract stays at temperature zero. Upstream's opportunistic sampled
+DSpark measurements are not evidence of identical sampling behavior.
+The support path is passed through `--mtp-model`. Upstream now uses bare
+`--mtp` for an embedded GLM drafter, not for a DeepSeek support filename.
+The [Strix Halo acceptance record](hardware-acceptance.md#fedora-44-strix-halo-dwarfstar-6289c51-update-2026-09-09)
+separates ordinary and DSpark performance from protocol checks and deferred
+hardware coverage. This update does not add an unreleased model family.
 
 Arbitrary MTP support, multi-GPU, distributed execution, SSD streaming,
 evaluation, and the upstream native agent remain outside this procedure until

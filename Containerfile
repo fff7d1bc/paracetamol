@@ -8,7 +8,7 @@ ARG TORCH_VERSION=2.13.0
 ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2
 ARG LLAMA_CPP_COMMIT=0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0
-ARG DWARFSTAR_COMMIT=84cc882352757baf628a1776badf7cc54d584e28
+ARG DWARFSTAR_COMMIT=6289c516273979173abbc062209a81dd3706b804
 
 FROM ${UBUNTU_IMAGE} AS content-tools
 
@@ -389,7 +389,7 @@ ${site_packages}/_rocm_sdk_libraries/lib" && \
     make -j"$(nproc)" strix-halo \
         NATIVE_CPU_FLAG=-march=x86-64-v3 \
         ROCM_CFLAGS='-O3 -ffast-math -fno-finite-math-only -fPIE -pthread -D__HIP_PLATFORM_AMD__ -Wno-unused-command-line-argument --offload-jobs=jobserver --offload-arch=gfx1150 --offload-arch=gfx1151 --offload-arch=gfx1200 --offload-arch=gfx1201' \
-        ROCM_LDLIBS="-lm -pthread -lhipblas -lhipblaslt -lamdhip64 \
+        ROCM_LDLIBS="-lm -pthread -lhipblas -lhipblaslt -lrocblas -lamdhip64 \
 -Wl,-rpath,${runtime_rpath}" && \
     ./ds4 --help >/dev/null && \
     ./ds4-server --help >/dev/null && \
@@ -401,6 +401,8 @@ ${site_packages}/_rocm_sdk_libraries/lib" && \
         /opt/dwarfstar-install/bin/ && \
     install -m 0444 LICENSE \
         /opt/dwarfstar-install/share/licenses/paracetamol/dwarfstar/LICENSE && \
+    install -m 0444 third_party/iris/LICENSE \
+        /opt/dwarfstar-install/share/licenses/paracetamol/dwarfstar/iris.LICENSE && \
     ldd /opt/dwarfstar-install/bin/ds4-server | \
         tee /tmp/dwarfstar-ldd.txt && \
     ! grep -q 'not found' /tmp/dwarfstar-ldd.txt
