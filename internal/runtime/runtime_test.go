@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -140,6 +142,38 @@ func TestLlamaCPUCLIIsOfflineAndHasNoGPUDevices(t *testing.T) {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("CPU CLI command contains %q: %s", forbidden, joined)
 		}
+	}
+}
+
+func TestReasoningHistoryPolicyIsExplicitForDirectAndRouter(t *testing.T) {
+	for _, preserve := range []bool{false, true} {
+		t.Run(fmt.Sprint(preserve), func(t *testing.T) {
+			managed := catalog.Catalog{
+				Artifacts: map[string]catalog.Artifact{
+					"model": {ID: "model", Destination: "model.gguf"},
+				},
+				LlamaPresets: map[string]catalog.LlamaPreset{
+					"model": {ID: "model", Artifact: "model", DefaultContext: 4096, ReasoningPreserve: preserve},
+				},
+			}
+			contents, err := RenderRouterModels(managed, "rocm", []string{"model"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := fmt.Sprintf("reasoning-preserve = %t\n", preserve); !strings.Contains(contents, want) {
+				t.Fatalf("router policy lacks %q:\n%s", want, contents)
+			}
+			command, err := LlamaCommand(LlamaOptions{
+				Image: "image", Profile: "cpu", Mode: "cli", Backend: "rocm",
+				DataDir: "/data", ManagedModel: "model.gguf", ReasoningPreserve: preserve,
+			}, ":rw")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "PARACETAMOL_LLAMA_REASONING_PRESERVE=" + boolInt(preserve); !slices.Contains(command, want) {
+				t.Fatalf("direct policy lacks %q: %v", want, command)
+			}
+		})
 	}
 }
 

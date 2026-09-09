@@ -97,9 +97,8 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 		if preset.Jinja {
 			section = append(section, "jinja = true")
 		}
-		if preset.ReasoningPreserve {
-			section = append(section, "reasoning-preserve = true")
-		}
+		// Do not inherit upstream's changing reasoning-history default.
+		section = append(section, fmt.Sprintf("reasoning-preserve = %t", preset.ReasoningPreserve))
 		if preset.ChatTemplate != "" {
 			section = append(section, "jinja = true", "chat-template-file = /usr/local/share/paracetamol/llama-chat-templates/"+preset.ChatTemplate+".jinja")
 		}

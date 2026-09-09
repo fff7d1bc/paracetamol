@@ -369,7 +369,7 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 
 func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, section, environment, runtimeReport map[string]string) ([][2]string, error) {
 	profile := runtimeReport["profile"]
-	modelPath, contextValue, template, reasoningOutput, speculativeType, draftTokens, flashAttention, kvCache, modelLoad, sampling := "", runtimeReport["context"], "", "", "", "0", "", "", "", ""
+	modelPath, contextValue, template, reasoningHistory, speculativeType, draftTokens, flashAttention, kvCache, modelLoad, sampling := "", runtimeReport["context"], "", "", "", "0", "", "", "", ""
 	if section != nil {
 		modelPath = section["model"]
 		if contextValue == "" {
@@ -379,7 +379,9 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 			template = "managed " + strings.TrimSuffix(filepath.Base(value), filepath.Ext(value))
 		}
 		if section["reasoning-preserve"] == "true" {
-			reasoningOutput = "preserved in the API response"
+			reasoningHistory = "preserved across turns when supported"
+		} else if section["reasoning-preserve"] == "false" {
+			reasoningHistory = "earlier reasoning preservation disabled"
 		}
 		speculativeType, draftTokens = section["spec-type"], firstNonEmpty(section["spec-draft-n-max"], "0")
 		flashAttention, kvCache = section["paracetamol-flash-attn-"+profile], section["paracetamol-kv-cache-"+profile]
@@ -391,7 +393,9 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 			template = "managed " + value
 		}
 		if environment["PARACETAMOL_LLAMA_REASONING_PRESERVE"] == "1" {
-			reasoningOutput = "preserved in the API response"
+			reasoningHistory = "preserved across turns when supported"
+		} else if environment["PARACETAMOL_LLAMA_REASONING_PRESERVE"] == "0" {
+			reasoningHistory = "earlier reasoning preservation disabled"
 		}
 		speculativeType, draftTokens = environment["PARACETAMOL_LLAMA_SPECULATIVE_TYPE"], firstNonEmpty(environment["PARACETAMOL_LLAMA_DRAFT_TOKENS"], "0")
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
@@ -423,8 +427,8 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 	if template == "" {
 		template = "model metadata"
 	}
-	if reasoningOutput == "" {
-		reasoningOutput = "llama.cpp default"
+	if reasoningHistory == "" {
+		reasoningHistory = "llama.cpp default"
 	}
 	speculation := "off"
 	if speculativeType != "" {
@@ -437,7 +441,7 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 	rows = append(rows,
 		[2]string{"Context", contextValue}, [2]string{"Context policy", contextPolicy},
 		[2]string{"Template", template}, [2]string{"Reasoning", reasoning},
-		[2]string{"Reasoning output", reasoningOutput}, [2]string{"Speculation", speculation},
+		[2]string{"Reasoning history", reasoningHistory}, [2]string{"Speculation", speculation},
 		[2]string{"Flash Attention", firstNonEmpty(flashAttention, "llama.cpp default")},
 		[2]string{"K/V cache", firstNonEmpty(kvCache, "llama.cpp default")},
 		[2]string{"Model load", llamaModelLoadStatus(modelLoad, profile)})

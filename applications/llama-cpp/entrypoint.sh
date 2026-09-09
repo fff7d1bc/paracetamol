@@ -152,8 +152,14 @@ fi
 if [[ "$router" == 0 && "$jinja" == 1 ]]; then
     model_policy_args+=(--jinja)
 fi
-if [[ "$router" == 0 && "$reasoning_preserve" == 1 ]]; then
-    model_policy_args+=(--reasoning-preserve)
+if [[ "$router" == 0 ]]; then
+    # Upstream now preserves history by default. Keep the reviewed model
+    # policy explicit so Qwen3.6 does not inherit Qwen3.8's history behavior.
+    if [[ "$reasoning_preserve" == 1 ]]; then
+        model_policy_args+=(--reasoning-preserve)
+    else
+        model_policy_args+=(--no-reasoning-preserve)
+    fi
 fi
 if [[ "$router" == 0 && -n "$chat_template" ]]; then
     chat_template_path="/usr/local/share/paracetamol/llama-chat-templates/${chat_template}.jinja"

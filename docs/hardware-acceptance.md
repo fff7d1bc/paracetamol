@@ -26,6 +26,131 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp `6d9c82e` update (2026-09-09)
+
+The source update from `0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0` to
+`6d9c82ea2bb34e277c0664b8dd3434bfb4dcfb27` passed the following `gfx1151`
+checks. The control-plane source was based on Paracetamol `300cc510`, with
+the update recorded in this section's introducing commit. Hardware, kernel,
+ROCm 10.0, memory policy and balanced power settings match the September 9
+DwarfStar record below. No model pins, presets, sampler defaults or backend
+restrictions changed.
+
+The final `--no-cache` build produced
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-6d9c82e-r34`, image ID
+`875ac24eeed4e44eecbad8f23150fc402ed5b0c2c35dce010e87018ea3b738e3`.
+The retained baseline was `llama-cpp-ubuntu26.04-rocm10.0-0eadefe-r33`,
+image ID
+`a4d31f78ffeb2b305275dc0ef3c7bae5d161f9c6e9f212e0c37961a0ba5720af`.
+Both GPU backends compiled. The final image passed `pip check`, dynamic
+dependency checks for its three executables, retained-payload inspection,
+and inspection of actual HIP device code for all four managed targets.
+
+Three local patches needed rebasing. The reasoning patch follows upstream's
+new history-policy fields, HIP quantized-KV launch calls explicitly disable
+the new sparse-attention argument, and the Vulkan F16 contiguization patch
+follows the changed shader table. The HIP host-buffer patch applies unchanged.
+None is removed on the strength of one GPU's results.
+
+Upstream now preserves reasoning history by default. Direct launches and
+router INI sections explicitly set the existing catalog policy both ways,
+keeping Qwen3.6 history preservation off and Qwen3.8/Muse preservation on.
+Live rendered-template checks confirmed both behaviors. The status command
+now calls this `Reasoning history`, distinct from current-response thinking.
+
+The controlled native benchmark used Unsloth Dynamic Q8_K_XL at revision
+`4604b899a826000505a834e623272db5b7fd62f6`, SHA-256
+`af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377`,
+through the non-MTP `qwen3.8-27b-ud-q8-k-xl` alias. Each case used 512 prompt
+tokens, 128 generated tokens, three repetitions, batch 2048, microbatch 512,
+Flash Attention on, and `/dev/dri/renderD128`. Context depth is populated
+history, not just the allocation ceiling. No other GPU workload or build ran
+alongside a timed case. Values below are native benchmark averages in tokens
+per second, not coding-task scores.
+
+| Backend | Populated depth | K/V type | Previous prompt | Updated prompt | Previous decode | Updated decode |
+| --- | --- | --- | --- | --- | --- | --- |
+| ROCm | 0 | F16 | 338.93 | 337.13 | 7.222 | 7.209 |
+| ROCm | 32768 | F16 | 196.86 | 196.35 | 6.783 | 6.771 |
+| ROCm | 32768 | Q8_0 | 205.46 | 207.84 | 6.875 | 6.865 |
+| ROCm | 32768 | Q4_0 | 193.85 | 193.86 | 6.869 | 6.854 |
+| Vulkan | 0 | F16 | 231.92 | 277.94 | 7.297 | 7.298 |
+| Vulkan | 32768 | F16 | 176.37 | 200.49 | 6.784 | 6.781 |
+| Vulkan | 32768 | Q8_0 | 174.44 | 168.22 | 6.970 | 6.963 |
+
+ROCm and decode performance were essentially unchanged. Vulkan F16 prompt
+processing improved 19.8% at shallow depth and 13.7% at 32K. Optional Vulkan
+Q8_0-cache prompt processing regressed 3.6% in this screen. That limitation is
+retained in the record, not hidden by the F16 improvement. Defaults remain
+F16. Separate real-answer and tool-round-trip probes passed with ROCm Q8_0
+and Q4_0 cache and Vulkan Q8_0 cache. Tiny Qwen3 0.6B controls also passed
+on both images and both backends, completing 18 native benchmark cases.
+
+The actual default `qwen3.8-27b-mtp-ud-q8-k-xl` was compared separately
+through the lazy ROCm router at its 262144-token ceiling and three-token
+draft depth. Three sequential, uncached, temperature-zero, seed-42 requests
+each generated a fixed 256-token partial code continuation. Total generated
+tokens divided by total backend generation time were 15.97 tokens/s before
+and 15.96 after, a 0.1% difference. HTTP wall time for the first request
+includes lazy loading and is not treated as decode time. The partial code
+outputs are a fixed-length performance workload, not a quality evaluation.
+
+Qwen3.8 Q8 MTP passed direct-server and lazy-router operation at the normal
+256K ceiling, thinking-off/medium/xhigh and compatibility aliases, nested
+tool arguments and tool-result continuation, streaming termination and usage,
+the Responses endpoint, prefix-cache reuse, and cancellation followed by a
+correct fresh request. Effective sampler checks covered omitted fields,
+explicit partial overrides and nulls, in both thinking modes. Two concurrent
+requests returned correct sentinels. The server reported four slots with
+unified KV and `n_ctx_slot = 262144`. That concurrency check is correctness
+coverage, not a throughput comparison.
+
+The long retrieval request populated 33,058 tokens and recovered both keys
+exactly. It took 136.783 seconds wall time, with 243.38 prompt tokens/s.
+This is not a fully populated 256K acceptance run. Lazy-router regressions
+also passed for Qwen3.6 dense and sparse MTP, Muse DFlash at 256K, Qwen3.8
+non-MTP Q8, and Qwen3.8 MTP Q4 at its existing 128K ceiling. Flash-Next
+Dynamic Q4_K_XL passed thinking, tools, streaming, Responses, history and a
+6K input through Vulkan. Its ROCm restriction and lack of managed MTP remain
+unchanged.
+
+CPU lazy-router startup, a real tiny ROCm CLI answer, and the automated GPU
+acceptance case passed. Managed Pi 0.84.2 and Maki 0.4.8 both completed actual
+file-read and shell-tool exchanges through the gateway with the default Q8
+MTP model. Backend switching and clean gateway shutdown passed. The kernel
+journal contained no matching GPU, mapping, protection, timeout, reset or OOM
+fault during the test window. Tier 1 checks and the forced normal Go build
+passed.
+
+Raw requests/responses, exact commands, native JSON, image build and closure
+logs, and gateway client events are retained under
+`~/.local/share/paracetamol/apps/acceptance/results/20260909-native-upgrade/`.
+See `result-manifest.md` there for the evidence map and limitations. The
+retained old images were not pruned.
+
+`gfx1150`, `gfx1200`, and `gfx1201` inference is `BLOCKED` pending access to
+representative hardware. Start with the tiny smoke below, replacing `rdna4`
+and the render node with the exact target selection. A host with sufficient
+model and context capacity should then repeat the Q8 command with both
+backends, depth 0 and 32768, and matched F16 and quantized caches. Do not infer
+these patch-removal gates from compiled code alone.
+
+```bash
+./paracetamol build llama-cpp --no-cache
+./paracetamol acceptance --application llama-cpp --profile rdna4 \
+  --render-node /dev/dri/renderD128 --non-interactive
+./paracetamol benchmark llama-cpp throughput \
+  --preset qwen3.8-27b-ud-q8-k-xl --profile rdna4 \
+  --render-node /dev/dri/renderD128 --backend rocm \
+  --prompt-tokens 512 --generation-tokens 128 --repetitions 3 \
+  --context-depth 32768 --batch-size 2048 --ubatch-size 512 \
+  --cache-type-k f16 --cache-type-v f16 --flash-attn on
+```
+
+Replay the retained tool, history, sampler, cache and cancellation probes at
+the managed model's context ceiling. Expect correct output, no numerical or
+GPU faults, and recorded same-workload performance rather than only startup.
+
 ### Fedora 44 Strix Halo DwarfStar `6289c51` update (2026-09-09)
 
 The DwarfStar source update from `84cc882352757baf628a1776badf7cc54d584e28`
