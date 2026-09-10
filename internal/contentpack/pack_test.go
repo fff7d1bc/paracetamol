@@ -68,6 +68,50 @@ func TestLoadValidNarrowPack(t *testing.T) {
 	}
 }
 
+func TestLoadApplicationTargetBoundary(t *testing.T) {
+	for application, group := range map[string]string{"llama-cpp": "llama", "dwarfstar": "dwarfstar", "comfyui": "comfyui"} {
+		for target, owner := range map[string]string{"llama-models": "llama-cpp", "dwarfstar-models": "dwarfstar", "models": "comfyui", "workflows": "comfyui", "unknown": ""} {
+			t.Run(application+"/"+target, func(t *testing.T) {
+				contents := strings.NewReplacer(
+					`"application": "llama-cpp"`, `"application": "`+application+`"`,
+					`["all", "llama"]`, `["all", "`+group+`"]`,
+					`"target": "llama-models"`, `"target": "`+target+`"`,
+				).Replace(validPack)
+				if target == "workflows" {
+					contents = strings.ReplaceAll(contents, "model.gguf", "workflow.json")
+				}
+				loaded, err := loadText(t, emptyCatalog(), contents)
+				if application != owner {
+					if err == nil {
+						t.Fatal("accepted an artifact outside the bundle's application partition")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if loaded.Artifacts["import-model"].Target != target || loaded.Bundles["import-model"].Application != application {
+					t.Fatal("application or target changed during load")
+				}
+			})
+		}
+	}
+}
+
+func TestLoadDwarfStarRetainsNarrowPackPolicy(t *testing.T) {
+	valid := strings.NewReplacer(`"llama-cpp"`, `"dwarfstar"`, `"llama-models"`, `"dwarfstar-models"`, `"llama"`, `"dwarfstar"`).Replace(validPack)
+	for _, contents := range []string{
+		strings.Replace(valid, `["all", "dwarfstar"]`, `["all", "llama"]`, 1),
+		strings.Replace(valid, `"NOASSERTION"`, `"MIT"`, 1),
+		strings.Replace(valid, `"imported/model.gguf"`, `"../model.gguf"`, 1),
+		strings.Replace(valid, `"schema_version": 2,`, `"schema_version": 2, "dwarfstar_presets": {},`, 1),
+	} {
+		if _, err := loadText(t, emptyCatalog(), contents); err == nil {
+			t.Fatalf("accepted invalid DwarfStar pack:\n%s", contents)
+		}
+	}
+}
+
 func TestLoadRejectsNestedUnknownFieldsAndUnsupportedProvider(t *testing.T) {
 	for _, contents := range []string{
 		strings.Replace(validPack, `"warning": "not independently verified",`, `"warning": "not independently verified", "surprise": true,`, 1),
