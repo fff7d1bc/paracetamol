@@ -456,6 +456,14 @@ committing machine-specific or non-public metadata:
 The repository-root `local-content/` directory is ignored by Git and is the
 recommended location for packs and their companion manifests.
 
+Local packs can install ComfyUI, llama.cpp, or DwarfStar artifacts. DwarfStar
+bundles use application `dwarfstar`, groups `all` and `dwarfstar`, and the
+`dwarfstar-models` target. They retain the same explicit `NOASSERTION` gate,
+immutable file pins, verification, and application-specific storage boundary.
+A local pack does not declare serving presets or add its model to the gateway.
+Use an exact local `--model` path for an isolated compatibility trial before
+proposing a reviewed built-in preset.
+
 `content import URL` generates one of these packs for a single supported
 Civitai or Hugging Face file. The resolver lives in
 `internal/remoteimport/`; it is an authoring convenience, not a second

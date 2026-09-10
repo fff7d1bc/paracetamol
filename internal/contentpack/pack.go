@@ -97,7 +97,7 @@ func Load(base catalog.Catalog, files []string) (catalog.Catalog, []string, erro
 			if !identifier.MatchString(id) || value.Description == "" || value.Size <= 0 || !digest.MatchString(value.SHA256) {
 				return catalog.Catalog{}, nil, fmt.Errorf("content pack %s has invalid artifact %s", file, id)
 			}
-			if value.Target != "models" && value.Target != "llama-models" && value.Target != "workflows" {
+			if value.Target != "models" && value.Target != "llama-models" && value.Target != "dwarfstar-models" && value.Target != "workflows" {
 				return catalog.Catalog{}, nil, fmt.Errorf("content pack artifact %s has unsupported target", id)
 			}
 			clean := path.Clean(value.Destination)
@@ -134,10 +134,10 @@ func Load(base catalog.Catalog, files []string) (catalog.Catalog, []string, erro
 		sort.Strings(bundleIDs)
 		for _, id := range bundleIDs {
 			value := raw.Bundles[id]
-			if !identifier.MatchString(id) || value.Description == "" || value.Application != "comfyui" && value.Application != "llama-cpp" || len(value.Artifacts) == 0 {
+			if !identifier.MatchString(id) || value.Description == "" || value.Application != "comfyui" && value.Application != "llama-cpp" && value.Application != "dwarfstar" || len(value.Artifacts) == 0 {
 				return catalog.Catalog{}, nil, fmt.Errorf("content pack has invalid bundle %s", id)
 			}
-			if !exactGroups(value.Groups, "all", map[string]string{"comfyui": "comfyui", "llama-cpp": "llama"}[value.Application]) {
+			if !exactGroups(value.Groups, "all", map[string]string{"comfyui": "comfyui", "llama-cpp": "llama", "dwarfstar": "dwarfstar"}[value.Application]) {
 				return catalog.Catalog{}, nil, fmt.Errorf("content pack bundle %s has invalid selector groups", id)
 			}
 			seenArtifacts := make(map[string]bool)
@@ -150,7 +150,7 @@ func Load(base catalog.Catalog, files []string) (catalog.Catalog, []string, erro
 					return catalog.Catalog{}, nil, fmt.Errorf("content pack bundle %s references external artifact", id)
 				}
 				target := raw.Artifacts[artifact].Target
-				if value.Application == "llama-cpp" && target != "llama-models" || value.Application == "comfyui" && target != "models" && target != "workflows" {
+				if value.Application == "llama-cpp" && target != "llama-models" || value.Application == "dwarfstar" && target != "dwarfstar-models" || value.Application == "comfyui" && target != "models" && target != "workflows" {
 					return catalog.Catalog{}, nil, fmt.Errorf("content pack bundle %s has an artifact for another application", id)
 				}
 			}
