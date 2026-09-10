@@ -97,6 +97,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      direction](vllm-integration-direction.md)
    - [DeepSeek V4 Flash llama.cpp feasibility
      snapshot](deepseek-v4-flash-llama-cpp-feasibility.md)
+   - [GLM-5.3 Flash DwarfStar feasibility
+     snapshot](glm-5.3-flash-dwarfstar-feasibility.md)
    - [Muse Glimmer llama.cpp agent feasibility
      snapshot](muse-glimmer-llama-cpp-agent-feasibility.md)
    - [Ling 3.0 Flash llama.cpp feasibility
