@@ -26,6 +26,29 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo GLM-5.3 Flash feasibility (2026-09-10)
+
+The unchanged DwarfStar `6289c51-r9` ROCm 10.0 image below loaded and ran
+Antirez's 89.88 GiB GLM-5.3 Flash Q2 conversion resident, with the normal
+112 GiB TTM/GTT policy and memory guard enabled. At a 256K context ceiling,
+planned memory was 95.96 GiB and sampled host available memory stayed above
+25.02 GiB. Three fixed shallow 256-token responses decoded at about
+14 tokens/s. A retrieval request with 30,048 actual input tokens returned
+both keys correctly in 589.769 seconds. This is not fully populated 256K
+acceptance.
+
+Basic inference and capacity passed this screen, but typed tools are `FAIL`.
+The server converted an object-valued argument into a string, matching an
+open upstream GLM parser issue. Exact lowercase-answer checks also failed
+on capitalization. This is not managed-model or agent acceptance. GLM was
+not added to the gateway inventory and existing defaults were unchanged.
+
+The [feasibility record](glm-5.3-flash-dwarfstar-feasibility.md) contains the
+exact model pin, image ID, context coverage, protocol failures and retest
+gate. Raw evidence and the verified local content pack are retained under
+`~/.local/share/paracetamol/apps/acceptance/results/20260910-glm53-flash/`.
+No inference claim is made for the other GPU classes.
+
 ### Fedora 44 Strix Halo llama.cpp `6d9c82e` update (2026-09-09)
 
 The source update from `0eadefebd3f8f92a86d634a0e5b8fffc9dc792c0` to
