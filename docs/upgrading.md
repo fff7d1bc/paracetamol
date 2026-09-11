@@ -273,6 +273,23 @@ protected behavior is fixed.
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 
+The 2026-09-11 update to `8172e6577ac2b35de1ec1e5d1c0aaad6c4a2129f`
+retains the host-buffer, reasoning-controls and HIP quantized-KV patches
+unchanged. The Vulkan F16 patch needs only a rebase of its surrounding shader
+table context. None of the four protected behaviors has an accepted upstream
+replacement. The 32-commit range includes RDNA Flash Attention tuning in
+[PR 28102](https://github.com/ggml-org/llama.cpp/pull/28102), removal of an
+unused indexer V allocation in
+[PR 28330](https://github.com/ggml-org/llama.cpp/pull/28330), and Vulkan
+matrix, MoE and argsort fixes. Speculative-decoding position handling and MTP
+cache filtering also change, so retained speculative presets need real
+server and router regression checks. Open Flash-Next MTP, gather and pooled
+indexer-cache proposals are not included in this pin.
+The [September 11 memory-policy screen](hardware-acceptance.md#flash-next-rocm-memory-policy-screen)
+also distinguishes the failing normal Flash-Next ROCm path from a coherent
+resident-loading experiment. It does not remove the managed Vulkan-only
+restriction or change other presets' allocation policy.
+
 The 2026-09-09 update to `6d9c82ea2bb34e277c0664b8dd3434bfb4dcfb27`
 rebases the reasoning, quantized-KV, and Vulkan-contiguization patches. The
 HIP quantized tile calls now pass upstream's new sparse-attention argument
