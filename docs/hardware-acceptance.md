@@ -26,6 +26,49 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo DwarfStar typed GLM tools (2026-09-11)
+
+The parser correction is based on Paracetamol
+`701c32eb2c8021527679119af3854143d80b8331`, with the changes recorded in this
+section's introducing commit. DwarfStar remains pinned at
+`6289c516273979173abbc062209a81dd3706b804`, now carrying upstream PR 1016 at
+`9db96f0e96928e2245664b83e0498145e86a4c25`. The existing WMMA patch, ROCm
+10.0, model files and September 9 host policies were unchanged.
+
+The `--no-layer-cache` build produced
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm10.0-6289c51-r10`, image ID
+`ce024e0bcf3a9da29185f984247e2365667e00fd2ac78a3014f5f125f99f38cb`.
+The old `r9` image was retained. The new image passed model-free server tests,
+`pip check`, help and dynamic dependencies for all three retained binaries,
+payload inspection and device-code inspection for all four managed targets.
+The server suite also passed host address/undefined-behavior sanitizers.
+Model-free server tests are now an image build gate.
+
+Antirez's exact GLM-5.3 Flash Q2 conversion below was tested at a 262144-token
+allocation, resident with MTP off. The original image failed all three
+mixed-type tool cases by quoting every argument. The patched image passed
+buffered/off, streamed/off and streamed/on calls, including nested objects,
+arrays, numeric and boolean values, nulls and JSON-looking strings. All three
+tool-result continuations passed. Real Pi and Maki read/shell exchanges also
+passed with numeric read offsets and limits.
+
+Three matched 256-output-token GLM requests averaged 19.264 seconds before
+and 19.250 seconds after, with byte-identical generated code. This is not a
+meaningful speed improvement. The known exact-case `True` response failure
+remains. Patched GLM protocol/client cases retained at least 24.80 GiB of
+sampled host available memory without new GPU faults in their kernel windows.
+
+DeepSeek ordinary and DSpark server regressions at the managed 128K ceiling
+both passed tools, thinking, retrieval, streaming, Responses, cache reuse and
+cancellation checks. The normal gateway passed a DeepSeek tool round trip
+and was restored unloaded. GLM is still a direct experimental model, not a new
+managed preset or gateway inventory entry. No model defaults changed, and no
+new GPU inference claim is made for the other architectures.
+
+The [GLM follow-up](glm-5.3-flash-dwarfstar-feasibility.md#parser-correction-2026-09-11)
+has the detailed boundaries and results. Raw evidence is retained under
+`~/.local/share/paracetamol/apps/acceptance/results/20260911-glm-tool-types/`.
+
 ### Fedora 44 Strix Halo GLM-5.3 Flash feasibility (2026-09-10)
 
 The unchanged DwarfStar `6289c51-r9` ROCm 10.0 image below loaded and ran

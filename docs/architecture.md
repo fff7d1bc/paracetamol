@@ -429,6 +429,16 @@ on `gfx1150` and `gfx1151`, while RDNA 4 uses the existing generic batched Q8
 path. Remove it only when a reviewed upstream pin selects a correct kernel by
 device capability itself.
 
+`applications/dwarfstar/glm-tool-argument-types.patch` carries upstream PR
+1016 at `9db96f0e96928e2245664b83e0498145e86a4c25`. GLM tool syntax lacks
+DeepSeek's explicit string flag. The parser uses the request's property types
+to preserve valid JSON literals, keeps strings and ambiguous schemas as text,
+and retains raw generated tool text for replay. This is type recovery, not
+schema validation. The image build runs model-free CPU server tests before
+building ROCm binaries. Remove the patch only after a reviewed upstream pin
+owns the correction and passes the same typed, streaming, and DeepSeek
+regressions. This patch does not add a managed GLM model or gateway policy.
+
 The pinned llama.cpp source receives the fail-closed
 `applications/llama-cpp/hip-apu-host-buffer.patch`, taken from upstream PR
 25863. It preserves integrated-device detection and pinned host allocation
