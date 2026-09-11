@@ -26,6 +26,238 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp `8172e65` update (2026-09-11)
+
+The comparison is based on Paracetamol
+`bd56ebddcaaca72675975cc5aac1dd0ef0f3cd5b`, with the source update recorded in
+this section's introducing commit. The host was the 128 GB Ryzen AI Max+ 395
+above, using `/dev/dri/renderD128`, Fedora 44 and kernel
+`7.1.7-200.fc44.x86_64`. ROCm 10.0, the balanced platform profile,
+`balance_performance` CPU EPP, the 112 GiB GTT allowance and both TTM page
+limits of 29360128 were unchanged. Model pins, sampling, speculative depths
+and F16 target K/V defaults were unchanged.
+
+The `--no-cache` build produced
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-8172e65-r35`, image ID
+`66cb660ee864929a5981ec6adf17c0ade7ddedc9610afe4734949ac5b96e3eb7`, from
+source `8172e6577ac2b35de1ec1e5d1c0aaad6c4a2129f`. The retained control was
+the September 9 `6d9c82e-r34` image below. Installed Ubuntu package versions
+were identical between these images. Both GPU backends compiled, `pip check`
+passed, and the final image retained the three intended executables without
+the build toolchain or PyTorch payload. Actual HIP device code was present
+for all four managed architectures. Only `gfx1151` inference was tested.
+
+All four downstream patches remain. Three apply unchanged. The Vulkan F16
+patch needed only a rebase of its surrounding shader-table context.
+[PR 28102](https://github.com/ggml-org/llama.cpp/pull/28102) is included in
+the new upstream pin, not added as a fifth patch.
+
+The controlled native comparison used the same Unsloth Dynamic Q8_K_XL
+artifact and non-MTP alias as the September 9 record. Each case used
+512 prompt tokens, 128 generated tokens, three repetitions, batch 2048,
+microbatch 512 and Flash Attention on. Depth means populated history, not
+the allocation ceiling. No other GPU workload or build ran alongside a
+timed case. Values are average tokens per second.
+
+| Backend | Populated depth | K/V type | Previous prompt | Updated prompt | Previous decode | Updated decode |
+| --- | --- | --- | --- | --- | --- | --- |
+| ROCm | 0 | F16 | 343.70 | 340.93 | 7.206 | 7.205 |
+| ROCm | 32768 | F16 | 199.76 | 247.35 | 6.766 | 6.766 |
+| ROCm | 32768 | Q8_0 | 207.67 | 243.76 | 6.864 | 6.861 |
+| ROCm | 32768 | Q4_0 | 196.75 | 243.10 | 6.855 | 6.853 |
+| Vulkan | 0 | F16 | 276.87 | 278.96 | 7.307 | 7.304 |
+| Vulkan | 32768 | F16 | 199.80 | 200.30 | 6.780 | 6.788 |
+| Vulkan | 32768 | Q8_0 | 168.02 | 169.27 | 6.960 | 6.967 |
+
+ROCm F16 prompt processing improved 23.8% at 32K history. The optional
+Q8_0 and Q4_0 cache controls improved 17.4% and 23.6% respectively. Decode,
+shallow-context performance and Vulkan were essentially unchanged. Four
+tiny Qwen3 0.6B controls on both images and backends completed the 18-case
+matrix. These are native non-MTP measurements, not default MTP server speed
+or coding-task quality scores.
+
+The actual default `qwen3.8-27b-mtp-ud-q8-k-xl` was compared separately
+through a direct ROCm server at a 262144-token ceiling, one slot and the
+unchanged three-token draft depth. Three sequential uncached requests each
+generated 256 tokens with thinking off, temperature zero and seed 42. All
+six partial code outputs were byte-identical. Total HTTP time was 49.014
+seconds before and 49.300 after, equivalent to 15.67 and 15.58 generated
+tokens/s across the three requests. Backend-timed decode was 16.05 and
+15.97 tokens/s. Both differences are below 1%, not a meaningful speed change.
+These requests followed readiness, so neither timing includes model loading.
+
+Direct Q8 MTP checks passed for thinking off, low,
+medium and xhigh, structured nested tools and their result continuation,
+streaming termination and usage, Responses, reasoning-history preservation,
+prefix-cache reuse, and cancellation followed by a correct fresh request.
+Effective sampler checks passed for omitted fields, partial overrides and
+nulls in both thinking modes. Both 33,058-token retrieval runs returned the
+two keys exactly, in 119.127 seconds directly and 117.567 through the router.
+Two simultaneous router requests returned their correct sentinels. The
+router reported four slots, unified KV and a 262144-token per-slot ceiling.
+This was concurrency correctness coverage, not a throughput comparison.
+
+The lazy router passed Qwen3.6 dense and sparse MTP, Muse DFlash at
+256K, Qwen3.8 MTP and non-MTP Q8, Qwen3.8 MTP Q4 at 128K, and Gemma 4 MTP tool
+regressions. Separate real-answer and nested-tool checks passed with ROCm
+Q8_0 and Q4_0 cache and Vulkan Q8_0 cache. CPU-only lazy-router startup and
+the automated tiny GPU smoke passed. Explicit dependency checks covered
+both GPU libraries and the Vulkan loader as well as all three executables.
+
+#### Populated near-256K Q8 MTP comparison
+
+Each image ran one 247,627-token synthetic archive retrieval. Both returned
+all six distributed keys correctly, with medium reasoning, temperature zero
+and seed 42. The model, F16 cache, one-slot 262144-token ceiling and three-token
+MTP depth were unchanged. Requests followed model readiness but began without
+a cached prompt prefix, so these are not cold model-loading measurements.
+
+| Measure | Previous image | Updated image |
+| --- | --- | --- |
+| Prompt processing time | 2751.641 s | 1817.242 s |
+| Prompt tokens/s | 89.99 | 136.27 |
+| Complete retrieval HTTP time | 2767.682 s | 1833.862 s |
+| Three cached 256-token continuation requests, total HTTP time | 94.944 s | 97.087 s |
+| Continuation generated tokens divided by total HTTP time | 8.09 tokens/s | 7.91 tokens/s |
+| Backend-timed continuation decode | 9.32 tokens/s | 8.74 tokens/s |
+
+The cold prompt took 34.0% less time, a 51.4% increase in prompt throughput.
+This is a useful long-context gain, not a blanket generation-speed improvement.
+The fixed continuations were 2.3% slower over HTTP and 6.3% slower in
+backend-timed decode. Their reasoning differed between images, with MTP
+acceptance changing from 171 of 251 proposed tokens to 165 of 265 per
+request, so this is not a byte-identical decode-kernel comparison. All three
+requests within each image produced identical reasoning and reused over
+247K prompt tokens. All six windows contained only reasoning, deliberately
+truncated at 256 tokens, not completed code. Both fresh unrelated requests
+afterward returned exactly `AFTER_LONG_OK`. There were no new kernel warnings
+during the paired Q8 runs.
+
+#### Populated near-256K Flash-Next Vulkan comparison
+
+Both images passed the ordinary managed Flash-Next Dynamic Q4_K_XL Vulkan
+path with F16 K/V, one slot and a 262144-token ceiling, without MTP. Loading
+remained lazy mmap with the CPU ngram-embedding override, and the RAM prompt
+archive retained its default. Real-answer, nested-tool, reasoning-mode,
+streaming, Responses and history checks passed. The 33,058-token retrieval
+returned both keys correctly in 109.880 seconds before and 105.000 after.
+
+Each image then ran the same single 247,627-token retrieval and three cached
+256-token continuations used above. All six keys were correct, and the fresh
+unrelated request afterward passed on both images.
+
+| Measure | Previous image | Updated image |
+| --- | --- | --- |
+| Prompt processing time | 1245.578 s | 1212.747 s |
+| Prompt tokens/s | 198.80 | 204.19 |
+| Complete retrieval HTTP time | 1270.283 s | 1237.304 s |
+| Three cached continuation requests, total HTTP time | 118.715 s | 118.128 s |
+| Continuation generated tokens divided by total HTTP time | 6.47 tokens/s | 6.50 tokens/s |
+| Backend-timed continuation decode | 6.89 tokens/s | 6.93 tokens/s |
+
+The 2.6% prefill-time improvement is modest in this single paired screen,
+and generation changed by less than 1%. This is not a major Flash-Next speed
+improvement. The continuation outputs differed and were deliberately
+truncated, so they are not a code-quality comparison. Both cases retained
+more than 28.9 GiB of sampled host available memory, with no new kernel
+warnings and clean shutdown. These are controlled old/new-image comparisons
+within Vulkan. The ROCm experiment below uses different loading and cache
+policies and must not be treated as a backend-only A/B test.
+
+#### Flash-Next ROCm memory-policy screen
+
+The managed Flash-Next Dynamic Q4_K_XL preset remains Vulkan-only, without
+MTP. The normal ROCm memory policy still produced corrupt prose, incorrect
+tool arguments and HTTP 500s on both images. The candidate also encountered
+a kernel page-allocation warning during loading. A tiny streaming sentinel
+passed despite the corruption, so it is not a sufficient acceptance test.
+
+An allocation-mode comparison on the old image isolated a useful difference.
+Resident loading with `GGML_CUDA_ENABLE_UNIFIED_MEMORY` present was corrupt,
+while the otherwise matched absent-flag case produced coherent responses
+and correct tools. Setting the variable to `0` is not equivalent to removing
+it, because upstream tests its presence. Simply removing it while retaining
+lazy mmap loading instead hit repeated SVM resident-limit failures. Disabling
+pinned buffers did not rescue that lazy-loading case. These experiments
+narrow the failure to allocation/loading behavior, not a proven underlying
+driver defect. They are consistent with the allocation-mode reports in
+[issue 27797](https://github.com/ggml-org/llama.cpp/issues/27797).
+
+A separate candidate experiment used the following native settings with the
+same verified four-shard GGUF, managed template, F16 K/V and medium reasoning.
+These are recorded diagnostic settings, not new Paracetamol CLI options.
+
+| Setting | Experimental value |
+| --- | --- |
+| Allocation environment | `GGML_CUDA_ENABLE_UNIFIED_MEMORY` absent, enforced by an isolated entrypoint overlay |
+| Model loading | Resident, `--load-mode none` |
+| Large ngram embedding | `--override-tensor per_layer_token_embd.weight=CPU` |
+| CPU weight buffers | `--no-host`, without globally setting `GGML_CUDA_NO_PINNED` |
+| Context and slots | `--ctx-size 262144 --parallel 1`, non-unified KV |
+| Automatic fitting | `--fit off` |
+| RAM prompt archive | `--cache-ram 0`, retaining live-prefix reuse |
+| Safety guard | Cancel this experiment below 4 GiB of sampled host available memory |
+
+The first resident candidate kept upstream's 8192 MiB RAM prompt-cache
+default. Short protocol checks and 33K retrieval passed, but archiving earlier
+prompts consumed the remaining headroom and triggered the safety guard as
+the large request began. Disabling that archive avoided the problem.
+It did not reduce model precision or the context ceiling.
+
+The cache-disabled retry passed thinking off/low/medium/xhigh, sampler
+precedence, history, nested tools, streaming, Responses, cache reuse and
+cancellation. Its 247,627-token synthetic archive request used medium effort,
+temperature zero and seed 42, and recovered all six distributed keys exactly.
+Prompt processing took 1940.037 seconds at
+127.64 tokens/s, and total HTTP time was 1972.339 seconds. Three subsequent
+fixed 256-token continuations reused over 247K tokens and took 159.708 seconds
+in total, or 4.81 generated tokens/s including HTTP and prompt work.
+Backend-timed decode was 5.08 tokens/s. A fresh unrelated request afterward
+returned exactly `AFTER_LONG_OK`. Sampled available memory stayed above
+8.4 GiB, with no kernel warnings in this retry's window and clean container
+removal. No reboot, GPU reset or host memory/power-policy change was needed.
+
+This is useful experimental ROCm evidence, not a new managed backend claim
+or a coding-quality grade. The coherent short Go explanation still contained
+a false claim about preemption. The high-context check used a repeated
+synthetic archive and deliberately truncated performance continuations.
+Only one slot on `gfx1151` was exercised with this policy. Normal router
+children inherit their parent's allocation environment, so promoting this
+policy requires a reviewed per-model boundary and router/client acceptance.
+The accepted ordinary presets must not inherit a global memory-policy change
+on the strength of this one model's result.
+
+#### Delivery checks and retained evidence
+
+Real managed Pi and Maki both passed read-file and shell-tool round trips
+through a private candidate gateway with the default Q8 MTP preset. The actual
+tool events, successful tool results and final answers were inspected, not
+just client exit codes. Maki's read offsets and limits were numeric. Pi's
+thinking-off run reported no reasoning tokens. The native tiny-model CLI
+returned its requested sentinel and exited normally. The test gateway and
+its exact backend container were removed cleanly.
+
+Tier 1 checks passed, including forced normal and static host builds, Go and
+container-policy tests, Python compilation, shell syntax, catalog JSON and
+diff checks. The ordinary accepted workload windows had no GPU faults. Two
+Python bus-lock notices occurred during the earlier short-check window.
+The deliberately failing Flash-Next ROCm allocation controls are documented
+separately above and must not be described as a fault-free acceptance run.
+
+The source update is accepted on this `gfx1151` host with the four existing
+patches. Model pins, precision, context, samplers and the managed Flash-Next
+Vulkan-only restriction remain unchanged. Inference acceptance on `gfx1150`,
+`gfx1200` and `gfx1201` remains blocked by unavailable representative hardware.
+The normal gateway is restored using the updated image selection.
+
+Raw commands, image IDs, build and backend logs, native benchmark JSON,
+HTTP requests and responses, client events, memory samples and kernel windows
+are retained on Aion and Hagane under
+`~/.local/share/paracetamol/apps/acceptance/results/20260911-llama-upgrade/`.
+Its result manifest distinguishes accepted paths from intentionally failed
+diagnostics. One-off probe sources are retained there, without compiled Go
+helpers, upstream checkouts or build caches.
+
 ### Fedora 44 Strix Halo DwarfStar typed GLM tools (2026-09-11)
 
 The parser correction is based on Paracetamol
