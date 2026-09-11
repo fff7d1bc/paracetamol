@@ -43,6 +43,11 @@ revisions recorded in `catalog/catalog.json`.
   includes the vendored ggml kernel authors. The separately bundled Iris image
   decoder's MIT notice is retained as `iris.LICENSE` alongside the DwarfStar
   license under `/usr/local/share/licenses/paracetamol/dwarfstar`.
+  The local build also carries the MIT-licensed GLM tool-argument correction
+  from upstream PR 1016 at commit
+  `9db96f0e96928e2245664b83e0498145e86a4c25`. It uses the request's declared
+  property types to preserve JSON arguments without guessing types for
+  strings or unknown schemas.
   The managed DeepSeek V4 Flash 0731 IQ2XXS GGUF is downloaded separately from
   `antirez/deepseek-v4-gguf` revision
   `1cd7b564460821938add0475a60b942c409295e0`, which declares MIT. Paracetamol

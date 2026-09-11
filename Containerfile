@@ -373,6 +373,10 @@ ARG DWARFSTAR_COMMIT
 
 COPY applications/dwarfstar/multiarch-wmma-fallback.patch \
     /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch
+COPY applications/dwarfstar/glm-tool-argument-types.patch \
+    /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch
+# The model-free CPU server tests cover schema-aware tool arguments and
+# streaming before the ROCm target rebuilds its objects. No test binary ships.
 WORKDIR /opt/dwarfstar
 RUN git init . && \
     git remote add origin https://github.com/antirez/ds4.git && \
@@ -382,6 +386,14 @@ RUN git init . && \
     git apply --check \
         /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch && \
     git apply /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch && \
+    git apply --check \
+        /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch && \
+    git apply /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch && \
+    make -j"$(nproc)" ds4_test NATIVE_CPU_FLAG=-march=x86-64-v3 \
+        CFLAGS='-O2 -march=x86-64-v3 -fno-finite-math-only -pthread -D_GNU_SOURCE -DDS4_NO_GPU' \
+        'CORE_OBJS=$(CPU_CORE_OBJS)' 'DS4_LINK=$(CC)' \
+        'DS4_LINK_LIBS=$(LDLIBS)' && \
+    ./ds4_test --server && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
     runtime_rpath="${site_packages}/_rocm_sdk_core/lib:\

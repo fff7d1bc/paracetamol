@@ -1,11 +1,17 @@
 # GLM-5.3 Flash DwarfStar feasibility
 
-This is a dated Strix Halo research record from 2026-09-10, not a declaration
-of managed model support. The model is **GLM-5.3 Flash**, not full GLM-5.3.
+This is a dated Strix Halo research record from 2026-09-10 with a parser
+follow-up on 2026-09-11, not a declaration of managed model support. The model
+is **GLM-5.3 Flash**, not full GLM-5.3.
 Inspect the current source, catalog and hardware-acceptance records before
 reusing these findings with a different image.
 
 ## Result in brief
+
+The [September 11 parser correction](#parser-correction-2026-09-11) fixes the
+typed-tool delivery failure described below. It does not make the model
+faster or add it to the managed gateway inventory. The original measurements
+and failures remain recorded here with their tested image.
 
 The 89.88 GiB Q2 conversion fits resident on the 128 GB Strix Halo host,
 including a 256K context ceiling. At that ceiling, DwarfStar planned
@@ -22,11 +28,12 @@ Embedded MTP did not help. In the matched shallow screen it took about 32%
 longer per request and produced different greedy output. Keep it off for
 this tested tuple.
 
-Do not add it to the gateway's supported model inventory yet. The pinned
-DwarfStar server converts GLM tool arguments to strings regardless of their
-declared JSON types. This broke a nested-object tool call. Keep the downloaded
-model and verified local content pack for direct experiments and a later
-retest, without changing the DeepSeek or Qwen defaults.
+The September 10 DwarfStar image converted GLM tool arguments to strings
+regardless of their declared JSON types. This broke a nested-object tool call
+and blocked gateway integration. The parser fix below addresses that failure,
+but model-specific policy and gateway selection remain separate work. Keep
+the downloaded model and verified local content pack for direct experiments,
+without changing the DeepSeek or Qwen defaults.
 
 ## Exact software and content
 
@@ -244,19 +251,94 @@ was open on the test date. It was inspected, not applied or accepted on this
 host. Blindly treating every JSON-looking string as a typed value would also
 be wrong, since tools can legitimately require strings such as `001` or `true`.
 
+## Parser correction (2026-09-11)
+
+The local build now carries [upstream PR 1016](https://github.com/antirez/ds4/pull/1016)
+at `9db96f0e96928e2245664b83e0498145e86a4c25`, applied to the same
+`6289c516273979173abbc062209a81dd3706b804` source pin. The new image is
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm10.0-6289c51-r10`, image ID
+`ce024e0bcf3a9da29185f984247e2365667e00fd2ac78a3014f5f125f99f38cb`.
+The existing WMMA patch, ROCm 10.0, model bytes and host policies were unchanged.
+Embedded MTP remained off.
+
+The patch retains each request's parameter schema and recovers a JSON value
+only when its declared property type disambiguates it. Strings remain text,
+including `001`, `true` and `[1,2]`. This is not full schema validation.
+Unknown types, unions allowing strings, and schemas expressed only through
+`$ref` or combinators remain strings. Malformed values are not guessed or
+repaired. Original generated tool text remains intact for replay.
+
+Both images were tested again at a 262,144-token allocation with the same
+temperature-zero, seed-42 mixed-type request. It asked for an integer, a
+decimal number, a boolean, nullable integer, mixed array, nested object and
+three JSON-looking strings.
+
+| Delivery mode | Original `r9` | Patched `r10` |
+| --- | --- | --- |
+| Buffered, thinking off | All arguments quoted, typed check failed | Exact types and values passed |
+| Streamed, thinking off | All arguments quoted, typed check failed | Exact types and values passed |
+| Streamed, thinking on | All arguments quoted, typed check failed | Exact types and values passed |
+
+All three corrected calls also passed a tool-result continuation. The probe
+only executed its harmless local test function after validating the complete
+argument object. It did not pretend an invalid call had succeeded. Streamed
+checks required structured tool calls, usage and `[DONE]`, without raw tool
+tags leaking into content.
+
+Pi 0.84.2 and Maki 0.4.8 each completed a real read-and-shell exchange through
+their existing tools. Both received numeric `offset=2` and `limit=1`, read the
+fixture's second line, executed a harmless `printf`, and returned both actual
+results. Both requests sent `reasoning_effort=none`. The experiments used
+isolated state and the normal bubblewrap boundary, with temporary model
+metadata pointing directly to the GLM server. They did not add GLM to the
+managed inventory. Pi exposed only read and bash, while Maki retained its
+normal tool set, so this was functional acceptance, not a harness comparison.
+
+Three identical 35-prompt-token, 256-output-token requests averaged
+19.264 seconds on `r9` and 19.250 seconds on `r10`. Aggregate HTTP throughput
+was about 13.29 and 13.30 output tokens/s, respectively, with about 14 tokens/s
+in the backend decode log. All generated code was byte-identical. The less
+than 0.1% difference is not a speed improvement claim. These are shallow
+generation controls, not completed coding tasks or populated 256K tests.
+
+The broader GLM checks passed arithmetic with separated reasoning, a
+6,020-token retrieval input, the original nested-object call, streaming,
+Responses and continuation-cache reuse with 713 cached tokens. The original
+`True` versus `true` capitalization failure remained, including after stream
+cancellation. Cancellation itself recovered normally. Sampled host available
+memory stayed above 24.80 GiB across the patched GLM protocol and client cases.
+Their retained kernel windows contained no GPU faults or memory-limit errors.
+
+DeepSeek V4 Flash passed the existing ordinary and DSpark server regressions
+at a 131072-token allocation. These covered thinking controls, a 6,618-token
+retrieval input, typed tools and result replay, streaming, Responses, cache
+continuation and cancellation. This does not retest fully populated context
+ceilings. Model pins and defaults did not change.
+The normal gateway also passed a DeepSeek tool round trip using the new
+image, retained its 18-model inventory without GLM, and was restored unloaded.
+
+The upstream model-free server suite passed on the host, with address and
+undefined-behavior sanitizers, and inside the image builder. It includes
+35 type-recovery fixtures, malformed literals, string preservation and a
+typed streaming regression. Every future DwarfStar image build now runs
+`ds4_test --server` before compiling its ROCm binaries. The separate upstream
+agent suite passed on the host but its symlink-replacement test failed in the
+rootless container builder. That unshipped agent is outside this parser fix
+and is not included in the image's server test gate.
+
+The final image passed `pip check`, help and dynamic dependency checks for all
+three retained binaries, and retained-payload inspection. Device code for all
+four managed architectures was present. GPU acceptance here is only `gfx1151`.
+
 ## Revisit gate
 
-Before advertising GLM through the gateway or generated agent catalogs,
-repeat the typed-tool test with a reviewed upstream parser fix. Cover strings,
-numbers, booleans, nested objects, arrays, malformed values, buffered and
-streamed calls, and tool-result continuation. Preserve DeepSeek's existing
-DSML behavior and verify its tools as a regression control.
-
-Then test real Pi/Maki exchanges and model-specific sampler and reasoning
-defaults. Adding a second DwarfStar model also requires deliberate model
-selection and safe same-application replacement in the gateway's one resident
-allocation. Do not advertise two resident models through a backend that has
-actually loaded only one.
+The parser and real-client gates passed on September 11. Retain those checks
+when replacing the source or patch. Before advertising GLM through the
+gateway or generated agent catalogs, review its model-specific sampler and
+reasoning defaults. Adding a second DwarfStar model also requires deliberate
+model selection and safe same-application replacement in the gateway's one
+resident allocation. Do not advertise two resident models through a backend
+that has actually loaded only one.
 
 Quality at Q2, vision, concurrent serving, other GPU classes and fully populated
 256K histories were not accepted by this feasibility screen. The result
@@ -271,3 +353,10 @@ synthetic trace, memory samples and kernel windows are retained under
 `~/.local/share/paracetamol/apps/acceptance/results/20260910-glm53-flash/`.
 See `result-manifest.md` there for the case map. Existing models and images
 were not pruned, and the normal gateway was restored after testing.
+
+The September 11 before/after responses, client tool events, exact launch
+commands, image inspection, build logs, model-free test logs, memory samples
+and DeepSeek controls are retained separately under
+`~/.local/share/paracetamol/apps/acceptance/results/20260911-glm-tool-types/`.
+That directory's `result-manifest.md` distinguishes completed tests from
+temporary runner setup failures that never reached inference.

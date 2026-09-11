@@ -578,6 +578,14 @@ For an upstream source update:
    optimized direct WMMA kernel only on `gfx11`, and route RDNA 4 through the
    existing generic Q8 batch path. Remove it when upstream owns that device
    selection.
+   Recheck `glm-tool-argument-types.patch`, pinned from upstream PR 1016 at
+   `9db96f0e96928e2245664b83e0498145e86a4c25`. It must apply exactly and
+   preserve schema-declared GLM arguments in buffered and streamed responses
+   without changing DeepSeek DSML handling. Keep the build-time model-free
+   `ds4_test --server` gate. Remove the patch when the selected upstream source
+   owns the correction, then rerun typed arguments, malformed literals,
+   string preservation, tool-result replay, and DeepSeek ordinary/DSpark
+   acceptance. A parser fix alone does not establish a new managed model.
 4. Review the supported command surface. Paracetamol currently retains only
    `ds4`, `ds4-server`, and `ds4-bench`, and exposes only server and CLI mode.
    Do not inherit new upstream flags by forwarding arbitrary arguments.
