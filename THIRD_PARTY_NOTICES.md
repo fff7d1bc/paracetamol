@@ -37,6 +37,11 @@ revisions recorded in `catalog/catalog.json`.
   `ce82541acbaf5c532c0727d6ccb6de2b0b0c948d` to avoid unsafe direct
   `ROCm_Host` computation on integrated HIP devices while preserving pinned
   host allocation.
+  The HIP build also carries the tiled F32 gated-delta-net prefill kernel
+  from Piotr Wilkin's MIT-licensed llama.cpp fork at commit
+  `964c6f2f0b66008243883298f3f535bc99f5998c`. Paracetamol restricts its dispatch
+  to the accepted Strix Halo shape, removes diagnostic logging, and adds
+  numerical operator regression cases.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

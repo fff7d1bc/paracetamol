@@ -454,6 +454,17 @@ no longer patches that backend. The remaining HIP patch must be requalified
 on every applicable Paracetamol architecture whenever llama.cpp or ROCm
 moves.
 
+The fail-closed `applications/llama-cpp/hip-strix-halo-tiled-gdn.patch`
+adds a tiled F32 gated-delta-net prefill kernel from Piotr Wilkin's commit
+`964c6f2f0`. Dispatch requires exactly `gfx1151`, 48 value heads, a 128-element
+state dimension, one sequence and 16 through 32768 tokens in the operation.
+Other shapes and architectures keep the existing kernel. It changes neither
+allocation policy nor KV precision, and does not accelerate ordinary
+single-token decode. The patch also adds CPU-reference operator cases for
+tile boundaries, permuted layouts, grouped heads and recurrent snapshots.
+The [isolated Strix Halo comparison](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
+records its scope and removal criteria.
+
 The separate fail-closed
 `applications/llama-cpp/vulkan-f16-kv-contiguize.patch` carries the small,
 environment-gated part of commit `b1a10f981` that copies strided f16 KV data

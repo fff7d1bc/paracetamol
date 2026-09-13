@@ -111,6 +111,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      snapshot](qwen3.8-dflash2-strix-halo-feasibility.md)
    - [Qwen3.8 RDNA head-dim-256 Flash Attention Strix Halo feasibility
      snapshot](qwen3.8-rdna-head-dim-256-flash-attention-strix-halo-feasibility.md)
+   - [Qwen3.8 isolated tiled GDN prefill on Strix
+     Halo](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
 
 ### Sources of truth
 
