@@ -26,6 +26,38 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Flash-Next direct-reader screen (2026-09-13)
+
+Starting from Paracetamol `01492e62986bdab408b5c46195635b540f4be805`, an
+isolated build of [PR 28136](https://github.com/ggml-org/llama.cpp/pull/28136)
+at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd` was compared with the current
+`8172e65-r36` image. ROCm 10.0, kernel `7.1.7-200.fc44.x86_64`, balanced
+power policy, the existing Unsloth Dynamic Q4_K_XL GGUF, F16 KV and the
+262144-token ceiling remained unchanged. Only `gfx1151` was inference-tested.
+
+The experimental allocation-absent path was `PASS` for short protocol checks,
+varied-source 4K/32K retrieval, populated 247K retrieval, cached continuations
+and recovery. Direct reads raised minimum available RAM from 8.04 to
+35.06 GiB in the paired long suites, without a meaningful prefill gain.
+Using a 2048-token microbatch then improved 32K prompt throughput by 41.5%
+and reduced 247K prefill from 2096.668 to 1848.348 seconds. The latter run
+retained at least 27.68 GiB available. Decode did not improve, and replacing
+the tail of a cached long prompt required more prefix work.
+
+Restoring `GGML_CUDA_ENABLE_UNIFIED_MEMORY` was still `FAIL`, with corrupt
+prose, bad tool arguments and HTTP 500s despite a passing stream sentinel.
+No kernel warnings appeared. The reader is not a fix for that allocation
+mode. Managed Flash-Next remains Vulkan-only, without MTP, and the production
+image and other model policies are unchanged.
+
+The [full result](qwen3.8-flash-next-direct-reader-feasibility.md) records the
+candidate image, controls, numerical checks, microbatch trade-offs and the
+remaining router/client integration boundary. Raw evidence is retained on
+both hosts under
+`~/.local/share/paracetamol/apps/acceptance/results/20260913-flash-next-direct-reader/`.
+The default Q8 MTP production recovery checks passed, test containers and
+the candidate image tag were removed, and the original gateway was restored.
+
 ### Fedora 44 Strix Halo tiled GDN prefill (2026-09-13)
 
 This screen starts from Paracetamol
