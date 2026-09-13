@@ -272,6 +272,16 @@ protected behavior is fixed.
 | `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
+| `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
+
+The September 13 [isolated tiled GDN screen](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
+adds one patch without changing the source pin, ROCm, model artifacts or
+Flash-Next's managed Vulkan-only policy. Numerical regression cases live in
+the same patch. Enable upstream `LLAMA_BUILD_TESTS`, build
+`test-backend-ops`, and run `test -b ROCm0 -o
+GATED_DELTA_NET,GATED_DELTA_NET_CACHE_FUSION` against the actual ROCm device
+when requalifying it. Check the executed case count as well as the exit
+status. A normal production build does not run those GPU tests.
 
 The 2026-09-11 update to `8172e6577ac2b35de1ec1e5d1c0aaad6c4a2129f`
 retains the host-buffer, reasoning-controls and HIP quantized-KV patches

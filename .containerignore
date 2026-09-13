@@ -18,6 +18,7 @@
 !applications/llama-cpp/reasoning-controls.patch
 !applications/llama-cpp/quantized-kv-flash-attention.patch
 !applications/llama-cpp/vulkan-f16-kv-contiguize.patch
+!applications/llama-cpp/hip-strix-halo-tiled-gdn.patch
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja
 !applications/dwarfstar/

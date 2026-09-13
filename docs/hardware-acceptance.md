@@ -26,6 +26,53 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo tiled GDN prefill (2026-09-13)
+
+This screen starts from Paracetamol
+`1d0da4b0d21369402b0b3fe2d2841854dcf93c06`. The introducing commit adds one
+narrow HIP kernel patch without changing llama.cpp `8172e65`, ROCm 10.0,
+model artifacts, F16 KV, samplers, MTP depth or power policy. The host was
+the 128 GB Ryzen AI Max+ 395 above, with `/dev/dri/renderD128`, balanced
+platform profile and `balance_performance` CPU EPP.
+
+The normal affected-target rebuild produced
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-8172e65-r36`, image ID
+`a034d9f0fe848d7d21e1a0facd00c46f70aebc09635714a21ae4c91cdb3f6196`.
+All four GPU targets compiled. Ubuntu package versions matched the control.
+Dependency closure, `pip check`, CPU lazy-router startup and tiny Qwen3 GPU
+acceptance passed. The final runtime passed 75 numerical GDN/cache-fusion
+cases against the CPU reference, including 34 new shape, layout, tail and
+snapshot cases carried with the patch.
+
+The isolated prototype improved default Qwen3.8 Dynamic Q8 MTP prompt
+throughput by 10.2% at 3,897 input tokens and 8.6% at 33,047, with three
+repetitions. At 247,627 tokens, one paired medium-reasoning retrieval saved
+73.746 seconds of prefill, a 4.2% throughput gain. All six distributed keys
+were correct. Retrieval and fixed continuation choices, including reasoning
+and MTP counts, matched byte for byte. Generation was essentially unchanged.
+The cleaned production image repeated the short performance and protocol
+checks and retained the gain. Both dense Qwen3.6 aliases and the Q8/Q4 router
+regressions also passed. Simultaneous Q8 requests were a correctness check,
+not a concurrency throughput claim.
+
+Flash-Next Dynamic Q4 gained 5.2%, 3.6% and 2.6% in the corresponding
+experimental ROCm screen. Both long retrievals returned the correct keys,
+but their truncated code continuations differed. This does not remove
+Flash-Next's managed Vulkan-only restriction. The experimental allocation
+policy is not the ordinary managed ROCm policy.
+
+The [full comparison](qwen3.8-tiled-gdn-strix-halo-feasibility.md) separates
+prototype timing from final-image acceptance and records limits and source
+provenance. Timed runs had no new kernel warnings. Two CPU split-lock
+warnings named Python during final hardware diagnostics, with no AMDGPU
+fault and no failed acceptance case. Other GPU architectures were not
+inference-tested, and the new dispatch is restricted to exact `gfx1151`.
+
+Raw evidence is retained on both hosts under
+`~/.local/share/paracetamol/apps/acceptance/results/20260913-tiled-gdn/`.
+Temporary test containers and experiment image tags were cleaned up, and
+the original gateway was restored with no backend eagerly loaded.
+
 ### Fedora 44 Strix Halo llama.cpp `8172e65` update (2026-09-11)
 
 The comparison is based on Paracetamol
