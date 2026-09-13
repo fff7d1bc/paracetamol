@@ -65,6 +65,19 @@ func TestRegistryIncludesOnlyReceiptVerifiedModels(t *testing.T) {
 	if _, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm"); err == nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Reason, "backend rocm") {
 		t.Fatalf("backend restriction err=%v diagnostics=%#v", err, diagnostics)
 	}
+	preset := managed.LlamaPresets["fixture"]
+	preset.Backends = []string{"rocm", "vulkan"}
+	preset.BackendProfiles = map[string][]string{"rocm": {"strix-halo"}}
+	managed.LlamaPresets["fixture"] = preset
+	for _, profile := range []string{"auto", "cpu", "rdna4", "strix-point", "strix-halo"} {
+		_, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, profile, nil, "rocm")
+		if (err == nil) != (profile == "strix-halo") {
+			t.Fatalf("profile gate %s: err=%v diagnostics=%v", profile, err, diagnostics)
+		}
+		if _, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, profile, nil, "vulkan"); err != nil {
+			t.Fatalf("lost Vulkan fallback on %s: %v", profile, err)
+		}
+	}
 }
 
 func TestRegistryRejectsDwarfStarWithoutOneGPU(t *testing.T) {

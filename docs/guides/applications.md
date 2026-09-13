@@ -259,20 +259,30 @@ architecture and operating envelope. The recipe installs the accepted
 Flash-Next has 125B total parameters, about 6B active model parameters, and a
 large ngram token embedding, as described by the pinned
 [official model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/README.md).
-On the accepted Strix Halo profile Paracetamol uses llama.cpp mmap with lazy
-tensor reads and places only
-`per_layer_token_embd.weight` on CPU. The remaining tensors stay on the Vulkan
-device in unified memory. Other Strix Halo presets retain resident loading,
-and other hardware profiles do not inherit this policy. The target K/V cache
-remains F16 and Flash Attention is enabled on Strix Halo.
+On the accepted Strix Halo profile, ROCm uses buffered CPU reads for
+`per_layer_token_embd.weight`. The rest of the weights use device allocation
+with inherited unified-memory allocation disabled for this model process.
+The policy also selects a 2048-token microbatch, one non-unified KV slot and
+no RAM prompt archive. Reuse of the current live prefix still works. F16 K/V
+cache, Flash Attention and the 262144-token ceiling are retained.
 
-The pinned Flash-Next preset supports only Vulkan. Direct startup selects Vulkan
-automatically when `--backend` is omitted and rejects an explicit ROCm choice.
-The restriction is a correctness boundary, not a performance preference:
-meaningful ROCm responses were corrupt at shallow context while the same image,
-GGUF, prompt, and preset were coherent through Vulkan. A ROCm router or gateway
-therefore omits the model. Start `run gateway --backend vulkan` to expose it
-through the shared endpoint.
+Direct startup selects ROCm on Strix Halo, and a ROCm router or gateway
+includes the verified preset. Keep `--models-max 1` on a 128 GB host so the
+native router replaces its resident model when you switch. The model count
+does not predict whether two models fit. Other models retain their normal
+allocation, microbatch and cache settings, including after a switch back
+from Flash-Next.
+
+`--backend vulkan` keeps the earlier CPU lazy-mmap embedding path. The ROCm
+exception is restricted to Strix Halo, validated on the host's exact selected
+render node and again inside the container. Unknown hardware detection does
+not enable it. Ordinary ROCm allocation still corrupts meaningful output for
+this model, so do not transfer these results to a different allocation recipe.
+Native `benchmark llama-cpp throughput` refuses this ROCm preset because llama-bench
+does not apply the accepted server/CLI allocation policy. The [acceptance
+record](../qwen3.8-flash-next-direct-reader-feasibility.md) explains the
+memory saving and modest high-context prefill gain, without claiming faster
+decode or general coding quality.
 
 The preset starts at the model's native 262144-token context and exposes off,
 low, medium, and xhigh reasoning with medium as the default. Thinking uses

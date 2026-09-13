@@ -321,6 +321,16 @@ multi-turn output and a complete function-tool round trip. Treat a successful
 load, synthetic `llama-bench` result, or short retrieval key as capacity or
 performance evidence only.
 
+For profile-scoped model allocation, also test missing/ambiguous host topology
+and the independent container-side profile check. A mixed router must retain
+its ordinary parent allocation policy while parsing the exceptional preset.
+Load an ordinary model, switch to the exceptional model, then back again and
+inspect actual child options, output and speculation. Run the build-time
+`test-native-policy.cpp` checks and a non-root CPU startup through the real
+entrypoint. Do not bypass bundled helper permissions by testing only the
+native binary. A populated near-limit request, live-prefix reuse, cancellation
+and reload are separate gates from reserving a large context at startup.
+
 For host-configuration changes, load the complete generated example and
 partial files with every table omitted in turn. Confirm unknown keys,
 duplicates, oversized files, non-regular paths, invalid scalar types, and an

@@ -275,6 +275,14 @@ Throughput and coding-agent benchmarks enforce the same boundary. Validate
 coherent multi-turn output and tool calls because startup, prompt processing,
 or a short retrieval key alone cannot establish backend compatibility.
 
+`backend_profiles` optionally limits a backend to a non-empty list of concrete
+GPU profiles, for example `"backend_profiles": {"rocm": ["strix-halo"]}`.
+Other backends keep their existing availability. The host resolves automatic
+selection using the exact render nodes' KFD topology. An unknown profile is
+not sufficient to expose a restricted model, and the container repeats the
+profile check before startup. This allows a measured ROCm exception without
+declaring that exception safe on every architecture.
+
 `speculative_type` is optional and accepts only `draft-mtp` or
 `draft-dflash`. The matching positive `draft_tokens` value is limited to
 eight for MTP and fifteen for DFlash. An optional `draft_artifact` must be a
@@ -325,14 +333,23 @@ hardware class. Omitted profiles retain llama.cpp's default rather than
 inheriting a nearby architecture's result.
 
 `model_load` is an optional profile map for a model whose measured capacity
-path cannot use the normal resident policy. It currently accepts only
-`strix-halo` or `strix-point`, with `resident` or
+path cannot use the normal resident policy. Its profile keys are limited to
+`strix-halo` or `strix-point`. The base choices are `resident` and
 `mmap-lazy-token-embedding`. The latter
 maps to llama.cpp mmap, lazy tensor reads, and CPU placement of the exact
 `per_layer_token_embd.weight` tensor. It is intentionally not a generic
 tensor-override surface. Add it only after cold and warm startup, long-context
 retrieval, output coherence, host-memory headroom, and kernel-journal checks
 on the named hardware profile. Omitted Strix profiles retain resident loading.
+
+The additional `stream-token-embedding` policy is limited to Strix Halo with
+Flash Attention and F16 KV. It preserves the lazy-mmap Vulkan path and selects
+explicit CPU embedding reads with device allocation on ROCm. The shared
+container helper owns its complete direct/router argument tuple, including
+2048 batch/microbatch, one non-unified-KV server slot and no RAM prompt archive.
+The ROCm backend must explicitly restrict itself to Strix Halo. Speculation
+is rejected for this policy. Native `llama-bench` cannot apply it and therefore
+rejects the managed ROCm preset rather than measuring a different allocator.
 
 `agent_tools` is an optional, explicit compatibility decision. Set it only
 when the model, pinned GGUF template, and llama.cpp policy are maintained for

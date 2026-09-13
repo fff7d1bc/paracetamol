@@ -10,6 +10,7 @@ import (
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/content"
+	"paracetamol/internal/platform"
 	"paracetamol/internal/textmodel"
 	"paracetamol/internal/verification"
 )
@@ -81,6 +82,7 @@ func DiscoverRegistry(managed catalog.Catalog, dataRoot string, candidates []str
 }
 
 func buildRegistry(managed catalog.Catalog, dataRoot string, applications []string, profile string, renderNodes []string, llamaBackend string) (Registry, []Diagnostic, map[string]int, error) {
+	modelProfile := platform.ModelProfile(profile, renderNodes)
 	selected := make(map[string]bool, len(applications))
 	for _, application := range applications {
 		if application != string(textmodel.BackendLlamaCPP) && application != string(textmodel.BackendDwarfStar) {
@@ -116,8 +118,8 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 		}
 		if candidate.Backend == textmodel.BackendLlamaCPP {
 			preset := managed.LlamaPresets[candidate.ID]
-			if !preset.SupportsBackend(llamaBackend) {
-				diagnostics = append(diagnostics, Diagnostic{Application: application, Model: candidate.ID, Reason: "does not support llama.cpp backend " + llamaBackend})
+			if !preset.SupportsRuntime(llamaBackend, modelProfile) {
+				diagnostics = append(diagnostics, Diagnostic{Application: application, Model: candidate.ID, Reason: "does not support llama.cpp backend " + llamaBackend + " on profile " + modelProfile})
 				continue
 			}
 		}

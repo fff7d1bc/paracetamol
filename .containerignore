@@ -14,11 +14,15 @@
 !applications/comfyui/patch_manager.py
 !applications/llama-cpp/
 !applications/llama-cpp/entrypoint.sh
+!applications/llama-cpp/model-load-policy.sh
 !applications/llama-cpp/hip-apu-host-buffer.patch
 !applications/llama-cpp/reasoning-controls.patch
 !applications/llama-cpp/quantized-kv-flash-attention.patch
 !applications/llama-cpp/vulkan-f16-kv-contiguize.patch
 !applications/llama-cpp/hip-strix-halo-tiled-gdn.patch
+!applications/llama-cpp/qwen4exp-direct-reader.patch
+!applications/llama-cpp/process-allocation-policy.patch
+!applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja
 !applications/dwarfstar/

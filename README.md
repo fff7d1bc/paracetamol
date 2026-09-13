@@ -207,11 +207,11 @@ the limits of applying those Unsloth-specific findings to other GGUF releases.
 
 Qwen3.8 Flash-Next 125B-A6B is a separate experimental family for 128 GB
 Strix Halo hosts with fast local storage. Its guided four-shard Unsloth
-Dynamic Q4_K_XL conversion occupies 103.7 GiB. Paracetamol leaves the model's
-large per-layer token embedding on SSD-backed mmap and loads it lazily while
-keeping the remaining tensors on the unified GPU through Vulkan. This is a
-capacity path, not a claim that SSD becomes GPU memory. Current upstream
-llama.cpp does not yet expose the model's MTP heads.
+Dynamic Q4_K_XL conversion occupies 103.7 GiB. Paracetamol reads the model's
+large per-layer token embedding on demand from local storage, with the other
+weights on the GPU. This is a capacity path, not a claim that SSD becomes
+GPU memory. The pinned upstream llama.cpp does not yet expose the model's
+MTP heads.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
@@ -220,12 +220,17 @@ llama.cpp does not yet expose the model's MTP heads.
   --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
 ```
 
-The preset is Vulkan-only at the pinned llama.cpp revision. Its output is
-coherent through Vulkan on the accepted Strix Halo host, while ROCm produces
-corrupt text even at shallow context. Omitting `--backend` selects Vulkan for
-the preset. An explicit unsupported backend is rejected. A ROCm router or
-gateway leaves it out of `/v1/models`. Use `run gateway --backend vulkan`
-when the gateway should expose it.
+On Strix Halo, direct startup now selects ROCm and a ROCm gateway includes
+the installed, verified model. Its model-specific policy uses direct CPU
+embedding reads and disables inherited unified-memory allocation only for
+that model process. Ordinary ROCm allocation still produces corrupt output
+for this model. The accepted Vulkan path remains available with
+`--backend vulkan`. Other models keep their existing settings.
+
+Keep `--models-max 1` when using Flash-Next through a gateway or router on a
+128 GB host. The model count is not a memory budget. The [acceptance
+record](docs/qwen3.8-flash-next-direct-reader-feasibility.md) covers the
+262144-token ceiling, populated-context tests, memory use and limitations.
 
 The pinned conversion's license metadata could not be verified against a
 license file at its exact revision, so installation requires the explicit

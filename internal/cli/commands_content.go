@@ -847,10 +847,19 @@ func (app *App) printLlamaModelDetails(managed catalog.Catalog, models []modelin
 }
 
 func llamaBackendPolicy(preset catalog.LlamaPreset) string {
-	if len(preset.Backends) == 0 {
-		return "rocm, vulkan"
+	backends := preset.Backends
+	if len(backends) == 0 {
+		backends = []string{"rocm", "vulkan"}
 	}
-	return strings.Join(preset.Backends, ", ")
+	var descriptions []string
+	for _, backend := range backends {
+		description := backend
+		if profiles := preset.BackendProfiles[backend]; len(profiles) > 0 {
+			description += " (" + strings.Join(profiles, ", ") + " only)"
+		}
+		descriptions = append(descriptions, description)
+	}
+	return strings.Join(descriptions, ", ")
 }
 
 func llamaModelLoadInventoryPolicy(policy map[string]string) string {

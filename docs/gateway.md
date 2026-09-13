@@ -201,6 +201,13 @@ in the runtime gate. An incomplete, unverified, architecture-incompatible, or
 unselected model is absent from `GET /v1/models`. Every selected application
 must contribute at least one schedulable model or startup fails.
 
+A catalog backend can also be restricted to a concrete hardware profile.
+Flash-Next's ROCm streaming path is restricted to Strix Halo. Automatic
+selection resolves the exact render nodes through KFD topology, and the
+container independently checks the detected profile. An unknown profile does
+not advertise a restricted model. Vulkan remains available as the explicit
+Flash-Next fallback.
+
 The snapshot remains fixed for the process lifetime. Installing, replacing,
 or verifying content does not change a running gateway: restart it. This makes
 client configuration and routing deterministic and prevents a model appearing
@@ -250,6 +257,12 @@ combined weights and contexts fit memory. Increase it only for a model set
 known to fit. At the count limit, the pinned router queues a new model request
 until it can evict an idle least-recently-used child; it does not evict a busy
 child.
+
+Keep `--models-max 1` for Flash-Next on a 128 GB Strix Halo host. Its improved
+memory headroom does not mean it can coexist with the dense Q8 model. Switching
+between them uses the existing idle-child eviction. Flash-Next's allocation
+opt-out is local to its child process, so switching back does not alter the
+dense model's policy.
 
 ## Ownership and security
 

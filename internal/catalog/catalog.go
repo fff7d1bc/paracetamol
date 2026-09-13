@@ -23,6 +23,7 @@ const SchemaVersion = 26
 const (
 	LlamaModelLoadResident               = "resident"
 	LlamaModelLoadMMapLazyTokenEmbedding = "mmap-lazy-token-embedding"
+	LlamaModelLoadStreamTokenEmbedding   = "stream-token-embedding"
 )
 
 var (
@@ -124,6 +125,7 @@ type LlamaPreset struct {
 	Bundle                       string
 	Artifact                     string
 	Backends                     []string
+	BackendProfiles              map[string][]string
 	DefaultContext               int64
 	SpeculativeType              string
 	DraftTokens                  int64
@@ -166,6 +168,27 @@ func (preset LlamaPreset) DraftTokensForBackend(backend string) int64 {
 
 func (preset LlamaPreset) SupportsBackend(backend string) bool {
 	return len(preset.Backends) == 0 || contains(preset.Backends, backend)
+}
+
+// SupportsRuntime keeps backend availability separate from hardware acceptance.
+// Unknown/auto profiles cannot opt into a profile-restricted backend.
+func (preset LlamaPreset) SupportsRuntime(backend, profile string) bool {
+	profiles, restricted := preset.BackendProfiles[backend]
+	return preset.SupportsBackend(backend) && (!restricted || contains(profiles, profile))
+}
+
+func (preset LlamaPreset) RuntimeBackends(profile string) []string {
+	backends := preset.Backends
+	if len(backends) == 0 {
+		backends = []string{"rocm", "vulkan"}
+	}
+	var supported []string
+	for _, backend := range backends {
+		if preset.SupportsRuntime(backend, profile) {
+			supported = append(supported, backend)
+		}
+	}
+	return supported
 }
 
 type Catalog struct {
@@ -319,27 +342,28 @@ type rawSamplingPolicy struct {
 }
 
 type rawLlamaPreset struct {
-	Bundle                       string            `json:"bundle"`
-	Artifact                     string            `json:"artifact"`
-	Backends                     []string          `json:"backends"`
-	DefaultContext               int64             `json:"default_context"`
-	SpeculativeType              string            `json:"speculative_type"`
-	DraftTokens                  int64             `json:"draft_tokens"`
-	DraftTokensByBackend         map[string]int64  `json:"draft_tokens_by_backend"`
-	DraftArtifact                string            `json:"draft_artifact"`
-	ContextOverrideArchitectures []string          `json:"context_override_architectures"`
-	Jinja                        bool              `json:"jinja"`
-	AgentTools                   bool              `json:"agent_tools"`
-	ReasoningControl             string            `json:"reasoning_control"`
-	ReasoningLevels              []string          `json:"reasoning_levels"`
-	ReasoningDefault             *string           `json:"reasoning_default"`
-	ReasoningOff                 bool              `json:"reasoning_off"`
-	ReasoningPreserve            bool              `json:"reasoning_preserve"`
-	ChatTemplate                 string            `json:"chat_template"`
-	SamplingPolicy               string            `json:"sampling_policy"`
-	FlashAttention               map[string]string `json:"flash_attention"`
-	KVCache                      map[string]string `json:"kv_cache"`
-	ModelLoad                    map[string]string `json:"model_load"`
+	Bundle                       string              `json:"bundle"`
+	Artifact                     string              `json:"artifact"`
+	Backends                     []string            `json:"backends"`
+	BackendProfiles              map[string][]string `json:"backend_profiles"`
+	DefaultContext               int64               `json:"default_context"`
+	SpeculativeType              string              `json:"speculative_type"`
+	DraftTokens                  int64               `json:"draft_tokens"`
+	DraftTokensByBackend         map[string]int64    `json:"draft_tokens_by_backend"`
+	DraftArtifact                string              `json:"draft_artifact"`
+	ContextOverrideArchitectures []string            `json:"context_override_architectures"`
+	Jinja                        bool                `json:"jinja"`
+	AgentTools                   bool                `json:"agent_tools"`
+	ReasoningControl             string              `json:"reasoning_control"`
+	ReasoningLevels              []string            `json:"reasoning_levels"`
+	ReasoningDefault             *string             `json:"reasoning_default"`
+	ReasoningOff                 bool                `json:"reasoning_off"`
+	ReasoningPreserve            bool                `json:"reasoning_preserve"`
+	ChatTemplate                 string              `json:"chat_template"`
+	SamplingPolicy               string              `json:"sampling_policy"`
+	FlashAttention               map[string]string   `json:"flash_attention"`
+	KVCache                      map[string]string   `json:"kv_cache"`
+	ModelLoad                    map[string]string   `json:"model_load"`
 }
 
 type rawDwarfStarPreset struct {
@@ -810,8 +834,22 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 		}
 	}
 	for profile, policy := range raw.ModelLoad {
-		if (profile != "strix-halo" && profile != "strix-point") || (policy != LlamaModelLoadResident && policy != LlamaModelLoadMMapLazyTokenEmbedding) {
+		if (profile != "strix-halo" && profile != "strix-point") || (policy != LlamaModelLoadResident && policy != LlamaModelLoadMMapLazyTokenEmbedding && policy != LlamaModelLoadStreamTokenEmbedding) {
 			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has invalid model_load policy", id)
+		}
+		if policy == LlamaModelLoadStreamTokenEmbedding && (profile != "strix-halo" || raw.FlashAttention[profile] != "on" || raw.KVCache[profile] != "f16") {
+			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s streaming token embedding requires Strix Halo, Flash Attention and F16 KV", id)
+		}
+		if policy == LlamaModelLoadStreamTokenEmbedding {
+			if raw.SpeculativeType != "" {
+				return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s streaming token embedding has no accepted speculative path", id)
+			}
+			if len(raw.Backends) == 0 || contains(raw.Backends, "rocm") {
+				profiles := raw.BackendProfiles["rocm"]
+				if len(profiles) != 1 || profiles[0] != "strix-halo" {
+					return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s streaming ROCm policy requires an explicit Strix Halo backend restriction", id)
+				}
+			}
 		}
 	}
 	if err := uniqueIdentifiers(raw.Backends, id+" backends"); err != nil {
@@ -822,7 +860,31 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has unsupported backend %q", id, backend)
 		}
 	}
-	return LlamaPreset{ID: id, Bundle: raw.Bundle, Artifact: raw.Artifact, Backends: append([]string(nil), raw.Backends...), DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType, DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend), DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...), Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl, ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault, ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve, ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy, FlashAttention: cloneMap(raw.FlashAttention), KVCache: cloneMap(raw.KVCache), ModelLoad: cloneMap(raw.ModelLoad)}, nil
+	for backend, profiles := range raw.BackendProfiles {
+		if (backend != "rocm" && backend != "vulkan") || (len(raw.Backends) > 0 && !contains(raw.Backends, backend)) || len(profiles) == 0 {
+			return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has invalid backend_profiles restriction", id)
+		}
+		if err := uniqueIdentifiers(profiles, id+" backend profiles"); err != nil {
+			return LlamaPreset{}, err
+		}
+		for _, profile := range profiles {
+			if _, ok := platform.LookupProfile(profile); !ok {
+				return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s has unsupported backend profile %q", id, profile)
+			}
+		}
+	}
+	return LlamaPreset{
+		ID: id, Bundle: raw.Bundle, Artifact: raw.Artifact,
+		Backends: append([]string(nil), raw.Backends...), BackendProfiles: cloneMap(raw.BackendProfiles),
+		DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType,
+		DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend),
+		DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...),
+		Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl,
+		ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault,
+		ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve,
+		ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy,
+		FlashAttention: cloneMap(raw.FlashAttention), KVCache: cloneMap(raw.KVCache), ModelLoad: cloneMap(raw.ModelLoad),
+	}, nil
 }
 
 func loadDwarfStarPreset(id string, value json.RawMessage) (DwarfStarPreset, error) {

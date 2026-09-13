@@ -89,6 +89,27 @@ func TestLlamaModelLoadStatusUsesResidentStrixDefault(t *testing.T) {
 	}
 }
 
+func TestLlamaStatusScopesStreamingAllocationDetailsToROCm(t *testing.T) {
+	for _, backend := range []string{"rocm", "vulkan"} {
+		section := map[string]string{"paracetamol-model-load-strix-halo": catalog.LlamaModelLoadStreamTokenEmbedding}
+		report := map[string]string{"profile": "strix-halo", "backend": backend}
+		rows, err := llamaModelStatusRows(catalog.Catalog{}, nil, section, nil, report)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := map[string]string{}
+		for _, row := range rows {
+			found[row[0]] = row[1]
+		}
+		if (found["Allocation"] != "") != (backend == "rocm") {
+			t.Fatalf("wrong allocation details for %s: %v", backend, found)
+		}
+		if backend == "rocm" && (found["Batch / microbatch"] != "2048 / 2048" || found["Slots"] != "1, non-unified KV") {
+			t.Fatalf("missing streaming settings: %v", found)
+		}
+	}
+}
+
 func TestLlamaStatusReportsExplicitReasoningHistoryPolicy(t *testing.T) {
 	for _, test := range []struct {
 		name    string

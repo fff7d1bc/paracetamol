@@ -126,7 +126,7 @@ func (app *App) runGateway(args []string) error {
 	routerPath := ""
 	routerContents := ""
 	if seen[string(textmodel.BackendLlamaCPP)] {
-		routerContents, err = runtime.RenderRouterModels(managed, *backend, registry.IDs(string(textmodel.BackendLlamaCPP)))
+		routerContents, err = runtime.RenderRouterModels(managed, *backend, platform.ModelProfile(profile, selectedNodes), registry.IDs(string(textmodel.BackendLlamaCPP)))
 		if err != nil {
 			return err
 		}

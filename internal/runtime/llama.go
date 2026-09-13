@@ -33,6 +33,7 @@ type LlamaOptions struct {
 	ProfileFlashAttention        map[string]string
 	ProfileKVCache               map[string]string
 	ProfileModelLoad             map[string]string
+	AllowedProfiles              []string
 	RouterPreset                 string
 	ModelsMax                    int
 	RenderNodes                  []string
@@ -101,6 +102,7 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("llama-cpp")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
 	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
 	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
+	command = env(command, "PARACETAMOL_LLAMA_ALLOWED_PROFILES", strings.Join(options.AllowedProfiles, ","))
 	command = env(command, "PARACETAMOL_SOURCE_REVISION", options.SourceRevision)
 	command = env(command, "PARACETAMOL_LLAMA_MODE", options.Mode)
 	command = env(command, "PARACETAMOL_LLAMA_MODEL", containerModel)

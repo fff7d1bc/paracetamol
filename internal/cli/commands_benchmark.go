@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
@@ -205,13 +206,17 @@ func (app *App) benchmarkLlama(args []string) error {
 	}
 	if *presetFlag != "" {
 		preset := managed.LlamaPresets[*presetFlag]
-		if !*compare && !setWasSet(set, "backend") && !preset.SupportsBackend(*backend) && len(preset.Backends) > 0 {
-			*backend = preset.Backends[0]
+		modelProfile := platform.ModelProfile(profile, selectedNodes)
+		if supported := preset.RuntimeBackends(modelProfile); !*compare && !setWasSet(set, "backend") && !preset.SupportsRuntime(*backend, modelProfile) && len(supported) > 0 {
+			*backend = supported[0]
 			backends = []string{*backend}
 		}
 		for _, candidate := range backends {
-			if !preset.SupportsBackend(candidate) {
-				return controlerr.Usage("llama.cpp preset %q does not support backend %s", *presetFlag, candidate)
+			if !preset.SupportsRuntime(candidate, modelProfile) {
+				return controlerr.Usage("llama.cpp preset %q does not support backend %s on profile %s", *presetFlag, candidate, modelProfile)
+			}
+			if candidate == "rocm" && preset.ModelLoad[modelProfile] == catalog.LlamaModelLoadStreamTokenEmbedding {
+				return controlerr.Usage("preset %q requires its server/CLI streaming allocation policy; native llama-bench does not apply that policy", *presetFlag)
 			}
 		}
 	}

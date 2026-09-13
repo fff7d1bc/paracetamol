@@ -16,9 +16,102 @@ tail of a cached long prompt made the first continuation slower.
 
 The ordinary unified-memory allocation setting still produced corrupt prose,
 wrong tool arguments and HTTP 500s. The reader does not fix that failure.
-This is a useful experimental ROCm path, but not a completed managed
-integration. Production remains on `8172e65-r36`, and Flash-Next remains
-Vulkan-only in the managed inventory, without MTP.
+The first screen left production on `8172e65-r36` and Flash-Next Vulkan-only.
+The [managed integration follow-up](#managed-rocm-integration) below records
+the subsequent model-scoped ROCm path. Neither stage adds MTP or repairs the
+ordinary unified-memory allocation path.
+
+## Managed ROCm integration
+
+The follow-up starts from Paracetamol
+`ea461859adccc12f7201918d1fbc584c970dcb33` and builds the normal `r37` image
+from the same llama.cpp and ROCm pins. The final runtime image is
+`62409b7ee2e07ff17741cf4023d48fdfb311a4fc6e38430b81b4c226bf0ed4fb`.
+Model bytes, F16 KV, reasoning history, mode-dependent sampling and all
+ordinary model presets remain unchanged. The same Aion kernel, device and
+balanced power policy are retained.
+
+The carried reader patch omits upstream's Gemma4 hooks. Only Qwen4exp with
+explicit `on-direct` uses it. Failure to open the table for direct reads is
+an error, not a silent mmap fallback. A separate native startup option,
+`--no-unified-memory`, removes the inherited allocation variable in the
+selected model process. Merely inspecting a preset has no environment side
+effect, so the router parent and subsequent ordinary model children retain
+their original allocation policy.
+
+The shared direct-server, CLI and router policy selects the tested
+2048-token microbatch, `--load-mode none`, `--no-host`, `--fit off`, CPU
+token embedding and no RAM prompt archive. Server mode adds one non-unified
+KV slot. Vulkan retains its earlier lazy-mmap recipe. The catalog enables
+the ROCm exception only on Strix Halo, with exact-node host discovery and an
+independent container check. Unknown hardware cannot opt into it. Native
+llama-bench is rejected for this ROCm preset because it does not apply the
+accepted process allocation policy.
+
+This makes the model usable within the ordinary ROCm gateway. It is not a
+claim that ROCm is faster than Vulkan. The earlier [populated-context Vulkan
+screen](hardware-acceptance.md#populated-near-256k-flash-next-vulkan-comparison)
+was faster under its own loading and cache recipe. Its input and conditions
+differ, so these records are not a matched backend-only comparison.
+
+The affected image build runs model-free allocation-isolation checks for
+server and CLI, followed by 50 bit-identical CPU dequantizer and truncated-file
+cases. A non-root CPU startup exercises the actual managed entrypoint. The
+first live packaging attempt found a root-only helper file and was corrected
+with an explicit image permission. No model had loaded in that failed case.
+Another probe initially called `/v1/responses` on the public gateway, which
+deliberately does not expose that route. Its 404 was a test transport error.
+Native Responses and tokenizer/template diagnostics subsequently use the
+exact private backend port. Chat Completions, streaming and cancellation
+checks go through the public gateway.
+
+The real gateway/router sequence passed Q8 MTP before and after Flash-Next,
+Qwen3.6 dense MTP, Muse DFlash and a Flash-Next reload. Actual child arguments
+retained ordinary allocation and speculation for those other models. Q8's
+6.6K prefill took 19.307s before switching and 19.293s afterward. Its medium
+answer and reasoning matched exactly. This is a regression check, not a
+population estimate of unchanged performance.
+
+Flash-Next passed off/low/medium/xhigh, multi-turn, nested tools and results,
+streaming, sampler defaults/null/partial overrides, preserved history,
+live-prefix reuse and cancellation. Real Pi and Maki each used read and shell
+tools and returned the actual results. Pi off generated no reasoning tokens.
+Maki print mode does not establish its interactive default-effort behavior.
+
+| Managed ROCm check | Result |
+| --- | --- |
+| Two 32167-token uncached retrievals | All six keys in both, 377.11 combined prompt tokens/s |
+| Populated 247165-token retrieval | All six keys, 1861.003s prefill, 1903.357s HTTP |
+| Three cached 256-token continuations | 183.465s total HTTP, 4.19 output tokens/s |
+| Backend-timed continuation decode | 4.86 tokens/s |
+| Minimum available RAM, complete long suite | 27.65 GiB |
+| Maximum additional swap use, complete long suite | 0.134 GiB |
+| Prefix reuse, cancellation and Q8 recovery after the long request | PASS |
+
+The first continuation reused 245117 tokens but reprocessed 2046 after replacing
+the prompt tail. Later continuations reused 247159 tokens. This repeats the
+larger-microbatch rewind cost seen in the earlier experiment. The fixed
+continuations are deliberately truncated and are not finished-code grades.
+The 4 GiB available-memory guard was never approached.
+
+The retained Vulkan gateway path passed its protocol, two 32K retrievals,
+prefix-reuse and cancellation checks. Its native four-slot, unified-KV and
+RAM-archive defaults remained intact rather than inheriting the ROCm recipe.
+The real managed CLI selected ROCm automatically, returned `CLI_OK` and exited
+cleanly. Dependency closure, non-root CPU entrypoint startup, Tier 1 checks
+and the Go race pass succeeded. No new kernel warnings appeared during the
+acceptance window. The normal gateway was restored on loopback and its
+existing LAN address, with the default Q8 MTP selection unchanged and no
+backend eagerly loaded. The old `r36` image remains available for rollback.
+
+Raw commands, probes, image identities, request/response JSON, native child
+settings, client events, memory samples and failed attempts are retained on
+both hosts under
+`~/.local/share/paracetamol/apps/acceptance/results/20260913-flash-next-rocm-integration/`.
+Its manifest distinguishes public gateway Chat Completions from private native
+diagnostics, and preserves the frozen public corpus. Only gfx1151 was
+inference-tested. Future Qwen4 models, other hardware, MTP and broad coding
+quality need independent acceptance.
 
 ## What changed
 
@@ -41,8 +134,9 @@ The 27,465.95 MiB table remains mapped, but its rows are supplied by the
 reader. A mapping's size is not the same as its resident physical footprint.
 The ROCm model allocation stays at 78,056.46 MiB.
 
-The patch also contains a Gemma4 path. This experiment exercises Flash-Next
-only and does not establish Gemma4 acceptance.
+The upstream patch used in the first experiment also contains a Gemma4 path.
+That experiment did not establish Gemma4 acceptance. The managed patch omits
+those hooks.
 
 ## Matched conditions
 
@@ -237,15 +331,15 @@ consistent with the allocation-sensitive reports in
 [issue 27797](https://github.com/ggml-org/llama.cpp/issues/27797), without
 proving a particular driver or coherency mechanism.
 
-The successful experimental recipe does not by itself establish safe router
+The successful experimental recipe did not by itself establish safe router
 or coding-agent integration. Normal router children inherit their parent's
-allocation environment. A future integration must make this policy explicit
-for the selected model, preserve other presets' accepted policies, and test
-real router/client traffic and the chosen RAM prompt-cache policy. It must
-not globally unset the variable for every APU model.
+allocation environment. That motivated the [managed follow-up](#managed-rocm-integration)
+above, with an explicit model-scoped policy, ordinary-model regression checks
+and real router/client traffic. It must not globally unset the variable for
+every APU model.
 
-The direct reader plus a 2048 microbatch is worth a focused integration pass.
-The memory saving is substantial and the populated long-context test passed.
+The direct reader plus a 2048 microbatch justified that focused integration
+pass. The memory saving is substantial and the populated long-context test passed.
 It is not a reason to import the entire fork, enable unfinished MTP, replace
 the GGUF or declare future Qwen4 models accepted before testing them.
 

@@ -687,11 +687,13 @@ func (app *App) runLlama(mode string, args []string) error {
 		if !ok {
 			return controlerr.Usage("unknown llama.cpp preset %q", *presetID)
 		}
-		if !preset.SupportsBackend(*backend) {
-			if backendExplicit || len(preset.Backends) == 0 {
-				return controlerr.Usage("llama.cpp preset %q does not support backend %s; choose one of: %s", *presetID, *backend, strings.Join(preset.Backends, ", "))
+		modelProfile := platform.ModelProfile(profileValue, selectedNodes)
+		if !preset.SupportsRuntime(*backend, modelProfile) {
+			supported := preset.RuntimeBackends(modelProfile)
+			if backendExplicit || len(supported) == 0 {
+				return controlerr.Usage("llama.cpp preset %q does not support backend %s on profile %s; available backends: %s", *presetID, *backend, modelProfile, strings.Join(supported, ", "))
 			}
-			*backend = preset.Backends[0]
+			*backend = supported[0]
 			options.Backend = *backend
 			backendSelectedByPreset = true
 		}
@@ -713,6 +715,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		options.ProfileFlashAttention = preset.FlashAttention
 		options.ProfileKVCache = preset.KVCache
 		options.ProfileModelLoad = preset.ModelLoad
+		options.AllowedProfiles = preset.BackendProfiles[*backend]
 		if preset.SamplingPolicy != "" {
 			policy := managed.SamplingPolicies[preset.SamplingPolicy]
 			options.SamplingDefaults = map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
@@ -723,7 +726,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		displayModel = fmt.Sprintf("%s (%s)", *presetID, content.ArtifactPath(dataRoot, artifact))
 	}
 	if routerMode {
-		contents, installed, renderErr := runtime.RenderRouter(managed, dataRoot, *backend)
+		contents, installed, renderErr := runtime.RenderRouter(managed, dataRoot, *backend, platform.ModelProfile(profileValue, selectedNodes))
 		if renderErr != nil {
 			return renderErr
 		}

@@ -30,8 +30,9 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   numeric tuples or encoding them in Jinja.
 - `llama_presets` connects one llama.cpp bundle and target GGUF artifact to a
   stable router model ID and a conservative `default_context`. A preset may
-  restrict compatibility to a closed ROCm/Vulkan backend list when hardware
-  acceptance proves another built backend unsafe. Direct runs, routers,
+  restrict compatibility to a closed ROCm/Vulkan backend list and optional
+  per-backend hardware profiles when another runtime combination is unsafe
+  or has not passed acceptance. Direct runs, routers,
   gateways, and managed benchmarks enforce that same boundary. A preset may
   additionally own constrained `draft-mtp` or `draft-dflash` speculative
   decoding with an optional closed ROCm/Vulkan draft-depth override, embedded

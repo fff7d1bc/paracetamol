@@ -268,6 +268,10 @@ COPY applications/llama-cpp/vulkan-f16-kv-contiguize.patch \
     /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch
 COPY applications/llama-cpp/hip-strix-halo-tiled-gdn.patch \
     /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch
+COPY applications/llama-cpp/qwen4exp-direct-reader.patch \
+    /opt/paracetamol/llama-qwen4exp-direct-reader.patch
+COPY applications/llama-cpp/process-allocation-policy.patch \
+    /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
     git remote add origin https://github.com/ggml-org/llama.cpp.git && \
     git fetch --depth=1 origin "${LLAMA_CPP_COMMIT}" && \
@@ -284,6 +288,10 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch && \
     git apply --check /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
     git apply /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
+    git apply --check /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
+    git apply /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
+    git apply --check /opt/paracetamol/llama-process-allocation-policy.patch && \
+    git apply /opt/paracetamol/llama-process-allocation-policy.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -317,6 +325,14 @@ RUN git init . && \
     cp LICENSE \
         /opt/llama-install/share/licenses/paracetamol/llama-cpp/LICENSE
 
+COPY applications/llama-cpp/test-native-policy.cpp /opt/paracetamol/test-llama-native-policy.cpp
+RUN c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
+        /opt/paracetamol/test-llama-native-policy.cpp \
+        -L/opt/llama-install/lib -Wl,-rpath,/opt/llama-install/lib \
+        -lllama-common -lllama -lggml -lggml-base -pthread \
+        -o /tmp/test-llama-native-policy && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy
+
 FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -342,6 +358,9 @@ RUN apt-get update && \
 COPY --from=llama-builder /opt/llama-install/ /usr/local/
 COPY applications/llama-cpp/entrypoint.sh \
     /usr/local/bin/paracetamol-llama-entrypoint
+COPY applications/llama-cpp/model-load-policy.sh \
+    /usr/local/share/paracetamol/llama-model-load-policy.sh
+RUN chmod 0644 /usr/local/share/paracetamol/llama-model-load-policy.sh
 COPY applications/llama-cpp/chat-templates/ \
     /usr/local/share/paracetamol/llama-chat-templates/
 RUN chmod 0755 /usr/local/bin/paracetamol-llama-entrypoint && \
@@ -359,7 +378,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,process-allocation-policy" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

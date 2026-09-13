@@ -203,6 +203,22 @@ func TestLlamaServerPrintsItsShareableConfigurationCommand(t *testing.T) {
 	if err := app.runLlama("server", []string{"--preset", "test", "--backend", "rocm", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err == nil || !strings.Contains(err.Error(), "does not support backend rocm") {
 		t.Fatalf("explicit unsupported backend err=%v", err)
 	}
+	// Backend preference must also respect a profile-scoped restriction, not
+	// only the model's global list. CPU dry runs need no host GPU topology.
+	preset := managed.LlamaPresets["test"]
+	preset.Backends = []string{"rocm", "vulkan"}
+	preset.BackendProfiles = map[string][]string{"rocm": {"strix-halo"}}
+	managed.LlamaPresets["test"] = preset
+	stdout.Reset()
+	if err := app.runLlama("server", []string{"--preset", "test", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "PARACETAMOL_LLAMA_BACKEND=vulkan") {
+		t.Fatalf("lost compatible fallback: %s", stdout.String())
+	}
+	if err := app.runLlama("server", []string{"--preset", "test", "--backend", "rocm", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err == nil || !strings.Contains(err.Error(), "on profile cpu") {
+		t.Fatalf("explicit profile-incompatible backend err=%v", err)
+	}
 }
 
 func TestAgentExecBoundaryReceivesSortedEnvironment(t *testing.T) {

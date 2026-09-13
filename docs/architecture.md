@@ -489,6 +489,24 @@ use the same mapping. This keeps an exceptional capacity policy visible and
 reviewable without exposing arbitrary tensor overrides. It does not alter
 benchmark mode, which remains resident for comparable measurements.
 
+The Strix Halo `stream-token-embedding` policy keeps that Vulkan mapping but
+uses explicit CPU embedding reads for ROCm. Its ROCm recipe disables inherited
+unified-memory allocation and host weight buffers, retains resident loading
+for the other tensors, disables automatic fitting and the RAM prompt archive,
+and uses a 2048 batch/microbatch with one non-unified-KV server slot. Live-prefix
+reuse remains available. The shell helper `model-load-policy.sh` owns this
+one tuple for direct arguments and router INI output. F16 KV and Flash Attention
+are required by catalog validation. Native `llama-bench` refuses the managed
+ROCm preset because its independent resident benchmark path does not implement
+this serving policy.
+
+`qwen4exp-direct-reader.patch` provides the opt-in reader without changing
+Gemma4. It fails when an explicitly requested reader cannot open the model file.
+`process-allocation-policy.patch` adds `--no-unified-memory`. Parsing or
+rendering a model preset only records that option. Only actual native process
+startup removes `GGML_CUDA_ENABLE_UNIFIED_MEMORY`, before model allocation.
+The router parent and other children retain their original environment.
+
 A llama.cpp preset can additionally declare a closed backend compatibility
 list. Omission means both built backends are supported. Direct startup selects
 the first declared backend only when the caller did not choose one and rejects
@@ -496,6 +514,13 @@ an explicit mismatch. Router rendering, gateway inventory construction, and
 managed benchmarks filter or reject the same mismatch before starting a
 container. Backend compatibility remains separate from hardware profile,
 model-load, cache, and speculative-decoding policy.
+
+Optional `backend_profiles` further restricts a backend to named hardware
+profiles. The host reads KFD topology for the exact selected render nodes when
+an automatic profile needs resolving for inventory. Missing or ambiguous
+topology cannot opt into a restricted model. The direct entrypoint and router
+renderer also check the restriction against the profile detected inside the
+container. This is a safety gate, not a new hardware profile or backend.
 
 `applications/dwarfstar/entrypoint.sh` is intentionally smaller. It accepts
 only server or CLI mode, verifies that exactly one supported architecture is
@@ -606,6 +631,9 @@ llama.cpp performs its native architecture check with `rocminfo`. On Strix
 Halo and Strix Point it enables `GGML_CUDA_ENABLE_UNIFIED_MEMORY` and
 `--load-mode none`; on RDNA4 it retains upstream automatic GPU-layer and fit
 behavior.
+
+The model-scoped streaming policy above is the explicit Strix Halo exception.
+It does not disable unified-memory allocation globally for other presets.
 
 ## Persistent data
 
