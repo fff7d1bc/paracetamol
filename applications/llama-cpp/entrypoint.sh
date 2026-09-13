@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+source /usr/local/share/paracetamol/llama-model-load-policy.sh
 
 die() {
     printf 'error: %s\n' "$*" >&2
@@ -26,6 +27,7 @@ kv_cache_strix_halo="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_HALO:-}"
 kv_cache_strix_point="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_POINT:-}"
 model_load_strix_halo="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_HALO:-}"
 model_load_strix_point="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_POINT:-}"
+allowed_profiles="${PARACETAMOL_LLAMA_ALLOWED_PROFILES:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
 listen="${PARACETAMOL_LISTEN:-0.0.0.0}"
@@ -116,7 +118,7 @@ case "$kv_cache_strix_point" in
     *) die "invalid Strix Point K/V cache setting '$kv_cache_strix_point'" ;;
 esac
 case "$model_load_strix_halo" in
-    ""|resident|mmap-lazy-token-embedding) ;;
+    ""|resident|mmap-lazy-token-embedding|stream-token-embedding) ;;
     *) die "invalid Strix Halo model-load policy '$model_load_strix_halo'" ;;
 esac
 case "$model_load_strix_point" in
@@ -278,6 +280,18 @@ else
                     --override-tensor per_layer_token_embd.weight=CPU
                 )
                 ;;
+            stream-token-embedding)
+                [[ "$profile" == strix-halo && "$mode" != bench ]] ||
+                    die "streaming token embedding requires Strix Halo server or CLI mode"
+                stream_arguments="$(llama_stream_token_embedding_args "$backend" "$mode")"
+                mapfile -t stream_args <<< "$stream_arguments"
+                model_policy_args+=("${stream_args[@]}")
+                if [[ "$backend" == rocm ]]; then
+                    # The native startup option performs the removal in this
+                    # model process. Router parents retain their ordinary policy.
+                    unified_memory=0
+                fi
+                ;;
         esac
     fi
     if [[ "$profile" == strix-halo ]]; then
@@ -295,6 +309,13 @@ else
         -n "$flash_attn_strix_point" ]]; then
         model_policy_args+=(--flash-attn "$flash_attn_strix_point")
     fi
+fi
+
+if [[ -n "$allowed_profiles" ]]; then
+    [[ "$allowed_profiles" =~ ^(rdna4|strix-halo|strix-point)(,(rdna4|strix-halo|strix-point))*$ ]] ||
+        die "invalid backend profile restriction"
+    [[ ",$allowed_profiles," == *",$profile,"* ]] ||
+        die "selected model backend is not supported on profile '$profile'"
 fi
 
 if [[ "$mode" == bench ]]; then
@@ -379,6 +400,14 @@ else
         case "$model_load" in
             resident) printf '  model load:    resident\n' ;;
             mmap-lazy-token-embedding) printf '  model load:    mmap; lazy per-layer token embedding\n' ;;
+            stream-token-embedding)
+                if [[ "$backend" == rocm ]]; then
+                    printf '  model load:    direct CPU embedding reads; device allocation; batch 2048/2048\n'
+                    printf '  prompt cache:  RAM archive disabled; live-prefix reuse retained\n'
+                else
+                    printf '  model load:    mmap; lazy per-layer token embedding\n'
+                fi
+                ;;
         esac
     fi
 fi
@@ -396,11 +425,16 @@ if [[ "$mode" == server ]]; then
             die "router preset has an unsupported version"
         ! grep -q '^\[\*\]$' /run/paracetamol/models.ini ||
             die "router preset must not contain global settings"
+        stream_ini=""
+        if [[ "$profile" == strix-halo ]]; then
+            stream_ini="$(llama_stream_token_embedding_ini "$backend")"
+        fi
         {
             printf 'version = 1\n'
             tail -n +2 /run/paracetamol/models.ini |
                 awk \
                     -v profile="$profile" \
+                    -v stream_ini="$stream_ini" \
                     -v gpu_count="$gpu_count" \
                     -v backend_devices="${backend_devices:-none}" '
                     /^paracetamol-flash-attn-rdna4 = / {
@@ -448,6 +482,14 @@ if [[ "$mode" == server ]]; then
                         }
                         next
                     }
+                    /^paracetamol-allowed-profiles = / {
+                        sub(/^paracetamol-allowed-profiles = /, "")
+                        if (index("," $0 ",", "," profile ",") == 0) {
+                            print "error: router model backend does not support profile " profile > "/dev/stderr"
+                            exit 1
+                        }
+                        next
+                    }
                     /^paracetamol-model-load-strix-halo = / {
                         if (profile == "strix-halo") {
                             sub(/^paracetamol-model-load-strix-halo = /, "")
@@ -457,6 +499,8 @@ if [[ "$mode" == server ]]; then
                                 print "load-mode = mmap"
                                 print "lazy-mode = on"
                                 print "override-tensor = per_layer_token_embd.weight=CPU"
+                            } else if ($0 == "stream-token-embedding") {
+                                print stream_ini
                             }
                         }
                         next

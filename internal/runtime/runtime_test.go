@@ -104,7 +104,7 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 			"two": {ID: "two", Artifact: "two", DefaultContext: 8192, ModelLoad: map[string]string{"strix-halo": catalog.LlamaModelLoadMMapLazyTokenEmbedding}},
 		},
 	}
-	contents, err := RenderRouterModels(managed, "rocm", []string{"two"})
+	contents, err := RenderRouterModels(managed, "rocm", "strix-halo", []string{"two"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,12 +116,28 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 			t.Fatalf("router contents lack %q:\n%s", required, contents)
 		}
 	}
-	if _, err := RenderRouterModels(managed, "rocm", []string{"missing"}); err == nil {
+	if _, err := RenderRouterModels(managed, "rocm", "strix-halo", []string{"missing"}); err == nil {
 		t.Fatal("unknown selected preset was accepted")
 	}
 	managed.LlamaPresets["two"] = catalog.LlamaPreset{ID: "two", Artifact: "two", DefaultContext: 8192, Backends: []string{"vulkan"}}
-	if _, err := RenderRouterModels(managed, "rocm", []string{"two"}); err == nil || !strings.Contains(err.Error(), "does not support backend rocm") {
+	if _, err := RenderRouterModels(managed, "rocm", "strix-halo", []string{"two"}); err == nil || !strings.Contains(err.Error(), "does not support backend rocm") {
 		t.Fatalf("backend-incompatible router preset err=%v", err)
+	}
+	preset := managed.LlamaPresets["two"]
+	preset.Backends = []string{"rocm", "vulkan"}
+	preset.BackendProfiles = map[string][]string{"rocm": {"strix-halo"}}
+	preset.ModelLoad = map[string]string{"strix-halo": catalog.LlamaModelLoadStreamTokenEmbedding}
+	managed.LlamaPresets["two"] = preset
+	if _, err := RenderRouterModels(managed, "rocm", "auto", []string{"two"}); err == nil {
+		t.Fatal("unknown hardware acquired restricted model")
+	}
+	contents, err = RenderRouterModels(managed, "rocm", "strix-halo", []string{"one", "two"})
+	if err != nil || !strings.Contains(contents, "paracetamol-allowed-profiles = strix-halo") || !strings.Contains(contents, "paracetamol-model-load-strix-halo = stream-token-embedding") {
+		t.Fatalf("missing per-model policy: %s, %v", contents, err)
+	}
+	ordinary := strings.Split(strings.Split(contents, "[one]")[1], "[two]")[0]
+	if strings.Contains(ordinary, "stream-token-embedding") || strings.Contains(ordinary, "allowed-profiles") || !strings.Contains(ordinary, "paracetamol-model-load-strix-halo = resident") {
+		t.Fatalf("exceptional policy leaked into ordinary model: %s", ordinary)
 	}
 }
 
@@ -156,7 +172,7 @@ func TestReasoningHistoryPolicyIsExplicitForDirectAndRouter(t *testing.T) {
 					"model": {ID: "model", Artifact: "model", DefaultContext: 4096, ReasoningPreserve: preserve},
 				},
 			}
-			contents, err := RenderRouterModels(managed, "rocm", []string{"model"})
+			contents, err := RenderRouterModels(managed, "rocm", "strix-halo", []string{"model"})
 			if err != nil {
 				t.Fatal(err)
 			}

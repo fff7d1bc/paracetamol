@@ -2805,8 +2805,12 @@
       "bundle": "llama-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
       "artifact": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
       "backends": [
+        "rocm",
         "vulkan"
       ],
+      "backend_profiles": {
+        "rocm": ["strix-halo"]
+      },
       "default_context": 262144,
       "chat_template": "qwen3.8",
       "sampling_policy": "qwen3.8-flash-next",
@@ -2824,7 +2828,10 @@
         "strix-halo": "on"
       },
       "model_load": {
-        "strix-halo": "mmap-lazy-token-embedding"
+        "strix-halo": "stream-token-embedding"
+      },
+      "kv_cache": {
+        "strix-halo": "f16"
       }
     },
     "gemma4-31b-it-q8-0-mtp": {

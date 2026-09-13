@@ -42,6 +42,12 @@ revisions recorded in `catalog/catalog.json`.
   `964c6f2f0b66008243883298f3f535bc99f5998c`. Paracetamol restricts its dispatch
   to the accepted Strix Halo shape, removes diagnostic logging, and adds
   numerical operator regression cases.
+  The explicit Qwen4exp embedding reader derives from llama.cpp PR 28136
+  at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, also under MIT.
+  Paracetamol omits its Gemma4 hooks and rejects an unavailable explicit reader
+  instead of falling back to mmap. A separate local startup option lets one
+  model process opt out of inherited CUDA/HIP managed allocation without
+  changing the router parent's policy.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

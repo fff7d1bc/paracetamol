@@ -273,6 +273,18 @@ protected behavior is fixed.
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
+| `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
+| `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
+
+The `r37` packaging revision adds the two model-scoped patches without moving
+the source pin. `test-native-policy.cpp` runs during image building without a
+GPU or model weights. It checks server/CLI preset isolation and 50 direct-reader
+reference/EOF cases. CPU startup must also exercise the non-root managed
+entrypoint, not only the native binary, so bundled helper permissions are
+covered. Flash-Next's ROCm policy is restricted to Strix Halo. Other models'
+allocation and reader settings remain unchanged. The [managed integration
+follow-up](qwen3.8-flash-next-direct-reader-feasibility.md#managed-rocm-integration)
+supersedes the historical Vulkan-only restriction described below.
 
 The September 13 [isolated tiled GDN screen](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
 adds one patch without changing the source pin, ROCm, model artifacts or
@@ -387,18 +399,19 @@ does not add a draft-model loader. Flash-Next MTP remains in
 and is not part of this pin. Keep base-model ROCm acceptance and MTP acceptance
 as separate gates.
 
-At this pin, Flash-Next generation on `gfx1151` is accepted only through
-Vulkan. ROCm loads the same shards and can return short retrieval keys, but
-meaningful responses become malformed multilingual text at shallow context.
+At the September 1 pin, Flash-Next generation on `gfx1151` was accepted only
+through Vulkan. Ordinary ROCm allocation loads the same shards and can return
+short retrieval keys, but meaningful responses become malformed multilingual
+text at shallow context.
 The failure survives resident and lazy loading, deterministic sampling, one
 server slot, the GGUF and managed templates, a clean GPU reset, ROCm 7.14 and
 10.0 images, and a build without Paracetamol's llama.cpp patches. Vulkan is
 coherent with the same image, GGUF, prompt, and preset. This agrees with
 [upstream issue 27797](https://github.com/ggml-org/llama.cpp/issues/27797) and
 the independent [Unsloth ROCm report](https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/discussions/38).
-Keep the managed preset's closed Vulkan backend list until a later llama.cpp
-or ROCm tuple passes meaningful multi-turn and tool-call acceptance on Strix
-Halo. Do not use successful loading, synthetic throughput, or a short-key
+The later `r37` model-scoped allocation and reader policy has its own
+acceptance gate. It does not fix the ordinary ROCm allocation path.
+Do not use successful loading, synthetic throughput, or a short-key
 retrieval as evidence that the ROCm output path is fixed.
 
 An isolated same-day evaluation rejected open pull request

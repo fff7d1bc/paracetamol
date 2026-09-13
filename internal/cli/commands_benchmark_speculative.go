@@ -191,12 +191,6 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if !preset.AgentTools {
 		return controlerr.Usage("preset %q has no reviewed Chat Completions policy", *presetID)
 	}
-	if !setWasSet(set, "backend") && !preset.SupportsBackend(*backend) && len(preset.Backends) > 0 {
-		*backend = preset.Backends[0]
-	}
-	if !preset.SupportsBackend(*backend) {
-		return controlerr.Usage("llama.cpp preset %q does not support backend %s", *presetID, *backend)
-	}
 	maximumDepth := 15
 	if preset.SpeculativeType == "draft-mtp" {
 		maximumDepth = 8
@@ -250,6 +244,13 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	selectedNodes, err := app.resolveDevices(profile, nodes, nodes != nil)
 	if err != nil {
 		return err
+	}
+	modelProfile := platform.ModelProfile(profile, selectedNodes)
+	if supported := preset.RuntimeBackends(modelProfile); !setWasSet(set, "backend") && !preset.SupportsRuntime(*backend, modelProfile) && len(supported) > 0 {
+		*backend = supported[0]
+	}
+	if !preset.SupportsRuntime(*backend, modelProfile) {
+		return controlerr.Usage("llama.cpp preset %q does not support backend %s on profile %s", *presetID, *backend, modelProfile)
 	}
 	port, err := config.ValidatePort(*portText)
 	if err != nil {
@@ -335,7 +336,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		if *disableGraphs {
 			environment = append(environment, "GGML_CUDA_DISABLE_GRAPHS=1")
 		}
-		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, SamplingDefaults: samplingDefaults, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
+		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, SamplingDefaults: samplingDefaults, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, AllowedProfiles: preset.BackendProfiles[*backend], RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
 		if err != nil {
 			return err
 		}

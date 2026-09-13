@@ -29,10 +29,13 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
 	}
 	flashNextQ4 := loaded.LlamaPresets["qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
-	if flashNextQ4.DefaultContext != 262144 || strings.Join(flashNextQ4.Backends, ",") != "vulkan" || flashNextQ4.ModelLoad["strix-halo"] != LlamaModelLoadMMapLazyTokenEmbedding || flashNextQ4.SpeculativeType != "" {
+	if flashNextQ4.DefaultContext != 262144 || strings.Join(flashNextQ4.Backends, ",") != "rocm,vulkan" || flashNextQ4.ModelLoad["strix-halo"] != LlamaModelLoadStreamTokenEmbedding || flashNextQ4.SpeculativeType != "" || flashNextQ4.KVCache["strix-halo"] != "f16" {
 		t.Fatalf("unexpected Qwen3.8 Flash-Next Q4_K_XL preset: %#v", flashNextQ4)
 	}
 	for id, preset := range loaded.LlamaPresets {
+		if id != flashNextQ4.ID && (len(preset.BackendProfiles) != 0 || len(preset.ModelLoad) != 0) {
+			t.Fatalf("unrelated preset %s acquired an exceptional runtime policy", id)
+		}
 		for profile, cacheType := range preset.KVCache {
 			if cacheType != "f16" {
 				t.Fatalf("llama.cpp preset %s quantizes the %s target K/V cache as %s", id, profile, cacheType)
@@ -42,6 +45,24 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	dwarfstar := loaded.DwarfStarPresets["deepseek-v4-flash-0731-q2-imatrix"]
 	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
 		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
+	}
+}
+
+func TestLlamaPresetBackendProfileRestrictions(t *testing.T) {
+	preset := LlamaPreset{Backends: []string{"rocm", "vulkan"}, BackendProfiles: map[string][]string{"rocm": {"strix-halo"}}}
+	for _, profile := range []string{"auto", "cpu", "rdna4", "strix-point", "strix-halo"} {
+		if preset.SupportsRuntime("rocm", profile) != (profile == "strix-halo") || !preset.SupportsRuntime("vulkan", profile) {
+			t.Fatalf("wrong backend gate for %s", profile)
+		}
+	}
+	for _, policy := range []string{
+		`{"cuda":["strix-halo"]}`, `{"rocm":[]}`, `{"rocm":["auto"]}`,
+		`{"rocm":["cpu"]}`, `{"rocm":["strix-halo","strix-halo"]}`,
+	} {
+		raw := `{"bundle":"fixture","artifact":"fixture","default_context":4096,"backend_profiles":` + policy + `}`
+		if _, err := loadLlamaPreset("fixture", json.RawMessage(raw)); err == nil {
+			t.Fatalf("accepted invalid backend profile restriction %s", policy)
+		}
 	}
 }
 
@@ -64,6 +85,26 @@ func TestLlamaPresetRejectsUnknownModelLoadPolicy(t *testing.T) {
 		if _, err := loadLlamaPreset("fixture", json.RawMessage(raw)); err == nil {
 			t.Fatalf("accepted invalid model-load policy: %s", raw)
 		}
+	}
+}
+
+func TestStreamingEmbeddingRequiresTheAcceptedRuntimeTuple(t *testing.T) {
+	valid := `{"bundle":"fixture","artifact":"fixture","default_context":262144,"backends":["rocm","vulkan"],"backend_profiles":{"rocm":["strix-halo"]},"model_load":{"strix-halo":"stream-token-embedding"},"flash_attention":{"strix-halo":"on"},"kv_cache":{"strix-halo":"f16"}}`
+	if _, err := loadLlamaPreset("fixture", json.RawMessage(valid)); err != nil {
+		t.Fatal(err)
+	}
+	for name, invalid := range map[string]string{
+		"other profile":        strings.ReplaceAll(valid, "strix-halo", "strix-point"),
+		"quantized cache":      strings.Replace(valid, `"f16"`, `"q8_0"`, 1),
+		"no flash attention":   strings.Replace(valid, `"on"`, `"off"`, 1),
+		"unrestricted backend": strings.Replace(valid, `"backend_profiles":{"rocm":["strix-halo"]},`, "", 1),
+		"speculative decoding": strings.Replace(valid, `"bundle":`, `"speculative_type":"draft-mtp","draft_tokens":3,"bundle":`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadLlamaPreset("fixture", json.RawMessage(invalid)); err == nil {
+				t.Fatal("accepted unsafe streaming policy")
+			}
+		})
 	}
 }
 

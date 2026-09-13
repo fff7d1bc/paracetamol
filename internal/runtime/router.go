@@ -16,7 +16,7 @@ import (
 	"paracetamol/internal/verification"
 )
 
-func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []string, error) {
+func RenderRouter(managed catalog.Catalog, dataRoot, backend, profile string) (string, []string, error) {
 	store, err := verification.Load(dataRoot)
 	if err != nil {
 		return "", nil, err
@@ -29,7 +29,7 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 	installed := make([]string, 0, len(identifiers))
 	for _, identifier := range identifiers {
 		preset := managed.LlamaPresets[identifier]
-		if !preset.SupportsBackend(backend) {
+		if !preset.SupportsRuntime(backend, profile) {
 			continue
 		}
 		bundle := managed.Bundles[preset.Bundle]
@@ -54,14 +54,14 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend string) (string, []
 	if len(installed) == 0 {
 		return "", nil, fmt.Errorf("no installed managed llama.cpp preset supports backend %s", backend)
 	}
-	contents, err := RenderRouterModels(managed, backend, installed)
+	contents, err := RenderRouterModels(managed, backend, profile, installed)
 	return contents, installed, err
 }
 
 // RenderRouterModels renders exactly the already-validated preset snapshot
 // supplied by its caller. The gateway uses this after receipt validation so
 // unrelated incomplete content cannot alter its frozen startup inventory.
-func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []string) (string, error) {
+func RenderRouterModels(managed catalog.Catalog, backend, profile string, identifiers []string) (string, error) {
 	if len(identifiers) == 0 {
 		return "", fmt.Errorf("router requires at least one llama.cpp preset")
 	}
@@ -75,8 +75,8 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 		if !ok {
 			return "", fmt.Errorf("unknown llama.cpp router preset %q", identifier)
 		}
-		if !preset.SupportsBackend(backend) {
-			return "", fmt.Errorf("llama.cpp router preset %q does not support backend %s", identifier, backend)
+		if !preset.SupportsRuntime(backend, profile) {
+			return "", fmt.Errorf("llama.cpp router preset %q does not support backend %s on profile %s", identifier, backend, profile)
 		}
 	}
 	sections := []string{"version = 1", ""}
@@ -87,6 +87,9 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 			return "", fmt.Errorf("llama.cpp preset %s references unknown artifact %s", identifier, preset.Artifact)
 		}
 		section := []string{"[" + identifier + "]", "model = /content/models/" + artifact.Destination, fmt.Sprintf("c = %d", preset.DefaultContext)}
+		if profiles := preset.BackendProfiles[backend]; len(profiles) > 0 {
+			section = append(section, "paracetamol-allowed-profiles = "+strings.Join(profiles, ","))
+		}
 		if len(preset.ContextOverrideArchitectures) > 0 {
 			var overrides []string
 			for _, architecture := range preset.ContextOverrideArchitectures {
@@ -118,7 +121,7 @@ func RenderRouterModels(managed catalog.Catalog, backend string, identifiers []s
 				section = append(section, "paracetamol-kv-cache-"+profile+" = "+value)
 			}
 			modelLoad := preset.ModelLoad[profile]
-			// The router can mix resident and lazy models in one process, so its
+			// One router can manage resident and lazy model children, so its
 			// generated sections must make the Strix default explicit per model.
 			if modelLoad == "" && (profile == "strix-halo" || profile == "strix-point") {
 				modelLoad = catalog.LlamaModelLoadResident

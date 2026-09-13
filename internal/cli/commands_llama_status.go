@@ -258,11 +258,16 @@ func (app *App) llamaStatus(requested string) error {
 	} else if preset != nil {
 		mode = "direct preset"
 	}
+	allocationLabel, allocationValue := "Unified memory", onOff(runtimeReport["unified_memory"])
+	if router != nil {
+		allocationLabel = "Router allocation default"
+		allocationValue = "unified memory " + allocationValue + "; model policies may opt out"
+	}
 	serverRows := [][2]string{
 		{"Mode", mode}, {"Container bind", runtimeReport["listen"] + ":" + runtimeReport["port"]},
 		{"Host publish", runtimeReport["host_listen"] + ":" + runtimeReport["port"]},
 		{"Authentication", map[bool]string{true: "configured (value redacted)", false: "none"}[runtimeReport["api_key"] == "1"]},
-		{"Unified memory", onOff(runtimeReport["unified_memory"])},
+		{allocationLabel, allocationValue},
 		{"Vulkan F16 KV fix", onOff(runtimeReport["vulkan_f16_kv_contiguize"])},
 	}
 	if router != nil {
@@ -445,6 +450,13 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		[2]string{"Flash Attention", firstNonEmpty(flashAttention, "llama.cpp default")},
 		[2]string{"K/V cache", firstNonEmpty(kvCache, "llama.cpp default")},
 		[2]string{"Model load", llamaModelLoadStatus(modelLoad, profile)})
+	if modelLoad == catalog.LlamaModelLoadStreamTokenEmbedding && runtimeReport["backend"] == "rocm" {
+		rows = append(rows,
+			[2]string{"Allocation", "device allocation, inherited unified memory disabled for this model"},
+			[2]string{"Batch / microbatch", "2048 / 2048"},
+			[2]string{"RAM prompt archive", "disabled, live-prefix reuse retained"},
+			[2]string{"Slots", "1, non-unified KV"})
+	}
 	samplingRows, err := llamaSamplingRows(managed, preset, sampling)
 	return append(rows, samplingRows...), err
 }
@@ -459,6 +471,9 @@ func llamaModelLoadStatus(policy, profile string) string {
 	}
 	if policy == catalog.LlamaModelLoadMMapLazyTokenEmbedding {
 		return "mmap; lazy per-layer token embedding"
+	}
+	if policy == catalog.LlamaModelLoadStreamTokenEmbedding {
+		return "CPU per-layer embedding, ROCm direct reads / Vulkan lazy mmap"
 	}
 	return policy
 }

@@ -26,6 +26,56 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Flash-Next managed ROCm integration (2026-09-13)
+
+The follow-up to the direct-reader screen is `PASS` through the real managed
+gateway and native router. It starts from Paracetamol `ea46185` and builds
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-8172e65-r37`, image ID
+`62409b7ee2e07ff17741cf4023d48fdfb311a4fc6e38430b81b4c226bf0ed4fb`.
+All five libggml shared-library hashes, including CPU, HIP and Vulkan, match
+the retained `r36` control. Native model-loading and process-startup policy
+change, not the compute kernels. The kernel, power policy, ROCm, GGUF,
+F16 KV and 262144-token ceiling remain unchanged.
+
+Only the Flash-Next child uses explicit CPU embedding reads, device allocation
+without inherited unified-memory allocation, batch/microbatch 2048, one
+non-unified KV slot and no RAM prompt archive. The parent does not mutate its
+environment when inspecting that preset. The catalog restricts this ROCm
+path to Strix Halo, with host exact-node discovery and a second container
+profile check. Other presets retain their accepted policies.
+
+Qwen3.8 Q8 MTP passed before and after Flash-Next, followed by Qwen3.6 dense
+MTP, Muse DFlash and a Flash-Next reload in the same router with
+`--models-max 1`. Checks included meaningful output, multi-turn memory,
+reasoning modes, nested tools and results, streaming, sampler defaults and
+overrides, reasoning history, prefix reuse and cancellation as applicable.
+Real Pi and Maki each completed a read-and-shell tool loop on Flash-Next.
+Pi's off run generated zero reasoning tokens. Native Responses diagnostics
+used the private backend, not an unsupported public gateway route.
+
+Two uncached 32167-token retrievals returned all six keys at a combined
+377.11 prompt tokens/s. The populated 247165-token retrieval also recovered
+all six keys, with prefill 1861.003s and total HTTP 1903.357s. Three cached
+256-token continuations took 183.465s in total, or 4.19 output tokens per second
+of HTTP time. Fresh requests, prefix reuse, cancellation and Q8 recovery
+passed afterward. Minimum sampled available RAM was 27.65 GiB over the long
+suite. Swap use grew by at most 0.134 GiB, without a guard stop.
+
+The unchanged Vulkan gateway recipe passed short protocol, two 32K retrievals,
+cache and cancellation checks. The actual managed single-prompt CLI selected
+ROCm and returned its sentinel. Image dependency closure, non-root CPU
+entrypoint startup, native reader/preset tests, Tier 1 and the Go race pass
+succeeded. No new kernel warnings appeared. Test containers were removed and
+the normal loopback/LAN gateway was restored without loading a backend.
+
+These are bounded execution and capacity checks, not a coding-quality grade
+or a long-duration reliability guarantee. Flash-Next still has no MTP.
+Other GPU architectures are `N/P` for this model-scoped ROCm path and are
+not enabled by its catalog restriction. The [full follow-up and
+limits](qwen3.8-flash-next-direct-reader-feasibility.md#managed-rocm-integration)
+include retained Vulkan behavior, failed packaging/probe attempts and exact
+evidence locations.
+
 ### Fedora 44 Strix Halo Flash-Next direct-reader screen (2026-09-13)
 
 Starting from Paracetamol `01492e62986bdab408b5c46195635b540f4be805`, an
@@ -47,8 +97,10 @@ the tail of a cached long prompt required more prefix work.
 Restoring `GGML_CUDA_ENABLE_UNIFIED_MEMORY` was still `FAIL`, with corrupt
 prose, bad tool arguments and HTTP 500s despite a passing stream sentinel.
 No kernel warnings appeared. The reader is not a fix for that allocation
-mode. Managed Flash-Next remains Vulkan-only, without MTP, and the production
-image and other model policies are unchanged.
+mode. At the end of this isolated screen, managed Flash-Next remained
+Vulkan-only, without MTP, and production was unchanged. The later managed
+integration above adds a model-scoped exception rather than fixing that
+ordinary allocation path.
 
 The [full result](qwen3.8-flash-next-direct-reader-feasibility.md) records the
 candidate image, controls, numerical checks, microbatch trade-offs and the

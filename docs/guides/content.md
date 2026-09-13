@@ -84,10 +84,13 @@ Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a
 128 GB Strix Halo host with fast local SSD storage, not another quantization
 of the dense 27B default. The preset uses SSD-backed lazy loading for the
 model's unusually large per-layer token embedding and has no MTP mode in the
-current pinned llama.cpp. It is Vulkan-only because the pinned ROCm path
-produces corrupt generated text on Strix Halo. Direct startup selects Vulkan
-when the backend is omitted, while a ROCm router or gateway leaves the model
-out of its inventory. Its pinned conversion repository declares license
+current pinned llama.cpp. On Strix Halo it uses a model-scoped ROCm direct
+reader and allocator policy. A ROCm router or gateway includes it when the
+shards have current verification receipts. Vulkan remains an explicit
+alternative. Other hardware cannot opt into this ROCm policy, and unknown
+hardware detection fails closed. See the [application
+guide](applications.md) for capacity and concurrency limits.
+Its pinned conversion repository declares license
 metadata but does not contain the referenced license text, so Paracetamol
 keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
 

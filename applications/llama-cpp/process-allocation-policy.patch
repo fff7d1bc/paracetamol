@@ -1,0 +1,47 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 43052d5..76809a9 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -1304,6 +1304,17 @@ bool common_params_parse(int argc, char ** argv, common_params & params, llama_e
+             exit(0);
+         }
+         params.lr.init();
++        // Preset parsing only records policy. Apply it at actual process startup,
++        // after successful argument validation and before any model allocation.
++        // In router mode this runs in the selected child, never while the parent
++        // inspects other models' presets. Absence matters, not the string "0".
++        if (params.no_unified_memory) {
++            common_set_env("GGML_CUDA_ENABLE_UNIFIED_MEMORY", "");
++            if (std::getenv("GGML_CUDA_ENABLE_UNIFIED_MEMORY") != nullptr) {
++                throw std::runtime_error("failed to disable inherited unified-memory allocation");
++            }
++            LOG_INF("unified-memory allocation explicitly disabled for this process\n");
++        }
+     } catch (const std::invalid_argument & ex) {
+         fprintf(stderr, "%s\n", ex.what());
+         ctx_arg.params = params_org;
+@@ -2430,6 +2441,13 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             params.no_host = true;
+         }
+     ).set_env("LLAMA_ARG_NO_HOST"));
++    add_opt(common_arg(
++        {"--no-unified-memory"},
++        "disable inherited CUDA/HIP unified-memory allocation for this process (default: inherit)",
++        [](common_params & params) {
++            params.no_unified_memory = true;
++        }
++    ).set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_NO_UNIFIED_MEMORY"));
+     add_opt(common_arg(
+         {"-ctk", "--cache-type-k"}, "TYPE",
+         string_format(
+diff --git a/common/common.h b/common/common.h
+index 63d0bad..bcaba87 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -581,5 +581,6 @@ struct common_params {
+     bool no_op_offload     = false; // globally disable offload host tensor operations to device
+     bool no_extra_bufts    = false; // disable extra buffer types (used for weight repacking)
+     bool no_host           = false; // bypass host buffer allowing extra buffers to be used
++    bool no_unified_memory = false; // opt out of inherited CUDA/HIP managed allocation at process startup
+ 
+     bool single_turn       = false; // single turn chat conversation
