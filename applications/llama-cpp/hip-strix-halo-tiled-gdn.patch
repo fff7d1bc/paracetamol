@@ -243,9 +243,9 @@ index 1b431a7..e8ea34c 100644
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10844,6 +10844,16 @@
-     test_cases.emplace_back(new test_moe_weighted_reduction(2048, 15, 40, false, true));
-     test_cases.emplace_back(new test_moe_weighted_reduction(2048, 16, 32, false, true));
+@@ -10996,6 +10996,16 @@
+     test_cases.emplace_back(new test_moe_reduce(2048, 15, 40, false, true));
+     test_cases.emplace_back(new test_moe_reduce(2048, 16, 32, false, true));
  
 +    for (int nt : {15, 16, 17, 31, 32, 127, 512, 1024}) {
 +        for (bool permuted : {false, true}) {

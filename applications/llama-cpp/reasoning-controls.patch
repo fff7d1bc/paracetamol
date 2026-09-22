@@ -88,9 +88,9 @@ diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
 index 2ac98b6fd..f2c9c0369 100644
 --- a/tools/server/server-common.cpp
 +++ b/tools/server/server-common.cpp
-@@ -16,6 +16,26 @@
- #include <cstring>
- #include <type_traits>
+@@ -33,6 +33,26 @@
+ #include <unistd.h>
+ #endif
  
 +// Apply data supplied by the model preset only as defaults. This keeps the
 +// template responsible for resolving thinking mode without giving Jinja a
