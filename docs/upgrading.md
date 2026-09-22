@@ -276,6 +276,53 @@ protected behavior is fixed.
 | `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 
+The September 22 update to
+`7ab4ee7baad2d920464cbacfad4f4b07cf111fd2`, packaging revision `r38`, reviews
+186 upstream commits. Five patches apply unchanged. The reasoning patch
+only moves past new server-process includes, and the tiled GDN test hunk
+only follows an upstream test-class rename. Neither changes its protected
+behavior, and all seven patches remain.
+The [Strix Halo acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-7ab4ee7-update-2026-09-22)
+includes the paired ROCm/Vulkan results, the small Q8 long-prefill slowdown,
+Flash-Next gains, client checks and deferred hardware coverage.
+
+The range includes Muse's first-tool-call grammar fix in
+[PR 29242](https://github.com/ggml-org/llama.cpp/pull/29242), RDNA 3.5 MoE tile
+selection in [PR 28935](https://github.com/ggml-org/llama.cpp/pull/28935),
+MTP graph reuse in [PR 28549](https://github.com/ggml-org/llama.cpp/pull/28549),
+and Qwen4exp hyper-connection and normalization fusions. Sparse Flash
+Attention is enabled for Qwen4exp, with a new Vulkan implementation. The
+CUDA sparse kernel still explicitly excludes HIP, so its advertised gain
+must not be attributed to ROCm. Server child-process monitoring and the
+shared JSON-schema representation also change. Recheck router switching,
+shutdown, nested tool arguments and managed sampling rather than treating
+this as a kernels-only update. This pin is preparation for new models, not
+acceptance of unreleased Qwen4 artifacts.
+
+The September 22 external review leaves these proposals outside the pin:
+
+- [PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030) rewrites the
+  direct-reader proposal already carried from PR 28136. Its ownership and
+  parallel-read design remain under review. A replacement must retain the
+  existing EOF, dequantization and per-process policy checks.
+- [PR 28243](https://github.com/ggml-org/llama.cpp/pull/28243) is the newer
+  Flash-Next MTP proposal. Detached draft loading still has outstanding
+  review discussion. Target-model acceptance does not enable this draft path.
+- [PR 28699](https://github.com/ggml-org/llama.cpp/pull/28699) caches QSA
+  pooled keys. It changes persistent inference state and needs isolated
+  rollback, prefix-reuse and long-context qualification.
+- [PR 28613](https://github.com/ggml-org/llama.cpp/pull/28613) changes RDNA
+  3.5 small-batch thresholds, but reviewers report shape-dependent
+  regressions. Do not apply its benchmark gains to every model.
+- [PR 26419](https://github.com/ggml-org/llama.cpp/pull/26419) now limits
+  its head-dimension-256 dispatch change to RDNA 4. That is not a new Strix
+  Halo optimization or evidence that its earlier regression disappeared.
+
+The host-buffer PR 25863 was closed without merging. Upstream points to the
+conservative integrated-device rollback in PR 28604, already in our previous
+pin, and the still-draft scheduler work in PR 27311. This does not satisfy
+the ledger's cross-APU removal gate.
+
 The `r37` packaging revision adds the two model-scoped patches without moving
 the source pin. `test-native-policy.cpp` runs during image building without a
 GPU or model weights. It checks server/CLI preset isolation and 50 direct-reader
@@ -426,8 +473,8 @@ stop decision, and retest gate are preserved in the
 The bundled `muse-glimmer-atem.jinja` derives from Meta's 9,992-byte template
 at base-model revision `a4e59da52a7bc87ae7251dd5545c0dd437c44b68`, SHA-256
 `cfc67e5f349f37690dfd31ed1f18bc4442a9dd32fe39a648f993cb4eb3cae678`.
-Paracetamol's 10,219-byte reviewed derivative has SHA-256
-`4849b801303b351a82dab37107a665410070cd58315fadccd8f5fde02084bd34`.
+Paracetamol's 10,221-byte reviewed derivative has SHA-256
+`7802290a21155a7966436866dc34c06293719eeccdace751ded893cb752f39b1`.
 It retains Meta's duplicate-directive correction and adds one scoped policy:
 because Muse cannot disable reasoning, `enable_thinking=false` renders native
 low instead of changing another model through a server-wide fallback. Meta
@@ -522,6 +569,15 @@ content, reasoning values, and tool responses. This remains a small smoke
 model rather than a managed coding agent. On an upgrade, render both ordinary
 text messages and the hardened non-string history before removing the
 override.
+
+The September 22 content audit found no changed bytes in the selected Qwen
+GGUFs, including all four Qwen3.6 artifacts, both Qwen3.8 Dynamic Quants and
+all four Flash-Next shards. The selected Gemma, KAT, translation, Shisa and
+DeepSeek target/support files are also unchanged. Muse's current filenames
+still point to the already-reviewed template-only repack described above.
+Its base template and the official Qwen3.8 templates have not changed.
+Keep the existing immutable artifact revisions and managed overrides rather
+than invalidating receipts for newer repository metadata alone.
 
 For an upstream source update:
 

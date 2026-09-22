@@ -25,7 +25,7 @@ not prose snapshots:
 
 ```bash
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-rg -n 'localhost/paracetamol:' internal/config/config.go
+rg -n 'identity.Image' internal/application/registry.go
 cat containers/content_tools/requirements.txt
 cat applications/comfyui/constraints.txt
 ```
@@ -68,8 +68,10 @@ A patch that no longer applies is a review stop, not evidence that it can be
 deleted. Remove a local patch only after identifying the equivalent upstream
 change in the proposed pin or proving that its protected behavior no longer
 exists. In particular, review llama.cpp's HIP APU host-buffer patch against
-upstream PR 25863 and its reasoning-effort budget patch against upstream
-effort handling on every llama.cpp update.
+upstream PR 25863, its replacement discussion and the removal gate in
+`upgrading.md`. Review `reasoning-controls.patch` against upstream
+per-thinking-mode sampling defaults on every llama.cpp update. Native effort
+parsing already belongs to upstream.
 
 ### 4. Report and recommend
 
