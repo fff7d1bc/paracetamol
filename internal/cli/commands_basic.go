@@ -1011,8 +1011,8 @@ func (app *App) commandLogs(args []string) error {
 }
 
 func (app *App) commandStop(args []string) error {
-	set := app.flags("stop", usage("stop", "APPLICATION|all"))
-	set.Argument("APPLICATION|all", "one managed application or every normal application container")
+	set := app.flags("stop", usage("stop", "APPLICATION|gateway|all"))
+	set.Argument("APPLICATION|gateway|all", "one managed application, the host gateway, or all of them")
 	if err := parseFlags(set, args); err != nil {
 		return err
 	}
@@ -1023,9 +1023,23 @@ func (app *App) commandStop(args []string) error {
 		return controlerr.Usage("stop accepts exactly one application")
 	}
 	applicationID := set.Args()[0]
-	if applicationID != "all" {
+	if applicationID != "all" && applicationID != "gateway" {
 		if _, ok := config.ApplicationByID(applicationID); !ok {
 			return controlerr.Usage("unknown application %q", applicationID)
+		}
+	}
+	if applicationID == "gateway" || applicationID == "all" {
+		stopped, err := gateway.StopLocalGateway(app.Context, app.Environment)
+		if err != nil {
+			return err
+		}
+		if stopped {
+			fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Success("Gateway stopped."))
+		} else {
+			fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Muted("Gateway control socket not present."))
+		}
+		if applicationID == "gateway" {
+			return nil
 		}
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {

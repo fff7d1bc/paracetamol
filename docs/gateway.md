@@ -107,11 +107,17 @@ loopback rather than relying on host dual-stack policy. Opening every required
 listener is all-or-nothing.
 
 There is no daemon or detach mode. The foreground process owns listener and
-backend cleanup, and Ctrl-C stops accepting work on every address, drains
-active HTTP requests, removes its exact private backend container, prints a
-successful stop, and exits cleanly. A non-loopback `--listen` is visibly warned
-about. Without a configured key it is an unauthenticated trusted-LAN
-publication. With a key, the warning still identifies unencrypted HTTP.
+backend cleanup. Ctrl-C, `stop gateway`, and `stop all` stop accepting work on
+every address, drain active HTTP requests, remove its exact private backend
+container, print a successful stop, and exit cleanly. The stop commands use a
+private same-user Unix socket, never the published HTTP API. Its location is
+`$XDG_RUNTIME_DIR/paracetamol/gateway.sock`, or
+`$HOME/.local/share/paracetamol/run/gateway.sock` when the runtime directory is
+unset. One gateway may run per user. A gateway started by an older build has no
+control socket and still needs Ctrl-C or SIGTERM. A non-loopback `--listen` is
+visibly warned about. Without a configured key it is an unauthenticated
+trusted-LAN publication. With a key, the warning still identifies unencrypted
+HTTP.
 
 ## Optional authentication
 

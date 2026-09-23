@@ -68,7 +68,7 @@ var commandTree = []commandDefinition{
 	{Name: "run", Description: "run a managed application", Run: func(app *App, args []string) error { return app.commandRun(args) }},
 	{Name: "shell", Description: "open a constrained application shell", Run: func(app *App, args []string) error { return app.commandShell(args) }},
 	{Name: "logs", Description: "show managed container logs", Run: func(app *App, args []string) error { return app.commandLogs(args) }},
-	{Name: "stop", Description: "stop managed containers", Run: func(app *App, args []string) error { return app.commandStop(args) }},
+	{Name: "stop", Description: "stop the host gateway or managed containers", Run: func(app *App, args []string) error { return app.commandStop(args) }},
 	{Name: "content", Description: "list, install, import, and inspect managed content", Run: func(app *App, args []string) error { return app.commandContent(args) }},
 	{Name: "agent", Description: "install or run a managed coding agent", Run: func(app *App, args []string) error { return app.commandAgent(args) }},
 	{Name: "benchmark", Description: "run or report managed performance evaluations", Run: func(app *App, args []string) error { return app.commandBenchmark(args) }},

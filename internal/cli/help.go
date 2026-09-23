@@ -97,7 +97,7 @@ var commandExampleArguments = map[string][][]string{
 	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp", "-a", "dwarfstar"}, {"run", "gateway", "--port", "18080"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},
 	"logs":                            {{"logs", "llama-cpp", "--follow"}, {"logs", "comfyui", "--all"}},
-	"stop":                            {{"stop", "llama-cpp"}, {"stop", "all"}},
+	"stop":                            {{"stop", "gateway"}, {"stop", "llama-cpp"}, {"stop", "all"}},
 	"content list":                    {{"content", "list"}, {"content", "list", "models", "--details"}, {"content", "list", "models", "--scan", "/path/to/ggufs"}},
 	"content status":                  {{"content", "status", "llama-cpp", "qwen3.8"}, {"content", "status", "family", "qwen", "--details"}},
 	"content import":                  {{"content", "import"}, {"content", "import", "https://huggingface.co/OWNER/REPOSITORY"}},

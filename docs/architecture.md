@@ -832,6 +832,13 @@ not estimate model memory from unified-memory GPU counters or alter power
 policy. See `docs/gateway.md` for
 the public surface and current limits.
 
+The gateway also owns one private Unix control socket per host user. Its
+lock serializes startup and stale-socket recovery. Local `stop gateway` and
+`stop all` use that socket to request the same graceful drain as Ctrl-C;
+neither sends a signal to a discovered PID nor adds a shutdown route to the
+published HTTP API. The control socket is independent of model storage and
+the selected gateway port.
+
 Optional gateway Bearer authentication is enforced before every route on every
 listener. A private configured server key is loaded once and reduced to a
 digest for constant-time comparison. Client key selection is independent of

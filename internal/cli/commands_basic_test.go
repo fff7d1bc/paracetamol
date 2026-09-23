@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/process"
 	"paracetamol/internal/storage"
@@ -52,6 +54,62 @@ func testApp(t *testing.T, runner process.Runner) (*App, *bytes.Buffer, *bytes.B
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	return &App{Context: context.Background(), Root: filepath.Join("/src", "paracetamol"), Environment: map[string]string{"HOME": t.TempDir()}, Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Runner: runner}, &stdout, &stderr
+}
+
+func TestStopGatewayNeedsNoPodmanAndStopAllDrainsGatewayFirst(t *testing.T) {
+	for _, target := range []string{"gateway", "all"} {
+		t.Run(target, func(t *testing.T) {
+			build := filepath.Join("..", "..", "build")
+			if err := os.MkdirAll(build, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.MkdirTemp(build, "stop-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			absolute, err := filepath.Abs(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(absolute) })
+			runner := &commandRunner{run: func(command process.Command) process.Result {
+				if len(command.Args) > 0 && command.Args[0] == "info" {
+					return process.Result{Stdout: []byte("true\n")}
+				}
+				return process.Result{Status: 1}
+			}}
+			app, stdout, _ := testApp(t, runner)
+			app.Environment["XDG_RUNTIME_DIR"] = absolute
+			control, err := gateway.StartLocalControl(app.Environment)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer control.Close()
+			result := make(chan error, 1)
+			go func() { result <- app.commandStop([]string{target}) }()
+			select {
+			case <-control.Requested():
+			case <-time.After(5 * time.Second):
+				t.Fatal("stop never reached gateway")
+			}
+			if len(runner.commands) != 0 {
+				t.Fatalf("Podman ran before gateway drained: %#v", runner.commands)
+			}
+			control.Finish(nil)
+			if err := <-result; err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(stdout.String(), "Gateway stopped.") {
+				t.Fatalf("missing gateway result: %s", stdout)
+			}
+			if target == "gateway" && len(runner.commands) != 0 {
+				t.Fatalf("stop gateway contacted Podman: %#v", runner.commands)
+			}
+			if target == "all" && !strings.Contains(stdout.String(), "Container not present:") {
+				t.Fatalf("stop all did not inspect application containers: %s", stdout)
+			}
+		})
+	}
 }
 
 func TestBuildLlamaUsesOnlyItsDependencyClosure(t *testing.T) {
