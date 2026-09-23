@@ -388,14 +388,16 @@ Detached application containers have independent names:
 
 ./paracetamol stop comfyui
 ./paracetamol stop llama-cpp
+./paracetamol stop gateway
 ./paracetamol stop all
 ```
 
 Logs show the newest 200 lines by default. Use `--tail N`, `--follow`, or
-`--all` for another range. `stop` is idempotent and never touches persistent
-data. It gives an application two seconds for an ordinary shutdown, then
-Podman force-removes the exact container instead of leaving it indefinitely
-in `Stopping`.
+`--all` for another range. `stop gateway` asks the local host process to drain
+and exit. `stop all` does that before stopping application containers. `stop`
+is idempotent and never touches persistent data. It gives an application
+container two seconds for an ordinary shutdown, then Podman force-removes the
+exact container instead of leaving it indefinitely in `Stopping`.
 
 An attached application or batch process that exits unsuccessfully is reported
 as a Paracetamol error containing the container's exact exit status. The launcher

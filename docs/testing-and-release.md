@@ -274,6 +274,11 @@ that shutdown closes both; an occupied required address must close any listener
 opened earlier and fail startup. Confirm `-a llama-cpp` and
 `--application llama-cpp` produce the same strict inventory and the default
 llama.cpp loaded-model limit is one.
+Also exercise `stop gateway` and `stop all` through the private local control
+socket, first unloaded and then with a backend resident. Both commands must
+wait for gateway cleanup, leave no gateway listener or private backend, and
+remain idempotent. `stop gateway` must work without invoking Podman; `stop all`
+must drain the gateway before removing normal application containers.
 GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
 output, a streamed request, client cancellation, FIFO draining, and an
 application switch. Confirm `status gateway` derives llama.cpp child residency

@@ -24,7 +24,7 @@ import (
 	"paracetamol/internal/ui"
 )
 
-func (app *App) runGateway(args []string) error {
+func (app *App) runGateway(args []string) (result error) {
 	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
 	var applications stringList
 	set.VarWithShort(&applications, "application", "a", "restrict to llama-cpp or dwarfstar; repeatable; default discovers runnable applications")
@@ -180,6 +180,14 @@ func (app *App) runGateway(args []string) error {
 		Handler: handler, ErrorLog: log.New(gatewayLog, "gateway | http: ", 0),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
+	control, err := gateway.StartLocalControl(app.Environment)
+	if err != nil {
+		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
+	}
+	defer func() {
+		result = errors.Join(result, control.Close())
+		control.Finish(result)
+	}()
 	if !isLoopback(listen) {
 		if apiKey == "" {
 			fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
@@ -205,16 +213,17 @@ func (app *App) runGateway(args []string) error {
 		serveErr := collectGatewayServeErrors(serveResults, len(listeners)-1, firstServeErr)
 		return errors.Join(serveErr, shutdownErr, scheduler.Shutdown(contextWithoutCancel()))
 	case <-app.Context.Done():
-		handler.BeginShutdown()
-		shutdownErr := server.Shutdown(contextWithoutCancel())
-		serveErr := collectGatewayServeErrors(serveResults, len(listeners), nil)
-		backendErr := scheduler.Shutdown(contextWithoutCancel())
-		if err := errors.Join(shutdownErr, serveErr, backendErr); err != nil {
-			return err
-		}
-		fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Success("Gateway stopped."))
-		return nil
+	case <-control.Requested():
 	}
+	handler.BeginShutdown()
+	shutdownErr := server.Shutdown(contextWithoutCancel())
+	serveErr := collectGatewayServeErrors(serveResults, len(listeners), nil)
+	backendErr := scheduler.Shutdown(contextWithoutCancel())
+	if err := errors.Join(shutdownErr, serveErr, backendErr); err != nil {
+		return err
+	}
+	fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Success("Gateway stopped."))
+	return nil
 }
 
 type gatewayStartup struct {
