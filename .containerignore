@@ -21,6 +21,7 @@
 !applications/llama-cpp/vulkan-f16-kv-contiguize.patch
 !applications/llama-cpp/hip-strix-halo-tiled-gdn.patch
 !applications/llama-cpp/qwen4exp-direct-reader.patch
+!applications/llama-cpp/qwen4exp-qsa-gather.patch
 !applications/llama-cpp/process-allocation-policy.patch
 !applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/chat-templates/

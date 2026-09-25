@@ -274,7 +274,20 @@ protected behavior is fixed.
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
 | `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
+| `qwen4exp-qsa-gather.patch` | Carries the single-token QSA K/V gather path from [PR 28213](https://github.com/ggml-org/llama.cpp/pull/28213) at `beed2f78ac42cf16710b763e6f3ba20665c6d233`. It attends to selected cells rather than scanning the full masked cache once depth exceeds four times the selected width. Prefill and multi-token/MTP verification retain the old path. `QWEN4EXP_QSA_GATHER=0` is a process-local escape hatch. | An upstream equivalent passes correct long-context output, prefix reuse, cancellation, and paired decode timing on the applicable backends without a short-context regression. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
+
+The September 25 `r39` image keeps llama.cpp pinned at `7ab4ee7` and adds
+only the QSA gather patch. No model, quantization, sampling, context or MTP
+default changes. The matched Strix Halo test uses the same image with the
+gather path enabled and disabled; see the
+[hardware record](hardware-acceptance.md#fedora-44-strix-halo-flash-next-qsa-gather-2026-09-25).
+The larger direct-reader rewrite in
+[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030) is still under
+active review and changes lazy-read semantics beyond this model. The pooled
+QSA key cache in [PR 28699](https://github.com/ggml-org/llama.cpp/pull/28699)
+changes persistent inference state. Neither is included in `r39`, and
+Flash-Next MTP remains disabled.
 
 The September 22 update to
 `7ab4ee7baad2d920464cbacfad4f4b07cf111fd2`, packaging revision `r38`, reviews
