@@ -270,6 +270,8 @@ COPY applications/llama-cpp/hip-strix-halo-tiled-gdn.patch \
     /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch
 COPY applications/llama-cpp/qwen4exp-direct-reader.patch \
     /opt/paracetamol/llama-qwen4exp-direct-reader.patch
+COPY applications/llama-cpp/qwen4exp-qsa-gather.patch \
+    /opt/paracetamol/llama-qwen4exp-qsa-gather.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
@@ -290,6 +292,8 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
     git apply --check /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
     git apply /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
+    git apply --check /opt/paracetamol/llama-qwen4exp-qsa-gather.patch && \
+    git apply /opt/paracetamol/llama-qwen4exp-qsa-gather.patch && \
     git apply --check /opt/paracetamol/llama-process-allocation-policy.patch && \
     git apply /opt/paracetamol/llama-process-allocation-policy.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
@@ -378,7 +382,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,process-allocation-policy" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,process-allocation-policy" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

@@ -26,6 +26,71 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Flash-Next QSA gather (2026-09-25)
+
+The `gfx1151` Flash-Next inference screen is `PASS` on ROCm and Vulkan. This
+qualifies one pinned Unsloth Dynamic Q4_K_XL GGUF, not the proposed
+Flash-Next MTP path or future Qwen4 models. The llama.cpp source stays at
+`7ab4ee7baad2d920464cbacfad4f4b07cf111fd2`. The `r39` packaging revision
+adds the upstream QSA gather proposal at `beed2f78ac42cf16710b763e6f3ba20665c6d233`
+without changing models, templates, sampling, context, K/V precision or the
+allocation policy. The final cold-built image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r39`, ID
+`b9b51434825c4b147240990a2d1a4ecd5c31365e074b1b5cbf98539440731d7a`.
+
+On Aion's 128 GB Ryzen AI Max+ 395, the matched ROCm control uses the same
+earlier `r39` image ID
+`dfcec82e5b52d7636149b23ff87e17dd41208a574a113ba4aa21d4b91c7c1e17`.
+The only container-command difference is `QWEN4EXP_QSA_GATHER=0` for the
+control. The final cold build has byte-identical `llama-server`, `libllama`,
+and all five ggml shared libraries to that measured image. Both runs use the
+managed Strix Halo ROCm preset, one slot, F16 K/V, 262144 context, one
+sequential client, medium reasoning, temperature zero and seed 42. The
+247165-token prompt is assembled from the same 143-file public corpus, SHA-256
+`fd8ef9463952604f8a497b0d99b66d2e50d63394cf39e8e48d00f855f49b2b6b`.
+
+| Matched 247K ROCm measure | Gather on | Gather off |
+| --- | ---: | ---: |
+| Initial prefill | 1759.787 s | 1769.492 s |
+| Three cached 256-token continuations, backend decode | 124.683 s, 6.160 tokens/s | 154.987 s, 4.955 tokens/s |
+| Same continuations, total HTTP wall time | 149.579 s | 180.035 s |
+
+Gather improves this deep-context decode rate by 24.3% and cuts the three
+continuations' wall time by 16.9%. Initial prefill is effectively unchanged;
+the first retrieval request is only about 1% quicker because its prefill
+dominates. Both runs return all six distributed keys exactly, then pass a
+fresh-request recovery check. The retrieval uses 199 output tokens with
+gather and 204 without it, so the reasoning traces are not bit-identical.
+The truncated 256-token continuations are timing inputs, not a code-quality
+grade. This is one paired long run, not a variance estimate.
+
+Short 4K and 32K retrievals also return the exact keys on ROCm and Vulkan.
+The measured `r39` Vulkan image returns the six keys at 247165 prompt tokens,
+with 1368.986 s prefill and 6.869 tokens/s retrieval decode. Three cached
+continuations take 118.361 s of total HTTP time, close to the archived `r38`
+run's 116.591 s. That historical comparison is a regression screen, not a
+matched Vulkan speedup claim. Minimum sampled available memory is 27.65 GiB
+on ROCm and 34.77 GiB on Vulkan; no memory guard fires.
+
+The final cold image passes dependency closure, `pip check`, `llama-cli`
+version startup and shared-library resolution. Both ROCm and Vulkan pass
+Flash-Next nested tools, cache reuse, cancellation recovery and concurrent
+requests on the final image. The default Unsloth Dynamic Q8_K_XL 27B MTP
+preset passes the same protocol checks, plus managed sampler defaults and
+explicit overrides. A CPU-only lazy router reaches `/health` with no GPU
+devices, a read-only root and the expected confinement. Test containers are
+stopped afterward. No AMD GPU faults appear in the test interval's kernel log.
+The real gateway also passes Q8 MTP to Flash-Next to Q8 MTP switching with a
+nested tool round-trip at each stop. It removes its backend on shutdown.
+
+The request/response traces, container inspections, memory samples and test
+driver are retained on Aion and the development host under
+`~/.local/share/paracetamol/apps/acceptance/results/20260925-qsa-gather/`.
+
+Other hardware classes remain `N/P` for this patch until inference tests run
+on `gfx1150`, `gfx1200` and `gfx1201`. The general application acceptance
+matrix below is not made `PASS` by this focused test.
+
 On 2026-09-25, the Fedora Strix Halo host verified the pinned Swift 1.5
 Q8_0 GGUF in place and served its new publisher-prefixed preset through the
 ROCm gateway with 256K context and three MTP draft tokens. A medium-effort

@@ -47,7 +47,9 @@ revisions recorded in `catalog/catalog.json`.
   Paracetamol omits its Gemma4 hooks and rejects an unavailable explicit reader
   instead of falling back to mmap. A separate local startup option lets one
   model process opt out of inherited CUDA/HIP managed allocation without
-  changing the router parent's policy.
+  changing the router parent's policy. The Qwen4exp sparse-attention decode
+  path also carries llama.cpp PR 28213 at
+  `beed2f78ac42cf16710b763e6f3ba20665c6d233`, under MIT.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice
