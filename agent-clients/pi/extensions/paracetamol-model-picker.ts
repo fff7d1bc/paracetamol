@@ -29,6 +29,7 @@ const THINKING_LEVELS: ThinkingLevel[] = [
 
 const FAMILY_ORDER = [
 	"Qwen 3.8",
+	"Swift 1.5",
 	"Qwen 3.6",
 	"Muse Glimmer",
 	"KAT-Coder",
@@ -45,12 +46,13 @@ function sameModel(left: AnyModel | undefined, right: AnyModel): boolean {
 
 function modelFamily(model: AnyModel): string {
 	if (model.provider === "paracetamol") {
-		if (model.id.startsWith("qwen3.8-")) return "Qwen 3.8";
-		if (model.id.startsWith("qwen3.6-")) return "Qwen 3.6";
-		if (model.id.startsWith("muse-glimmer-")) return "Muse Glimmer";
-		if (model.id.startsWith("kat-coder-")) return "KAT-Coder";
-		if (model.id.startsWith("gemma4-")) return "Gemma 4";
-		if (model.id.startsWith("deepseek-v4-flash-")) return "DeepSeek V4 Flash";
+		if (model.id.startsWith("unsloth-qwen3.8-")) return "Qwen 3.8";
+		if (model.id.startsWith("ukisai-swift1.5-")) return "Swift 1.5";
+		if (model.id.startsWith("unsloth-qwen3.6-")) return "Qwen 3.6";
+		if (model.id.startsWith("meta-models-muse-glimmer-")) return "Muse Glimmer";
+		if (model.id.startsWith("bartowski-kat-coder-")) return "KAT-Coder";
+		if (model.id.startsWith("ggml-org-gemma4-")) return "Gemma 4";
+		if (model.id.startsWith("antirez-deepseek-v4-flash-")) return "DeepSeek V4 Flash";
 		return "Other Paracetamol";
 	}
 	return `Provider: ${model.provider}`;

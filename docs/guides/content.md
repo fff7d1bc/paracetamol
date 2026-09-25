@@ -29,7 +29,7 @@ Recipes are organized by their consuming application:
 comfyui
   image  edit  t2v  i2v
 llama-cpp
-  qwen3.6  qwen3.8  qwen3.8-flash-next  kat-coder  muse-glimmer
+  qwen3.6  qwen3.8  swift1.5  qwen3.8-flash-next  kat-coder  muse-glimmer
   shisa-v2.1  translation-gemma  translation-hy
 dwarfstar
   flash-0731-q2-imatrix  flash-0731-q2-imatrix-dspark
@@ -42,6 +42,7 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install comfyui image
 ./paracetamol content install llama-cpp qwen3.6
 ./paracetamol content install llama-cpp qwen3.8
+./paracetamol content install llama-cpp swift1.5 --accept-license
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol content install llama-cpp muse-glimmer
@@ -66,13 +67,19 @@ so the matching base and MTP presets share one verified artifact. The initial
 integration is text-only: the optional vision projector remains outside the
 recipe until its multimodal runtime contract is separately accepted.
 
-The exact `llama-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
+The opt-in `swift1.5` recipe installs UkisAI's 27B Q8_0 adaptation with
+embedded MTP heads. Its 256K MTP preset appears in Pi and Maki when the
+gateway advertises the verified model. It does not replace the Unsloth
+Q8/MTP default. UkisAI's [Swift Open License v1.0](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE)
+requires explicit acceptance and has a commercial-use condition.
+
+The exact `llama-unsloth-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
 Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
 `qwen3.8` recipe so installing the recommended model does not also download a
 second quantization:
 
 ```bash
-./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl
+./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl
 ```
 
 Its base and embedded-MTP presets start at a reviewed 128K context for more

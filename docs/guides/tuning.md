@@ -292,9 +292,9 @@ llama.cpp uses its native `llama-bench`:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3-0.6b-q8-0 --dry-run
+  --preset qwen-qwen3-0.6b-q8-0 --dry-run
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3-0.6b-q8-0 \
+  --preset qwen-qwen3-0.6b-q8-0 \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
 
@@ -312,10 +312,10 @@ comparison, or use the separate managed server sweep:
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ./paracetamol benchmark llama-cpp speculative \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium
 ```
 
@@ -355,7 +355,7 @@ Resume with the same options and the printed checkpoint path:
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --resume RESULT.json
 ```
 
@@ -367,7 +367,7 @@ The llama.cpp image contains both ROCm and Vulkan. Compare them unattended:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.6-27b-q8-0 \
   --compare-backends \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
@@ -399,7 +399,7 @@ cache before each measured prompt and generation run with `--context-depth`:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.6-27b-q8-0 \
   --compare-backends \
   --context-depth 32768 \
   --flash-attn on \

@@ -30,6 +30,11 @@
       "name": "Tencent HY Community License",
       "url": "https://huggingface.co/tencent/HY-MT1.5-7B-GGUF/blob/126325496bc8e3575f1d8615b8ca951d8483f206/License.txt",
       "summary": "The license excludes the EU, United Kingdom, and South Korea from its territory and says use outside that territory is unauthorized. Review the complete terms and determine whether your use is permitted."
+    },
+    "swift-open-license-1.0": {
+      "name": "Swift Open License v1.0",
+      "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE",
+      "summary": "UkisAI's adapted weights have commercial-use restrictions tied to gross annual revenue, including affiliates. Review the complete terms before use."
     }
   },
   "artifacts": {
@@ -1203,6 +1208,26 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
+    "swift1.5-qwen3.8-27b-q8-0-gguf": {
+      "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 GGUF with embedded MTP heads for llama.cpp",
+      "source": {
+        "repository": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF",
+        "revision": "a1614465cfa35d04d3e8575d713fa779662b5eab",
+        "path": "Swift-1.5-Qwen3.8-27B-Q8_0.gguf"
+      },
+      "destination": "swift1.5-qwen3.8-27b/Swift-1.5-Qwen3.8-27B-Q8_0.gguf",
+      "target": "llama-models",
+      "size": 29047084416,
+      "sha256": "0b3b4aa0e367c620756de4f9db77fc18f94fbeb256db208281cbb84c48e2a101",
+      "license": {
+        "spdx": "LicenseRef-Swift-Open-1.0",
+        "status": "verified",
+        "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE"
+      },
+      "agreements": [
+        "swift-open-license-1.0"
+      ]
+    },
     "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 1 of 4 for llama.cpp",
       "source": {
@@ -1908,7 +1933,7 @@
         "krea"
       ]
     },
-    "llama-qwen3-0.6b-q8-0": {
+    "llama-qwen-qwen3-0.6b-q8-0": {
       "description": "Qwen3 0.6B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1919,7 +1944,7 @@
         "llama"
       ]
     },
-    "llama-kat-coder-v2.5-dev-q8-0": {
+    "llama-bartowski-kat-coder-v2.5-dev-q8-0": {
       "description": "KAT-Coder V2.5 Dev Q8_0 llama.cpp coding-agent model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1930,7 +1955,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.6-27b-q8-0": {
+    "llama-unsloth-qwen3.6-27b-q8-0": {
       "description": "Qwen3.6 27B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1941,7 +1966,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.6-27b-mtp-q8-0": {
+    "llama-unsloth-qwen3.6-27b-mtp-q8-0": {
       "description": "Qwen3.6 27B MTP Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1952,7 +1977,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.6-35b-a3b-ud-q8-k-xl": {
+    "llama-unsloth-qwen3.6-35b-a3b-ud-q8-k-xl": {
       "description": "Qwen3.6 35B-A3B Unsloth Dynamic Q8_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1963,7 +1988,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
+    "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
       "description": "Qwen3.6 35B-A3B MTP Unsloth Dynamic Q8_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -1974,7 +1999,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.8-27b-ud-q8-k-xl": {
+    "llama-unsloth-qwen3.8-27b-ud-q8-k-xl": {
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
@@ -1985,7 +2010,7 @@
         "llama"
       ]
     },
-    "llama-qwen3.8-27b-ud-q4-k-xl": {
+    "llama-unsloth-qwen3.8-27b-ud-q4-k-xl": {
       "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
@@ -1996,7 +2021,18 @@
         "llama"
       ]
     },
-    "llama-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
+    "llama-ukisai-swift1.5-qwen3.8-27b-mtp-q8-0": {
+      "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 llama.cpp model with embedded MTP heads",
+      "application": "llama-cpp",
+      "artifacts": [
+        "swift1.5-qwen3.8-27b-q8-0-gguf"
+      ],
+      "groups": [
+        "all",
+        "llama"
+      ]
+    },
+    "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -2010,7 +2046,7 @@
         "llama"
       ]
     },
-    "llama-gemma4-31b-it-q8-0-mtp": {
+    "llama-ggml-org-gemma4-31b-it-q8-0-mtp": {
       "description": "Gemma 4 31B IT Q8_0 llama.cpp model with Q8_0 MTP draft",
       "application": "llama-cpp",
       "artifacts": [
@@ -2022,7 +2058,7 @@
         "llama"
       ]
     },
-    "llama-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
+    "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
       "description": "Official Muse Glimmer 30B KQuant Dynamic Q4_K_XL llama.cpp model with DFlash draft",
       "application": "llama-cpp",
       "artifacts": [
@@ -2034,7 +2070,7 @@
         "llama"
       ]
     },
-    "llama-hy-mt1.5-7b-q8-0": {
+    "llama-tencent-hy-mt1.5-7b-q8-0": {
       "description": "Tencent HY-MT1.5 7B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -2045,7 +2081,7 @@
         "llama"
       ]
     },
-    "llama-translategemma-27b-it-q8-0": {
+    "llama-mradermacher-translategemma-27b-it-q8-0": {
       "description": "TranslateGemma 27B IT Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -2056,7 +2092,7 @@
         "llama"
       ]
     },
-    "llama-shisa-v2.1-llama3.3-70b-q8-0": {
+    "llama-mradermacher-shisa-v2.1-llama3.3-70b-q8-0": {
       "description": "Shisa V2.1 Llama 3.3 70B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
@@ -2067,7 +2103,7 @@
         "llama"
       ]
     },
-    "dwarfstar-deepseek-v4-flash-0731-q2-imatrix": {
+    "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix": {
       "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix; routed IQ2_XXS/Q2_K with Q8 attention/shared/output",
       "application": "dwarfstar",
       "artifacts": [
@@ -2078,7 +2114,7 @@
         "dwarfstar"
       ]
     },
-    "dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark": {
+    "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark": {
       "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix with the exact 0731 DSpark support GGUF",
       "application": "dwarfstar",
       "artifacts": [
@@ -2650,9 +2686,9 @@
     }
   },
   "dwarfstar_presets": {
-    "deepseek-v4-flash-0731-q2-imatrix": {
-      "bundle": "dwarfstar-deepseek-v4-flash-0731-q2-imatrix",
-      "dspark_bundle": "dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark",
+    "antirez-deepseek-v4-flash-0731-q2-imatrix": {
+      "bundle": "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix",
+      "dspark_bundle": "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark",
       "default_context": 131072,
       "max_output_tokens": 16000,
       "agent_tools": true,
@@ -2665,21 +2701,21 @@
     }
   },
   "llama_presets": {
-    "qwen3-0.6b-q8-0": {
-      "bundle": "llama-qwen3-0.6b-q8-0",
+    "qwen-qwen3-0.6b-q8-0": {
+      "bundle": "llama-qwen-qwen3-0.6b-q8-0",
       "artifact": "qwen3-0.6b-q8-gguf",
       "default_context": 4096,
       "chat_template": "qwen3-0.6b"
     },
-    "kat-coder-v2.5-dev-q8-0": {
-      "bundle": "llama-kat-coder-v2.5-dev-q8-0",
+    "bartowski-kat-coder-v2.5-dev-q8-0": {
+      "bundle": "llama-bartowski-kat-coder-v2.5-dev-q8-0",
       "artifact": "kat-coder-v2.5-dev-q8-gguf",
       "default_context": 262144,
       "chat_template": "kat-coder-v2.5",
       "agent_tools": true
     },
-    "qwen3.6-27b-q8-0": {
-      "bundle": "llama-qwen3.6-27b-q8-0",
+    "unsloth-qwen3.6-27b-q8-0": {
+      "bundle": "llama-unsloth-qwen3.6-27b-q8-0",
       "artifact": "qwen3.6-27b-q8-0-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.6",
@@ -2689,8 +2725,8 @@
       "reasoning_default": "on",
       "reasoning_off": true
     },
-    "qwen3.6-27b-mtp-q8-0": {
-      "bundle": "llama-qwen3.6-27b-mtp-q8-0",
+    "unsloth-qwen3.6-27b-mtp-q8-0": {
+      "bundle": "llama-unsloth-qwen3.6-27b-mtp-q8-0",
       "artifact": "qwen3.6-27b-mtp-q8-0-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
@@ -2705,8 +2741,8 @@
         "strix-halo": "on"
       }
     },
-    "qwen3.6-35b-a3b-ud-q8-k-xl": {
-      "bundle": "llama-qwen3.6-35b-a3b-ud-q8-k-xl",
+    "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl": {
+      "bundle": "llama-unsloth-qwen3.6-35b-a3b-ud-q8-k-xl",
       "artifact": "qwen3.6-35b-a3b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.6",
@@ -2716,8 +2752,8 @@
       "reasoning_default": "on",
       "reasoning_off": true
     },
-    "qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
-      "bundle": "llama-qwen3.6-35b-a3b-mtp-ud-q8-k-xl",
+    "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
+      "bundle": "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl",
       "artifact": "qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
@@ -2729,8 +2765,8 @@
       "reasoning_default": "on",
       "reasoning_off": true
     },
-    "qwen3.8-27b-ud-q8-k-xl": {
-      "bundle": "llama-qwen3.8-27b-ud-q8-k-xl",
+    "unsloth-qwen3.8-27b-ud-q8-k-xl": {
+      "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
       "artifact": "qwen3.8-27b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.8",
@@ -2746,8 +2782,8 @@
       "reasoning_off": true,
       "reasoning_preserve": true
     },
-    "qwen3.8-27b-mtp-ud-q8-k-xl": {
-      "bundle": "llama-qwen3.8-27b-ud-q8-k-xl",
+    "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl": {
+      "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
       "artifact": "qwen3.8-27b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
@@ -2765,8 +2801,8 @@
       "reasoning_off": true,
       "reasoning_preserve": true
     },
-    "qwen3.8-27b-ud-q4-k-xl": {
-      "bundle": "llama-qwen3.8-27b-ud-q4-k-xl",
+    "unsloth-qwen3.8-27b-ud-q4-k-xl": {
+      "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
       "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
       "default_context": 131072,
       "chat_template": "qwen3.8",
@@ -2782,8 +2818,8 @@
       "reasoning_off": true,
       "reasoning_preserve": true
     },
-    "qwen3.8-27b-mtp-ud-q4-k-xl": {
-      "bundle": "llama-qwen3.8-27b-ud-q4-k-xl",
+    "unsloth-qwen3.8-27b-mtp-ud-q4-k-xl": {
+      "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
       "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
       "default_context": 131072,
       "speculative_type": "draft-mtp",
@@ -2801,8 +2837,27 @@
       "reasoning_off": true,
       "reasoning_preserve": true
     },
-    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
-      "bundle": "llama-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
+    "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0": {
+      "bundle": "llama-ukisai-swift1.5-qwen3.8-27b-mtp-q8-0",
+      "artifact": "swift1.5-qwen3.8-27b-q8-0-gguf",
+      "default_context": 262144,
+      "speculative_type": "draft-mtp",
+      "draft_tokens": 3,
+      "chat_template": "qwen3.8",
+      "sampling_policy": "qwen3.8-27b",
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "reasoning_default": "medium",
+      "reasoning_off": true,
+      "reasoning_preserve": true
+    },
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
+      "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
       "artifact": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
       "backends": [
         "rocm",
@@ -2834,8 +2889,8 @@
         "strix-halo": "f16"
       }
     },
-    "gemma4-31b-it-q8-0-mtp": {
-      "bundle": "llama-gemma4-31b-it-q8-0-mtp",
+    "ggml-org-gemma4-31b-it-q8-0-mtp": {
+      "bundle": "llama-ggml-org-gemma4-31b-it-q8-0-mtp",
       "artifact": "gemma4-31b-it-q8-gguf",
       "draft_artifact": "gemma4-31b-it-mtp-q8-gguf",
       "default_context": 262144,
@@ -2844,8 +2899,8 @@
       "jinja": true,
       "agent_tools": true
     },
-    "muse-glimmer-30b-kquant-dynamic-q4-k-xl": {
-      "bundle": "llama-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
+    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl": {
+      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
       "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
       "default_context": 131072,
       "chat_template": "muse-glimmer-atem",
@@ -2861,8 +2916,8 @@
       "reasoning_off": false,
       "reasoning_preserve": true
     },
-    "muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
-      "bundle": "llama-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
+    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
+      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
       "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
       "draft_artifact": "muse-glimmer-30b-dflash-kquant-gguf",
       "default_context": 131072,
@@ -2884,8 +2939,8 @@
       "reasoning_off": false,
       "reasoning_preserve": true
     },
-    "muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {
-      "bundle": "llama-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
+    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {
+      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
       "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
       "draft_artifact": "muse-glimmer-30b-dflash-kquant-gguf",
       "default_context": 262144,
@@ -2911,19 +2966,19 @@
       "reasoning_off": false,
       "reasoning_preserve": true
     },
-    "hy-mt1.5-7b-q8-0": {
-      "bundle": "llama-hy-mt1.5-7b-q8-0",
+    "tencent-hy-mt1.5-7b-q8-0": {
+      "bundle": "llama-tencent-hy-mt1.5-7b-q8-0",
       "artifact": "hy-mt1.5-7b-q8-gguf",
       "default_context": 32768
     },
-    "translategemma-27b-it-q8-0": {
-      "bundle": "llama-translategemma-27b-it-q8-0",
+    "mradermacher-translategemma-27b-it-q8-0": {
+      "bundle": "llama-mradermacher-translategemma-27b-it-q8-0",
       "artifact": "translategemma-27b-it-q8-gguf",
       "default_context": 4096,
       "chat_template": "translategemma-manual"
     },
-    "shisa-v2.1-llama3.3-70b-q8-0": {
-      "bundle": "llama-shisa-v2.1-llama3.3-70b-q8-0",
+    "mradermacher-shisa-v2.1-llama3.3-70b-q8-0": {
+      "bundle": "llama-mradermacher-shisa-v2.1-llama3.3-70b-q8-0",
       "artifact": "shisa-v2.1-llama3.3-70b-q8-gguf",
       "default_context": 16384,
       "jinja": true

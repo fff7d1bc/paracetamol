@@ -12,6 +12,9 @@
 > artifact. The current pin's focused update acceptance is recorded in the
 > [hardware acceptance log](../hardware-acceptance.md).
 
+The preset IDs shown below use the current `unsloth-` prefix for convenience.
+The original runs used the same GGUF publisher before IDs exposed provenance.
+
 This page compares Paracetamol's two managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind
 the quantization names: is the smaller Q4 useful, is Q8 clearly smarter, and
@@ -70,8 +73,8 @@ first-pass reliability.
 
 | Need | Suggested starting point | Why |
 | --- | --- | --- |
-| Normal coding-agent work on a high-memory host | `qwen3.8-27b-mtp-ud-q8-k-xl`, medium | Paracetamol's conservative managed default and the stronger `xhigh` first-pass result |
-| Faster responses or a smaller memory budget | `qwen3.8-27b-mtp-ud-q4-k-xl`, medium | Strong medium result, 16.69 GiB model, and 27.5% higher generation rate in this agent pass |
+| Normal coding-agent work on a high-memory host | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, medium | Paracetamol's conservative managed default and the stronger `xhigh` first-pass result |
+| Faster responses or a smaller memory budget | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, medium | Strong medium result, 16.69 GiB model, and 27.5% higher generation rate in this agent pass |
 | A difficult task that medium missed | Retry the chosen quant at `xhigh` | `xhigh` helped some hard cases, but greatly increased token use and latency |
 | A 32 GiB discrete GPU | Q4 at its 128K default, pending local acceptance | The Strix Halo working set was below 32 GB in decimal units, but a discrete `gfx1201` result is still required |
 | A definitive choice for your own work | Run both against representative repositories | This suite was small, stochastic, Go-only, and specific to the pinned Paracetamol stack |
@@ -216,8 +219,8 @@ The exact model inputs were:
 
 | Managed preset | Exact Unsloth artifact | Size | SHA-256 |
 | --- | --- | ---: | --- |
-| `qwen3.8-27b-mtp-ud-q4-k-xl` | `Qwen3.8-27B-UD-Q4_K_XL.gguf` | 17,923,394,624 bytes (16.69 GiB) | `bee238bbeb3dc0a34bde4d0dedbaee1f98c009e8bb4226f03070054c12fb1372` |
-| `qwen3.8-27b-mtp-ud-q8-k-xl` | `Qwen3.8-27B-UD-Q8_K_XL.gguf` | 31,457,991,680 bytes (29.30 GiB) | `af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377` |
+| `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | `Qwen3.8-27B-UD-Q4_K_XL.gguf` | 17,923,394,624 bytes (16.69 GiB) | `bee238bbeb3dc0a34bde4d0dedbaee1f98c009e8bb4226f03070054c12fb1372` |
+| `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | `Qwen3.8-27B-UD-Q8_K_XL.gguf` | 31,457,991,680 bytes (29.30 GiB) | `af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377` |
 
 Both files came from `unsloth/Qwen3.8-27B-GGUF` at revision
 `4604b899a826000505a834e623272db5b7fd62f6`. Both used Paracetamol's same

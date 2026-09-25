@@ -84,13 +84,13 @@ var commandExampleArguments = map[string][][]string{
 	"status":      {{"status"}, {"status", "llama-cpp"}, {"status", "gateway"}, {"status", "gateway", "--requests", "10"}},
 	"run comfyui": {{"run", "comfyui"}, {"run", "comfyui", "--", "--enable-manager"}, {"run", "comfyui", "--listen", "127.0.0.1", "--detach"}},
 	"run llama-cpp server": {
-		{"run", "llama-cpp", "server", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl"},
+		{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"},
 		{"run", "llama-cpp", "server", "--router", "--models-max", "2"},
 		{"run", "llama-cpp", "server", "--model", "/path/to/model.gguf"},
 	},
 	"run llama-cpp cli": {
 		{"run", "llama-cpp", "cli", "--model", "/path/to/model.gguf"},
-		{"run", "llama-cpp", "cli", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl", "--prompt", "Hello"},
+		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--prompt", "Hello"},
 	},
 	"run dwarfstar server":            {{"run", "dwarfstar", "server"}, {"run", "dwarfstar", "server", "--dspark"}},
 	"run dwarfstar cli":               {{"run", "dwarfstar", "cli"}, {"run", "dwarfstar", "cli", "--no-thinking", "--prompt", "Say hello"}},
@@ -117,9 +117,9 @@ var commandExampleArguments = map[string][][]string{
 	"cleanup data":                    {{"cleanup", "data"}},
 	"benchmark comfyui run":           {{"benchmark", "comfyui", "run", "BUNDLE", "--dry-run"}},
 	"benchmark comfyui suite":         {{"benchmark", "comfyui", "suite", "--family", "qwen", "--dry-run"}},
-	"benchmark agent":                 {{"benchmark", "agent", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl", "--thinking", "medium", "--dry-run"}},
-	"benchmark llama-cpp throughput":  {{"benchmark", "llama-cpp", "throughput", "--preset", "qwen3-0.6b-q8-0", "--dry-run"}},
-	"benchmark llama-cpp speculative": {{"benchmark", "llama-cpp", "speculative", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl", "--dry-run"}},
+	"benchmark agent":                 {{"benchmark", "agent", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--thinking", "medium", "--dry-run"}},
+	"benchmark llama-cpp throughput":  {{"benchmark", "llama-cpp", "throughput", "--preset", "qwen-qwen3-0.6b-q8-0", "--dry-run"}},
+	"benchmark llama-cpp speculative": {{"benchmark", "llama-cpp", "speculative", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--dry-run"}},
 	"benchmark report":                {{"benchmark", "report", "SUITE.json"}},
 }
 

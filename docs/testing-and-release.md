@@ -93,11 +93,11 @@ Exercise user-visible composition:
 ./paracetamol agent run maki --no-sandbox -- --help
 ./paracetamol agent run maki -- index internal/cli/
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3-0.6b-q8-0 --profile cpu --dry-run
+  --preset qwen-qwen3-0.6b-q8-0 --profile cpu --dry-run
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3-0.6b-q8-0 --compare-backends --dry-run
+  --preset qwen-qwen3-0.6b-q8-0 --compare-backends --dry-run
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3-0.6b-q8-0 --context-depth 32768 \
+  --preset qwen-qwen3-0.6b-q8-0 --context-depth 32768 \
   --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --dry-run
 ./paracetamol acceptance --dry-run
 ```
@@ -256,8 +256,8 @@ to the keep-id process, `/tmp/comfy` must be writable, and persistent files
 must retain the private host mask.
 
 The llama.cpp router check requires `content install llama-cpp qwen3.6`,
-but does not load a model. Confirm `qwen3.6-27b-mtp-q8-0` and
-`qwen3.6-35b-a3b-mtp-ud-q8-k-xl` are present and unloaded.
+but does not load a model. Confirm `unsloth-qwen3.6-27b-mtp-q8-0` and
+`unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl` are present and unloaded.
 The pinned upstream router may also advertise its reserved empty `default`
 preset; that is not managed content and should not be selected during the
 smoke test.
@@ -346,7 +346,7 @@ file. `--help` must remain available without loading configuration.
 
 For DwarfStar agent-client integration, start the gateway with both
 applications, select
-`paracetamol/deepseek-v4-flash-0731-q2-imatrix` in Pi and Maki, then complete
+`paracetamol/antirez-deepseek-v4-flash-0731-q2-imatrix` in Pi and Maki, then complete
 one read plus function-tool round trip in each. Confirm Pi's off and high
 choices and Maki's off and high paths. Confirm both generated clients follow
 their one `--gateway-url`. Do not claim agent compatibility from `/v1/models`
@@ -377,7 +377,7 @@ GPU time:
 ```bash
 ./paracetamol benchmark agent --list-tasks
 ./paracetamol benchmark agent \
-  --preset qwen3.6-27b-mtp-q8-0 \
+  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
   --thinking high --task re-align --dry-run
 go test ./internal/evaluation ./internal/agent ./internal/cli
 ```

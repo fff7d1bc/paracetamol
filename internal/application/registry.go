@@ -78,7 +78,7 @@ var specs = []Spec{
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
 		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8"}, Description: "install the reviewed Qwen3.8 family"}},
 		AfterContent: []Action{{
-			Arguments:   []string{"run", "llama-cpp", "server", "--preset", "qwen3.8-27b-mtp-ud-q8-k-xl"},
+			Arguments:   []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"},
 			Description: "start the default direct-model server",
 		}},
 	},

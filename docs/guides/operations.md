@@ -102,7 +102,7 @@ creating data, loading a model, or starting Pi:
 ```bash
 ./paracetamol benchmark agent --list-tasks
 ./paracetamol benchmark agent \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
 
@@ -112,14 +112,14 @@ the complete suite with one exact managed llama.cpp preset:
 
 ```bash
 ./paracetamol benchmark agent \
-  --preset qwen3.6-27b-mtp-q8-0 --thinking high
+  --preset unsloth-qwen3.6-27b-mtp-q8-0 --thinking high
 ```
 
 Or run selected tasks while calibrating a model:
 
 ```bash
 ./paracetamol benchmark agent \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium \
   --task re-align --task re-cancel
 ```
@@ -368,7 +368,7 @@ shareable runtime report instead of the general dashboard:
 
 # Required for model-specific details when the router serves many presets:
 ./paracetamol status llama-cpp \
-  --model qwen3.8-27b-mtp-ud-q8-k-xl
+  --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 The report reads the live container's private runtime snapshot, image labels,

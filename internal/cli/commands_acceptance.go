@@ -572,7 +572,7 @@ func captureAcceptanceArtifact(path string) (acceptanceArtifact, error) {
 }
 
 func selectedAcceptanceCases(applications []string) []acceptanceCase {
-	all := []acceptanceCase{{"host-gpu", "GPU operation and exact device isolation", "", "", false}, {"comfyui-image", "ComfyUI Qwen Image FP8 Lightning generation", "comfyui", "qwen-image-2512-fp8-lightning", true}, {"comfyui-video", "ComfyUI Wan 2.2 FP8 Lightning five-frame generation", "comfyui", "wan-2.2-t2v-14b-fp8-lightning", true}, {"llama-cpp", "llama.cpp Qwen3 0.6B GPU offload benchmark", "llama-cpp", "llama-qwen3-0.6b-q8-0", false}, {"dwarfstar", "DwarfStar direct-answer generation", "dwarfstar", "dwarfstar-deepseek-v4-flash-0731-q2-imatrix", false}}
+	all := []acceptanceCase{{"host-gpu", "GPU operation and exact device isolation", "", "", false}, {"comfyui-image", "ComfyUI Qwen Image FP8 Lightning generation", "comfyui", "qwen-image-2512-fp8-lightning", true}, {"comfyui-video", "ComfyUI Wan 2.2 FP8 Lightning five-frame generation", "comfyui", "wan-2.2-t2v-14b-fp8-lightning", true}, {"llama-cpp", "llama.cpp Qwen3 0.6B GPU offload benchmark", "llama-cpp", "llama-qwen-qwen3-0.6b-q8-0", false}, {"dwarfstar", "DwarfStar direct-answer generation", "dwarfstar", "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix", false}}
 	if len(applications) == 0 {
 		return all
 	}
@@ -661,7 +661,7 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		}
 		return []string{outputs[0], path}, nil
 	case "llama-cpp":
-		preset := managed.LlamaPresets["qwen3-0.6b-q8-0"]
+		preset := managed.LlamaPresets["qwen-qwen3-0.6b-q8-0"]
 		artifact := managed.Artifacts[preset.Artifact]
 		command := runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: configApplicationImage("llama-cpp"), Profile: profile, DataDir: dataRoot, Backend: "rocm", ManagedModel: artifact.Destination, RenderNodes: []string{renderNode}, Repetitions: 1, PromptTokens: 32, GenerationTokens: 16, BatchSize: 2048, UBatchSize: 512, CacheTypeK: "f16", CacheTypeV: "f16", FlashAttention: "auto"}, app.podman().SELinuxVolumeSuffix(app.Context))
 		rows, err := benchmark.RunLlama(app.Context, app.Runner, command)
