@@ -193,8 +193,12 @@ If the artifact filename appears in curated workflow metadata, update
 `internal/cli/commands_content.go`.
 
 Managed GGUF files use `"target": "llama-models"` and a destination relative
-to `content/llama-cpp/models`. Add a bundle using application `llama-cpp` and
-groups `all` and `llama`, plus the intended public selection group, then
+to `content/llama-cpp/models`. Text artifact IDs, destination directories,
+and destination filenames start with the lowercase owner of the pinned GGUF
+repository, as public preset and bundle IDs do. Keep the source path exactly
+as published; the destination name is independent of it. Add a bundle using
+application `llama-cpp` and groups `all` and `llama`, plus the intended public
+selection group, then
 connect it to a stable router identity:
 
 ```json

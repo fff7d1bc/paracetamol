@@ -82,7 +82,7 @@ func TestPublicTextPresetIDsNameTheGGUFPublisher(t *testing.T) {
 	}
 }
 
-func TestPublisherRenameKeepsExistingArtifactIdentity(t *testing.T) {
+func TestManagedTextArtifactsNameGGUFPublisher(t *testing.T) {
 	root, err := project.Root()
 	if err != nil {
 		t.Fatal(err)
@@ -91,13 +91,15 @@ func TestPublisherRenameKeepsExistingArtifactIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for presetID, want := range map[string]struct{ artifact, destination string }{
-		"unsloth-qwen3.8-27b-mtp-ud-q8-k-xl":                              {"qwen3.8-27b-ud-q8-k-xl-gguf", "qwen3.8-27b/Qwen3.8-27B-UD-Q8_K_XL.gguf"},
-		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {"muse-glimmer-30b-kquant-dynamic-gguf", "muse-glimmer-30b/muse-glimmer-30B-kquant-dynamic.gguf"},
-	} {
-		preset := loaded.LlamaPresets[presetID]
-		if preset.Artifact != want.artifact || loaded.Artifacts[preset.Artifact].Destination != want.destination {
-			t.Errorf("preset %q changed installed artifact identity: %#v", presetID, preset)
+	for id, artifact := range loaded.Artifacts {
+		if artifact.Target != "llama-models" && artifact.Target != "dwarfstar-models" {
+			continue
+		}
+		publisher := strings.ToLower(strings.SplitN(artifact.Source.Repository, "/", 2)[0])
+		if !strings.HasPrefix(id, publisher+"-") ||
+			!strings.HasPrefix(artifact.Destination, publisher+"-") ||
+			!strings.HasPrefix(filepath.Base(artifact.Destination), publisher+"-") {
+			t.Errorf("managed text artifact %q destination %q should name GGUF publisher %q", id, artifact.Destination, publisher)
 		}
 	}
 }
