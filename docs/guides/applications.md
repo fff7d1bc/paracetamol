@@ -131,7 +131,7 @@ For the common managed default:
 ./paracetamol build llama-cpp
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 Startup prints the matching inspection command. While the server is running,
@@ -140,7 +140,7 @@ exact model configuration:
 
 ```bash
 ./paracetamol status llama-cpp \
-  --model qwen3.8-27b-mtp-ud-q8-k-xl
+  --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 This reports the live image, resolved GPU profile, GGUF provenance, context,
@@ -154,7 +154,7 @@ For the Muse Glimmer comparison:
 ```bash
 ./paracetamol content install llama-cpp muse-glimmer
 ./paracetamol run llama-cpp server \
-  --preset muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
+  --preset meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
 ```
 
 The default Qwen3.8 preset starts at 262144 tokens and verifies up to three
@@ -181,12 +181,12 @@ Use 128K or 64K when memory matters more than the full native window:
 ```bash
 # Smaller working set:
 ./paracetamol run llama-cpp server \
-  --preset qwen3.6-27b-mtp-q8-0 \
+  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
   --context 65536
 
 # Reduced but still substantial working set:
 ./paracetamol run llama-cpp server \
-  --preset qwen3.6-27b-mtp-q8-0 \
+  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
   --context 131072
 ```
 
@@ -212,9 +212,16 @@ A model and a Paracetamol preset are related, but they are not interchangeable:
 
 The API calls the router selector `model`, but its value is a Paracetamol preset
 identifier. It selects both the GGUF and the runtime policy Paracetamol has
-validated for it. The `translategemma-27b-it-q8-0` preset adds only a thin string
-template around the model. The translation direction and output rules remain
-part of the user message.
+validated for it. The `mradermacher-translategemma-27b-it-q8-0` preset adds
+only a thin string template around the model. The translation direction and
+output rules remain part of the user message.
+
+Text preset IDs start with the pinned GGUF publisher's Hugging Face account.
+For example, `unsloth-` identifies Unsloth's Qwen conversion, `meta-models-`
+identifies Meta's Muse conversion, and `ukisai-` identifies Swift. The prefix
+names the artifact source, not necessarily the base-model developer. Old
+unprefixed API model IDs and exact bundle selectors no longer work. Installed
+artifacts and verification receipts keep their original paths and IDs.
 
 ### Choosing a managed Qwen preset
 
@@ -226,24 +233,40 @@ speculative decoding:
 
 | Preset | What changes | Good use |
 | --- | --- | --- |
-| `qwen3-0.6b-q8-0` | Tiny 0.6B model | Startup, API, and GPU-offload smoke tests |
-| `qwen3.6-27b-mtp-q8-0` | Dense 27B MTP Q8_0 | General assistant and smaller baseline |
-| `qwen3.6-27b-q8-0` | Dense 27B Q8_0 | Non-MTP control for the dense model |
-| `qwen3.6-35b-a3b-mtp-ud-q8-k-xl` | Sparse 35B-A3B MTP Dynamic Q8_K_XL | Established high-throughput agent comparison |
-| `qwen3.6-35b-a3b-ud-q8-k-xl` | Sparse 35B-A3B Dynamic Q8_K_XL | Non-MTP control for the sparse model |
-| `qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
-| `qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
-| `qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
-| `qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
-| `qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
+| `qwen-qwen3-0.6b-q8-0` | Tiny 0.6B model | Startup, API, and GPU-offload smoke tests |
+| `unsloth-qwen3.6-27b-mtp-q8-0` | Dense 27B MTP Q8_0 | General assistant and smaller baseline |
+| `unsloth-qwen3.6-27b-q8-0` | Dense 27B Q8_0 | Non-MTP control for the dense model |
+| `unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl` | Sparse 35B-A3B MTP Dynamic Q8_K_XL | Established high-throughput agent comparison |
+| `unsloth-qwen3.6-35b-a3b-ud-q8-k-xl` | Sparse 35B-A3B Dynamic Q8_K_XL | Non-MTP control for the sparse model |
+| `unsloth-qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
+| `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
+| `unsloth-qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
+| `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
+| `ukisai-swift1.5-qwen3.8-27b-mtp-q8-0` | Swift 1.5 adapted 27B Q8_0 with MTP at 256K | Opt-in comparison, subject to Swift Open License v1.0 |
+| `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
 
 The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
-`./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
+`./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
+
+Swift 1.5 has a separate recipe and does not replace the Unsloth default:
+
+```bash
+./paracetamol content install llama-cpp swift1.5 --accept-license
+./paracetamol run llama-cpp server \
+  --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0
+```
+
+It uses the managed Qwen3.8 template, medium-default reasoning and sampling
+policy, 256K context, and three MTP draft tokens. The adapted weights have a
+separate [Swift Open License v1.0](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE)
+with a commercial-use condition. Review the terms before installing. This
+is a separate adapted model, not a different quantization of the Unsloth
+weights. Compare both on representative work before changing your default.
 
 The Flash-Next family has its own guided recipe because it has a different
 architecture and operating envelope. The recipe installs the accepted
@@ -253,7 +276,7 @@ architecture and operating envelope. The recipe installs the accepted
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
+  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
 ```
 
 Flash-Next has 125B total parameters, about 6B active model parameters, and a
@@ -303,7 +326,7 @@ normal ROCm backend unless the local workload favors Vulkan:
 
 ```bash
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-27b-mtp-ud-q4-k-xl
+  --preset unsloth-qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
 The current Dynamic v3 artifact passed ROCm startup, embedded-MTP, off,
@@ -406,7 +429,7 @@ independently on a high-memory host:
 
 | Preset | Source | Current role |
 | --- | --- | --- |
-| `kat-coder-v2.5-dev-q8-0` | Bartowski's plain Q8_0 conversion of Kwaipilot's public text-only checkpoint | Newer agentic-coding candidate kept separate from APEX and MTP derivatives |
+| `bartowski-kat-coder-v2.5-dev-q8-0` | Bartowski's plain Q8_0 conversion of Kwaipilot's public text-only checkpoint | Newer agentic-coding candidate kept separate from APEX and MTP derivatives |
 
 The preset uses its native 256K context and the later pinned upstream template
 that accepts system messages introduced by an agent after the first turn.
@@ -447,7 +470,7 @@ the complete message history when the conversation should continue:
 
 ```json
 {
-  "model": "qwen3.6-27b-mtp-q8-0",
+  "model": "unsloth-qwen3.6-27b-mtp-q8-0",
   "messages": [
     {
       "role": "system",
@@ -481,7 +504,7 @@ For a quick human check without an API client, run the model directly in a
 terminal:
 
 ```bash
-./paracetamol run llama-cpp cli --preset qwen3.6-27b-mtp-q8-0
+./paracetamol run llama-cpp cli --preset unsloth-qwen3.6-27b-mtp-q8-0
 ```
 
 CLI mode owns an interactive conversation in that terminal. API callers must
@@ -497,15 +520,15 @@ large model:
 ./paracetamol content install llama-cpp all
 
 # Or install the tiny startup and GPU-offload smoke test.
-./paracetamol content install llama-qwen3-0.6b-q8-0
-./paracetamol run llama-cpp server --preset qwen3-0.6b-q8-0
+./paracetamol content install llama-qwen-qwen3-0.6b-q8-0
+./paracetamol run llama-cpp server --preset qwen-qwen3-0.6b-q8-0
 ```
 
 The Gemma 4 preset starts at its native 256K and is maintained for agent use:
 
 ```bash
-./paracetamol content install llama-gemma4-31b-it-q8-0-mtp
-./paracetamol run llama-cpp server --preset gemma4-31b-it-q8-0-mtp
+./paracetamol content install llama-ggml-org-gemma4-31b-it-q8-0-mtp
+./paracetamol run llama-cpp server --preset ggml-org-gemma4-31b-it-q8-0-mtp
 ```
 
 Use `--context 131072` or `--context 65536` when the full KV cache leaves too
@@ -880,12 +903,12 @@ each maintained client before letting a newly added model work unattended.
 
 Use the Paracetamol preset ID as the API model ID. Configure the client with the
 preset's actual starting context rather than advertising a larger limit. For
-example, `qwen3.6-27b-mtp-q8-0` starts at 262144 tokens. Once a router
+example, `unsloth-qwen3.6-27b-mtp-q8-0` starts at 262144 tokens. Once a router
 model is loaded, inspect the template llama.cpp recognized:
 
 ```bash
 curl -sS --get http://127.0.0.1:8080/props \
-  --data-urlencode 'model=qwen3.6-27b-mtp-q8-0' |
+  --data-urlencode 'model=unsloth-qwen3.6-27b-mtp-q8-0' |
   jq '{template_caps: .chat_template_caps, slots: .total_slots,
        context: .default_generation_settings.n_ctx}'
 ```
@@ -904,7 +927,7 @@ quant of the Llama 3.3 70B model:
 ```bash
 ./paracetamol content install llama-cpp shisa-v2.1 --accept-license
 ./paracetamol run llama-cpp server \
-  --preset shisa-v2.1-llama3.3-70b-q8-0
+  --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
 ```
 
 The preset starts at 16384 tokens. That is enough for a glossary, speaker and
@@ -928,7 +951,7 @@ prompted translation:
 ```bash
 ./paracetamol content install llama-cpp translation-gemma --accept-license
 ./paracetamol run llama-cpp server \
-  --preset translategemma-27b-it-q8-0
+  --preset mradermacher-translategemma-27b-it-q8-0
 ```
 
 The preset supplies Gemma's turn markers but does not choose a language
@@ -992,7 +1015,7 @@ chooses the target language at request time:
 
 ```bash
 ./paracetamol content install llama-cpp translation-hy --accept-license
-./paracetamol run llama-cpp server --preset hy-mt1.5-7b-q8-0
+./paracetamol run llama-cpp server --preset tencent-hy-mt1.5-7b-q8-0
 
 curl -sS http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
@@ -1024,7 +1047,7 @@ Vulkan, so a server, terminal session, or benchmark can select it explicitly:
 
 ```bash
 ./paracetamol run llama-cpp cli \
-  --preset qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.6-27b-q8-0 \
   --backend vulkan
 ```
 
@@ -1032,7 +1055,7 @@ If you do not know which one to use, run them back to back:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.6-27b-q8-0 \
   --compare-backends
 ```
 
@@ -1095,14 +1118,14 @@ approximately 19.82 GiB in total:
 ```bash
 ./paracetamol content install llama-cpp muse-glimmer
 ./paracetamol run llama-cpp server \
-  --preset muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
+  --preset meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
 ```
 
 The forced-256K DFlash preset is the Muse recipe launch. It uses twelve draft
 tokens on ROCm or four on Vulkan. The 128K DFlash control uses
 fifteen on ROCm, matching the draft's 16-token block.
 The dynamic bundle also exposes
-`muse-glimmer-30b-kquant-dynamic-q4-k-xl` as a non-speculative control. This
+`meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl` as a non-speculative control. This
 makes it possible to compare output, draft acceptance, wall time, and memory
 without changing the target GGUF.
 
@@ -1110,7 +1133,7 @@ The forced-window policy needs no separate download:
 
 ```bash
 ./paracetamol run llama-cpp server \
-  --preset muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
+  --preset meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
 ```
 
 That preset sets both `muse-glimmer.context_length` and
@@ -1174,7 +1197,7 @@ Inspect the router itself, or select one configured child policy:
 
 ```bash
 ./paracetamol status llama-cpp
-./paracetamol status llama-cpp --model qwen3.6-27b-mtp-q8-0
+./paracetamol status llama-cpp --model unsloth-qwen3.6-27b-mtp-q8-0
 ```
 
 Select a preset using the OpenAI API `model` field. Missing models are skipped;
@@ -1188,7 +1211,7 @@ An ordinary Chat Completions request selects the router preset through
 curl -sS http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "qwen3.6-27b-mtp-q8-0",
+    "model": "unsloth-qwen3.6-27b-mtp-q8-0",
     "messages": [{"role": "user", "content": "Explain unified memory."}],
     "max_tokens": 512
   }' | jq -r '.choices[0].message.content'
@@ -1351,8 +1374,8 @@ same `paracetamol` provider. Choose it explicitly in a client:
 
 ```bash
 ./paracetamol run gateway -a llama-cpp -a dwarfstar
-pi --provider paracetamol --model deepseek-v4-flash-0731-q2-imatrix --thinking high
-maki -m paracetamol/deepseek-v4-flash-0731-q2-imatrix
+pi --provider paracetamol --model antirez-deepseek-v4-flash-0731-q2-imatrix --thinking high
+maki -m paracetamol/antirez-deepseek-v4-flash-0731-q2-imatrix
 ```
 
 The harness model ID identifies the managed 0731 Q2 imatrix bundle rather

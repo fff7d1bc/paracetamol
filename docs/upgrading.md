@@ -650,8 +650,8 @@ model, and acceptance case form one reviewed compatibility unit:
 DWARFSTAR_COMMIT
 ROCM_VERSION
 the dwarfstar image in internal/application/registry.go
-dwarfstar-deepseek-v4-flash-0731-q2-imatrix
-dwarfstar-deepseek-v4-flash-0731-q2-imatrix-dspark
+dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix
+dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark
 applications/dwarfstar/entrypoint.sh
 ```
 

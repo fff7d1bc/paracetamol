@@ -12,7 +12,7 @@ import (
 
 var ProviderID = identity.StateNamespace
 
-const RecommendedModel = "qwen3.8-27b-mtp-ud-q8-k-xl"
+const RecommendedModel = "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"
 
 // AgentModels intersects the catalog's client capabilities with the gateway's
 // frozen advertised inventory. A nil inventory deliberately means all models
@@ -94,10 +94,10 @@ func ClientSampling(managed catalog.Catalog, identifier string) map[string]any {
 		return nil
 	}
 	shared := map[string]any{"temperature": 1.0, "top_p": 0.95, "top_k": 64, "min_p": 0.0, "presence_penalty": 0.0, "repeat_penalty": 1.0}
-	if identifier == "kat-coder-v2.5-dev-q8-0" {
+	if identifier == "bartowski-kat-coder-v2.5-dev-q8-0" {
 		return map[string]any{"temperature": 1.0, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5, "repeat_penalty": 1.0}
 	}
-	if identifier == "gemma4-31b-it-q8-0-mtp" || strings.HasPrefix(identifier, "muse-glimmer") {
+	if identifier == "ggml-org-gemma4-31b-it-q8-0-mtp" || strings.HasPrefix(identifier, "meta-models-muse-glimmer-") {
 		return shared
 	}
 	return nil

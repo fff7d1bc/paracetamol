@@ -238,7 +238,7 @@ llama.cpp presets. Give the reviewed serving identity its own validated policy:
 
 ```json
 "dwarfstar_presets": {
-  "deepseek-v4-flash-0731-q2-imatrix": {
+  "antirez-deepseek-v4-flash-0731-q2-imatrix": {
     "bundle": "dwarfstar-target-bundle",
     "dspark_bundle": "dwarfstar-target-and-support-bundle",
     "default_context": 131072,

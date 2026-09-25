@@ -962,10 +962,10 @@ carry per-model sampling parameters; those retain Paracetamol's server-side
 mode-aware defaults and normal per-request override precedence.
 
 DwarfStar appears in that same provider only when the gateway exposes it. The
-reviewed `deepseek-v4-flash-0731-q2-imatrix` model advertises the same
+reviewed `antirez-deepseek-v4-flash-0731-q2-imatrix` model advertises the same
 131072-token runtime allocation and 16000-token output ceiling as the managed
-server. This public model ID follows the exact managed release and bundle
-identity. It deliberately does not copy the pinned server's generic
+server. This public model ID names the GGUF publisher and exact managed
+release. It deliberately does not copy the pinned server's generic
 `deepseek-v4-flash` discovery alias, which omits both the 0731 release and the
 reviewed Q2 imatrix selection; the server accepts and echoes the exact managed
 ID in Chat Completions requests. The clients expose only direct

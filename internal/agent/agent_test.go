@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -265,7 +266,7 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	models, err := AgentModels(managed, []string{"qwen3.8-27b-mtp-ud-q8-k-xl", "deepseek-v4-flash-0731-q2-imatrix"})
+	models, err := AgentModels(managed, []string{"unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "antirez-deepseek-v4-flash-0731-q2-imatrix"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,6 +289,36 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	compat := provider["compat"].(map[string]any)
 	if compat["sendSessionAffinityHeaders"] != true || compat["sessionAffinityFormat"] != "openai-nosession" {
 		t.Fatalf("Pi session correlation is not enabled: %#v", compat)
+	}
+}
+
+func TestSwiftAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, err := AgentModels(managed, []string{RecommendedModel, "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, selected, thinking, err := DefaultModel(models, "Pi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider != ProviderID || selected != RecommendedModel || thinking != "medium" {
+		t.Fatalf("default = %q/%q at %q", provider, selected, thinking)
+	}
+	pi, err := PiConfig(managed, "http://127.0.0.1:7455/v1", models, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	maki := makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", makiModels(models), "", "")
+	for name, encoded := range map[string][]byte{"Pi": pi, "Maki": maki} {
+		for _, id := range []string{RecommendedModel, "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"} {
+			if !bytes.Contains(encoded, []byte(id)) {
+				t.Errorf("%s config lacks %q", name, id)
+			}
+		}
 	}
 }
 
@@ -316,14 +347,14 @@ func TestPiSessionUsesOnlyLiveGatewayInventory(t *testing.T) {
 			t.Fatalf("path=%s", request.URL.Path)
 		}
 		writer.Header().Set(gateway.IdentityHeader, gateway.IdentityValue)
-		_, _ = writer.Write([]byte(`{"object":"list","data":[{"id":"deepseek-v4-flash-0731-q2-imatrix"}]}`))
+		_, _ = writer.Write([]byte(`{"object":"list","data":[{"id":"antirez-deepseek-v4-flash-0731-q2-imatrix"}]}`))
 	}))
 	defer server.Close()
 	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), server.URL+"/v1", nil, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.DefaultProvider != ProviderID || plan.DefaultModel != "deepseek-v4-flash-0731-q2-imatrix" || plan.DefaultThinking != "high" {
+	if plan.DefaultProvider != ProviderID || plan.DefaultModel != "antirez-deepseek-v4-flash-0731-q2-imatrix" || plan.DefaultThinking != "high" {
 		t.Fatalf("plan=%#v", plan)
 	}
 	if strings.Contains(string(plan.Config), RecommendedModel) {

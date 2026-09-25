@@ -173,7 +173,7 @@ Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default.
 ./paracetamol build llama-cpp
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 The recipe installs one 29.30 GiB GGUF containing the dense target and its MTP
@@ -181,13 +181,31 @@ prediction heads. The default preset starts at 256K context, verifies up to
 three draft tokens, and uses native medium reasoning effort. Its non-MTP
 control shares the same verified artifact.
 
+Public text model IDs now begin with the publisher of the pinned GGUF. The
+default above is `unsloth-…`, the Muse presets are `meta-models-…`, and the
+optional Swift 1.5 preset is `ukisai-…`. These are breaking changes for
+clients that send a literal `model` ID, including OpenAI-compatible HTTP
+clients. Update those IDs after upgrading; Pi and Maki regenerate their model
+lists from the gateway. Installed model files and their verification receipts
+are not renamed or re-downloaded. Run `./paracetamol content list models` to
+see the full current IDs.
+
+Swift 1.5 is an opt-in alternative, not the default. Its adapted weights use
+the Swift Open License v1.0, so read the terms before accepting them:
+
+```bash
+./paracetamol content install llama-cpp swift1.5 --accept-license
+./paracetamol run llama-cpp server \
+  --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0
+```
+
 A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
 family available for more constrained GPUs without changing the recipe or
 managed-client default.
 
 ```bash
-./paracetamol content install llama-qwen3.8-27b-ud-q4-k-xl
-./paracetamol run llama-cpp server --preset qwen3.8-27b-mtp-ud-q4-k-xl
+./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl
+./paracetamol run llama-cpp server --preset unsloth-qwen3.8-27b-mtp-ud-q4-k-xl
 ```
 
 The Dynamic v3 Q4_K_XL presets start at a reviewed 128K context. Treat the
@@ -217,7 +235,7 @@ MTP heads.
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol run llama-cpp server \
-  --preset qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
+  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
 ```
 
 On Strix Halo, direct startup now selects ROCm and a ROCm gateway includes
@@ -276,7 +294,7 @@ the Llama 3.3 terms.
 ```bash
 ./paracetamol content install llama-cpp shisa-v2.1 --accept-license
 ./paracetamol run llama-cpp server \
-  --preset shisa-v2.1-llama3.3-70b-q8-0
+  --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
 ```
 
 ### DwarfStar
@@ -320,7 +338,7 @@ A running llama.cpp server can also print a pasteable configuration report.
 ```bash
 ./paracetamol status llama-cpp
 ./paracetamol status llama-cpp \
-  --model qwen3.8-27b-mtp-ud-q8-k-xl
+  --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 The model selector identifies a managed direct preset or chooses one configured
@@ -558,7 +576,7 @@ Compare llama.cpp's ROCm and Vulkan backends on the exact model you use.
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.6-27b-q8-0 \
   --compare-backends
 ```
 
@@ -572,7 +590,7 @@ that native `llama-bench` cannot exercise.
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
 
@@ -586,7 +604,7 @@ task suite.
 ```bash
 ./paracetamol benchmark agent --list-tasks
 ./paracetamol benchmark agent \
-  --preset qwen3.8-27b-mtp-ud-q8-k-xl \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --thinking medium --dry-run
 ```
 

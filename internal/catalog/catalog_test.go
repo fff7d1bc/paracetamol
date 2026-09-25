@@ -21,14 +21,22 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
+	if len(loaded.Agreements) != 7 || len(loaded.Artifacts) != 71 || len(loaded.Bundles) != 53 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 19 || len(loaded.DwarfStarPresets) != 1 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
-	preset := loaded.LlamaPresets["qwen3.8-27b-mtp-ud-q8-k-xl"]
+	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
 	}
-	flashNextQ4 := loaded.LlamaPresets["qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
+	swift := loaded.LlamaPresets["ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"]
+	swiftArtifact := loaded.Artifacts[swift.Artifact]
+	if swift.DefaultContext != 262144 || swift.SpeculativeType != "draft-mtp" || swift.DraftTokens != 3 || swift.ChatTemplate != "qwen3.8" || swift.SamplingPolicy != "qwen3.8-27b" || !swift.AgentTools || swift.ReasoningDefault != "medium" || !swift.ReasoningPreserve {
+		t.Fatalf("unexpected Swift preset: %#v", swift)
+	}
+	if swiftArtifact.Source.Repository != "ukisai/Swift-1.5-Qwen3.8-27B-GGUF" || swiftArtifact.License.SPDX != "LicenseRef-Swift-Open-1.0" || len(swiftArtifact.Agreements) != 1 || swiftArtifact.Agreements[0] != "swift-open-license-1.0" {
+		t.Fatalf("unexpected Swift provenance: %#v", swiftArtifact)
+	}
+	flashNextQ4 := loaded.LlamaPresets["unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
 	if flashNextQ4.DefaultContext != 262144 || strings.Join(flashNextQ4.Backends, ",") != "rocm,vulkan" || flashNextQ4.ModelLoad["strix-halo"] != LlamaModelLoadStreamTokenEmbedding || flashNextQ4.SpeculativeType != "" || flashNextQ4.KVCache["strix-halo"] != "f16" {
 		t.Fatalf("unexpected Qwen3.8 Flash-Next Q4_K_XL preset: %#v", flashNextQ4)
 	}
@@ -42,9 +50,55 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 			}
 		}
 	}
-	dwarfstar := loaded.DwarfStarPresets["deepseek-v4-flash-0731-q2-imatrix"]
+	dwarfstar := loaded.DwarfStarPresets["antirez-deepseek-v4-flash-0731-q2-imatrix"]
 	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
 		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
+	}
+}
+
+func TestPublicTextPresetIDsNameTheGGUFPublisher(t *testing.T) {
+	root, err := project.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(filepath.Join(root, "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, preset := range loaded.LlamaPresets {
+		artifact := loaded.Artifacts[preset.Artifact]
+		publisher := strings.ToLower(strings.SplitN(artifact.Source.Repository, "/", 2)[0])
+		if !strings.HasPrefix(id, publisher+"-") || !strings.HasPrefix(preset.Bundle, "llama-"+publisher+"-") {
+			t.Errorf("preset %q and bundle %q should name GGUF publisher %q", id, preset.Bundle, publisher)
+		}
+	}
+	for id, preset := range loaded.DwarfStarPresets {
+		bundle := loaded.Bundles[preset.Bundle]
+		artifact := loaded.Artifacts[bundle.Artifacts[0]]
+		publisher := strings.ToLower(strings.SplitN(artifact.Source.Repository, "/", 2)[0])
+		if !strings.HasPrefix(id, publisher+"-") || !strings.HasPrefix(preset.Bundle, "dwarfstar-"+publisher+"-") {
+			t.Errorf("preset %q and bundle %q should name GGUF publisher %q", id, preset.Bundle, publisher)
+		}
+	}
+}
+
+func TestPublisherRenameKeepsExistingArtifactIdentity(t *testing.T) {
+	root, err := project.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(filepath.Join(root, "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for presetID, want := range map[string]struct{ artifact, destination string }{
+		"unsloth-qwen3.8-27b-mtp-ud-q8-k-xl":                              {"qwen3.8-27b-ud-q8-k-xl-gguf", "qwen3.8-27b/Qwen3.8-27B-UD-Q8_K_XL.gguf"},
+		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {"muse-glimmer-30b-kquant-dynamic-gguf", "muse-glimmer-30b/muse-glimmer-30B-kquant-dynamic.gguf"},
+	} {
+		preset := loaded.LlamaPresets[presetID]
+		if preset.Artifact != want.artifact || loaded.Artifacts[preset.Artifact].Destination != want.destination {
+			t.Errorf("preset %q changed installed artifact identity: %#v", presetID, preset)
+		}
 	}
 }
 

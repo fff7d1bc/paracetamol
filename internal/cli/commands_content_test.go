@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/project"
+	"paracetamol/internal/recipes"
 )
 
 func TestExactBundleBrowserCoversCatalogExactlyOnce(t *testing.T) {
@@ -50,9 +52,13 @@ func TestGuidedContentCanBrowseExactApplicationBundles(t *testing.T) {
 		},
 	}
 	var output bytes.Buffer
+	values, err := recipes.ForApplication("llama-cpp")
+	if err != nil {
+		t.Fatal(err)
+	}
 	app := App{
 		Context: context.Background(), Environment: map[string]string{},
-		Stdin: terminalPromptReader{Reader: strings.NewReader("9\n1\n")}, Stdout: &output,
+		Stdin: terminalPromptReader{Reader: strings.NewReader(strconv.Itoa(len(values)+1) + "\n1\n")}, Stdout: &output,
 	}
 	target, selection, err := app.guidedContentSelection(managed, "llama-cpp")
 	if err != nil {

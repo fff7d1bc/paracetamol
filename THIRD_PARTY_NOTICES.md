@@ -97,6 +97,13 @@ revisions recorded in `catalog/catalog.json`.
   from base-model revision
   `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`; it changes the omitted-effort
   fallback from native xhigh to native medium.
+- Swift 1.5 Qwen3.8 27B Q8_0 is downloaded from the pinned
+  `ukisai/Swift-1.5-Qwen3.8-27B-GGUF` revision. It contains an adapted
+  contribution based on Qwen's Apache-2.0 model. UkisAI's contribution is
+  subject to the [Swift Open License v1.0](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE),
+  including its commercial-use revenue condition. The installer requires
+  explicit acceptance. Paracetamol records the GGUF's exact size and SHA-256
+  and does not redistribute it.
 - Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL is downloaded in four shards
   from one full pinned Unsloth revision.
   That repository declares the Qwen
