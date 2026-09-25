@@ -190,21 +190,6 @@ func PrepareMakiState(plan MakiPlan, dataRoot string) (SandboxPaths, error) {
 		return SandboxPaths{}, err
 	}
 	for _, entry := range entries {
-		if entry.Name() == "dwarfstar" {
-			path := filepath.Join(providersDir, entry.Name())
-			info, infoErr := entry.Info()
-			if infoErr != nil || !info.Mode().IsRegular() || info.Size() > 1024*1024 {
-				return SandboxPaths{}, fmt.Errorf("Maki legacy provider %s is not a small regular file", path)
-			}
-			contents, readErr := os.ReadFile(path)
-			if readErr != nil || !strings.HasPrefix(string(contents), "#!/bin/sh\nset -eu\n") || !strings.Contains(string(contents), `Paracetamol DwarfStar`) {
-				return SandboxPaths{}, fmt.Errorf("Maki legacy provider %s is not the expected managed file", path)
-			}
-			if err := os.Remove(path); err != nil {
-				return SandboxPaths{}, fmt.Errorf("remove retired Maki DwarfStar provider: %w", err)
-			}
-			continue
-		}
 		if _, ok := plan.Providers[entry.Name()]; !ok {
 			return SandboxPaths{}, fmt.Errorf("Maki provider directory contains unmanaged entry %s", entry.Name())
 		}

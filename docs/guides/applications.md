@@ -776,6 +776,11 @@ That commit applies `always_thinking` to interactive sessions but not Maki's
 non-interactive `--print` path. Use the TUI `/thinking` selector when the
 native reasoning condition matters.
 
+An unexpected file in the managed Maki provider directory is left untouched
+and blocks launch. This includes a retired `dwarfstar` provider from older
+checkouts. Inspect and remove that exact file yourself if it is no longer
+needed; Paracetamol no longer deletes it during startup.
+
 The recommended Qwen3.8 model starts at native medium effort. Maki
 remembers an explicit `/model` or `/thinking` choice in its private state. On
 the first launch, Paracetamol assigns the selected default to Maki's strong,

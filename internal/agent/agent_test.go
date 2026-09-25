@@ -404,21 +404,21 @@ func TestPiManagementDoesNotContactGateway(t *testing.T) {
 	}
 }
 
-func TestMakiStateRemovesOnlyRecognizedLegacyDwarfStarProvider(t *testing.T) {
+func TestMakiStateRejectsUnmanagedProviderWithoutDeletingIt(t *testing.T) {
 	root := t.TempDir()
 	plan := MakiPlan{Providers: map[string][]byte{ProviderID: []byte("#!/bin/sh\n")}, Init: []byte("maki.setup({})\n"), Tiers: []byte("{}\n")}
 	paths, err := PrepareMakiState(plan, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := filepath.Join(paths.Config, "maki", "providers", "dwarfstar")
-	if err := os.WriteFile(legacy, []byte("#!/bin/sh\nset -eu\n# Paracetamol DwarfStar\n"), 0o700); err != nil {
+	unmanaged := filepath.Join(paths.Config, "maki", "providers", "dwarfstar")
+	if err := os.WriteFile(unmanaged, []byte("#!/bin/sh\nset -eu\n# Paracetamol DwarfStar\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareMakiState(plan, root); err != nil {
-		t.Fatal(err)
+	if _, err := PrepareMakiState(plan, root); err == nil || !strings.Contains(err.Error(), "unmanaged entry dwarfstar") {
+		t.Fatalf("expected unmanaged provider error, got %v", err)
 	}
-	if _, err := os.Lstat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("legacy provider still exists: %v", err)
+	if _, err := os.Lstat(unmanaged); err != nil {
+		t.Fatalf("unmanaged provider was removed: %v", err)
 	}
 }
