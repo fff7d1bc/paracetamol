@@ -30,7 +30,9 @@ this document.
 
 The `gfx1151` Flash-Next inference screen is `PASS` on ROCm and Vulkan. This
 qualifies one pinned Unsloth Dynamic Q4_K_XL GGUF, not the proposed
-Flash-Next MTP path or future Qwen4 models. The llama.cpp source stays at
+Flash-Next MTP path or future Qwen4 models. Paracetamol commit
+`cad1549dd0d33be3c96dc8af2227764a500b2ec3` contains the accepted change.
+The llama.cpp source stays at
 `7ab4ee7baad2d920464cbacfad4f4b07cf111fd2`. The `r39` packaging revision
 adds the upstream QSA gather proposal at `beed2f78ac42cf16710b763e6f3ba20665c6d233`
 without changing models, templates, sampling, context, K/V precision or the
