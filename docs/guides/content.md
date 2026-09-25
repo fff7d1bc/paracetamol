@@ -113,6 +113,11 @@ Catalog pruning does not delete GGUFs installed by an older checkout. Retired
 files remain visible as local model rows in `content list models`; remove
 their exact files deliberately only when they are no longer needed.
 
+Managed text-model paths include the GGUF publisher in both directory and
+filename. A catalog rename changes the expected destination without deleting
+the old file. Use a separate local mirror to reuse verified bytes when moving
+between destination layouts.
+
 If a recipe is not specific enough, choose the exact-bundle browser in the
 guided installer. It narrows the catalog by application and task before
 showing individual bundles. Menus use shorter local names where the context is
@@ -322,6 +327,12 @@ Move mode removes only catalog-hash matches, but may leave the old tree's
 managed symlinks broken. Keep the active data directory outside the mirror,
 verify the new installation, then remove the old directory. Dry-run validates
 paths but does not hash hundreds of GiB, so its download total is worst-case.
+
+For an in-place catalog destination rename, move only the exact managed GGUFs
+to a separate mirror. Leave application state, staging, and local experiments
+in the active data directory. Reinstall the affected llama.cpp and DwarfStar
+bundles from that mirror, check that they are ready, and remove only empty
+retired model directories afterward.
 
 ## Local content packs
 

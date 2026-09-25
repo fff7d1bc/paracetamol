@@ -978,14 +978,14 @@
         "ltx-2-community-license"
       ]
     },
-    "qwen3-0.6b-q8-gguf": {
+    "qwen-qwen3-0.6b-q8-gguf": {
       "description": "Qwen3 0.6B Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "Qwen/Qwen3-0.6B-GGUF",
         "revision": "23749fefcc72300e3a2ad315e1317431b06b590a",
         "path": "Qwen3-0.6B-Q8_0.gguf"
       },
-      "destination": "qwen3-0.6b/Qwen3-0.6B-Q8_0.gguf",
+      "destination": "qwen-qwen3-0.6b/qwen-Qwen3-0.6B-Q8_0.gguf",
       "target": "llama-models",
       "size": 639446688,
       "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
@@ -995,14 +995,14 @@
         "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/blob/23749fefcc72300e3a2ad315e1317431b06b590a/LICENSE"
       }
     },
-    "kat-coder-v2.5-dev-q8-gguf": {
+    "bartowski-kat-coder-v2.5-dev-q8-gguf": {
       "description": "KAT-Coder V2.5 Dev Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF",
         "revision": "d8f684f08d2950ea9d2db6a35ef7dada0707858b",
         "path": "Kwaipilot_KAT-Coder-V2.5-Dev-Q8_0.gguf"
       },
-      "destination": "kat-coder-v2.5-dev/Kwaipilot_KAT-Coder-V2.5-Dev-Q8_0.gguf",
+      "destination": "bartowski-kat-coder-v2.5-dev/bartowski-Kwaipilot_KAT-Coder-V2.5-Dev-Q8_0.gguf",
       "target": "llama-models",
       "size": 36914690464,
       "sha256": "5fa510f44779b0e3d38a6678985f417a1c65e3000405ca5d6dcf7fd065e47a15",
@@ -1012,14 +1012,14 @@
         "url": "https://huggingface.co/bartowski/Kwaipilot_KAT-Coder-V2.5-Dev-GGUF/blob/d8f684f08d2950ea9d2db6a35ef7dada0707858b/README.md"
       }
     },
-    "hy-mt1.5-7b-q8-gguf": {
+    "tencent-hy-mt1.5-7b-q8-gguf": {
       "description": "Official Tencent HY-MT1.5 7B Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "tencent/HY-MT1.5-7B-GGUF",
         "revision": "126325496bc8e3575f1d8615b8ca951d8483f206",
         "path": "HY-MT1.5-7B-Q8_0.gguf"
       },
-      "destination": "hy-mt1.5-7b/HY-MT1.5-7B-Q8_0.gguf",
+      "destination": "tencent-hy-mt1.5-7b/tencent-HY-MT1.5-7B-Q8_0.gguf",
       "target": "llama-models",
       "size": 7981929344,
       "sha256": "d79ab0f3479abe17a716aef8b08edde2208feb3bf363ba3b4ec8e3e8d25bbd68",
@@ -1032,14 +1032,14 @@
         "tencent-hy-community-license"
       ]
     },
-    "translategemma-27b-it-q8-gguf": {
+    "mradermacher-translategemma-27b-it-q8-gguf": {
       "description": "TranslateGemma 27B instruction-tuned Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "mradermacher/translategemma-27b-it-GGUF",
         "revision": "0f2c24b456631d519a919e20429119bbd524d86e",
         "path": "translategemma-27b-it.Q8_0.gguf"
       },
-      "destination": "translategemma-27b-it/translategemma-27b-it.Q8_0.gguf",
+      "destination": "mradermacher-translategemma-27b-it/mradermacher-translategemma-27b-it.Q8_0.gguf",
       "target": "llama-models",
       "size": 28707987936,
       "sha256": "31e345b986af637c0dad8078da366bf33468b712e1742824a6f80e65b8fb25d3",
@@ -1052,14 +1052,14 @@
         "gemma-terms"
       ]
     },
-    "shisa-v2.1-llama3.3-70b-q8-gguf": {
+    "mradermacher-shisa-v2.1-llama3.3-70b-q8-gguf": {
       "description": "Shisa V2.1 Llama 3.3 70B Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "mradermacher/shisa-v2.1-llama3.3-70b-GGUF",
         "revision": "25cb86e709e7ecbe19a71452bbc374f1f5a6462b",
         "path": "shisa-v2.1-llama3.3-70b.Q8_0.gguf"
       },
-      "destination": "shisa-v2.1-llama3.3-70b/shisa-v2.1-llama3.3-70b.Q8_0.gguf",
+      "destination": "mradermacher-shisa-v2.1-llama3.3-70b/mradermacher-shisa-v2.1-llama3.3-70b.Q8_0.gguf",
       "target": "llama-models",
       "size": 74975055328,
       "sha256": "1e02e2c7273bee1f84bf212a901ba6a4206859592f63afeb760127ecd0eb1ad5",
@@ -1072,14 +1072,14 @@
         "llama-3.3-community-license"
       ]
     },
-    "muse-glimmer-30b-kquant-dynamic-gguf": {
+    "meta-models-muse-glimmer-30b-kquant-dynamic-gguf": {
       "description": "Official Muse Glimmer 30B KQuant Dynamic Q4_K_XL GGUF for llama.cpp",
       "source": {
         "repository": "meta-models/Muse-Glimmer-30B-GGUF",
         "revision": "93769bc7ab5ad1e9cd22d857e3138cf5d977ae81",
         "path": "muse-glimmer-30B-kquant-dynamic.gguf"
       },
-      "destination": "muse-glimmer-30b/muse-glimmer-30B-kquant-dynamic.gguf",
+      "destination": "meta-models-muse-glimmer-30b/meta-models-muse-glimmer-30B-kquant-dynamic.gguf",
       "target": "llama-models",
       "size": 19653957984,
       "sha256": "513109c8319115f69eb09fb7b118c97c8167d15bc014fd7670d2e30489bf106c",
@@ -1089,14 +1089,14 @@
         "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/blob/93769bc7ab5ad1e9cd22d857e3138cf5d977ae81/README.md"
       }
     },
-    "muse-glimmer-30b-dflash-kquant-gguf": {
+    "meta-models-muse-glimmer-30b-dflash-kquant-gguf": {
       "description": "Official Muse Glimmer 30B DFlash k-quant draft GGUF for llama.cpp",
       "source": {
         "repository": "meta-models/Muse-Glimmer-30B-GGUF",
         "revision": "93769bc7ab5ad1e9cd22d857e3138cf5d977ae81",
         "path": "dflash-kquant.gguf"
       },
-      "destination": "muse-glimmer-30b/dflash-kquant.gguf",
+      "destination": "meta-models-muse-glimmer-30b/meta-models-dflash-kquant.gguf",
       "target": "llama-models",
       "size": 1631205312,
       "sha256": "27d9a805fa29b943cfb6ad4843367cd4eaaaf06bd452d8cc3e00a2cd18a677bc",
@@ -1106,14 +1106,14 @@
         "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/blob/93769bc7ab5ad1e9cd22d857e3138cf5d977ae81/README.md"
       }
     },
-    "qwen3.6-27b-q8-0-gguf": {
+    "unsloth-qwen3.6-27b-q8-0-gguf": {
       "description": "Qwen3.6 27B Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.6-27B-GGUF",
         "revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
         "path": "Qwen3.6-27B-Q8_0.gguf"
       },
-      "destination": "qwen3.6-27b/Qwen3.6-27B-Q8_0.gguf",
+      "destination": "unsloth-qwen3.6-27b/unsloth-Qwen3.6-27B-Q8_0.gguf",
       "target": "llama-models",
       "size": 28595763424,
       "sha256": "f93f517f38e696d35a1a7df2c0e3155a64f4c4dcd662107a146ae263f7fb14ce",
@@ -1123,14 +1123,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/blob/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/README.md"
       }
     },
-    "qwen3.6-27b-mtp-q8-0-gguf": {
+    "unsloth-qwen3.6-27b-mtp-q8-0-gguf": {
       "description": "Qwen3.6 27B MTP Q8_0 GGUF for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.6-27B-MTP-GGUF",
         "revision": "5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace",
         "path": "Qwen3.6-27B-Q8_0.gguf"
       },
-      "destination": "qwen3.6-27b-mtp/Qwen3.6-27B-Q8_0.gguf",
+      "destination": "unsloth-qwen3.6-27b-mtp/unsloth-Qwen3.6-27B-Q8_0.gguf",
       "target": "llama-models",
       "size": 29047084160,
       "sha256": "9408dcb356cc061a05c139e5647cbde0698ff980c6a69f7fc214e9989f86cfa8",
@@ -1140,14 +1140,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/blob/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/README.md"
       }
     },
-    "qwen3.6-35b-a3b-ud-q8-k-xl-gguf": {
+    "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf": {
       "description": "Qwen3.6 35B-A3B Unsloth Dynamic Q8_K_XL GGUF for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.6-35B-A3B-GGUF",
         "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
         "path": "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
       },
-      "destination": "qwen3.6-35b-a3b/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
+      "destination": "unsloth-qwen3.6-35b-a3b/unsloth-Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
       "target": "llama-models",
       "size": 38451182560,
       "sha256": "b762215c5f507f4865df4ac3d1afa803828afa41e05ecac3fac431a67bbd88e8",
@@ -1157,14 +1157,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/blob/a483e9e6cbd595906af30beda3187c2663a1118c/README.md"
       }
     },
-    "qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf": {
+    "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf": {
       "description": "Qwen3.6 35B-A3B MTP Unsloth Dynamic Q8_K_XL GGUF for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
         "revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
         "path": "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
       },
-      "destination": "qwen3.6-35b-a3b-mtp/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
+      "destination": "unsloth-qwen3.6-35b-a3b-mtp/unsloth-Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
       "target": "llama-models",
       "size": 39099447584,
       "sha256": "6c6b816537abad90b250a0972b345466028d861ddfe316d5f0de31ca6440f781",
@@ -1174,14 +1174,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/blob/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/README.md"
       }
     },
-    "qwen3.8-27b-ud-q8-k-xl-gguf": {
+    "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf": {
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL GGUF with embedded MTP heads for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-27B-GGUF",
         "revision": "4604b899a826000505a834e623272db5b7fd62f6",
         "path": "Qwen3.8-27B-UD-Q8_K_XL.gguf"
       },
-      "destination": "qwen3.8-27b/Qwen3.8-27B-UD-Q8_K_XL.gguf",
+      "destination": "unsloth-qwen3.8-27b/unsloth-Qwen3.8-27B-UD-Q8_K_XL.gguf",
       "target": "llama-models",
       "size": 31457991680,
       "sha256": "af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377",
@@ -1191,14 +1191,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/4604b899a826000505a834e623272db5b7fd62f6/README.md"
       }
     },
-    "qwen3.8-27b-ud-q4-k-xl-gguf": {
+    "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf": {
       "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL GGUF with embedded MTP heads for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-27B-GGUF",
         "revision": "27af057ecb382ddfea5d12837360a8980560e3ed",
         "path": "Qwen3.8-27B-UD-Q4_K_XL.gguf"
       },
-      "destination": "qwen3.8-27b-ud-q4-k-xl-dynamic-v3/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+      "destination": "unsloth-qwen3.8-27b-ud-q4-k-xl-dynamic-v3/unsloth-Qwen3.8-27B-UD-Q4_K_XL.gguf",
       "target": "llama-models",
       "size": 17559178144,
       "sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
@@ -1208,14 +1208,14 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
-    "swift1.5-qwen3.8-27b-q8-0-gguf": {
+    "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf": {
       "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 GGUF with embedded MTP heads for llama.cpp",
       "source": {
         "repository": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF",
         "revision": "a1614465cfa35d04d3e8575d713fa779662b5eab",
         "path": "Swift-1.5-Qwen3.8-27B-Q8_0.gguf"
       },
-      "destination": "swift1.5-qwen3.8-27b/Swift-1.5-Qwen3.8-27B-Q8_0.gguf",
+      "destination": "ukisai-swift1.5-qwen3.8-27b/ukisai-Swift-1.5-Qwen3.8-27B-Q8_0.gguf",
       "target": "llama-models",
       "size": 29047084416,
       "sha256": "0b3b4aa0e367c620756de4f9db77fc18f94fbeb256db208281cbb84c48e2a101",
@@ -1228,14 +1228,14 @@
         "swift-open-license-1.0"
       ]
     },
-    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 1 of 4 for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
         "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
         "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
       },
-      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "destination": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
       "target": "llama-models",
       "size": 10946624,
       "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
@@ -1249,14 +1249,14 @@
         "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
-    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2": {
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 2 of 4 for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
         "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
         "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf"
       },
-      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "destination": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
       "target": "llama-models",
       "size": 49859583136,
       "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9",
@@ -1270,14 +1270,14 @@
         "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
-    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3": {
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 3 of 4 for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
         "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
         "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf"
       },
-      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+      "destination": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
       "target": "llama-models",
       "size": 49376141504,
       "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3",
@@ -1291,14 +1291,14 @@
         "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
-    "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4": {
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 4 of 4 for llama.cpp",
       "source": {
         "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
         "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
         "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf"
       },
-      "destination": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+      "destination": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
       "target": "llama-models",
       "size": 12087983520,
       "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a",
@@ -1312,14 +1312,14 @@
         "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
-    "gemma4-31b-it-q8-gguf": {
+    "ggml-org-gemma4-31b-it-q8-gguf": {
       "description": "Gemma 4 31B instruction-tuned Q8_0 GGUF from the llama.cpp project",
       "source": {
         "repository": "ggml-org/gemma-4-31B-it-GGUF",
         "revision": "4fa4fdf38bee237b5c9e8a5b4e72cf39404c9dcc",
         "path": "gemma-4-31B-it-Q8_0.gguf"
       },
-      "destination": "gemma4-31b-it-q8-mtp/gemma-4-31B-it-Q8_0.gguf",
+      "destination": "ggml-org-gemma4-31b-it-q8-mtp/ggml-org-gemma-4-31B-it-Q8_0.gguf",
       "target": "llama-models",
       "size": 32635676896,
       "sha256": "fcd52cebacb165a98df5abe6fb70dbf076835f4a06e064ffb33dd739b8835c9c",
@@ -1329,14 +1329,14 @@
         "url": "https://huggingface.co/ggml-org/gemma-4-31B-it-GGUF/blob/4fa4fdf38bee237b5c9e8a5b4e72cf39404c9dcc/README.md"
       }
     },
-    "gemma4-31b-it-mtp-q8-gguf": {
+    "ggml-org-gemma4-31b-it-mtp-q8-gguf": {
       "description": "Gemma 4 31B instruction-tuned Q8_0 MTP draft GGUF for llama.cpp",
       "source": {
         "repository": "ggml-org/gemma-4-31B-it-GGUF",
         "revision": "4fa4fdf38bee237b5c9e8a5b4e72cf39404c9dcc",
         "path": "mtp-gemma-4-31B-it-Q8_0.gguf"
       },
-      "destination": "gemma4-31b-it-q8-mtp/mtp-gemma-4-31B-it-Q8_0.gguf",
+      "destination": "ggml-org-gemma4-31b-it-q8-mtp/ggml-org-mtp-gemma-4-31B-it-Q8_0.gguf",
       "target": "llama-models",
       "size": 514687104,
       "sha256": "6b52ab20af503aee320dc09e93f886133b18d89ffc9075c7d9dcaf681e20b375",
@@ -1346,14 +1346,14 @@
         "url": "https://huggingface.co/ggml-org/gemma-4-31B-it-GGUF/blob/4fa4fdf38bee237b5c9e8a5b4e72cf39404c9dcc/README.md"
       }
     },
-    "deepseek-v4-flash-0731-iq2xxs-gguf": {
+    "antirez-deepseek-v4-flash-0731-iq2xxs-gguf": {
       "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix GGUF with routed gate/up IQ2_XXS, routed down Q2_K, and Q8 attention projections/shared experts/output",
       "source": {
         "repository": "antirez/deepseek-v4-gguf",
         "revision": "1cd7b564460821938add0475a60b942c409295e0",
         "path": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf"
       },
-      "destination": "deepseek-v4-flash-0731/DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "destination": "antirez-deepseek-v4-flash-0731/antirez-DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
       "target": "dwarfstar-models",
       "size": 86720111488,
       "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
@@ -1363,14 +1363,14 @@
         "url": "https://huggingface.co/antirez/deepseek-v4-gguf/tree/1cd7b564460821938add0475a60b942c409295e0"
       }
     },
-    "deepseek-v4-flash-0731-dspark-support-gguf": {
+    "antirez-deepseek-v4-flash-0731-dspark-support-gguf": {
       "description": "DeepSeek V4 Flash 0731 DSpark speculative-decoding support GGUF",
       "source": {
         "repository": "antirez/deepseek-v4-gguf",
         "revision": "86bb38ce2ba7a98ab0e550359fec5f48859dc723",
         "path": "DeepSeek-V4-Flash-DSpark-support-0731.gguf"
       },
-      "destination": "deepseek-v4-flash-0731/DeepSeek-V4-Flash-DSpark-support-0731.gguf",
+      "destination": "antirez-deepseek-v4-flash-0731/antirez-DeepSeek-V4-Flash-DSpark-support-0731.gguf",
       "target": "dwarfstar-models",
       "size": 5989114272,
       "sha256": "7e319924541db3f7a163ed7e11d7532a70d48228ab59d36cb81e1d4511885360",
@@ -1937,7 +1937,7 @@
       "description": "Qwen3 0.6B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3-0.6b-q8-gguf"
+        "qwen-qwen3-0.6b-q8-gguf"
       ],
       "groups": [
         "all",
@@ -1948,7 +1948,7 @@
       "description": "KAT-Coder V2.5 Dev Q8_0 llama.cpp coding-agent model",
       "application": "llama-cpp",
       "artifacts": [
-        "kat-coder-v2.5-dev-q8-gguf"
+        "bartowski-kat-coder-v2.5-dev-q8-gguf"
       ],
       "groups": [
         "all",
@@ -1959,7 +1959,7 @@
       "description": "Qwen3.6 27B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.6-27b-q8-0-gguf"
+        "unsloth-qwen3.6-27b-q8-0-gguf"
       ],
       "groups": [
         "all",
@@ -1970,7 +1970,7 @@
       "description": "Qwen3.6 27B MTP Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.6-27b-mtp-q8-0-gguf"
+        "unsloth-qwen3.6-27b-mtp-q8-0-gguf"
       ],
       "groups": [
         "all",
@@ -1981,7 +1981,7 @@
       "description": "Qwen3.6 35B-A3B Unsloth Dynamic Q8_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.6-35b-a3b-ud-q8-k-xl-gguf"
+        "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf"
       ],
       "groups": [
         "all",
@@ -1992,7 +1992,7 @@
       "description": "Qwen3.6 35B-A3B MTP Unsloth Dynamic Q8_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf"
+        "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf"
       ],
       "groups": [
         "all",
@@ -2003,7 +2003,7 @@
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.8-27b-ud-q8-k-xl-gguf"
+        "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf"
       ],
       "groups": [
         "all",
@@ -2014,7 +2014,7 @@
       "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.8-27b-ud-q4-k-xl-gguf"
+        "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf"
       ],
       "groups": [
         "all",
@@ -2025,7 +2025,7 @@
       "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
       "artifacts": [
-        "swift1.5-qwen3.8-27b-q8-0-gguf"
+        "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf"
       ],
       "groups": [
         "all",
@@ -2036,10 +2036,10 @@
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
-        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
-        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
-        "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4"
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4"
       ],
       "groups": [
         "all",
@@ -2050,8 +2050,8 @@
       "description": "Gemma 4 31B IT Q8_0 llama.cpp model with Q8_0 MTP draft",
       "application": "llama-cpp",
       "artifacts": [
-        "gemma4-31b-it-q8-gguf",
-        "gemma4-31b-it-mtp-q8-gguf"
+        "ggml-org-gemma4-31b-it-q8-gguf",
+        "ggml-org-gemma4-31b-it-mtp-q8-gguf"
       ],
       "groups": [
         "all",
@@ -2062,8 +2062,8 @@
       "description": "Official Muse Glimmer 30B KQuant Dynamic Q4_K_XL llama.cpp model with DFlash draft",
       "application": "llama-cpp",
       "artifacts": [
-        "muse-glimmer-30b-kquant-dynamic-gguf",
-        "muse-glimmer-30b-dflash-kquant-gguf"
+        "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
+        "meta-models-muse-glimmer-30b-dflash-kquant-gguf"
       ],
       "groups": [
         "all",
@@ -2074,7 +2074,7 @@
       "description": "Tencent HY-MT1.5 7B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "hy-mt1.5-7b-q8-gguf"
+        "tencent-hy-mt1.5-7b-q8-gguf"
       ],
       "groups": [
         "all",
@@ -2085,7 +2085,7 @@
       "description": "TranslateGemma 27B IT Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "translategemma-27b-it-q8-gguf"
+        "mradermacher-translategemma-27b-it-q8-gguf"
       ],
       "groups": [
         "all",
@@ -2096,7 +2096,7 @@
       "description": "Shisa V2.1 Llama 3.3 70B Q8_0 llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
-        "shisa-v2.1-llama3.3-70b-q8-gguf"
+        "mradermacher-shisa-v2.1-llama3.3-70b-q8-gguf"
       ],
       "groups": [
         "all",
@@ -2107,7 +2107,7 @@
       "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix; routed IQ2_XXS/Q2_K with Q8 attention/shared/output",
       "application": "dwarfstar",
       "artifacts": [
-        "deepseek-v4-flash-0731-iq2xxs-gguf"
+        "antirez-deepseek-v4-flash-0731-iq2xxs-gguf"
       ],
       "groups": [
         "all",
@@ -2118,8 +2118,8 @@
       "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix with the exact 0731 DSpark support GGUF",
       "application": "dwarfstar",
       "artifacts": [
-        "deepseek-v4-flash-0731-iq2xxs-gguf",
-        "deepseek-v4-flash-0731-dspark-support-gguf"
+        "antirez-deepseek-v4-flash-0731-iq2xxs-gguf",
+        "antirez-deepseek-v4-flash-0731-dspark-support-gguf"
       ],
       "groups": [
         "all",
@@ -2703,20 +2703,20 @@
   "llama_presets": {
     "qwen-qwen3-0.6b-q8-0": {
       "bundle": "llama-qwen-qwen3-0.6b-q8-0",
-      "artifact": "qwen3-0.6b-q8-gguf",
+      "artifact": "qwen-qwen3-0.6b-q8-gguf",
       "default_context": 4096,
       "chat_template": "qwen3-0.6b"
     },
     "bartowski-kat-coder-v2.5-dev-q8-0": {
       "bundle": "llama-bartowski-kat-coder-v2.5-dev-q8-0",
-      "artifact": "kat-coder-v2.5-dev-q8-gguf",
+      "artifact": "bartowski-kat-coder-v2.5-dev-q8-gguf",
       "default_context": 262144,
       "chat_template": "kat-coder-v2.5",
       "agent_tools": true
     },
     "unsloth-qwen3.6-27b-q8-0": {
       "bundle": "llama-unsloth-qwen3.6-27b-q8-0",
-      "artifact": "qwen3.6-27b-q8-0-gguf",
+      "artifact": "unsloth-qwen3.6-27b-q8-0-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.6",
       "sampling_policy": "qwen3.6-27b",
@@ -2727,7 +2727,7 @@
     },
     "unsloth-qwen3.6-27b-mtp-q8-0": {
       "bundle": "llama-unsloth-qwen3.6-27b-mtp-q8-0",
-      "artifact": "qwen3.6-27b-mtp-q8-0-gguf",
+      "artifact": "unsloth-qwen3.6-27b-mtp-q8-0-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
@@ -2743,7 +2743,7 @@
     },
     "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl": {
       "bundle": "llama-unsloth-qwen3.6-35b-a3b-ud-q8-k-xl",
-      "artifact": "qwen3.6-35b-a3b-ud-q8-k-xl-gguf",
+      "artifact": "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.6",
       "sampling_policy": "qwen3.6-35b-a3b",
@@ -2754,7 +2754,7 @@
     },
     "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
       "bundle": "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl",
-      "artifact": "qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf",
+      "artifact": "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
@@ -2767,7 +2767,7 @@
     },
     "unsloth-qwen3.8-27b-ud-q8-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
-      "artifact": "qwen3.8-27b-ud-q8-k-xl-gguf",
+      "artifact": "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "chat_template": "qwen3.8",
       "sampling_policy": "qwen3.8-27b",
@@ -2784,7 +2784,7 @@
     },
     "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
-      "artifact": "qwen3.8-27b-ud-q8-k-xl-gguf",
+      "artifact": "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
@@ -2803,7 +2803,7 @@
     },
     "unsloth-qwen3.8-27b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
-      "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
+      "artifact": "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf",
       "default_context": 131072,
       "chat_template": "qwen3.8",
       "sampling_policy": "qwen3.8-27b",
@@ -2820,7 +2820,7 @@
     },
     "unsloth-qwen3.8-27b-mtp-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
-      "artifact": "qwen3.8-27b-ud-q4-k-xl-gguf",
+      "artifact": "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf",
       "default_context": 131072,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
@@ -2839,7 +2839,7 @@
     },
     "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0": {
       "bundle": "llama-ukisai-swift1.5-qwen3.8-27b-mtp-q8-0",
-      "artifact": "swift1.5-qwen3.8-27b-q8-0-gguf",
+      "artifact": "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
       "draft_tokens": 3,
@@ -2858,7 +2858,7 @@
     },
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
-      "artifact": "qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+      "artifact": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
       "backends": [
         "rocm",
         "vulkan"
@@ -2891,8 +2891,8 @@
     },
     "ggml-org-gemma4-31b-it-q8-0-mtp": {
       "bundle": "llama-ggml-org-gemma4-31b-it-q8-0-mtp",
-      "artifact": "gemma4-31b-it-q8-gguf",
-      "draft_artifact": "gemma4-31b-it-mtp-q8-gguf",
+      "artifact": "ggml-org-gemma4-31b-it-q8-gguf",
+      "draft_artifact": "ggml-org-gemma4-31b-it-mtp-q8-gguf",
       "default_context": 262144,
       "speculative_type": "draft-mtp",
       "draft_tokens": 4,
@@ -2901,7 +2901,7 @@
     },
     "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl": {
       "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
+      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
       "default_context": 131072,
       "chat_template": "muse-glimmer-atem",
       "agent_tools": true,
@@ -2918,8 +2918,8 @@
     },
     "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
       "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
-      "draft_artifact": "muse-glimmer-30b-dflash-kquant-gguf",
+      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
+      "draft_artifact": "meta-models-muse-glimmer-30b-dflash-kquant-gguf",
       "default_context": 131072,
       "speculative_type": "draft-dflash",
       "draft_tokens": 15,
@@ -2941,8 +2941,8 @@
     },
     "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {
       "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "muse-glimmer-30b-kquant-dynamic-gguf",
-      "draft_artifact": "muse-glimmer-30b-dflash-kquant-gguf",
+      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
+      "draft_artifact": "meta-models-muse-glimmer-30b-dflash-kquant-gguf",
       "default_context": 262144,
       "speculative_type": "draft-dflash",
       "draft_tokens": 12,
@@ -2968,18 +2968,18 @@
     },
     "tencent-hy-mt1.5-7b-q8-0": {
       "bundle": "llama-tencent-hy-mt1.5-7b-q8-0",
-      "artifact": "hy-mt1.5-7b-q8-gguf",
+      "artifact": "tencent-hy-mt1.5-7b-q8-gguf",
       "default_context": 32768
     },
     "mradermacher-translategemma-27b-it-q8-0": {
       "bundle": "llama-mradermacher-translategemma-27b-it-q8-0",
-      "artifact": "translategemma-27b-it-q8-gguf",
+      "artifact": "mradermacher-translategemma-27b-it-q8-gguf",
       "default_context": 4096,
       "chat_template": "translategemma-manual"
     },
     "mradermacher-shisa-v2.1-llama3.3-70b-q8-0": {
       "bundle": "llama-mradermacher-shisa-v2.1-llama3.3-70b-q8-0",
-      "artifact": "shisa-v2.1-llama3.3-70b-q8-gguf",
+      "artifact": "mradermacher-shisa-v2.1-llama3.3-70b-q8-gguf",
       "default_context": 16384,
       "jinja": true
     }

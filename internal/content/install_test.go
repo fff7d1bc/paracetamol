@@ -124,6 +124,51 @@ func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 	}
 }
 
+func TestInstallMovesOldSourceNamesToPublisherNamedDestinations(t *testing.T) {
+	dataRoot := filepath.Join(t.TempDir(), "data")
+	mirror := filepath.Join(t.TempDir(), "mirror")
+	artifacts := make([]catalog.Artifact, 0, 2)
+	for _, variant := range []string{"base", "mtp"} {
+		contents := []byte("different " + variant + " GGUF bytes")
+		artifact := testArtifact(contents)
+		artifact.ID = "unsloth-qwen-" + variant + "-gguf"
+		artifact.Source.Path = "Qwen3.8-27B-Q8_0.gguf"
+		artifact.Destination = "unsloth-qwen-" + variant + "/unsloth-Qwen3.8-27B-Q8_0.gguf"
+		artifacts = append(artifacts, artifact)
+		oldPath := filepath.Join(mirror, variant, artifact.Source.Path)
+		if err := os.MkdirAll(filepath.Dir(oldPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(oldPath, contents, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Install(InstallOptions{
+		Context: context.Background(), DataRoot: dataRoot, Artifacts: artifacts,
+		LocalMirror: mirror, MoveFromMirror: true,
+		Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, artifact := range artifacts {
+		variant := strings.TrimSuffix(strings.TrimPrefix(artifact.ID, "unsloth-qwen-"), "-gguf")
+		if _, err := os.Lstat(filepath.Join(mirror, variant, artifact.Source.Path)); !os.IsNotExist(err) {
+			t.Fatalf("mirror source for %s was not moved: %v", artifact.ID, err)
+		}
+		contents, err := os.ReadFile(ArtifactPath(dataRoot, artifact))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprintf("%x", sha256.Sum256(contents)) != artifact.SHA256 {
+			t.Fatalf("installed wrong bytes for %s", artifact.ID)
+		}
+	}
+	plan, err := Plan(dataRoot, artifacts)
+	if err != nil || plan.Ready != len(artifacts) {
+		t.Fatalf("migrated artifacts not ready: plan=%#v err=%v", plan, err)
+	}
+}
+
 func TestDownloadMeasurementIgnoresStaleHFPartialsAndTracksActiveFile(t *testing.T) {
 	root := t.TempDir()
 	contents := bytes.Repeat([]byte("x"), 100)

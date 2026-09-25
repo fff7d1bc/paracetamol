@@ -722,7 +722,7 @@ destination roots are therefore required not to overlap.
 
 ## Catalog and workflow trust chain
 
-`catalog/catalog.json` is schema version 23. The loader in
+`catalog/catalog.json` is schema version 26. The loader in
 `internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.
