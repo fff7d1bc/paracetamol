@@ -199,6 +199,12 @@ the Swift Open License v1.0, so read the terms before accepting them:
   --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0
 ```
 
+Swift 1.5 Flash-Next is another opt-in model with a separate, 111.4 GiB
+three-shard install for 128 GB Strix Halo. It does not change the dense
+Qwen3.8 default or add weight to the Swift 27B recipe. See the
+[application guide](docs/guides/applications.md#choosing-a-managed-qwen-preset)
+for its ROCm-only policy, license caveat and install command.
+
 A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
 family available for more constrained GPUs without changing the recipe or
 managed-client default.

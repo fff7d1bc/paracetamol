@@ -31,6 +31,16 @@ func TestSwiftRecipeDoesNotChangeQwenDefault(t *testing.T) {
 	if got := swift.NextCommand(); got != "./paracetamol run llama-cpp server --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0" {
 		t.Fatalf("Swift next command = %q", got)
 	}
+	flash, err := Find("llama-cpp", "swift1.5-flash-next")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(flash.Bundles, []string{"llama-ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m"}) {
+		t.Fatalf("Swift Flash-Next bundles = %v", flash.Bundles)
+	}
+	if got := flash.NextCommand(); got != "./paracetamol run llama-cpp server --preset ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m" {
+		t.Fatalf("Swift Flash-Next next command = %q", got)
+	}
 	qwen, err := Find("llama-cpp", "qwen3.8")
 	if err != nil {
 		t.Fatal(err)
