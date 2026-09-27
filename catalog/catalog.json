@@ -30,21 +30,6 @@
       "name": "Tencent HY Community License",
       "url": "https://huggingface.co/tencent/HY-MT1.5-7B-GGUF/blob/126325496bc8e3575f1d8615b8ca951d8483f206/License.txt",
       "summary": "The license excludes the EU, United Kingdom, and South Korea from its territory and says use outside that territory is unauthorized. Review the complete terms and determine whether your use is permitted."
-    },
-    "swift-open-license-1.0": {
-      "name": "Swift Open License v1.0",
-      "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE",
-      "summary": "UkisAI's adapted weights have commercial-use restrictions tied to gross annual revenue, including affiliates. Review the complete terms before use."
-    },
-    "swift-open-license-flash-next-1.0": {
-      "name": "Swift Open License v1.0 (Flash-Next)",
-      "url": "https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/blob/0bd4fe22431372cdad1979267d3ab45aa7e6150a/LICENSE",
-      "summary": "UkisAI's adapted weights have commercial-use restrictions tied to gross annual revenue, including affiliates. Review the complete terms before use."
-    },
-    "qwen-community-license-flash-next-1.0": {
-      "name": "Qwen Community License 1.0 (Flash-Next)",
-      "url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE",
-      "summary": "Review the model-name, commercial-scale, Model-as-a-Service, and AI Work Assistant terms before using this Qwen derivative."
     }
   },
   "artifacts": {
@@ -1218,92 +1203,6 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
-    "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 GGUF with embedded MTP heads for llama.cpp",
-      "source": {
-        "repository": "ukisai/Swift-1.5-Qwen3.8-27B-GGUF",
-        "revision": "a1614465cfa35d04d3e8575d713fa779662b5eab",
-        "path": "Swift-1.5-Qwen3.8-27B-Q8_0.gguf"
-      },
-      "destination": "ukisai-swift1.5-qwen3.8-27b/ukisai-Swift-1.5-Qwen3.8-27B-Q8_0.gguf",
-      "target": "llama-models",
-      "size": 29047084416,
-      "sha256": "0b3b4aa0e367c620756de4f9db77fc18f94fbeb256db208281cbb84c48e2a101",
-      "license": {
-        "spdx": "LicenseRef-Swift-Open-1.0",
-        "status": "verified",
-        "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE"
-      },
-      "agreements": [
-        "swift-open-license-1.0"
-      ]
-    },
-    "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-1": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 Flash-Next Q4_K_M GGUF shard 1 of 3 for llama.cpp",
-      "source": {
-        "repository": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF",
-        "revision": "0142554c963a8653912c0c8283f05f13f63653f3",
-        "path": "Q4_K_M/Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00001-of-00003.gguf"
-      },
-      "destination": "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m/ukisai-Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00001-of-00003.gguf",
-      "target": "llama-models",
-      "size": 44648342368,
-      "sha256": "994d3e3303eba363662dfc513e5fdb0c9802df141b456e4ad0200888a31b3d94",
-      "license": {
-        "spdx": "NOASSERTION",
-        "status": "unverified",
-        "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF/blob/0142554c963a8653912c0c8283f05f13f63653f3/README.md",
-        "warning": "The pinned GGUF card links the Swift and Qwen licenses but does not include their text in the conversion repository. Paracetamol does not assert that those terms cover the GGUF files.",
-        "upstream_repository": "ukisai/Swift1.5-Qwen3.8-Flash-Next",
-        "upstream_license": "Swift Open License v1.0 and Qwen Community License 1.0",
-        "upstream_license_url": "https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/tree/0bd4fe22431372cdad1979267d3ab45aa7e6150a"
-      },
-      "agreements": ["swift-open-license-flash-next-1.0", "qwen-community-license-flash-next-1.0"]
-    },
-    "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-2": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 Flash-Next Q4_K_M GGUF shard 2 of 3 for llama.cpp",
-      "source": {
-        "repository": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF",
-        "revision": "0142554c963a8653912c0c8283f05f13f63653f3",
-        "path": "Q4_K_M/Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00002-of-00003.gguf"
-      },
-      "destination": "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m/ukisai-Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00002-of-00003.gguf",
-      "target": "llama-models",
-      "size": 44928589600,
-      "sha256": "2fcea3b32795ea415a2a58fb6d81829de3d4f195d6d14ab1f62a382765140a80",
-      "license": {
-        "spdx": "NOASSERTION",
-        "status": "unverified",
-        "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF/blob/0142554c963a8653912c0c8283f05f13f63653f3/README.md",
-        "warning": "The pinned GGUF card links the Swift and Qwen licenses but does not include their text in the conversion repository. Paracetamol does not assert that those terms cover the GGUF files.",
-        "upstream_repository": "ukisai/Swift1.5-Qwen3.8-Flash-Next",
-        "upstream_license": "Swift Open License v1.0 and Qwen Community License 1.0",
-        "upstream_license_url": "https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/tree/0bd4fe22431372cdad1979267d3ab45aa7e6150a"
-      },
-      "agreements": ["swift-open-license-flash-next-1.0", "qwen-community-license-flash-next-1.0"]
-    },
-    "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-3": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 Flash-Next Q4_K_M GGUF shard 3 of 3 for llama.cpp",
-      "source": {
-        "repository": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF",
-        "revision": "0142554c963a8653912c0c8283f05f13f63653f3",
-        "path": "Q4_K_M/Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00003-of-00003.gguf"
-      },
-      "destination": "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m/ukisai-Swift-1.5-Qwen3.8-Flash-Next-Q4_K_M-00003-of-00003.gguf",
-      "target": "llama-models",
-      "size": 30022097984,
-      "sha256": "479377e61b50d8542627f99219480f37aeeafa7fcb6cf4f530f56642c60feaa1",
-      "license": {
-        "spdx": "NOASSERTION",
-        "status": "unverified",
-        "url": "https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF/blob/0142554c963a8653912c0c8283f05f13f63653f3/README.md",
-        "warning": "The pinned GGUF card links the Swift and Qwen licenses but does not include their text in the conversion repository. Paracetamol does not assert that those terms cover the GGUF files.",
-        "upstream_repository": "ukisai/Swift1.5-Qwen3.8-Flash-Next",
-        "upstream_license": "Swift Open License v1.0 and Qwen Community License 1.0",
-        "upstream_license_url": "https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/tree/0bd4fe22431372cdad1979267d3ab45aa7e6150a"
-      },
-      "agreements": ["swift-open-license-flash-next-1.0", "qwen-community-license-flash-next-1.0"]
-    },
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL GGUF shard 1 of 4 for llama.cpp",
       "source": {
@@ -2096,27 +1995,6 @@
         "all",
         "llama"
       ]
-    },
-    "llama-ukisai-swift1.5-qwen3.8-27b-mtp-q8-0": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 27B Q8_0 llama.cpp model with embedded MTP heads",
-      "application": "llama-cpp",
-      "artifacts": [
-        "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
-    "llama-ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m": {
-      "description": "UkisAI Swift 1.5 Qwen3.8 Flash-Next 125B-A6B Q4_K_M llama.cpp model",
-      "application": "llama-cpp",
-      "artifacts": [
-        "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-1",
-        "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-2",
-        "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-3"
-      ],
-      "groups": ["all", "llama"]
     },
     "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "description": "Qwen3.8 Flash-Next 125B-A6B Unsloth Dynamic Q4_K_XL llama.cpp model",
@@ -2922,43 +2800,6 @@
       "reasoning_default": "medium",
       "reasoning_off": true,
       "reasoning_preserve": true
-    },
-    "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0": {
-      "bundle": "llama-ukisai-swift1.5-qwen3.8-27b-mtp-q8-0",
-      "artifact": "ukisai-swift1.5-qwen3.8-27b-q8-0-gguf",
-      "default_context": 262144,
-      "speculative_type": "draft-mtp",
-      "draft_tokens": 3,
-      "chat_template": "qwen3.8",
-      "sampling_policy": "qwen3.8-27b",
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "xhigh"
-      ],
-      "reasoning_default": "medium",
-      "reasoning_off": true,
-      "reasoning_preserve": true
-    },
-    "ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m": {
-      "bundle": "llama-ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m",
-      "artifact": "ukisai-swift1.5-qwen3.8-flash-next-q4-k-m-gguf-1",
-      "backends": ["rocm"],
-      "backend_profiles": {"rocm": ["strix-halo"]},
-      "default_context": 262144,
-      "chat_template": "qwen3.8",
-      "sampling_policy": "qwen3.8-flash-next",
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": ["low", "medium", "xhigh"],
-      "reasoning_default": "medium",
-      "reasoning_off": true,
-      "reasoning_preserve": true,
-      "flash_attention": {"strix-halo": "on"},
-      "model_load": {"strix-halo": "stream-token-embedding"},
-      "kv_cache": {"strix-halo": "f16"}
     },
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",

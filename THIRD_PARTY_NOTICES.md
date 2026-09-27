@@ -99,13 +99,6 @@ revisions recorded in `catalog/catalog.json`.
   from base-model revision
   `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`; it changes the omitted-effort
   fallback from native xhigh to native medium.
-- Swift 1.5 Qwen3.8 27B Q8_0 is downloaded from the pinned
-  `ukisai/Swift-1.5-Qwen3.8-27B-GGUF` revision. It contains an adapted
-  contribution based on Qwen's Apache-2.0 model. UkisAI's contribution is
-  subject to the [Swift Open License v1.0](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE),
-  including its commercial-use revenue condition. The installer requires
-  explicit acceptance. Paracetamol records the GGUF's exact size and SHA-256
-  and does not redistribute it.
 - Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL is downloaded in four shards
   from one full pinned Unsloth revision.
   That repository declares the Qwen
@@ -116,17 +109,6 @@ revisions recorded in `catalog/catalog.json`.
   The managed Qwen3.8 template also matches Qwen3.8 Flash-Next revision
   `de4b8e4d43b917e7706784d8bb445c9af86a3540` before Paracetamol's common
   medium-default adaptation.
-- Swift 1.5 Qwen3.8 Flash-Next Q4_K_M is downloaded in three shards from
-  pinned `ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF` revision
-  `0142554c963a8653912c0c8283f05f13f63653f3`. The same publisher's
-  GGUF card states that its adapted contribution is under the
-  [Swift Open License v1.0](https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/blob/0bd4fe22431372cdad1979267d3ab45aa7e6150a/LICENSE)
-  and its Qwen base under the
-  [Qwen Community License 1.0](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE).
-  The pinned GGUF repository links those terms but contains neither license
-  text. Paracetamol marks the conversion `NOASSERTION`, requires explicit
-  review and risk acknowledgment, records exact shard hashes, and does not
-  redistribute the weights.
 - KAT-Coder V2.5 Dev Q8_0 is downloaded from one full pinned Bartowski GGUF
   revision derived from Kwaipilot's public text-only checkpoint. The
   conversion repository declares Apache-2.0 and records its upstream model

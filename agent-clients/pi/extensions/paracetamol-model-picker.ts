@@ -29,7 +29,6 @@ const THINKING_LEVELS: ThinkingLevel[] = [
 
 const FAMILY_ORDER = [
 	"Qwen 3.8",
-	"Swift 1.5",
 	"Qwen 3.6",
 	"Muse Glimmer",
 	"KAT-Coder",
@@ -47,7 +46,6 @@ function sameModel(left: AnyModel | undefined, right: AnyModel): boolean {
 function modelFamily(model: AnyModel): string {
 	if (model.provider === "paracetamol") {
 		if (model.id.startsWith("unsloth-qwen3.8-")) return "Qwen 3.8";
-		if (model.id.startsWith("ukisai-swift1.5-")) return "Swift 1.5";
 		if (model.id.startsWith("unsloth-qwen3.6-")) return "Qwen 3.6";
 		if (model.id.startsWith("meta-models-muse-glimmer-")) return "Muse Glimmer";
 		if (model.id.startsWith("bartowski-kat-coder-")) return "KAT-Coder";

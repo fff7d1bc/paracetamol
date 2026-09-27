@@ -102,6 +102,11 @@ publisher-prefixed Unsloth Q8/MTP default. This was a focused integration
 smoke on the existing llama.cpp `7ab4ee7` r38 image, not a full quality,
 `xhigh`, streaming, or cross-hardware acceptance pass.
 
+Both Swift presets were subsequently retired from the catalog. The earlier
+runtime smokes remain valid historical observations, but did not predict
+the outcome of a longer Pi coding task. See the [retirement
+record](swift-retirement.md).
+
 ### Fedora 44 Strix Halo llama.cpp `7ab4ee7` update (2026-09-22)
 
 The reviewed native checks are `PASS` on Strix Halo. This is a maintenance
@@ -2093,8 +2098,6 @@ local source image.
 | llama.cpp Qwen3.6 tool protocol | `unsloth-qwen3.6-27b-mtp-q8-0`, complete nested tool round trip at 256K with thinking on (Pi `high`) and off | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
 | llama.cpp Qwen3.8 tool protocol | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, complete nested tool round trip at 256K with off, low, medium, and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
 | llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
-| llama.cpp Swift 1.5 optional path | `ukisai-swift1.5-qwen3.8-27b-mtp-q8-0`, 256K ROCm nested tool round trip with medium and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | medium smoke 2026-09-25; full row pending | pending |
-| llama.cpp Swift 1.5 Flash-Next optional path | `ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m`, 256K ROCm direct reader, medium and xhigh coding/tool checks, 247K retrieval and cached continuation | N/P for this 111.4 GiB GGUF | N/P unless host memory is deliberately used | direct server and managed gateway accepted 2026-09-26; Pi catalog generated, Pi end-to-end loop pending | pending |
 | llama.cpp Muse DFlash | `meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |
 | DwarfStar direct-answer smoke | DeepSeek V4 Flash 0731 Q2 imatrix (routed IQ2_XXS/Q2_K, Q8 attention/shared/output), 4K context, 64-token ceiling | N/P unless host memory offload is deliberately provisioned | pending | pending | pending |
 
