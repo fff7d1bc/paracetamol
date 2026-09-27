@@ -217,8 +217,8 @@ only a thin string template around the model. The translation direction and
 output rules remain part of the user message.
 
 Text preset IDs start with the pinned GGUF publisher's Hugging Face account.
-For example, `unsloth-` identifies Unsloth's Qwen conversion, `meta-models-`
-identifies Meta's Muse conversion, and `ukisai-` identifies Swift. The prefix
+For example, `unsloth-` identifies Unsloth's Qwen conversion, and `meta-models-`
+identifies Meta's Muse conversion. The prefix
 names the artifact source, not necessarily the base-model developer. Old
 unprefixed API model IDs and exact bundle selectors no longer work. Installed
 artifacts and verification receipts keep their original paths and IDs.
@@ -242,8 +242,6 @@ speculative decoding:
 | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
 | `unsloth-qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
-| `ukisai-swift1.5-qwen3.8-27b-mtp-q8-0` | Swift 1.5 adapted 27B Q8_0 with MTP at 256K | Opt-in comparison, subject to Swift Open License v1.0 |
-| `ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m` | Swift 1.5 Flash-Next Q4_K_M at 256K, no MTP | Optional high-memory ROCm Strix Halo comparison; separate Swift and Qwen terms |
 | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
 
 Keep whichever model succeeds on representative tasks rather than choosing
@@ -254,44 +252,11 @@ The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
 
-Swift 1.5 has a separate recipe and does not replace the Unsloth default:
-
-```bash
-./paracetamol content install llama-cpp swift1.5 --accept-license
-./paracetamol run llama-cpp server \
-  --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0
-```
-
-It uses the managed Qwen3.8 template, medium-default reasoning and sampling
-policy, 256K context, and three MTP draft tokens. The adapted weights have a
-separate [Swift Open License v1.0](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-27B-GGUF/blob/a1614465cfa35d04d3e8575d713fa779662b5eab/LICENSE)
-with a commercial-use condition. Review the terms before installing. This
-is a separate adapted model, not a different quantization of the Unsloth
-weights. Compare both on representative work before changing your default.
-
-Swift 1.5 Flash-Next is a different, much larger adapted model. Its own
-recipe avoids adding 111.4 GiB to the Swift 27B installation:
-
-```bash
-./paracetamol content install llama-cpp swift1.5-flash-next \
-  --accept-license --acknowledge-license-risk
-./paracetamol run llama-cpp server \
-  --preset ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m
-```
-
-This three-shard Q4_K_M preset uses the managed Qwen3.8 template, Flash-Next
-sampling policy, medium-default reasoning, F16 K/V cache and the same
-Strix Halo ROCm direct-reader policy as the Unsloth Flash-Next preset. It
-has no MTP alias. Matched small coding and tool checks passed, as did a
-247K-token retrieval and cached continuation on the accepted 128 GB host.
-The high-context run was slow, about 142 prompt tokens/s and 6.6 decode
-tokens/s, so successful capacity is not a speed claim. Vulkan and other
-hardware profiles have not passed acceptance for this GGUF and are not
-advertised. The pinned GGUF card links the [Swift terms](https://huggingface.co/ukisai/Swift1.5-Qwen3.8-Flash-Next/blob/0bd4fe22431372cdad1979267d3ab45aa7e6150a/LICENSE)
-and [Qwen terms](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE),
-but the conversion repository does not carry their text. Review both and
-acknowledge that provenance gap before installing. The trusted dense 27B
-MTP Q8 default remains unchanged.
+The previously curated Swift adaptations were retired after a long Pi coding
+session failed to finish while the Unsloth Flash-Next completed the same
+request. See the [retirement record](../swift-retirement.md) for the observed
+behavior and limits of that comparison. Installed Swift files are not removed
+automatically.
 
 The Flash-Next family has its own guided recipe because it has a different
 architecture and operating envelope. The recipe installs the accepted

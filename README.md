@@ -182,28 +182,12 @@ three draft tokens, and uses native medium reasoning effort. Its non-MTP
 control shares the same verified artifact.
 
 Public text model IDs now begin with the publisher of the pinned GGUF. The
-default above is `unsloth-…`, the Muse presets are `meta-models-…`, and the
-optional Swift 1.5 preset is `ukisai-…`. These are breaking changes for
-clients that send a literal `model` ID, including OpenAI-compatible HTTP
-clients. Update those IDs after upgrading; Pi and Maki regenerate their model
-lists from the gateway. Installed model files and their verification receipts
-are not renamed or re-downloaded. Run `./paracetamol content list models` to
-see the full current IDs.
-
-Swift 1.5 is an opt-in alternative, not the default. Its adapted weights use
-the Swift Open License v1.0, so read the terms before accepting them:
-
-```bash
-./paracetamol content install llama-cpp swift1.5 --accept-license
-./paracetamol run llama-cpp server \
-  --preset ukisai-swift1.5-qwen3.8-27b-mtp-q8-0
-```
-
-Swift 1.5 Flash-Next is another opt-in model with a separate, 111.4 GiB
-three-shard install for 128 GB Strix Halo. It does not change the dense
-Qwen3.8 default or add weight to the Swift 27B recipe. See the
-[application guide](docs/guides/applications.md#choosing-a-managed-qwen-preset)
-for its ROCm-only policy, license caveat and install command.
+default above is `unsloth-…`, and the Muse presets are `meta-models-…`.
+These are breaking changes for clients that send a literal `model` ID,
+including OpenAI-compatible HTTP clients. Update those IDs after upgrading;
+Pi and Maki regenerate their model lists from the gateway. Installed model
+files and their verification receipts are not renamed or re-downloaded. Run
+`./paracetamol content list models` to see the full current IDs.
 
 A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
 family available for more constrained GPUs without changing the recipe or

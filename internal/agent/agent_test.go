@@ -292,12 +292,13 @@ func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	}
 }
 
-func TestSwiftAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
+func TestOptionalQwenAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	models, err := AgentModels(managed, []string{RecommendedModel, "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"})
+	const optionalModel = "unsloth-qwen3.8-27b-mtp-ud-q4-k-xl"
+	models, err := AgentModels(managed, []string{RecommendedModel, optionalModel})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,7 @@ func TestSwiftAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 	}
 	maki := makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", makiModels(models), "", "")
 	for name, encoded := range map[string][]byte{"Pi": pi, "Maki": maki} {
-		for _, id := range []string{RecommendedModel, "ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"} {
+		for _, id := range []string{RecommendedModel, optionalModel} {
 			if !bytes.Contains(encoded, []byte(id)) {
 				t.Errorf("%s config lacks %q", name, id)
 			}

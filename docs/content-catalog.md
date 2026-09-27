@@ -418,10 +418,8 @@ The public llama.cpp recipes are the paired Qwen3.6 dense 27B and sparse
 35B-A3B MTP selection, the separate single-artifact Qwen3.8 dense target with
 optional embedded-MTP runtime, KAT-Coder, Muse Glimmer's one Dynamic
 target/draft pair, high-memory Japanese and English Shisa V2.1, and the
-focused HY and Gemma translation families. Swift 1.5 27B and Swift 1.5
-Flash-Next are separate recipes: choosing the 27B model must not pull the
-111.4 GiB Flash-Next conversion. The Unsloth Flash-Next conversion also
-keeps its own recipe, rather than sharing an install selector with Swift.
+focused HY and Gemma translation families. The Unsloth Flash-Next conversion
+keeps its own recipe because it has a distinct architecture and memory policy.
 Muse's forced-256K DFlash preset is the recipe launch; its 128K base and DFlash
 controls share the installed pair. Qwen3.8 MTP at medium is the managed-client
 default and remains its own family recipe even though both Qwen releases serve

@@ -21,41 +21,19 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 9 || len(loaded.Artifacts) != 74 || len(loaded.Bundles) != 54 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 20 || len(loaded.DwarfStarPresets) != 1 {
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
 	}
-	swift := loaded.LlamaPresets["ukisai-swift1.5-qwen3.8-27b-mtp-q8-0"]
-	swiftArtifact := loaded.Artifacts[swift.Artifact]
-	if swift.DefaultContext != 262144 || swift.SpeculativeType != "draft-mtp" || swift.DraftTokens != 3 || swift.ChatTemplate != "qwen3.8" || swift.SamplingPolicy != "qwen3.8-27b" || !swift.AgentTools || swift.ReasoningDefault != "medium" || !swift.ReasoningPreserve {
-		t.Fatalf("unexpected Swift preset: %#v", swift)
-	}
-	if swiftArtifact.Source.Repository != "ukisai/Swift-1.5-Qwen3.8-27B-GGUF" || swiftArtifact.License.SPDX != "LicenseRef-Swift-Open-1.0" || len(swiftArtifact.Agreements) != 1 || swiftArtifact.Agreements[0] != "swift-open-license-1.0" {
-		t.Fatalf("unexpected Swift provenance: %#v", swiftArtifact)
-	}
 	flashNextQ4 := loaded.LlamaPresets["unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
 	if flashNextQ4.DefaultContext != 262144 || strings.Join(flashNextQ4.Backends, ",") != "rocm,vulkan" || flashNextQ4.ModelLoad["strix-halo"] != LlamaModelLoadStreamTokenEmbedding || flashNextQ4.SpeculativeType != "" || flashNextQ4.KVCache["strix-halo"] != "f16" {
 		t.Fatalf("unexpected Qwen3.8 Flash-Next Q4_K_XL preset: %#v", flashNextQ4)
 	}
-	swiftNext := loaded.LlamaPresets["ukisai-swift1.5-qwen3.8-flash-next-125b-a6b-q4-k-m"]
-	if swiftNext.DefaultContext != 262144 || strings.Join(swiftNext.Backends, ",") != "rocm" || !swiftNext.SupportsRuntime("rocm", "strix-halo") || swiftNext.SupportsRuntime("rocm", "rdna4") || swiftNext.SupportsRuntime("vulkan", "strix-halo") || swiftNext.ModelLoad["strix-halo"] != LlamaModelLoadStreamTokenEmbedding || swiftNext.KVCache["strix-halo"] != "f16" || swiftNext.ChatTemplate != "qwen3.8" || swiftNext.SamplingPolicy != "qwen3.8-flash-next" || swiftNext.ReasoningDefault != "medium" || !swiftNext.AgentTools || !swiftNext.ReasoningPreserve || swiftNext.SpeculativeType != "" {
-		t.Fatalf("unexpected Swift Flash-Next preset: %#v", swiftNext)
-	}
-	swiftNextBundle := loaded.Bundles[swiftNext.Bundle]
-	if len(swiftNextBundle.Artifacts) != 3 || loaded.BundleSize(swiftNextBundle) != 119599029952 {
-		t.Fatalf("unexpected Swift Flash-Next bundle: %#v", swiftNextBundle)
-	}
-	for i, artifactID := range swiftNextBundle.Artifacts {
-		artifact := loaded.Artifacts[artifactID]
-		if artifact.Source.Repository != "ukisai/Swift-1.5-Qwen3.8-Flash-Next-GGUF" || artifact.Source.Revision != "0142554c963a8653912c0c8283f05f13f63653f3" || artifact.License.SPDX != "NOASSERTION" || len(artifact.Agreements) != 2 || !strings.HasSuffix(artifact.Destination, fmt.Sprintf("%05d-of-00003.gguf", i+1)) {
-			t.Fatalf("unexpected Swift Flash-Next shard %d: %#v", i+1, artifact)
-		}
-	}
 	for id, preset := range loaded.LlamaPresets {
-		if id != flashNextQ4.ID && id != swiftNext.ID && (len(preset.BackendProfiles) != 0 || len(preset.ModelLoad) != 0) {
+		if id != flashNextQ4.ID && (len(preset.BackendProfiles) != 0 || len(preset.ModelLoad) != 0) {
 			t.Fatalf("unrelated preset %s acquired an exceptional runtime policy", id)
 		}
 		for profile, cacheType := range preset.KVCache {
