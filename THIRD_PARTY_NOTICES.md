@@ -60,7 +60,11 @@ revisions recorded in `catalog/catalog.json`.
   tiles use existing upstream kernels rather than the fork's global tile
   table changes. These additions remain limited to explicitly opted-in
   Qwen4exp graphs and exact `gfx1151` dispatch. The fork's BF16 shadow weights,
-  residual downcasts, and persistent pooled-key cache are not included.
+  residual downcasts, and physical-cell pooled-key cache are not included.
+  A local derived-key cache follows the reuse idea with explicit successful-batch
+  publication and conservative invalidation on memory mutation or restore.
+  It retains the original F32 preparation graph and does not change saved-state
+  formats or F16 KV precision.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

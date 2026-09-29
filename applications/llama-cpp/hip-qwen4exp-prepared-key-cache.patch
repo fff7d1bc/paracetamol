@@ -1,0 +1,562 @@
+diff --git a/src/llama-memory-hybrid-idx.cpp b/src/llama-memory-hybrid-idx.cpp
+index 8e67f77cc..9b55e8dbf 100644
+--- a/src/llama-memory-hybrid-idx.cpp
++++ b/src/llama-memory-hybrid-idx.cpp
+@@ -66,7 +66,39 @@ llama_memory_hybrid_idx::llama_memory_hybrid_idx(
+             model, hparams_idx, type_k, type_v, v_trans, offload, unified,
+             kv_size, n_seq_max, n_pad, n_swa, swa_type,
+             nullptr, filter_idx, nullptr, nullptr, "idx_");
+-    }()) {}
++    }()) {
++    const char * cache = getenv("PARACETAMOL_QWEN4EXP_QSA_CACHE");
++    const char * graph = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
++    if (!cache || std::string(cache) != "1" || !graph || std::string(graph) != "1" ||
++            model.arch != LLM_ARCH_QWEN4EXP || !mem_idx || !offload || n_swa ||
++            type_k != GGML_TYPE_F16 || type_v != GGML_TYPE_F16 ||
++            model.hparams.indexer_head_size != 128) return;
++    const int layers = model.hparams.n_layer_all;
++    qsa_keys.resize(layers, nullptr);
++    qsa_state = qwen4exp_key_cache_state(layers);
++    std::map<ggml_backend_buffer_type_t, ggml_context_ptr> contexts;
++    for (int il = 0; il < layers; ++il) {
++        if (!model.hparams.has_kv(il) || !filter_idx(il) || model.hparams.dsv4_compress_ratios[il] != 4) continue;
++        auto * dev = model.dev_layer(il);
++        if (std::string(ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev))) != "ROCm") continue;
++        auto * buft = ggml_backend_dev_buffer_type(dev);
++        auto & ctx = contexts[buft];
++        if (!ctx) {
++            ctx.reset(ggml_init({size_t(layers)*ggml_tensor_overhead(), nullptr, true}));
++            if (!ctx) throw std::runtime_error("QSA prepared-key metadata allocation failed");
++        }
++        qsa_keys[il] = ggml_new_tensor_2d(ctx.get(), GGML_TYPE_F32, 128, (kv_size+3)/4+1);
++        ggml_format_name(qsa_keys[il], "cache_qsa_prepared_l%d", il);
++    }
++    for (auto & entry : contexts) {
++        ggml_backend_buffer_ptr buffer(ggml_backend_alloc_ctx_tensors_from_buft(entry.second.get(), entry.first));
++        if (!buffer) throw std::runtime_error("QSA prepared-key buffer allocation failed");
++        ggml_backend_buffer_clear(buffer.get(), 0);
++        LLAMA_LOG_INFO("%s: %s QSA prepared-key buffer = %.2f MiB (derived F32)\n", __func__,
++                ggml_backend_buft_name(entry.first), ggml_backend_buffer_get_size(buffer.get()) / (1024.0*1024.0));
++        qsa_buffers.emplace_back(std::move(entry.second), std::move(buffer));
++    }
++}
+ 
+ llama_memory_context_ptr llama_memory_hybrid_idx::init_batch(llama_batch_allocr & balloc, uint32_t n_ubatch, bool embd_all) {
+     // note: repeats llama_memory_hybrid::init_batch, as the indexer needs the attention slot infos that the base context hides
+@@ -138,10 +170,15 @@ llama_memory_context_ptr llama_memory_hybrid_idx::init_full() {
+ }
+ 
+ llama_memory_context_ptr llama_memory_hybrid_idx::init_update(llama_context * lctx, bool optimize) {
+-    return std::make_unique<llama_memory_hybrid_idx_context>(this, lctx, optimize);
++    auto result = std::make_unique<llama_memory_hybrid_idx_context>(this, lctx, optimize);
++    const auto * idx = result->get_idx();
++    if (result->get_status() != LLAMA_MEMORY_STATUS_NO_UPDATE ||
++            (idx && idx->get_status() != LLAMA_MEMORY_STATUS_NO_UPDATE)) qsa_state.invalidate();
++    return result;
+ }
+ 
+ void llama_memory_hybrid_idx::clear(bool data) {
++    qsa_state.invalidate();
+     llama_memory_hybrid::clear(data);
+ 
+     if (mem_idx) {
+@@ -150,6 +187,7 @@ void llama_memory_hybrid_idx::clear(bool data) {
+ }
+ 
+ bool llama_memory_hybrid_idx::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
++    qsa_state.invalidate();
+     // same order as llama_memory_hybrid::seq_rm: the recurrent cache can refuse, so try it first
+     if (!get_mem_recr()->seq_rm(seq_id, p0, p1)) {
+         return false;
+@@ -163,6 +201,7 @@ bool llama_memory_hybrid_idx::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_po
+ }
+ 
+ void llama_memory_hybrid_idx::seq_cp(llama_seq_id seq_id_src, llama_seq_id seq_id_dst, llama_pos p0, llama_pos p1) {
++    qsa_state.invalidate();
+     llama_memory_hybrid::seq_cp(seq_id_src, seq_id_dst, p0, p1);
+ 
+     if (mem_idx) {
+@@ -171,6 +210,7 @@ void llama_memory_hybrid_idx::seq_cp(llama_seq_id seq_id_src, llama_seq_id seq_i
+ }
+ 
+ void llama_memory_hybrid_idx::seq_keep(llama_seq_id seq_id) {
++    qsa_state.invalidate();
+     llama_memory_hybrid::seq_keep(seq_id);
+ 
+     if (mem_idx) {
+@@ -179,6 +219,7 @@ void llama_memory_hybrid_idx::seq_keep(llama_seq_id seq_id) {
+ }
+ 
+ void llama_memory_hybrid_idx::seq_add(llama_seq_id seq_id, llama_pos p0, llama_pos p1, llama_pos shift) {
++    qsa_state.invalidate();
+     llama_memory_hybrid::seq_add(seq_id, p0, p1, shift);
+ 
+     if (mem_idx) {
+@@ -187,6 +228,7 @@ void llama_memory_hybrid_idx::seq_add(llama_seq_id seq_id, llama_pos p0, llama_p
+ }
+ 
+ void llama_memory_hybrid_idx::seq_div(llama_seq_id seq_id, llama_pos p0, llama_pos p1, int d) {
++    qsa_state.invalidate();
+     llama_memory_hybrid::seq_div(seq_id, p0, p1, d);
+ 
+     if (mem_idx) {
+@@ -196,6 +238,9 @@ void llama_memory_hybrid_idx::seq_div(llama_seq_id seq_id, llama_pos p0, llama_p
+ 
+ std::map<ggml_backend_buffer_type_t, size_t> llama_memory_hybrid_idx::memory_breakdown() const {
+     std::map<ggml_backend_buffer_type_t, size_t> mb = llama_memory_hybrid::memory_breakdown();
++    for (const auto & entry : qsa_buffers) {
++        mb[ggml_backend_buffer_get_type(entry.second.get())] += ggml_backend_buffer_get_size(entry.second.get());
++    }
+ 
+     if (mem_idx) {
+         for (const auto & buft_size : mem_idx->memory_breakdown()) {
+@@ -220,6 +265,7 @@ void llama_memory_hybrid_idx::state_write(llama_io_write_i & io, llama_seq_id se
+ }
+ 
+ void llama_memory_hybrid_idx::state_read(llama_io_read_i & io, llama_seq_id seq_id, llama_state_seq_flags flags) {
++    qsa_state.invalidate(); // derived keys are deliberately not serialized
+     // note: repeats llama_memory_hybrid::state_read
+     // the indexer needs the attention cache's cells, and a half-failed restore must leave all three caches alike
+ 
+@@ -252,6 +298,7 @@ void llama_memory_hybrid_idx::state_read(llama_io_read_i & io, llama_seq_id seq_
+ }
+ 
+ void llama_memory_hybrid_idx::state_drop(llama_seq_id seq_id) {
++    qsa_state.invalidate();
+     // dropped directly, not via seq_rm: the recurrent cache may refuse it and then only the other two get cleared
+     if (seq_id < 0) {
+         clear(true);
+@@ -297,10 +344,11 @@ void llama_memory_hybrid_idx::set_input_qsa_compact(
+     auto * positions = (int32_t *) blk_pos->data;
+     auto * bounds = (int32_t *) limits->data;
+     auto * tail = (int32_t *) tails->data;
+-    GGML_ASSERT(members && positions && bounds && tail && complete <= blocks);
++    GGML_ASSERT(members && bounds && tail && complete <= blocks);
+     std::fill(members, members + ratio*blocks, 0);
+     std::copy_n(by_pos.data(), ratio*complete, members);
+-    for (int axis = 0; axis < 4; ++axis) {
++    // Full position metadata is unused when every layer reuses prepared keys.
++    for (int axis = 0; positions && axis < 4; ++axis) {
+         for (int64_t b = 0; b < blocks; ++b) { positions[axis*blocks + b] = b < complete ? b*ratio : 0; }
+     }
+     for (int64_t b = 0; b < blocks; ++b) { bounds[b] = b < complete ? b*ratio : INT32_MAX; }
+@@ -684,6 +732,9 @@ llama_memory_hybrid_idx_context::llama_memory_hybrid_idx_context(
+         new llama_kv_cache_context(mem->get_mem_idx(), std::move(sinfos_idx), ubatches)) {}
+ 
+ bool llama_memory_hybrid_idx_context::next() {
++    // decode() calls next only after successful graph evaluation. Failed or
++    // aborted evaluation calls seq_rm instead, invalidating the derived keys.
++    if (batch_context && mem) mem->qsa_state.commit();
+     compact_support = -1;
+     if (ctx_idx) {
+         ctx_idx->next();
+@@ -702,9 +753,44 @@ bool llama_memory_hybrid_idx_context::apply() {
+         res = res & ctx_idx->apply();
+     }
+ 
++    if (batch_context && mem && !mem->qsa_keys.empty()) {
++        if (res && get_idx()) mem->qsa_cache_begin(get_idx()->get_ubatch(), qsa_compact_supported(get_idx()->get_ubatch()));
++        else mem->qsa_state.invalidate();
++    }
++
+     return res;
+ }
+ 
++void llama_memory_hybrid_idx::qsa_cache_begin(const llama_ubatch & u, bool valid) const {
++    if (valid) {
++        const auto seq = u.seq_id[0][0];
++        valid = mem_idx->seq_pos_max(seq) == u.pos[u.n_tokens-1];
++        for (uint32_t i = 1; valid && i < u.n_tokens; ++i) valid = u.pos[i] == u.pos[0] + int64_t(i);
++    }
++    qsa_state.begin(valid ? u.seq_id[0][0] : -1, valid ? u.pos[0] : -1, u.n_tokens, valid);
++}
++
++ggml_tensor * llama_memory_hybrid_idx_context::qsa_cache(ggml_context * ctx, int layer) const {
++    if (!qsa_cache_available(layer)) return nullptr;
++    auto * keys = mem->qsa_keys[layer];
++    const int64_t rows = (get_idx()->get_n_kv()+3)/4+1;
++    GGML_ASSERT(rows <= keys->ne[1]);
++    return ggml_view_2d(ctx, keys, keys->ne[0], rows, keys->nb[1], 0);
++}
++
++bool llama_memory_hybrid_idx_context::qsa_cache_available(int layer) const {
++    return batch_context && mem && get_idx() && mem->qsa_state.active &&
++        get_idx()->get_ubatch().n_tokens == 1 &&
++        layer >= 0 && size_t(layer) < mem->qsa_keys.size() && mem->qsa_keys[layer];
++}
++
++bool llama_memory_hybrid_idx_context::qsa_cache_fast(int layer) const {
++    return batch_context && mem && mem->qsa_state.active &&
++        layer >= 0 && size_t(layer) < mem->qsa_keys.size() && mem->qsa_keys[layer] && mem->qsa_state.fast(layer);
++}
++
++void llama_memory_hybrid_idx_context::qsa_cache_mark(int layer) const { mem->qsa_state.mark(layer); }
++
+ const llama_kv_cache_context * llama_memory_hybrid_idx_context::get_idx() const {
+     return static_cast<const llama_kv_cache_context *>(ctx_idx.get());
+ }
+diff --git a/src/llama-memory-hybrid-idx.h b/src/llama-memory-hybrid-idx.h
+index e48bbdc2d..bc4f86d61 100644
+--- a/src/llama-memory-hybrid-idx.h
++++ b/src/llama-memory-hybrid-idx.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include "llama-memory-hybrid.h"
++#include "qwen4exp-key-cache.h"
+ 
+ #include <memory>
+ #include <vector>
+@@ -93,6 +94,12 @@ public:
+                               const llama_ubatch & ubatch, uint32_t n_kv, uint32_t ratio) const;
+ 
+ private:
++    friend class llama_memory_hybrid_idx_context;
++    void qsa_cache_begin(const llama_ubatch & ubatch, bool valid) const;
++    std::vector<ggml_tensor *> qsa_keys;
++    std::vector<std::pair<ggml_context_ptr, ggml_backend_buffer_ptr>> qsa_buffers;
++    mutable qwen4exp_key_cache_state qsa_state;
++
+     // forget seq_id (all of it if seq_id < 0) in every cache at once, so a failed restore cannot leave the caches out of step
+     // seq_id < 0 drops the whole context, as the caches themselves do on a failed restore
+     void state_drop(llama_seq_id seq_id);
+@@ -155,6 +162,11 @@ public:
+                               ggml_tensor * limits, ggml_tensor * tails,
+                               const llama_ubatch & ubatch, uint32_t ratio) const;
+ 
++    ggml_tensor * qsa_cache(ggml_context * ctx, int layer) const;
++    bool qsa_cache_available(int layer) const;
++    bool qsa_cache_fast(int layer) const;
++    void qsa_cache_mark(int layer) const;
++
+ private:
+     const llama_memory_hybrid_idx * mem = nullptr;
+     // Cache only within one applied ubatch. Every layer asks the same question,
+diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
+index 29dfded82..97e7f89b9 100644
+--- a/src/models/qwen4exp.cpp
++++ b/src/models/qwen4exp.cpp
+@@ -531,6 +531,34 @@ static bool qwen4exp_compact_qsa(const llama_memory_hybrid_idx_context * mctx,
+ 
+ // QSA attends to a budget of whole blocks of compress_ratio tokens, plus the incomplete tail
+ // one mean-pooled indexer key scores each block; set_input resolves the cache layout
++class qwen4exp_prepared_input : public llm_graph_input_i {
++public:
++    const llama_memory_hybrid_idx_context * mctx;
++    int layer;
++    bool fast;
++    ggml_tensor * full_members = nullptr;
++    ggml_tensor * members = nullptr, * positions = nullptr, * rows = nullptr;
++    qwen4exp_prepared_input(const llama_memory_hybrid_idx_context * m, int l, bool f) : mctx(m), layer(l), fast(f) {}
++    void set_input(const llama_ubatch * u) override {
++        if (fast) {
++            const int64_t complete = (int64_t(u->pos[0])+1)/4;
++            GGML_ASSERT(complete > 0 && full_members->data && members->data && positions->data && rows->data);
++            auto * ids = (int32_t *) members->data;
++            std::copy_n((const int32_t *) full_members->data + 4*(complete-1), 4, ids);
++            std::fill(ids+4, ids+8, 0);
++            auto * p = (int32_t *) positions->data;
++            for (int axis = 0; axis < 4; ++axis) { p[2*axis] = 4*(complete-1); p[2*axis+1] = 0; }
++            auto * r = (int64_t *) rows->data;
++            r[0] = complete-1; r[1] = complete;
++        }
++        mctx->qsa_cache_mark(layer);
++    }
++    bool can_reuse(const llm_graph_params & p) override {
++        mctx = static_cast<const llama_memory_hybrid_idx_context *>(p.mctx);
++        return mctx && mctx->qsa_cache_available(layer) && fast == mctx->qsa_cache_fast(layer);
++    }
++};
++
+ class llama_model_qwen4exp::llm_graph_input_qsa : public llm_graph_input_i {
+ public:
+     llm_graph_input_qsa(const llama_memory_hybrid_idx_context * mctx, uint32_t ratio, bool blk_bias) :
+@@ -668,32 +696,65 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_top_k(
+     ggml_tensor * k_all = mctx_idx->get_k(ctx0, il);
+     k_all = ggml_view_3d(ctx0, k_all, idx_dim, n_kv, n_stream, k_all->nb[2], k_all->nb[3], 0);
+ 
+-    // gathers per stream: blk_cells row s indexes stream s's own cells
+-    ggml_tensor * members = ggml_get_rows(ctx0, k_all, inp->blk_cells);
+-    if (inp->compact) ggml_set_name(members, "qwen4exp_qsa_members");
+-    members = ggml_reshape_4d(ctx0, members, idx_dim, r, n_blocks, n_stream);
+-
+-    // mean over the block members; r is small, so summing slices beats a transpose plus sum_rows
+-    ggml_tensor * pooled = nullptr;
+-    for (int64_t i = 0; i < r; ++i) {
+-        ggml_tensor * slice = ggml_cont(ctx0,
+-                ggml_view_3d(ctx0, members, idx_dim, n_blocks, n_stream,
+-                        members->nb[2], members->nb[3], i*members->nb[1]));
+-        pooled = pooled ? ggml_add(ctx0, pooled, slice) : slice;
++    // Prepared F32 keys are derived from the unchanged F16 raw indexer cache.
++    // Only successful single-token appends reuse complete blocks. Prefills
++    // keep their original graph. The first decode after invalidation computes
++    // all keys normally and seeds the derived cache for subsequent appends.
++    auto * storage = inp->compact ? mctx_hyb->qsa_cache(ctx0, il) : nullptr;
++    const bool fast_cache = storage && mctx_hyb->qsa_cache_fast(il);
++    const int64_t prep_blocks = fast_cache ? 2 : n_blocks;
++    auto * member_rows = inp->blk_cells;
++    auto * block_positions = inp->blk_pos;
++    ggml_tensor * cache_rows = nullptr;
++    if (storage) {
++        auto input = std::make_unique<qwen4exp_prepared_input>(mctx_hyb, il, fast_cache);
++        input->full_members = inp->blk_cells;
++        if (fast_cache) {
++            member_rows = input->members = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, 8);
++            block_positions = input->positions = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, 8);
++            cache_rows = input->rows = ggml_new_tensor_1d(ctx0, GGML_TYPE_I64, 2);
++            ggml_set_input(member_rows); ggml_set_input(block_positions); ggml_set_input(cache_rows);
++        }
++        res->add_input(std::move(input));
+     }
+-    pooled = ggml_scale(ctx0, pooled, 1.0f/(float) r);
+-    cb(pooled, "indexer_k_pooled", il);
++    const auto prepare = [&]() {
++        // gathers per stream: blk_cells row s indexes stream s's own cells
++        ggml_tensor * members = ggml_get_rows(ctx0, k_all, member_rows);
++        if (inp->compact) ggml_set_name(members, "qwen4exp_qsa_members");
++        members = ggml_reshape_4d(ctx0, members, idx_dim, r, prep_blocks, n_stream);
++
++        // mean over the block members; r is small, so summing slices beats a transpose plus sum_rows
++        ggml_tensor * pooled = nullptr;
++        for (int64_t i = 0; i < r; ++i) {
++            ggml_tensor * slice = ggml_cont(ctx0,
++                    ggml_view_3d(ctx0, members, idx_dim, prep_blocks, n_stream,
++                            members->nb[2], members->nb[3], i*members->nb[1]));
++            pooled = pooled ? ggml_add(ctx0, pooled, slice) : slice;
++        }
++        pooled = ggml_scale(ctx0, pooled, 1.0f/(float) r);
++        cb(pooled, "indexer_k_pooled", il);
+ 
+-    // count blocks along ne1: rms_norm launches gridDim.y = ne2, capped at 65535, and 262144/4 = 65536
+-    pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, n_blocks*n_stream, 1);
+-    pooled = build_norm(pooled, model.layers[il].index_k_norm, nullptr, LLM_NORM_RMS, il);
++        // count blocks along ne1: rms_norm launches gridDim.y = ne2, capped at 65535, and 262144/4 = 65536
++        pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, prep_blocks*n_stream, 1);
++        pooled = build_norm(pooled, model.layers[il].index_k_norm, nullptr, LLM_NORM_RMS, il);
+ 
+-    // rope wants [n_dims, n_head, n_tokens]: lay every stream's blocks flat, split after.
+-    pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, 1, n_blocks*n_stream);
+-    pooled = ggml_rope_multi(ctx0, pooled, inp->blk_pos, nullptr,
+-            n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
+-            ext_factor, attn_factor, beta_fast, beta_slow);
+-    pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, n_blocks, n_stream);
++        // rope wants [n_dims, n_head, n_tokens]: lay every stream's blocks flat, split after.
++        pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, 1, prep_blocks*n_stream);
++        pooled = ggml_rope_multi(ctx0, pooled, block_positions, nullptr,
++                n_rot, sections, rope_type, n_ctx_orig, freq_base, freq_scale,
++                ext_factor, attn_factor, beta_fast, beta_slow);
++        pooled = ggml_reshape_3d(ctx0, pooled, idx_dim, prep_blocks, n_stream);
++
++        return pooled;
++    };
++    ggml_tensor * pooled = prepare();
++    if (storage) {
++        auto * prepared = ggml_reshape_2d(ctx0, pooled, idx_dim, prep_blocks);
++        auto * destination = fast_cache ? storage : ggml_view_2d(ctx0, storage, idx_dim, n_blocks, storage->nb[1], 0);
++        auto * written = fast_cache ? ggml_set_rows(ctx0, destination, prepared, cache_rows) : ggml_cpy(ctx0, prepared, destination);
++        ggml_build_forward_expand(gf, written);
++        pooled = ggml_view_3d(ctx0, written, idx_dim, n_blocks, 1, written->nb[1], written->nb[1]*n_blocks, 0);
++    }
+     cb(pooled, "indexer_k", il);
+ 
+     ggml_tensor * q = build_lora_mm(model.layers[il].index_q_proj, cur);
+diff --git a/src/qwen4exp-key-cache.h b/src/qwen4exp-key-cache.h
+new file mode 100644
+index 000000000..6b428c66a
+--- /dev/null
++++ b/src/qwen4exp-key-cache.h
+@@ -0,0 +1,45 @@
++#pragma once
++#include <algorithm>
++#include <cstdint>
++#include <vector>
++
++// Derived keys are valid only after a successful ubatch. The memory owner
++// invalidates this ledger before every cache mutation/restore. Unsupported
++// layouts rebuild normally rather than trying to repair derived state.
++struct qwen4exp_key_cache_state {
++    explicit qwen4exp_key_cache_state(size_t layers = 0) : ready(layers, -1), pending(layers) {}
++    std::vector<int64_t> ready;
++    std::vector<bool> pending;
++    int32_t sequence = -1, current_sequence = -1;
++    int64_t end = -1, current_end = -1, current_start = -1;
++    bool active = false;
++
++    void invalidate() {
++        std::fill(ready.begin(), ready.end(), -1);
++        std::fill(pending.begin(), pending.end(), false);
++        sequence = current_sequence = -1;
++        end = current_end = current_start = -1;
++        active = false;
++    }
++    void begin(int32_t seq, int64_t start, int64_t count, bool valid) {
++        if (!valid || seq < 0 || start < 0 || count < 1) { invalidate(); return; }
++        if (active || seq != sequence || start != end) invalidate();
++        std::fill(pending.begin(), pending.end(), false);
++        current_sequence = seq;
++        current_start = start;
++        current_end = start + count;
++        active = true;
++    }
++    bool fast(size_t layer) const {
++        return active && current_end - current_start == 1 && current_end / 4 > 0 &&
++            current_sequence == sequence && current_start == end && ready.at(layer) >= current_start / 4;
++    }
++    void mark(size_t layer) { if (active) pending.at(layer) = true; }
++    void commit() {
++        if (!active) return;
++        for (size_t i = 0; i < ready.size(); ++i) ready[i] = pending[i] ? current_end / 4 : -1;
++        sequence = current_sequence;
++        end = current_end;
++        active = false;
++    }
++};
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index a5b7e3e22..8eb5d1da1 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -160,6 +160,7 @@ if (NOT WIN32 OR NOT BUILD_SHARED_LIBS)
+     llama_build_and_test(test-grammar-integration.cpp)
+     llama_build_and_test(test-llama-grammar.cpp)
+     llama_build_and_test(test-qwen4exp-qsa-prefix.cpp)
++    llama_build_and_test(test-qwen4exp-key-cache.cpp)
+     llama_build_and_test(test-batch-alloc.cpp)
+     llama_build_and_test(test-chat.cpp WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+     target_include_directories(test-chat PRIVATE ${PROJECT_SOURCE_DIR}/tools/server)
+diff --git a/tests/test-qwen4exp-key-cache.cpp b/tests/test-qwen4exp-key-cache.cpp
+new file mode 100644
+index 000000000..27028f8bc
+--- /dev/null
++++ b/tests/test-qwen4exp-key-cache.cpp
+@@ -0,0 +1,42 @@
++#include "../src/qwen4exp-key-cache.h"
++#include <cstdio>
++#include <cstdlib>
++
++#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); std::abort(); } } while (0)
++int main() {
++    qwen4exp_key_cache_state s(2);
++    // Prefill does not populate derived storage. The first decode does.
++    s.begin(0, 0, 4096, true); s.commit();
++    s.begin(0, 4096, 1, true); CHECK(!s.fast(0));
++    s.mark(0); s.mark(1); s.commit();
++    s.begin(0, 4097, 1, true); CHECK(s.fast(0) && s.fast(1));
++    s.invalidate();
++    s.begin(0, 0, 3, true); s.mark(0); s.commit();
++    s.begin(0, 3, 1, true); CHECK(s.fast(0) && !s.fast(1));
++    s.invalidate();
++    s.begin(0, 0, 4096, true);
++    CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    for (int p = 4096; p < 4110; ++p) {
++        s.begin(0, p, 1, true); CHECK(s.fast(0) && s.fast(1));
++        s.mark(0); s.mark(1); s.commit();
++    }
++    // A missing layer cannot be treated as computed.
++    s.begin(0, 4110, 1, true); s.mark(0); s.commit();
++    s.begin(0, 4111, 1, true); CHECK(s.fast(0) && !s.fast(1));
++    s.invalidate(); CHECK(!s.fast(0));
++    // Cancellation after marking but before successful commit must not publish.
++    s.begin(0, 5000, 1, true); CHECK(!s.fast(0)); s.mark(0);
++    s.begin(0, 5001, 1, true); CHECK(!s.fast(0));
++    s.mark(0); s.commit();
++    // Rewinds and replacements rebuild even when the sequence ID is unchanged.
++    s.begin(0, 4000, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
++    s.begin(1, 4001, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
++    s.begin(1, 4002, 1, false); CHECK(!s.fast(0));
++    // A full prefill re-establishes the cache after invalidation.
++    s.begin(2, 0, 8192, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    s.begin(2, 8192, 2, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    s.begin(2, 8194, 1, true); CHECK(s.fast(0));
++    s.invalidate(); // clear, seq_rm/cp/keep/add/div, restore, or layout update
++    s.begin(2, 8194, 1, true); CHECK(!s.fast(0));
++    std::puts("Qwen4exp prepared-key cache ledger passed");
++}
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index b82d442b7..0d64d1ed2 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -8956,6 +8956,74 @@ struct test_qwen_q8_matvec : public test_case {
+     }
+ };
+ 
++struct test_qsa_prepared : public test_case {
++    int blocks;
++    bool tail;
++    ggml_tensor * full_ids = nullptr, * short_ids = nullptr, * full_pos = nullptr, * short_pos = nullptr, * rows = nullptr;
++    test_qsa_prepared(int blocks, bool tail) : blocks(blocks), tail(tail) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_PREPARED"; }
++    std::string vars() override { return VARS_TO_STR2(blocks, tail); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 0; }
++    double err(const float * actual, const float *, size_t n) override {
++        for (size_t i = 0; i < n; ++i) if (actual[i] != 0.0f) return INFINITY;
++        return 0;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * raw = ggml_new_tensor_2d(ctx, GGML_TYPE_F16, 128, 4*blocks);
++        auto * norm = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 128);
++        full_ids = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, 4*blocks);
++        short_ids = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, 8);
++        full_pos = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, 4*blocks);
++        short_pos = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, 8);
++        rows = ggml_new_tensor_1d(ctx, GGML_TYPE_I64, 2);
++        auto prepare = [&](ggml_tensor * ids, ggml_tensor * pos, int n) {
++            auto * members = ggml_get_rows(ctx, raw, ids);
++            ggml_set_name(members, "qwen4exp_qsa_members");
++            members = ggml_reshape_4d(ctx, members, 128, 4, n, 1);
++            ggml_tensor * pooled = nullptr;
++            for (int k = 0; k < 4; ++k) {
++                auto * slice = ggml_cont(ctx, ggml_view_3d(ctx, members, 128, n, 1,
++                    members->nb[2], members->nb[3], k*members->nb[1]));
++                pooled = pooled ? ggml_add(ctx, pooled, slice) : slice;
++            }
++            pooled = ggml_scale(ctx, pooled, 0.25f);
++            pooled = ggml_reshape_3d(ctx, pooled, 128, n, 1);
++            pooled = ggml_mul(ctx, ggml_rms_norm(ctx, pooled, 1e-6f), norm);
++            pooled = ggml_reshape_3d(ctx, pooled, 128, 1, n);
++            int sections[4] = {16, 24, 24, 0};
++            pooled = ggml_rope_multi(ctx, pooled, pos, nullptr, 128, sections, GGML_ROPE_TYPE_IMROPE,
++                262144, 10000000.0f, 1.0f, 0.0f, 1.0f, 32.0f, 1.0f);
++            return ggml_reshape_2d(ctx, pooled, 128, n);
++        };
++        auto * full = prepare(full_ids, full_pos, blocks);
++        auto * short_keys = prepare(short_ids, short_pos, 2);
++        auto * storage = ggml_cont(ctx, full);
++        auto * written = ggml_set_rows(ctx, storage, short_keys, rows);
++        return ggml_sub(ctx, written, full);
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_case::initialize_tensors(ctx);
++        std::vector<int32_t> ids(4*blocks), pos(4*blocks), subids(8), subpos(8);
++        for (int b = 0; b < blocks; ++b) {
++            for (int k = 0; k < 4; ++k) ids[4*b+k] = 4*(blocks-1-b)+k;
++            for (int a = 0; a < 4; ++a) pos[a*blocks+b] = 4*b;
++        }
++        if (tail) {
++            std::fill(ids.end()-4, ids.end(), 0);
++            for (int a = 0; a < 4; ++a) pos[a*blocks+blocks-1] = 0;
++        }
++        std::copy_n(ids.data()+4*(blocks-2), 8, subids.data());
++        for (int a = 0; a < 4; ++a) { subpos[2*a] = 4*(blocks-2); subpos[2*a+1] = tail ? 0 : 4*(blocks-1); }
++        int64_t r[2] = {blocks-2, blocks-1};
++        ggml_backend_tensor_set(full_ids, ids.data(), 0, ggml_nbytes(full_ids));
++        ggml_backend_tensor_set(short_ids, subids.data(), 0, ggml_nbytes(short_ids));
++        ggml_backend_tensor_set(full_pos, pos.data(), 0, ggml_nbytes(full_pos));
++        ggml_backend_tensor_set(short_pos, subpos.data(), 0, ggml_nbytes(short_pos));
++        ggml_backend_tensor_set(rows, r, 0, sizeof(r));
++    }
++};
++
+ struct test_qsa_pool : public test_case {
+     ggml_type type;
+     int blocks, streams;
+@@ -11158,6 +11226,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
+     test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
+     test_cases.emplace_back(new test_qsa_blocks());
++    for (int blocks : {2, 65, 513, 8192, 65535}) {
++        for (bool tail : {false, true}) test_cases.emplace_back(new test_qsa_prepared(blocks, tail));
++    }
+     for (auto type : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_1 }) {
+         test_cases.emplace_back(new test_qwen_moe_tiles(type, 512, 513, true));
+         test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false));
