@@ -279,8 +279,12 @@ The policy also selects a 2048-token microbatch, one non-unified KV slot and
 no RAM prompt archive. Reuse of the current live prefix still works. F16 K/V
 cache, Flash Attention and the 262144-token ceiling are retained.
 On `gfx1151` ROCm, the patched llama.cpp also uses selected-key HIP attention
-for Flash-Next's F16 QSA shape. Vulkan and older Qwen families retain their
-existing attention paths. The [hardware record](../hardware-acceptance.md)
+for Flash-Next's F16 QSA shape. A compact single-sequence graph removes dense
+selection masks and fuses pooling and score reduction. Scoped matrix kernels
+also accelerate this model without changing K/V precision, quantization or
+sampling. Shared, gapped and unsupported cache layouts keep the ordinary
+attention graph. Vulkan and older Qwen families retain their existing paths.
+The [hardware record](../hardware-acceptance.md)
 contains the paired prefill measurements and correctness limits.
 
 Direct startup selects ROCm on Strix Halo, and a ROCm router or gateway

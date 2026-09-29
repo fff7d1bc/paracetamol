@@ -274,6 +274,8 @@ COPY applications/llama-cpp/qwen4exp-qsa-gather.patch \
     /opt/paracetamol/llama-qwen4exp-qsa-gather.patch
 COPY applications/llama-cpp/hip-qwen4exp-qsa-kernels.patch \
     /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch
+COPY applications/llama-cpp/hip-qwen4exp-graph-optimizations.patch \
+    /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
@@ -300,6 +302,8 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch && \
     git apply --check /opt/paracetamol/llama-process-allocation-policy.patch && \
     git apply /opt/paracetamol/llama-process-allocation-policy.patch && \
+    git apply --check /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
+    git apply /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -335,6 +339,9 @@ RUN git init . && \
 
 COPY applications/llama-cpp/test-native-policy.cpp /opt/paracetamol/test-llama-native-policy.cpp
 RUN c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
+        tests/test-qwen4exp-qsa-prefix.cpp -o /tmp/test-qwen4exp-qsa-prefix && \
+    /tmp/test-qwen4exp-qsa-prefix && \
+    c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
         /opt/paracetamol/test-llama-native-policy.cpp \
         -L/opt/llama-install/lib -Wl,-rpath,/opt/llama-install/lib \
         -lllama-common -lllama -lggml -lggml-base -pthread \
@@ -386,7 +393,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

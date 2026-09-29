@@ -277,6 +277,20 @@ protected behavior is fixed.
 | `qwen4exp-qsa-gather.patch` | Carries the single-token QSA K/V gather path from [PR 28213](https://github.com/ggml-org/llama.cpp/pull/28213) at `beed2f78ac42cf16710b763e6f3ba20665c6d233`. It attends to selected cells rather than scanning the full masked cache once depth exceeds four times the selected width. Prefill and multi-token/MTP verification retain the old path. `QWEN4EXP_QSA_GATHER=0` is a process-local escape hatch. | An upstream equivalent passes correct long-context output, prefix reuse, cancellation, and paired decode timing on the applicable backends without a short-context regression. |
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. The mask remains authoritative on fallback backends. A container-level `PARACETAMOL_QWEN4EXP_QSA_KERNEL=0` override disables it. | Upstream provides equivalent selected-key attention with the operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
+| `hip-qwen4exp-graph-optimizations.patch` | Builds on the selected-key patch with compact whole-block selection, 512-query scorer strips, ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and existing small-tile MoE kernels. The graph requires a unique scalar prefix, supported F16 geometry and `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`. HIP dispatch remains exact `gfx1151`. Unsupported cache layouts retain the original graph, while maskless selected attention has a tested CPU fallback. The entrypoint enables this only with the Strix Halo ROCm kernel policy. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` restores the `r40` path. | Upstream equivalents retain block-selection and FP64 attention oracles, fusion alias/lifetime guards, prefix eligibility checks, near-256K retrieval and prefix reuse, and the older-model/backend regression screens. Never silently replace these with BF16 shadow weights or a new persistent derived-cache policy. |
+
+The September 29 `r41` follow-up keeps the first selected-key patch intact.
+It adds a narrowly scoped extraction from the same pinned Strix fork, not
+another engine or a replacement source tree. Compact selection uses a budget
+of complete blocks plus the partial tail, matching the model reference rather
+than taking a fixed number of independently expanded token scores. F16 K/V,
+stored GGUF weights, F32 residuals, sampling and allocation policy are unchanged.
+The fork's BF16 matrix/residual paths, persistent pooled-key cache and global
+kernel tuning remain excluded. See the [hardware record](hardware-acceptance.md)
+for measured gains and the remaining performance gap.
+The compact graph also requires at most 262140 padded KV cells because the
+prefill kernel reserves a 16-bit block sentinel. A larger padded cache keeps
+the ordinary graph rather than overflowing that representation.
 
 The September 29 `r40` image keeps the llama.cpp pin and model presets fixed.
 It adds only the gfx1151 HIP selected-key attention path for Qwen4exp and
