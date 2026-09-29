@@ -288,6 +288,10 @@ Single-token appends also reuse derived F32 indexer keys instead of preparing
 the entire history again. Prompt edits, rewinds and session restores invalidate
 that cache. It adds about 384 MiB at 256K for the current Flash-Next model and
 does not lower KV precision or change the model's context limit.
+The scoped pipeline also avoids full convolution-history copies during
+prefill, combines normalization and injection work, and groups compatible
+decode projections. These changes retain F32 residuals and accumulation.
+The fork's reduced-precision matrix and residual paths are not enabled.
 The [hardware record](../hardware-acceptance.md)
 contains the paired prefill measurements and correctness limits.
 

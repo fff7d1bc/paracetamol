@@ -65,6 +65,14 @@ revisions recorded in `catalog/catalog.json`.
   publication and conservative invalidation on memory mutation or restore.
   It retains the original F32 preparation graph and does not change saved-state
   formats or F16 KV precision.
+  The pipeline extraction adapts the same snapshot's direct convolutions,
+  grouped Q8 decode launches, compact expert routing, vectorized reduction,
+  narrow normalization and register-prefetched Q8 matrix tiles. Its combined
+  hyper-connection normalization targets upstream's HC operation and retains
+  its F32 reduction order. The fused injection uses an ordinary parallel F32
+  dot product and preserves the public residual labels used by control vectors
+  and imatrix. This patch does not include the separate BF16 or
+  F16 matrix experiments, shadow weights or reduced-precision residuals.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

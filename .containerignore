@@ -25,6 +25,7 @@
 !applications/llama-cpp/hip-qwen4exp-qsa-kernels.patch
 !applications/llama-cpp/hip-qwen4exp-graph-optimizations.patch
 !applications/llama-cpp/hip-qwen4exp-prepared-key-cache.patch
+!applications/llama-cpp/hip-qwen4exp-pipeline.patch
 !applications/llama-cpp/process-allocation-policy.patch
 !applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/chat-templates/

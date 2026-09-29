@@ -279,6 +279,28 @@ protected behavior is fixed.
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 | `hip-qwen4exp-graph-optimizations.patch` | Builds on the selected-key patch with compact whole-block selection, 512-query scorer strips, ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and existing small-tile MoE kernels. The graph requires a unique scalar prefix, supported F16 geometry and `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`. HIP dispatch remains exact `gfx1151`. Unsupported cache layouts retain the original graph, while maskless selected attention has a tested CPU fallback. The entrypoint enables this only with the Strix Halo ROCm kernel policy. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` restores the `r40` path. | Upstream equivalents retain block-selection and FP64 attention oracles, fusion alias/lifetime guards, prefix eligibility checks, near-256K retrieval and prefix reuse, and the older-model/backend regression screens. Never silently replace these with BF16 shadow weights or a new persistent derived-cache policy. |
 | `hip-qwen4exp-prepared-key-cache.patch` | Reuses F32 pooled, normalized and rotated indexer keys only for successful single-token Qwen4exp appends. F16 raw keys remain authoritative. All memory mutations, restore, failed evaluation and unsupported layouts invalidate derived state. Prefills retain the original graph. The first decode rebuilds and seeds derived storage. The entrypoint enables `PARACETAMOL_QWEN4EXP_QSA_CACHE=1` only with the accepted Strix Halo ROCm compact graph. Setting it to `0` restores recomputation. | An upstream equivalent preserves the exact preparation tests, successful-ubatch publication, mutation/restore invalidation, long-context retrieval, interruption recovery and same-image on/off measurements. Derived keys must not silently enter the saved-state format or change KV precision. |
+| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
+
+The `r43` pipeline patch builds on those three extractions. It adapts direct
+GDN and PLE convolution, HC_POST normalization and injection, narrow RMS/gate fusion,
+compact expert tiles, expert-ID histogram routing, vectorized weighted
+reduction, grouped Q8 decode projections and register-prefetched Q8 matrix
+tiles from the same pinned MIT Strix fork. Every fast path requires Qwen4exp
+markers or hints and exact `gfx1151`. Unsupported geometry or extra readers
+keep the upstream path. Fusion matching protects aliases and allocation
+lifetimes. Normalization and expert reductions retain their original F32 sum
+order. The fused injection projection uses a tested parallel F32 reduction,
+not a lower-precision matrix path. Explicit matrix source precision takes
+precedence over the custom Q8 paths.
+
+The patch is `hip-qwen4exp-pipeline.patch`. Its removal gate is an upstream
+equivalent retaining operator and fallback checks, populated long-context
+retrieval, state restore and interruption, and older-model/backend acceptance.
+The Q8 prefetch escape hatch is `PARACETAMOL_QWEN4EXP_MMQ_PREFETCH=0` inside
+the container. `PARACETAMOL_QWEN4EXP_HC_INJECT=0` disables the injection
+fusion and its graph reordering. The broader graph opt-out disables the pipeline by
+withholding model hints and fusion dispatch. Do not fold BF16/F16 matrix
+experiments, shadow weights or reduced-precision residuals into this patch.
 
 The `r42` prepared-key cache keeps the first two extractions intact. It adopts
 the fork's reuse idea with a smaller local state contract, not its physical-cell
