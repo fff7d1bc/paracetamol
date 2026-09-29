@@ -1,0 +1,1103 @@
+Selected-key QSA prefill and short-query kernels adapted from the MIT-licensed
+halo-box/strix-llama.cpp snapshot 7a9196dad8b13b70fb3420886aadaf98fc09b849.
+https://github.com/halo-box/strix-llama.cpp/commit/7a9196dad8b13b70fb3420886aadaf98fc09b849
+
+Paracetamol restricts HIP dispatch to gfx1151 and the tested Qwen4exp F16
+geometry, keeps the ordinary mask authoritative, and attaches selected-key
+IDs only when PARACETAMOL_QWEN4EXP_QSA_KERNEL=1. Other models and backends
+retain their existing attention path. CPU-reference operator tests cover
+prefill, poisoned masked cells, and short-query decode, including duplicate
+IDs and FP64 oracle comparisons.
+
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 224bdef..d4101ac 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -2512,6 +2512,13 @@ extern "C" {
+             struct ggml_tensor * a,
+             struct ggml_tensor * sinks);
+ 
++    // Optional selected-key hint. The mask remains authoritative for backends
++    // that do not consume this hint.
++    GGML_API void ggml_flash_attn_ext_add_top_k(
++            struct ggml_tensor * a,
++            struct ggml_tensor * top_k,
++                     int64_t     n_kv_raw);
++
+     // TODO: needs to be adapted to ggml_flash_attn_ext
+     GGML_API struct ggml_tensor * ggml_flash_attn_back(
+            struct ggml_context * ctx,
+
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 9b6e011..ecb0464 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -4,6 +4,11 @@
+ #include "fattn-tile.cuh"
+ #include "fattn-vec.cuh"
+ #include "fattn.cuh"
++#include <cstdlib>
++#if defined(GGML_USE_HIP)
++#include "qsa-prefill.cuh"
++#include "qsa-decode.cuh"
++#endif
+ 
+ #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
+ // one list per group of ncols1 queries: a column is selected if any query of the group can see it
+@@ -753,6 +758,21 @@ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * d
+ 
+ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     ggml_cuda_set_device(ctx.device);
++#if defined(GGML_USE_HIP)
++    // Only the accepted gfx1151 Qwen4exp F16 selected-key shape reaches these
++    // kernels. Preserve the ordinary Flash Attention path for other models.
++    const char * qsa_kernel = std::getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
++    if (!qsa_kernel || qsa_kernel[0] != '0' || qsa_kernel[1] != '\0') {
++        if (ggml_cuda_flash_attn_ext_qsa_decode_supported(ctx, dst)) {
++            ggml_cuda_flash_attn_ext_qsa_decode(ctx, dst);
++            return;
++        }
++        if (ggml_cuda_flash_attn_ext_qsa_prefill_supported(ctx, dst)) {
++            ggml_cuda_flash_attn_ext_qsa_prefill(ctx, dst);
++            return;
++        }
++    }
++#endif
+     switch (ggml_cuda_get_best_fattn_kernel(ggml_cuda_get_device(), dst)) {
+         case BEST_FATTN_KERNEL_NONE:
+             GGML_ABORT("fatal error");
+
+diff --git a/ggml/src/ggml-cuda/qsa-decode-wmma.cuh b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
+new file mode 100644
+index 0000000..63af09d
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
+@@ -0,0 +1,121 @@
++#pragma once
++
++typedef short qd_half16 __attribute__((ext_vector_type(16)));
++typedef float qd_float8 __attribute__((ext_vector_type(8)));
++
++static __global__ __launch_bounds__(256) void qsa_decode_wmma_partial(
++        const char * q, const char * k, const char * v, const char * mask, const char * ids,
++        size_t q1, size_t q2, size_t k1, size_t k2, size_t v1, size_t v2, size_t m1, size_t i1,
++        int nk, int ns, int nh, int splits, int chunk, float scale, float * partial) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE;
++#else
++    const int lane = threadIdx.x & 31, w = threadIdx.x >> 5, r = lane & 15, hi = lane >> 4;
++    const int kvh = blockIdx.x, query = blockIdx.y, split = blockIdx.z;
++    const int * ir = (const int *) (ids + query*i1);
++    const half * mr = mask ? (const half *) (mask + query*m1) : nullptr;
++    __shared__ union {
++        uint16_t query_stage[8][16][32];
++        float4 scores[8][64];
++    } shared;
++    __shared__ __align__(16) uint16_t probabilities[16][16];
++    __shared__ float alpha_s[16];
++    qd_half16 qf[2];
++    const _Float16 hs = (_Float16) scale;
++    for (int j = lane; j < 16*32; j += 32) {
++        const int head = j/32, d = j%32;
++        const float value = head < 12 ? *(const float *) (q + query*q1 + (kvh*12+head)*q2 + (w*32+d)*4) : 0.0f;
++        shared.query_stage[w][head][d] = __builtin_bit_cast(uint16_t, (_Float16)value*hs);
++    }
++    __syncthreads();
++#pragma unroll
++    for (int t = 0; t < 2; ++t) {
++        const uint16_t * src = &shared.query_stage[w][r][t*16];
++        qf[t] = __builtin_bit_cast(qd_half16, (uint4[2]){*(const uint4 *)src, *(const uint4 *)(src+8)});
++    }
++    __syncthreads();
++    qd_float8 output[2] = {};
++    float maximum = -INFINITY, normalizer = 0.0f;
++    const int begin = split*chunk, end = min(ns, begin+chunk);
++    for (int start = begin; start < end; start += 16) {
++        int keys[16];
++#pragma unroll
++        for (int j = 0; j < 16; ++j) {
++            int key = start+j < end ? ir[start+j] : -1;
++            if (key < 0 || key >= nk || (mr && __half2float(mr[key]) == -INFINITY)) { key = -1; }
++            keys[j] = key;
++        }
++        qd_float8 scores = {};
++#pragma unroll
++        for (int t = 0; t < 2; ++t) {
++            qd_half16 kf = {};
++            const int key = keys[r];
++            if (key >= 0 && key < nk) {
++                const uint16_t * src = (const uint16_t *) (k + key*k1 + kvh*k2) + 32*w+16*t;
++                kf = __builtin_bit_cast(qd_half16, (uint4[2]){*(const uint4 *)src, *(const uint4 *)(src+8)});
++            }
++            scores = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(kf, qf[t], scores);
++        }
++        shared.scores[w][lane*2] = make_float4(scores[0],scores[1],scores[2],scores[3]);
++        shared.scores[w][lane*2+1] = make_float4(scores[4],scores[5],scores[6],scores[7]);
++        __syncthreads();
++        if (w == 0) {
++            float score[8] = {};
++#pragma unroll
++            for (int sw = 0; sw < 8; ++sw) {
++                const float4 lo = shared.scores[sw][lane*2], high = shared.scores[sw][lane*2+1];
++                score[0]+=lo.x;score[1]+=lo.y;score[2]+=lo.z;score[3]+=lo.w;
++                score[4]+=high.x;score[5]+=high.y;score[6]+=high.z;score[7]+=high.w;
++            }
++            float local = -INFINITY;
++#pragma unroll
++            for (int e = 0; e < 8; ++e) {
++                const int key = keys[2*e+hi];
++                if (key < 0 || key >= nk) { score[e] = -INFINITY; }
++                else if (mr) { score[e] += __half2float(mr[key]); }
++                local = fmaxf(local,score[e]);
++            }
++            local = fmaxf(local,__shfl_xor(local,16));
++            const float next = fmaxf(maximum,local);
++            const float alpha = next == -INFINITY ? 1.0f : exp2f((maximum-next)*1.4426950408889634f);
++            float sum = 0.0f;
++#pragma unroll
++            for (int e = 0; e < 8; ++e) {
++                const float p = next == -INFINITY ? 0.0f : exp2f((score[e]-next)*1.4426950408889634f);
++                sum += p;
++                probabilities[r][2*e+hi] = __builtin_bit_cast(uint16_t,(_Float16)p);
++            }
++            sum += __shfl_xor(sum,16);
++            normalizer = normalizer*alpha+sum;
++            maximum = next;
++            if (hi == 0) { alpha_s[r] = alpha; }
++        }
++        __syncthreads();
++        const float alpha = alpha_s[r];
++        const qd_half16 pf = __builtin_bit_cast(qd_half16, (uint4[2]){
++            *(const uint4 *)&probabilities[r][0], *(const uint4 *)&probabilities[r][8]});
++#pragma unroll
++        for (int t = 0; t < 2; ++t) {
++            uint16_t values[16];
++#pragma unroll
++            for (int j = 0; j < 16; ++j) {
++                const int key = keys[j];
++                values[j] = key >= 0 && key < nk ? *((const uint16_t *)(v+key*v1+kvh*v2)+32*w+16*t+r) : 0;
++            }
++            const qd_half16 vf = __builtin_bit_cast(qd_half16,values);
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { output[t][e] *= alpha; }
++            output[t] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(vf,pf,output[t]);
++        }
++        __syncthreads();
++    }
++    if (r < 12) {
++        float * dst = partial + ((size_t(query)*nh+kvh*12+r)*splits+split)*258;
++#pragma unroll
++        for (int t = 0; t < 2; ++t)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { dst[32*w+16*t+2*e+hi] = output[t][e]; }
++        if (w == 0 && hi == 0) { dst[256] = maximum; dst[257] = normalizer; }
++    }
++#endif
++}
+
+diff --git a/ggml/src/ggml-cuda/qsa-decode.cu b/ggml/src/ggml-cuda/qsa-decode.cu
+new file mode 100644
+index 0000000..1cfce8a
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-decode.cu
+@@ -0,0 +1,158 @@
++#include "qsa-decode.cuh"
++#if defined(GGML_USE_HIP)
++#include "qsa-decode-wmma.cuh"
++
++static __global__ __launch_bounds__(128) void qsa_decode_partial(
++        const char * q, const char * k, const char * v, const char * mask, const char * ids,
++        size_t q1, size_t q2, size_t k1, size_t k2, size_t v1, size_t v2, size_t m1, size_t i1,
++        int nk, int ns, int nh, int ratio, int splits, int chunk, float scale, float * partial) {
++    const int lane = threadIdx.x % 32, warp = threadIdx.x / 32;
++    const int head = blockIdx.x, query = blockIdx.y, split = blockIdx.z;
++    const int kv_head = head / ratio;
++    const float * qr = (const float *) (q + query*q1 + head*q2);
++    const int * ir = (const int *) (ids + query*i1);
++    const half * mr = mask ? (const half *) (mask + query*m1) : nullptr;
++    float qv[8], acc[8] = {};
++#pragma unroll
++    for (int d = 0; d < 8; ++d) { qv[d] = qr[lane + d*32]; }
++    float mx = -INFINITY, sum = 0.0f;
++    const int begin = split*chunk, end = min(ns, begin + chunk);
++    for (int j = begin + warp; j < end; j += 4) {
++        const int key = ir[j];
++        if (key < 0 || key >= nk) { continue; }
++        const float bias = mr ? __half2float(mr[key]) : 0.0f;
++        if (bias == -INFINITY) { continue; }
++        const half * kr = (const half *) (k + key*k1 + kv_head*k2);
++        const half * vr = (const half *) (v + key*v1 + kv_head*v2);
++        float dot = 0.0f;
++#pragma unroll
++        for (int d = 0; d < 8; ++d) { dot = fmaf(qv[d], __half2float(kr[lane + d*32]), dot); }
++#pragma unroll
++        for (int delta = 16; delta > 0; delta >>= 1) { dot += __shfl_xor_sync(0xffffffff, dot, delta, 32); }
++        const float score = dot*scale + bias;
++        const float next = fmaxf(mx, score);
++        const float alpha = expf(mx - next), weight = expf(score - next);
++#pragma unroll
++        for (int d = 0; d < 8; ++d) { acc[d] = acc[d]*alpha + weight*__half2float(vr[lane + d*32]); }
++        sum = sum*alpha + weight;
++        mx = next;
++    }
++    __shared__ float values[4][256];
++    __shared__ float maxima[4], sums[4];
++#pragma unroll
++    for (int d = 0; d < 8; ++d) { values[warp][lane + d*32] = acc[d]; }
++    if (lane == 0) { maxima[warp] = mx; sums[warp] = sum; }
++    __syncthreads();
++    float maximum = -INFINITY;
++#pragma unroll
++    for (int w = 0; w < 4; ++w) { maximum = fmaxf(maximum, maxima[w]); }
++    float factors[4], total = 0.0f;
++#pragma unroll
++    for (int w = 0; w < 4; ++w) {
++        factors[w] = sums[w] > 0.0f ? expf(maxima[w] - maximum) : 0.0f;
++        total += factors[w]*sums[w];
++    }
++    float * dst = partial + ((size_t(query)*nh + head)*splits + split)*258;
++    for (int d = threadIdx.x; d < 256; d += 128) {
++        float value = 0.0f;
++#pragma unroll
++        for (int w = 0; w < 4; ++w) { value += values[w][d]*factors[w]; }
++        dst[d] = value;
++    }
++    if (threadIdx.x == 0) { dst[256] = maximum; dst[257] = total; }
++}
++
++static __global__ __launch_bounds__(256) void qsa_decode_merge(
++        const float * partial, float * out, int splits) {
++    const int row = blockIdx.x, d = threadIdx.x;
++    const float * src = partial + size_t(row)*splits*258;
++    float maximum = -INFINITY;
++    for (int s = 0; s < splits; ++s) { maximum = fmaxf(maximum, src[s*258 + 256]); }
++    float sum = 0.0f, value = 0.0f;
++    for (int s = 0; s < splits; ++s) {
++        const float count = src[s*258 + 257];
++        const float factor = count > 0.0f ? expf(src[s*258 + 256] - maximum) : 0.0f;
++        value += src[s*258 + d]*factor;
++        sum += count*factor;
++    }
++    out[size_t(row)*256 + d] = sum > 0.0f ? value/sum : 0.0f;
++}
++
++bool ggml_cuda_flash_attn_ext_qsa_decode_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst) {
++    if (ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) { return false; }
++    const auto * q = dst->src[0], * k = dst->src[1], * v = dst->src[2], * m = dst->src[3], * ids = dst->src[5];
++    // Keep the existing mask authoritative; maskless block selection is not ported.
++    if (!q || !k || !v || !m || !ids || dst->src[4] || dst->src[6] || dst->src[7] || ggml_get_op_params_i32(dst, 4) != 0) { return false; }
++    float bias, cap;
++    memcpy(&bias, (const char *) dst->op_params + 4, 4);
++    memcpy(&cap, (const char *) dst->op_params + 8, 4);
++    if (bias != 0.0f || cap != 0.0f || q->type != GGML_TYPE_F32 || k->type != GGML_TYPE_F16 ||
++        v->type != GGML_TYPE_F16 || dst->type != GGML_TYPE_F32 || ids->type != GGML_TYPE_I32 ||
++        q->ne[0] != 256 || k->ne[0] != 256 || v->ne[0] != 256 || q->ne[1] < 1 || q->ne[1] > QSA_DECODE_MAX_QUERIES ||
++        k->ne[1] < 1 || k->ne[1] > 262144 || v->ne[1] != k->ne[1] ||
++        k->ne[2] < 1 || q->ne[2] != 12*k->ne[2] || v->ne[2] != k->ne[2] ||
++        q->ne[3] != 1 || k->ne[3] != 1 || v->ne[3] != 1 ||
++        q->nb[0] != 4 || k->nb[0] != 2 || v->nb[0] != 2 || ids->nb[0] != 4 ||
++        ids->ne[0] < 1 || ids->ne[0] > 2560 || ids->ne[1] < q->ne[1] || ids->ne[2] != 1 || ids->ne[3] != 1 ||
++        !ggml_is_contiguous(dst)) { return false; }
++    return m->type == GGML_TYPE_F16 && m->nb[0] == 2 && m->ne[0] >= k->ne[1] &&
++           m->ne[1] >= q->ne[1] && m->ne[2] == 1 && m->ne[3] == 1;
++}
++
++static __global__ void qsa_decode_unique_ids(const char * input, size_t stride, int * output, int count, int keys) {
++    __shared__ int seen[8192];
++    const int tid=threadIdx.x, row=blockIdx.x;
++    for (int i=tid;i<8192;i+=blockDim.x) seen[i]=-1;
++    __syncthreads();
++    const auto * src=reinterpret_cast<const int *>(input+size_t(row)*stride);
++    int * dst=output+size_t(row)*count;
++    for (int j=tid;j<count;j+=blockDim.x) {
++        const int key=src[j];
++        dst[j]=-1;
++        if (key<0 || key>=keys) continue;
++        unsigned slot=(unsigned(key)*2654435761u)&8191u;
++        while (true) {
++            const int old=atomicCAS(seen+slot,-1,key);
++            if (old==-1) { dst[j]=key; break; }
++            if (old==key) break;
++            slot=(slot+1)&8191u;
++        }
++    }
++}
++
++void ggml_cuda_flash_attn_ext_qsa_decode(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    const auto * q = dst->src[0], * k = dst->src[1], * v = dst->src[2], * m = dst->src[3], * ids = dst->src[5];
++    ggml_cuda_pool_alloc<int> unique_ids(ctx.pool(), size_t(ids->ne[0])*q->ne[1]);
++    qsa_decode_unique_ids<<<q->ne[1],256,0,ctx.stream()>>>((const char *)ids->data,ids->nb[1],unique_ids.get(),ids->ne[0],k->ne[1]);
++    const bool wmma = q->ne[2] == 12*k->ne[2] && k->nb[1]%16 == 0 &&
++        k->nb[2]%16 == 0 && uintptr_t(k->data)%16 == 0;
++    const int ns = ids->ne[0], nq = q->ne[1], nh = q->ne[2], step = wmma ? 64 : 128;
++    // up to 8 queries every split covers `step` keys; with more queries the splits get longer so the grid stays
++    // near its 8-query size and the partial buffer stays small (33 splits x 512 queries would need ~420 MB)
++    int chunk = step;
++    if (nq > 8) {
++        const int target = std::max(1, (8*((ns + step - 1)/step) + nq - 1)/nq);
++        chunk = ((ns + target - 1)/target + 15)/16*16;
++    }
++    const int splits = (ns + chunk - 1)/chunk;
++    float scale;
++    memcpy(&scale, dst->op_params, sizeof(scale));
++    ggml_cuda_pool_alloc<float> partial(ctx.pool(), size_t(nq)*nh*splits*258);
++    if (wmma) {
++    qsa_decode_wmma_partial<<<dim3(k->ne[2], nq, splits), 256, 0, ctx.stream()>>>(
++        (const char *) q->data, (const char *) k->data, (const char *) v->data,
++        m ? (const char *) m->data : nullptr, (const char *) unique_ids.get(),
++        q->nb[1], q->nb[2], k->nb[1], k->nb[2], v->nb[1], v->nb[2], m ? m->nb[1] : 0, size_t(ns)*sizeof(int),
++        k->ne[1], ns, nh, splits, chunk, scale, partial.get());
++    } else {
++    qsa_decode_partial<<<dim3(nh, nq, splits), 128, 0, ctx.stream()>>>(
++        (const char *) q->data, (const char *) k->data, (const char *) v->data,
++        m ? (const char *) m->data : nullptr, (const char *) unique_ids.get(),
++        q->nb[1], q->nb[2], k->nb[1], k->nb[2], v->nb[1], v->nb[2], m ? m->nb[1] : 0, size_t(ns)*sizeof(int),
++        k->ne[1], ns, nh, nh/k->ne[2], splits, chunk, scale, partial.get());
++    }
++    qsa_decode_merge<<<nq*nh, 256, 0, ctx.stream()>>>(partial.get(), (float *) dst->data, splits);
++    CUDA_CHECK(cudaGetLastError());
++}
++
++#endif
+
+diff --git a/ggml/src/ggml-cuda/qsa-decode.cuh b/ggml/src/ggml-cuda/qsa-decode.cuh
+new file mode 100644
+index 0000000..1c25629
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-decode.cuh
+@@ -0,0 +1,7 @@
++#pragma once
++#include "common.cuh"
++// the per-query decode kernels take 1..512 queries; larger ubatches go to qsa_prefill. Up to 512 queries the
++// per-query gathers cost less than qsa_prefill's pack of the whole K/V cache, which grows with the depth
++#define QSA_DECODE_MAX_QUERIES 512
++bool ggml_cuda_flash_attn_ext_qsa_decode_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst);
++void ggml_cuda_flash_attn_ext_qsa_decode(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
+
+diff --git a/ggml/src/ggml-cuda/qsa-prefill.cu b/ggml/src/ggml-cuda/qsa-prefill.cu
+new file mode 100644
+index 0000000..ce08c4c
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-prefill.cu
+@@ -0,0 +1,494 @@
++#include "qsa-prefill.cuh"
++#if defined(GGML_USE_HIP)
++#include "common.cuh"
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++
++typedef short v16s __attribute__((ext_vector_type(16)));
++typedef float v8f  __attribute__((ext_vector_type(8)));
++
++#define QSA3_L2E 1.4426950408889634f
++#define QSA3_G 4
++
++static __device__ __forceinline__ uint16_t qsa3_f2h(const float f) { return __builtin_bit_cast(uint16_t, (_Float16) f); }
++static __device__ __forceinline__ float qsa3_h2f(const uint16_t h) { return (float) __builtin_bit_cast(_Float16, h); }
++
++// union builder, kernel A: per query row, check that the (validity-transformed) row is non-decreasing; if not, rank-sort it into srow[q] and set sflag[q]. Sentinel 0x7FFFFFFF for invalid (-1 / >= nk) entries.
++#define QSA3_SENT 0x7FFFFFFF
++__global__ __launch_bounds__(256) void qsa3_rows_kernel(
++        const int * __restrict__ ids, const size_t i1, const int ns, const int nk, int * __restrict__ srow, int * __restrict__ sflag,
++        const char * mask, size_t m1) {
++    extern __shared__ int ent[];
++    __shared__ int unsorted;
++    const int q = blockIdx.x, tid = threadIdx.x;
++    const int * row = reinterpret_cast<const int *>(reinterpret_cast<const char *>(ids) + (size_t) q * i1);
++    if (tid == 0) { unsorted = 0; }
++    __syncthreads();
++    // without a mask the row itself is the visibility record: the graph only lists cells the query may see
++    // and writes -1 elsewhere (complete-block selection with tails)
++    const auto * mq = mask ? reinterpret_cast<const uint16_t *>(mask + (size_t) q * m1) : nullptr;
++    for (int j = tid; j < ns; j += 256) {
++        const int key = row[j];
++        const bool valid = key >= 0 && key < nk;
++        const bool visible = valid && (!mq || mq[key] != 0xfc00u);
++        ent[j] = visible ? key : QSA3_SENT;
++        if (valid && !visible) { atomicOr(&unsorted, 1); }
++    }
++    __syncthreads();
++    for (int j = tid; j + 1 < ns; j += 256) {
++        if (ent[j] > ent[j+1]) { atomicOr(&unsorted, 1); }
++    }
++    __syncthreads();
++    if (unsorted) {
++        int * dst = srow + (size_t) q * ns;
++        for (int j = tid; j < ns; j += 256) {
++            const int e = ent[j];
++            int rank = 0;
++            for (int k = 0; k < ns; ++k) { const int f = ent[k]; rank += (f < e) || (f == e && k < j); }
++            dst[rank] = e;
++        }
++    }
++    if (tid == 0) { sflag[q] = unsorted; }
++}
++
++// kernel B: one workgroup (128 lanes) per group of 4 queries. Lane = key sub-range; the range boundaries are the quantiles of the first non-empty row (block aligned), so the work per lane is balanced for the real (sorted, similar) rows. Each lane merges the 4 sorted rows inside its range: pass 1 counts, block-wide prefix sum, pass 2 writes.
++#define QSA3_MERGE_LANES 128
++static __device__ __forceinline__ int qsa3_get(const int * __restrict__ p, const int j, const int nk, const bool raw) {
++    const int key = p[j];
++    return raw ? ((key >= 0 && key < nk) ? key : QSA3_SENT) : key;
++}
++__global__ __launch_bounds__(QSA3_MERGE_LANES) void qsa3_merge_kernel(
++        const int * __restrict__ ids, const size_t i1, const int n_q, const int ns, const int nk,
++        const int * __restrict__ srow, const int * __restrict__ sflag,
++        uint16_t * __restrict__ ublk, uint16_t * __restrict__ umask, int * __restrict__ ucount, const int cap) {
++    extern __shared__ int rows_s[];
++    __shared__ int scan_s[QSA3_MERGE_LANES];
++    const int lane = threadIdx.x;
++    const int g = blockIdx.x;
++#pragma unroll
++    for (int qi = 0; qi < QSA3_G; ++qi) {
++        const int q = QSA3_G * g + qi;
++        int * dst = rows_s + qi * ns;
++        if (q < n_q) {
++            const bool rw = sflag[q] == 0;
++            const int * src = rw ? reinterpret_cast<const int *>(reinterpret_cast<const char *>(ids) + (size_t) q * i1) : srow + (size_t) q * ns;
++            for (int j = lane; j < ns; j += QSA3_MERGE_LANES) { dst[j] = qsa3_get(src, j, nk, rw); }
++        } else {
++            for (int j = lane; j < ns; j += QSA3_MERGE_LANES) { dst[j] = QSA3_SENT; }
++        }
++    }
++    __syncthreads();
++    const int * rp[QSA3_G]; bool raw[QSA3_G]; int cnt[QSA3_G];
++#pragma unroll
++    for (int qi = 0; qi < QSA3_G; ++qi) {
++        raw[qi] = false; rp[qi] = rows_s + qi * ns;
++        int a = 0, b = ns;
++        while (a < b) { const int mid = (a + b) >> 1; if (rp[qi][mid] < QSA3_SENT) { a = mid + 1; } else { b = mid; } }
++        cnt[qi] = a;
++    }
++    int kmax = -1, ref = -1;
++#pragma unroll
++    for (int qi = 0; qi < QSA3_G; ++qi) {
++        if (cnt[qi] > 0) { kmax = max(kmax, qsa3_get(rp[qi], cnt[qi] - 1, nk, raw[qi])); if (ref < 0) { ref = qi; } }
++    }
++    uint16_t * ob = ublk + (size_t) g * cap, * om = umask + (size_t) g * cap;
++    if (kmax < 0) { if (lane == 0) { ucount[g] = 0; } return; }
++    const int rc = cnt[ref];
++    const int lo = lane == 0 ? 0 : (qsa3_get(rp[ref], (int) (((long long) rc * lane) / QSA3_MERGE_LANES), nk, raw[ref]) & ~3);
++    const int hi = lane == QSA3_MERGE_LANES - 1 ? ((kmax + 4) & ~3)
++                 : (qsa3_get(rp[ref], (int) (((long long) rc * (lane + 1)) / QSA3_MERGE_LANES), nk, raw[ref]) & ~3);
++    int p[QSA3_G], pe[QSA3_G];
++#pragma unroll
++    for (int qi = 0; qi < QSA3_G; ++qi) {
++        int a = 0, b = cnt[qi];
++        while (a < b) { const int mid = (a + b) >> 1; if (qsa3_get(rp[qi], mid, nk, raw[qi]) < lo) { a = mid + 1; } else { b = mid; } }
++        p[qi] = a; b = cnt[qi];
++        while (a < b) { const int mid = (a + b) >> 1; if (qsa3_get(rp[qi], mid, nk, raw[qi]) < hi) { a = mid + 1; } else { b = mid; } }
++        pe[qi] = a;
++    }
++    int n = 0;
++    {
++        int pp[QSA3_G]; int head[QSA3_G];
++#pragma unroll
++        for (int qi = 0; qi < QSA3_G; ++qi) { pp[qi] = p[qi]; head[qi] = pp[qi] < pe[qi] ? qsa3_get(rp[qi], pp[qi], nk, raw[qi]) : QSA3_SENT; }
++        while (true) {
++            int b = QSA3_SENT;
++#pragma unroll
++            for (int qi = 0; qi < QSA3_G; ++qi) { b = min(b, head[qi]); }
++            if (b == QSA3_SENT) { break; }
++            b >>= 2;
++#pragma unroll
++            for (int qi = 0; qi < QSA3_G; ++qi) {
++                if (head[qi] != QSA3_SENT && (head[qi] >> 2) == b) {
++                    const int * rr = rp[qi];
++                    int pn = pp[qi];
++                    if ((head[qi] & 3) == 0 && pn + 3 < pe[qi] && rr[pn+3] == head[qi] + 3 && rr[pn+1] == head[qi] + 1 && rr[pn+2] == head[qi] + 2) { pn += 4; }
++                    else { do { ++pn; } while (pn < pe[qi] && (rr[pn] >> 2) == b); }
++                    pp[qi] = pn; head[qi] = pn < pe[qi] ? rr[pn] : QSA3_SENT;
++                }
++            }
++            ++n;
++        }
++    }
++    scan_s[lane] = n;
++    __syncthreads();
++    for (int off = 1; off < QSA3_MERGE_LANES; off <<= 1) {
++        const int v = lane >= off ? scan_s[lane - off] : 0;
++        __syncthreads();
++        scan_s[lane] += v;
++        __syncthreads();
++    }
++    const int total = scan_s[QSA3_MERGE_LANES - 1];
++    int o = scan_s[lane] - n;
++    {
++        int head[QSA3_G];
++#pragma unroll
++        for (int qi = 0; qi < QSA3_G; ++qi) { head[qi] = p[qi] < pe[qi] ? qsa3_get(rp[qi], p[qi], nk, raw[qi]) : QSA3_SENT; }
++        while (true) {
++            int b = QSA3_SENT;
++#pragma unroll
++            for (int qi = 0; qi < QSA3_G; ++qi) { b = min(b, head[qi]); }
++            if (b == QSA3_SENT) { break; }
++            b >>= 2;
++            uint32_t mk = 0;
++#pragma unroll
++            for (int qi = 0; qi < QSA3_G; ++qi) {
++                if (head[qi] != QSA3_SENT && (head[qi] >> 2) == b) {
++                    const int * rr = rp[qi];
++                    int pn = p[qi];
++                    if ((head[qi] & 3) == 0 && pn + 3 < pe[qi] && rr[pn+3] == head[qi] + 3 && rr[pn+1] == head[qi] + 1 && rr[pn+2] == head[qi] + 2) { mk |= 0xFu << (4*qi); pn += 4; }
++                    else { do { mk |= 1u << (4*qi + (rr[pn] & 3)); ++pn; } while (pn < pe[qi] && (rr[pn] >> 2) == b); }
++                    p[qi] = pn; head[qi] = pn < pe[qi] ? rr[pn] : QSA3_SENT;
++                }
++            }
++            ob[o] = (uint16_t) b; om[o] = (uint16_t) mk; ++o;
++        }
++    }
++    if (lane == QSA3_MERGE_LANES - 1) {
++        int t = total;
++        while (t & 3) { ob[t] = 0xFFFFu; om[t] = 0; ++t; }
++        ucount[g] = t;
++    }
++}
++
++struct qsa3_layout {
++    size_t q1, q2, o1, o2, m1;
++    int nk, n_q, gqa, cap;
++    float scale;
++};
++
++__global__ __launch_bounds__(256) void qsa3_attn_kernel(
++        const float * __restrict__ q, const uint16_t * __restrict__ pk, const uint16_t * __restrict__ pv,
++        const uint16_t * __restrict__ mask, const uint16_t * __restrict__ ublk, const uint16_t * __restrict__ umask,
++        const int * __restrict__ ucount, float * __restrict__ out, const qsa3_layout s) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE;
++#else
++    const int tid = threadIdx.x, lane = tid & 31, w = tid >> 5, r = lane & 15, hi = lane >> 4;
++    const int g = blockIdx.x, kvh = blockIdx.y;
++    __shared__ float4 part[3][8][64];
++    __shared__ uint4  ptile[3][32];
++    __shared__ float  alpha_s[48];
++    __shared__ float  l_s[48];
++
++    const size_t nblk = (size_t) s.nk / 4;
++    const uint16_t * pkg = pk + (size_t) kvh * nblk * 1024;
++    const uint16_t * pvg = pv + (size_t) kvh * nblk * 1024;
++    const uint16_t * gblk = ublk + (size_t) g * s.cap;
++    const uint16_t * gmsk = umask + (size_t) g * s.cap;
++    const int nchunks = ucount[g] >> 2;
++
++    v16s qf[3][2];
++    {
++        uint16_t * stage = reinterpret_cast<uint16_t *>(&part[0][0][0]) + w * (48 * 32);
++        const _Float16 hs = (_Float16) s.scale;
++#pragma unroll
++        for (int c = 0; c < 12; ++c) {
++            const int row = 4*c + (lane >> 3), dq = 4 * (lane & 7);
++            const int qi = row / 12, h = row - 12*qi;
++            const int query = QSA3_G * g + qi;
++            float4 v = make_float4(0.f, 0.f, 0.f, 0.f);
++            if (query < s.n_q) {
++                v = *reinterpret_cast<const float4 *>(reinterpret_cast<const char *>(q) + (size_t) query * s.q1 + (size_t) (kvh * s.gqa + h) * s.q2 + (size_t) (32*w + dq) * 4);
++            }
++            const uint16_t h0 = __builtin_bit_cast(uint16_t, (_Float16) v.x * hs), h1 = __builtin_bit_cast(uint16_t, (_Float16) v.y * hs);
++            const uint16_t h2 = __builtin_bit_cast(uint16_t, (_Float16) v.z * hs), h3 = __builtin_bit_cast(uint16_t, (_Float16) v.w * hs);
++            *reinterpret_cast<uint2 *>(stage + row * 32 + dq) = make_uint2((uint32_t) h0 | ((uint32_t) h1 << 16), (uint32_t) h2 | ((uint32_t) h3 << 16));
++        }
++        __syncthreads();
++#pragma unroll
++        for (int i = 0; i < 3; ++i)
++#pragma unroll
++            for (int t = 0; t < 2; ++t) {
++                const uint16_t * src = stage + (16*i + r) * 32 + 16*t;
++                qf[i][t] = __builtin_bit_cast(v16s, (uint4[2]){*reinterpret_cast<const uint4 *>(src), *reinterpret_cast<const uint4 *>(src + 8)});
++            }
++        __syncthreads();
++    }
++    v8f O[3][2];
++#pragma unroll
++    for (int i = 0; i < 3; ++i)
++#pragma unroll
++        for (int t = 0; t < 2; ++t)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { O[i][t][e] = 0.f; }
++    float m = -INFINITY, l = 0.f;
++    const int own_row = 16*w + r, own_qi = own_row / 12;
++    const int own_query = QSA3_G * g + own_qi;
++    const uint16_t * maskq = (mask && w < 3 && own_query < s.n_q)
++        ? reinterpret_cast<const uint16_t *>(reinterpret_cast<const char *>(mask) + (size_t) own_query * s.m1) : nullptr;
++
++    auto load_desc = [&](const int c, uint32_t & b01, uint32_t & b23, uint32_t & m01, uint32_t & m23) {
++        const uint2 bb = *reinterpret_cast<const uint2 *>(gblk + 4*c);
++        const uint2 mm = *reinterpret_cast<const uint2 *>(gmsk + 4*c);
++        b01 = bb.x; b23 = bb.y; m01 = mm.x; m23 = mm.y;
++    };
++    auto blk_of = [&](const uint32_t b01, const uint32_t b23, const int j) -> int {
++        const uint32_t v = (j < 2 ? b01 : b23) >> (16 * (j & 1)) & 0xFFFFu;
++        return v == 0xFFFFu ? 0 : (int) v;
++    };
++    auto load_k = [&](const uint32_t b01, const uint32_t b23, const uint32_t m01, const uint32_t m23, v16s * kf) {
++        const int j = r >> 2;
++        const uint32_t mk = ((j < 2 ? m01 : m23) >> (16 * (j & 1))) & 0xffffu;
++        if (((mk >> (r & 3)) & 0x1111u) == 0) {
++            kf[0] = v16s{};
++            kf[1] = v16s{};
++            return;
++        }
++        const int kb = blk_of(b01, b23, j);
++        const uint16_t * krow = pkg + (size_t) kb * 1024 + (r & 3) * 16 + w * 128;
++#pragma unroll
++        for (int t = 0; t < 2; ++t) {
++            const uint4 lo  = *reinterpret_cast<const uint4 *>(krow + t*64);
++            const uint4 hi4 = *reinterpret_cast<const uint4 *>(krow + t*64 + 8);
++            kf[t] = __builtin_bit_cast(v16s, (uint4[2]){lo, hi4});
++        }
++    };
++
++    auto mask_values = [&](uint2 v, uint32_t mk) {
++        uint32_t lo = 0, hi = 0;
++        if (mk & 0x1111u) lo |= 0x0000ffffu;
++        if (mk & 0x2222u) lo |= 0xffff0000u;
++        if (mk & 0x4444u) hi |= 0x0000ffffu;
++        if (mk & 0x8888u) hi |= 0xffff0000u;
++        return make_uint2(v.x & lo, v.y & hi);
++    };
++
++    uint32_t b01 = 0, b23 = 0, m01 = 0, m23 = 0;
++    v16s kf[2];
++    if (nchunks > 0) { load_desc(0, b01, b23, m01, m23); load_k(b01, b23, m01, m23, kf); }
++
++    for (int c = 0; c < nchunks; ++c) {
++        v8f sc[3];
++#pragma unroll
++        for (int i = 0; i < 3; ++i) {
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { sc[i][e] = 0.f; }
++#pragma unroll
++            for (int t = 0; t < 2; ++t) { sc[i] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(kf[t], qf[i][t], sc[i]); }
++        }
++        v16s vf[2];
++        {
++            const int kb0 = blk_of(b01, b23, 0), kb1 = blk_of(b01, b23, 1), kb2 = blk_of(b01, b23, 2), kb3 = blk_of(b01, b23, 3);
++#pragma unroll
++            for (int t = 0; t < 2; ++t) {
++                const int d = 32*w + 16*t + r;
++                const uint2 v0 = mask_values(*reinterpret_cast<const uint2 *>(pvg + (size_t) kb0 * 1024 + d * 4), m01 & 0xffffu);
++                const uint2 v1 = mask_values(*reinterpret_cast<const uint2 *>(pvg + (size_t) kb1 * 1024 + d * 4), m01 >> 16);
++                const uint2 v2 = mask_values(*reinterpret_cast<const uint2 *>(pvg + (size_t) kb2 * 1024 + d * 4), m23 & 0xffffu);
++                const uint2 v3 = mask_values(*reinterpret_cast<const uint2 *>(pvg + (size_t) kb3 * 1024 + d * 4), m23 >> 16);
++                vf[t] = __builtin_bit_cast(v16s, (uint2[4]){v0, v1, v2, v3});
++            }
++        }
++        uint32_t nb01 = 0, nb23 = 0, nm01 = 0, nm23 = 0;
++        v16s kfn[2];
++        if (c + 1 < nchunks) { load_desc(c + 1, nb01, nb23, nm01, nm23); load_k(nb01, nb23, nm01, nm23, kfn); }
++        else { kfn[0] = kf[0]; kfn[1] = kf[1]; }
++#pragma unroll
++        for (int i = 0; i < 3; ++i) {
++            if (i != w) {
++                part[i][w][lane*2+0] = make_float4(sc[i][0], sc[i][1], sc[i][2], sc[i][3]);
++                part[i][w][lane*2+1] = make_float4(sc[i][4], sc[i][5], sc[i][6], sc[i][7]);
++            }
++        }
++        __syncthreads();
++        if (w < 3) {
++            float scf[8];
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { scf[e] = 0.f; }
++#pragma unroll
++            for (int w2 = 0; w2 < 8; ++w2) {
++                if (w2 == w) {
++#pragma unroll
++                    for (int e = 0; e < 8; ++e) { scf[e] += sc[w][e]; }
++                } else {
++                    const float4 a = part[w][w2][lane*2+0], b = part[w][w2][lane*2+1];
++                    scf[0] += a.x; scf[1] += a.y; scf[2] += a.z; scf[3] += a.w; scf[4] += b.x; scf[5] += b.y; scf[6] += b.z; scf[7] += b.w;
++                }
++            }
++#pragma unroll
++            for (int e = 0; e < 8; ++e) {
++                const int j = e >> 1, cc = 2*(e & 1) + hi;
++                const uint32_t mk = ((j < 2 ? m01 : m23) >> (16 * (j & 1))) & 0xFFFFu;
++                const bool kv = (mk >> (own_qi * 4 + cc)) & 1u;
++                if (maskq && kv) { scf[e] += qsa3_h2f(maskq[4 * blk_of(b01, b23, j) + cc]); }
++                if (!kv) { scf[e] = -INFINITY; }
++            }
++            float mloc = scf[0];
++#pragma unroll
++            for (int e = 1; e < 8; ++e) { mloc = fmaxf(mloc, scf[e]); }
++            mloc = fmaxf(mloc, __shfl_xor(mloc, 16));
++            const float mnew  = fmaxf(m, mloc);
++            const float alpha = mnew == -INFINITY ? 1.f : exp2f((m - mnew) * QSA3_L2E);
++            float p[8], ls = 0.f;
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { p[e] = mnew == -INFINITY ? 0.f : exp2f((scf[e] - mnew) * QSA3_L2E); ls += p[e]; }
++            ls += __shfl_xor(ls, 16);
++            l = l * alpha + ls;
++            m = mnew;
++            uint32_t pp[4], po[4];
++#pragma unroll
++            for (int e2 = 0; e2 < 4; ++e2) {
++                pp[e2] = (uint32_t) qsa3_f2h(p[2*e2]) | ((uint32_t) qsa3_f2h(p[2*e2+1]) << 16);
++                po[e2] = (uint32_t) __shfl_xor((int) pp[e2], 16);
++            }
++            uint16_t ph[16];
++#pragma unroll
++            for (int e = 0; e < 8; ++e) {
++                const uint16_t mine  = (e & 1) ? (uint16_t) (pp[e>>1] >> 16) : (uint16_t) (pp[e>>1] & 0xffffu);
++                const uint16_t other = (e & 1) ? (uint16_t) (po[e>>1] >> 16) : (uint16_t) (po[e>>1] & 0xffffu);
++                ph[2*e]   = hi ? other : mine;
++                ph[2*e+1] = hi ? mine  : other;
++            }
++            if (hi == 0) {
++                ptile[w][r*2+0] = make_uint4((uint32_t) ph[0] | ((uint32_t) ph[1] << 16), (uint32_t) ph[2] | ((uint32_t) ph[3] << 16),
++                                             (uint32_t) ph[4] | ((uint32_t) ph[5] << 16), (uint32_t) ph[6] | ((uint32_t) ph[7] << 16));
++                ptile[w][r*2+1] = make_uint4((uint32_t) ph[8] | ((uint32_t) ph[9] << 16), (uint32_t) ph[10] | ((uint32_t) ph[11] << 16),
++                                             (uint32_t) ph[12] | ((uint32_t) ph[13] << 16), (uint32_t) ph[14] | ((uint32_t) ph[15] << 16));
++                alpha_s[own_row] = alpha;
++            }
++        }
++        __syncthreads();
++        float al[3];
++#pragma unroll
++        for (int i = 0; i < 3; ++i) { al[i] = alpha_s[16*i + r]; }
++        if (__ballot(al[0] != 1.f || al[1] != 1.f || al[2] != 1.f)) {
++#pragma unroll
++            for (int i = 0; i < 3; ++i)
++#pragma unroll
++                for (int t = 0; t < 2; ++t)
++#pragma unroll
++                    for (int e = 0; e < 8; ++e) { O[i][t][e] *= al[i]; }
++        }
++#pragma unroll
++        for (int i = 0; i < 3; ++i) {
++            const v16s pf = __builtin_bit_cast(v16s, (uint4[2]){ptile[i][r*2+0], ptile[i][r*2+1]});
++#pragma unroll
++            for (int t = 0; t < 2; ++t) { O[i][t] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(vf[t], pf, O[i][t]); }
++        }
++        kf[0] = kfn[0]; kf[1] = kfn[1];
++        b01 = nb01; b23 = nb23; m01 = nm01; m23 = nm23;
++    }
++
++    if (w < 3 && hi == 0) { l_s[own_row] = l; }
++    __syncthreads();
++    float * ostage = reinterpret_cast<float *>(&part[0][0][0]) + w * (16 * 32);
++#pragma unroll
++    for (int i = 0; i < 3; ++i) {
++        const float li = l_s[16*i + r];
++#pragma unroll
++        for (int t = 0; t < 2; ++t)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { ostage[r * 32 + 16*t + 2*e + hi] = li > 0.f ? O[i][t][e] / li : 0.f; }
++        __syncthreads();
++#pragma unroll
++        for (int c = 0; c < 4; ++c) {
++            const int rr = 4*c + (lane >> 3), dq = 4 * (lane & 7);
++            const int row = 16*i + rr, qi = row / 12, h = row - 12*qi;
++            const int query = QSA3_G * g + qi;
++            if (query < s.n_q) {
++                float * dst = reinterpret_cast<float *>(reinterpret_cast<char *>(out) + (size_t) query * s.o2 + (size_t) (kvh * s.gqa + h) * s.o1) + 32*w + dq;
++                *reinterpret_cast<float4 *>(dst) = *reinterpret_cast<const float4 *>(ostage + rr * 32 + dq);
++            }
++        }
++        __syncthreads();
++    }
++#endif
++}
++
++bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst) {
++    const auto * q=dst->src[0], * k=dst->src[1], * v=dst->src[2], * m=dst->src[3], * ids=dst->src[5];
++    if (!q || !k || !v || !m || !ids || dst->src[4] || ggml_get_op_params_i32(dst, 4) != 0 ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
++    float bias, softcap; memcpy(&bias, (const char *) dst->op_params+4, 4); memcpy(&softcap, (const char *) dst->op_params+8, 4);
++    // Keep the existing mask authoritative; maskless block selection is not ported.
++    if (m->type!=GGML_TYPE_F16 || m->nb[0]!=2 || m->ne[0]<k->ne[1] || m->ne[1]<q->ne[1] || m->ne[2]!=1 || m->ne[3]!=1) return false;
++    return bias==0 && softcap==0 && q->type==GGML_TYPE_F32 && k->type==GGML_TYPE_F16 && v->type==GGML_TYPE_F16 &&
++        dst->type==GGML_TYPE_F32 && ids->type==GGML_TYPE_I32 &&
++        q->ne[0]==256 && k->ne[0]==256 && v->ne[0]==256 && q->ne[1]>=128 && q->ne[1]<=INT_MAX &&
++        k->ne[1]>0 && k->ne[1]<=262140 && k->ne[1]%4==0 && v->ne[1]==k->ne[1] &&
++        k->ne[2]>0 && k->ne[2]<=65535 && q->ne[2]==12*k->ne[2] && v->ne[2]==k->ne[2] &&
++        q->ne[3]==1 && k->ne[3]==1 && v->ne[3]==1 && ggml_nelements(k)/4<=INT_MAX &&
++        q->nb[0]==4 && k->nb[0]==2 && v->nb[0]==2 && ids->nb[0]==4 &&
++        q->nb[1]%16==0 && q->nb[2]%16==0 && uintptr_t(q->data)%16==0 &&
++        k->nb[1]%16==0 && k->nb[2]%16==0 && uintptr_t(k->data)%16==0 &&
++        ids->nb[1]%4==0 && uintptr_t(ids->data)%4==0 && ids->ne[0]>0 && ids->ne[0]<=2560 &&
++        ids->ne[1]>=q->ne[1] && ids->ne[2]==1 && ids->ne[3]==1 && ggml_is_contiguous(dst);
++}
++
++static __global__ void qsa_pack_k(const char * src, uint16_t * dst, size_t nb1, size_t nb2, int nk, uint32_t count) {
++    const uint32_t i=blockIdx.x*blockDim.x+threadIdx.x;
++    if (i>=count) return;
++    const uint32_t d=(i%32)*8, key=(i/32)%nk, head=i/(uint32_t(nk)*32);
++    const size_t group=size_t(head)*(nk/4)+key/4;
++    const auto * in=reinterpret_cast<const uint4 *>(src+size_t(head)*nb2+size_t(key)*nb1+d*2);
++    auto * out=reinterpret_cast<uint4 *>(dst+group*1024+(d/16)*64+(key%4)*16+d%16);
++    *out=*in;
++}
++
++static __global__ void qsa_pack_v(const char * src, uint16_t * dst, size_t nb1, size_t nb2, int nk, uint32_t count) {
++    const uint32_t i=blockIdx.x*blockDim.x+threadIdx.x;
++    if (i>=count) return;
++    const uint32_t d=i%256, group=i/256, head=group/(nk/4), key=(group%(nk/4))*4;
++    const char * in=src+size_t(head)*nb2+size_t(key)*nb1+d*2;
++    *reinterpret_cast<ushort4 *>(dst+size_t(group)*1024+d*4)=make_ushort4(
++        *reinterpret_cast<const uint16_t *>(in), *reinterpret_cast<const uint16_t *>(in+nb1),
++        *reinterpret_cast<const uint16_t *>(in+2*nb1), *reinterpret_cast<const uint16_t *>(in+3*nb1));
++}
++
++void ggml_cuda_flash_attn_ext_qsa_prefill(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    const auto * q=dst->src[0], * k=dst->src[1], * v=dst->src[2], * m=dst->src[3], * ids=dst->src[5];
++    float scale; memcpy(&scale, dst->op_params, 4);
++    const int n_q = (int) q->ne[1], ns = (int) ids->ne[0], nk = (int) k->ne[1];
++    ggml_cuda_pool_alloc<uint16_t> packed_k(ctx.pool(), ggml_nelements(k));
++    ggml_cuda_pool_alloc<uint16_t> packed_v(ctx.pool(), ggml_nelements(v));
++    const uint32_t count_k=ggml_nelements(k)/8, count_v=ggml_nelements(v)/4;
++    qsa_pack_k<<<(count_k+255)/256,256,0,ctx.stream()>>>((const char *)k->data,packed_k.get(),k->nb[1],k->nb[2],nk,count_k);
++    qsa_pack_v<<<(count_v+255)/256,256,0,ctx.stream()>>>((const char *)v->data,packed_v.get(),v->nb[1],v->nb[2],nk,count_v);
++    CUDA_CHECK(cudaGetLastError());
++    const int ngroups = (n_q + QSA3_G - 1) / QSA3_G;
++    const int cap = (QSA3_G * ns + 3) & ~3;
++    ggml_cuda_pool_alloc<uint16_t> ublk(ctx.pool(), (size_t) ngroups * cap);
++    ggml_cuda_pool_alloc<uint16_t> umask(ctx.pool(), (size_t) ngroups * cap);
++    ggml_cuda_pool_alloc<int>      ucount(ctx.pool(), (size_t) ngroups);
++    ggml_cuda_pool_alloc<int>      srow(ctx.pool(), (size_t) n_q * ns);
++    ggml_cuda_pool_alloc<int>      sflag(ctx.pool(), (size_t) n_q);
++    {
++        const ggml_cuda_kernel_launch_params launch(dim3(n_q), dim3(256), (size_t) ns * sizeof(int), ctx.stream());
++        ggml_cuda_kernel_launch(qsa3_rows_kernel, launch, (const int *) ids->data, ids->nb[1], ns, nk, srow.get(), sflag.get(), m ? (const char *)m->data : nullptr, m ? m->nb[1] : 0);
++        CUDA_CHECK(cudaGetLastError());
++        const ggml_cuda_kernel_launch_params launch2(dim3(ngroups), dim3(QSA3_MERGE_LANES), (size_t) QSA3_G * ns * sizeof(int), ctx.stream());
++        ggml_cuda_kernel_launch(qsa3_merge_kernel, launch2, (const int *) ids->data, ids->nb[1], n_q, ns, nk,
++                                (const int *) srow.get(), (const int *) sflag.get(), ublk.get(), umask.get(), ucount.get(), cap);
++        CUDA_CHECK(cudaGetLastError());
++    }
++    qsa3_layout layout{q->nb[1], q->nb[2], dst->nb[1], dst->nb[2], m ? m->nb[1] : 0, nk, n_q, 12, cap, scale};
++    const ggml_cuda_kernel_launch_params launch(dim3(ngroups, k->ne[2]), dim3(256), 0, ctx.stream());
++    ggml_cuda_kernel_launch(qsa3_attn_kernel, launch, (const float *) q->data, packed_k.get(), packed_v.get(),
++                            m ? (const uint16_t *) m->data : nullptr, (const uint16_t *) ublk.get(), (const uint16_t *) umask.get(),
++                            (const int *) ucount.get(), (float *) dst->data, layout);
++    CUDA_CHECK(cudaGetLastError());
++}
++
++#endif
+
+diff --git a/ggml/src/ggml-cuda/qsa-prefill.cuh b/ggml/src/ggml-cuda/qsa-prefill.cuh
+new file mode 100644
+index 0000000..d9eecc5
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-prefill.cuh
+@@ -0,0 +1,4 @@
++#pragma once
++#include "common.cuh"
++bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst);
++void ggml_cuda_flash_attn_ext_qsa_prefill(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
+
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index a286083..a4382ec 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -5583,6 +5583,20 @@ void ggml_flash_attn_ext_add_sinks(
+     a->src[4] = sinks;
+ }
+ 
++void ggml_flash_attn_ext_add_top_k(
++        struct ggml_tensor * a,
++        struct ggml_tensor * top_k,
++                 int64_t     n_kv_raw) {
++    GGML_ASSERT(a->op == GGML_OP_FLASH_ATTN_EXT);
++    GGML_ASSERT(a->src[5] == NULL);
++    GGML_ASSERT(top_k->type == GGML_TYPE_I32);
++    GGML_ASSERT(top_k->ne[1] == a->src[0]->ne[1]);
++    GGML_ASSERT(n_kv_raw >= 0 && n_kv_raw <= a->src[1]->ne[1]);
++
++    a->src[5] = top_k;
++    ggml_set_op_params_i32(a, 4, (int32_t) n_kv_raw);
++}
++
+ // ggml_flash_attn_back
+ 
+ struct ggml_tensor * ggml_flash_attn_back(
+
+diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
+index 65c1e88..ba2371b 100644
+--- a/src/llama-graph.cpp
++++ b/src/llama-graph.cpp
+@@ -2606,10 +2606,12 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+          ggml_tensor * kq_b,
+          ggml_tensor * kq_mask,
+          ggml_tensor * sinks,
+-         ggml_tensor * v_mla,
+-             int64_t   n_kv_max,
+-               float   kq_scale,
+-                 int   il) const {
++        ggml_tensor * v_mla,
++            int64_t   n_kv_max,
++              float   kq_scale,
++                int   il,
++        ggml_tensor * top_k,
++            int64_t   n_kv_raw) const {
+     const bool v_trans = v->nb[1] > v->nb[2];
+ 
+     // split the batch into streams if needed
+@@ -2647,6 +2649,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+         ggml_flash_attn_ext_add_sinks(cur, sinks);
+         GGML_ASSERT(n_kv_max >= 0 && n_kv_max <= INT32_MAX);
+         ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
++        if (top_k) {
++            ggml_flash_attn_ext_add_top_k(cur, top_k, n_kv_raw);
++        }
+         ggml_prec_set_acc(cur, GGML_PREC_F32);
+ 
+         if (v_mla) {
+
+diff --git a/src/llama-graph.h b/src/llama-graph.h
+index cc41106..ce68832 100644
+--- a/src/llama-graph.h
++++ b/src/llama-graph.h
+@@ -1187,7 +1187,9 @@ struct llm_graph_context {
+             ggml_tensor * v_mla,   // [n_embd_head_v_mla, n_embd_head_v, n_head_v]
+                 int64_t   n_kv_max,
+                   float   kq_scale,
+-                    int   il) const;
++                    int   il,
++            ggml_tensor * top_k = nullptr,
++                int64_t   n_kv_raw = 0) const;
+ 
+     llm_graph_input_attn_no_cache * build_attn_inp_no_cache() const;
+ 
+
+diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
+index 2647735..bbf2e2b 100644
+--- a/src/models/qwen4exp.cpp
++++ b/src/models/qwen4exp.cpp
+@@ -840,7 +840,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+     ggml_tensor * k = mctx_cur->get_k(ctx0, il);
+     ggml_tensor * v = mctx_cur->get_v(ctx0, il);
+ 
+-    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, kq_mask_top_k, nullptr, nullptr, top_k->ne[0], kq_scale, il);
++    const char * qsa_kernel = getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
++    const bool selected_keys = qsa_kernel && qsa_kernel[0] == '1' && qsa_kernel[1] == '\0';
++    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, kq_mask_top_k, nullptr, nullptr, top_k->ne[0], kq_scale, il,
++                                        selected_keys ? top_k : nullptr, 0);
+     cb(cur, "kqv_out", il);
+ 
+     // the rotation is its own inverse, so undo it on the value side of the output
+
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index ceadab2..e8bbe62 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -8912,6 +8912,105 @@ struct test_falcon : public test_llm {
+ };
+ 
+ 
++struct test_qsa_prefill : public test_case {
++    const int dim, queries, keys, selected, streams, ratio;
++    const bool interleaved, poison;
++    ggml_tensor * q = nullptr, * k = nullptr, * v = nullptr, * mask = nullptr, * ids = nullptr;
++    test_qsa_prefill(int queries, int keys, int selected, bool interleaved=true, bool poison=false, int streams=1, int ratio=12, int dim=256)
++        : dim(dim), queries(queries), keys(keys), selected(selected), streams(streams), ratio(ratio), interleaved(interleaved), poison(poison) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_PREFILL"; }
++    std::string vars() override { return VARS_TO_STR8(dim,queries,keys,selected,streams,ratio,interleaved,poison); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 5e-4; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        q = ggml_new_tensor_4d(ctx,GGML_TYPE_F32,dim,2*ratio,queries,streams);
++        q = ggml_permute(ctx,q,0,2,1,3);
++        k = ggml_new_tensor_4d(ctx,GGML_TYPE_F16,dim,interleaved ? 2 : keys,interleaved ? keys : 2,streams);
++        v = ggml_new_tensor_4d(ctx,GGML_TYPE_F16,dim,interleaved ? 2 : keys,interleaved ? keys : 2,streams);
++        if (interleaved) { k=ggml_permute(ctx,k,0,2,1,3); v=ggml_permute(ctx,v,0,2,1,3); }
++        mask = ggml_new_tensor_4d(ctx,GGML_TYPE_F16,keys,queries,1,streams);
++        ids = ggml_new_tensor_4d(ctx,GGML_TYPE_I32,selected,queries,1,streams);
++        auto * out = ggml_flash_attn_ext(ctx,q,k,v,mask,1.0f/sqrtf(dim),0.0f,0.0f);
++        ggml_flash_attn_ext_add_top_k(out,ids,0);
++        ggml_prec_set_acc(out,GGML_PREC_F32);
++        return out;
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        for (auto * t=ggml_get_first_tensor(ctx); t; t=ggml_get_next_tensor(ctx,t)) {
++            if (t->op==GGML_OP_NONE && t!=mask && t!=ids) init_tensor_uniform(t);
++        }
++        std::vector<int32_t> picks(ggml_nelements(ids));
++        std::vector<ggml_fp16_t> masks(ggml_nelements(mask),ggml_fp32_to_fp16(-INFINITY));
++        for (int stream=0;stream<streams;++stream) for (int q=0;q<queries;++q) {
++            for (int j=0;j<selected;++j) {
++                int key=1+(j*37+q*13+stream*7)%(keys-4);
++                if (key==3) key=4;
++                if (j==0) key=selected==1 ? 2 : (poison ? 3 : -1);
++                if (j==1) key=2;
++                picks[(stream*queries+q)*selected+j]=key;
++                if (key>=0 && !(poison && key==3)) masks[(stream*queries+q)*keys+key]=ggml_fp32_to_fp16(0.015625f*(key%5-2));
++            }
++        }
++        ggml_backend_tensor_set(ids,picks.data(),0,ggml_nbytes(ids));
++        ggml_backend_tensor_set(mask,masks.data(),0,ggml_nbytes(mask));
++        if (poison) {
++            std::vector<ggml_fp16_t> nan(dim,ggml_fp32_to_fp16(NAN));
++            for (auto * t : {k,v}) for (int stream=0;stream<streams;++stream) for (int head=0;head<2;++head) {
++                ggml_backend_tensor_set(t,nan.data(),stream*t->nb[3]+head*t->nb[2]+3*t->nb[1],dim*sizeof(ggml_fp16_t));
++            }
++        }
++    }
++};
++
++struct test_qsa_decode : public test_qsa_prefill {
++    const bool duplicates;
++    test_qsa_decode(int q, int keys, int selected, bool poison=false, int ratio=12, bool duplicates=false, bool interleaved=true)
++        : test_qsa_prefill(q,keys,selected,interleaved,poison,1,ratio), duplicates(duplicates) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_DECODE"; }
++    std::string vars() override { return test_qsa_prefill::vars()+",duplicates="+std::to_string(duplicates); }
++    double err(const float * actual, const float * cpu, size_t n) override {
++        const double agreement=nmse(actual,cpu,n);
++        if (queries>512 || selected>2560) return agreement;   // 512 = QSA_DECODE_MAX_QUERIES (ggml-cuda/qsa-decode.cuh)
++        const auto qv=tensor_to_float(q), kv=tensor_to_float(k), vv=tensor_to_float(v), mv=tensor_to_float(mask);
++        std::vector<float> reference(n);
++        for (int query=0;query<queries;++query) {
++            std::vector<int> active;
++            for (int key=0;key<keys;++key) if (mv[size_t(query)*keys+key]!=-INFINITY) active.push_back(key);
++            for (int head=0;head<2*ratio;++head) {
++                std::vector<double> scores(active.size()), values(dim,0.0);
++                double maximum=-INFINITY;
++                for (size_t j=0;j<active.size();++j) {
++                    const int key=active[j];double dot=0;
++                    for (int d=0;d<dim;++d) dot+=double(qv[d+size_t(dim)*(query+queries*head)])*kv[d+size_t(dim)*(key+keys*(head/ratio))];
++                    scores[j]=dot/std::sqrt(double(dim))+mv[size_t(query)*keys+key];
++                    maximum=std::max(maximum,scores[j]);
++                }
++                double sum=0;
++                for (size_t j=0;j<active.size();++j) {
++                    const double weight=std::exp(scores[j]-maximum);sum+=weight;
++                    for (int d=0;d<dim;++d) values[d]+=weight*vv[d+size_t(dim)*(active[j]+keys*(head/ratio))];
++                }
++                for (int d=0;d<dim;++d) reference[d+size_t(dim)*(head+2*ratio*query)]=sum>0 ? float(values[d]/sum) : 0.0f;
++            }
++        }
++        const double gpu_error=nmse(reference.data(),actual,n), cpu_error=nmse(reference.data(),cpu,n);
++        fprintf(stderr,"QSA_FP64 q=%d keys=%d selected=%d ratio=%d gpu=%.9g cpu=%.9g\n",queries,keys,selected,ratio,gpu_error,cpu_error);
++        return std::max(agreement,gpu_error);
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_qsa_prefill::initialize_tensors(ctx);
++        if (!duplicates) return;
++        std::vector<int32_t> picks(ggml_nelements(ids));
++        std::vector<ggml_fp16_t> masks(ggml_nelements(mask),ggml_fp32_to_fp16(-INFINITY));
++        for (int q=0;q<queries;++q) for (int j=0;j<selected;++j) {
++            const int key=j<selected/2 ? 2 : 4+(j*13+q*7)%(keys-8);
++            picks[q*selected+j]=key;masks[q*keys+key]=ggml_fp32_to_fp16(0.f);
++        }
++        ggml_backend_tensor_set(ids,picks.data(),0,ggml_nbytes(ids));
++        ggml_backend_tensor_set(mask,masks.data(),0,ggml_nbytes(mask));
++    }
++};
++
+ // ###########################################
+ // ## Section 3: GGML Op Test Instantiation ##
+ // ###########################################
+@@ -10880,6 +10979,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_flash_attn_ext(256, 256, 4, {4, 1},  4096, 512, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+     test_cases.emplace_back(new test_flash_attn_ext(256, 256, 2, {12, 1}, 4096, 512, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+ 
++    // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
++    test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
++    test_cases.emplace_back(new test_qsa_prefill(256, 4096, 2048, true, true));
++    test_cases.emplace_back(new test_qsa_decode(2, 4096, 2048, true));
++    test_cases.emplace_back(new test_qsa_decode(16, 4096, 2048, false, 12, true));
++    test_cases.emplace_back(new test_qsa_decode(1, 16384, 2048));
++
+     // dense-allocated (non-view) quant K/V at batch >= 64, in cache and native layouts
+     test_cases.emplace_back(new test_flash_attn_ext(64, 64, 4, {1, 1}, 512, 75, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 2, 1, 3}, false));
+     test_cases.emplace_back(new test_flash_attn_ext(64, 64, 4, {4, 1}, 512, 75, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 2, 1, 3}, false));

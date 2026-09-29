@@ -278,6 +278,10 @@ with inherited unified-memory allocation disabled for this model process.
 The policy also selects a 2048-token microbatch, one non-unified KV slot and
 no RAM prompt archive. Reuse of the current live prefix still works. F16 K/V
 cache, Flash Attention and the 262144-token ceiling are retained.
+On `gfx1151` ROCm, the patched llama.cpp also uses selected-key HIP attention
+for Flash-Next's F16 QSA shape. Vulkan and older Qwen families retain their
+existing attention paths. The [hardware record](../hardware-acceptance.md)
+contains the paired prefill measurements and correctness limits.
 
 Direct startup selects ROCm on Strix Halo, and a ROCm router or gateway
 includes the verified preset. Keep `--models-max 1` on a 128 GB host so the
