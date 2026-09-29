@@ -50,6 +50,11 @@ revisions recorded in `catalog/catalog.json`.
   changing the router parent's policy. The Qwen4exp sparse-attention decode
   path also carries llama.cpp PR 28213 at
   `beed2f78ac42cf16710b763e6f3ba20665c6d233`, under MIT.
+  The gfx1151 selected-key Qwen4exp attention kernels are adapted from the
+  MIT-licensed `halo-box/strix-llama.cpp` snapshot
+  `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Paracetamol narrows their
+  dispatch to the accepted F16 shape and leaves other models on the existing
+  attention path.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

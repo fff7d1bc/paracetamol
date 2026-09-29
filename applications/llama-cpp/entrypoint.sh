@@ -27,6 +27,7 @@ kv_cache_strix_halo="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_HALO:-}"
 kv_cache_strix_point="${PARACETAMOL_LLAMA_KV_CACHE_STRIX_POINT:-}"
 model_load_strix_halo="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_HALO:-}"
 model_load_strix_point="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_POINT:-}"
+qsa_kernel_requested="${PARACETAMOL_QWEN4EXP_QSA_KERNEL:-auto}"
 allowed_profiles="${PARACETAMOL_LLAMA_ALLOWED_PROFILES:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
@@ -57,6 +58,10 @@ esac
 case "$reasoning_preserve" in
     0|1) ;;
     *) die "invalid llama.cpp reasoning-preserve setting '$reasoning_preserve'" ;;
+esac
+case "$qsa_kernel_requested" in
+    auto|0|1) ;;
+    *) die "invalid Qwen4exp QSA kernel setting '$qsa_kernel_requested'" ;;
 esac
 # This mirrors the host catalog allowlist so neither boundary accepts paths.
 case "$chat_template" in
@@ -148,6 +153,7 @@ speculative_args=()
 model_policy_args=()
 unified_memory=0
 vulkan_f16_kv_contiguize=0
+qsa_kernel=0
 if [[ "$router" == 0 && -n "$context_override" ]]; then
     model_policy_args+=(--fit off --override-kv "$context_override")
 fi
@@ -295,6 +301,9 @@ else
         esac
     fi
     if [[ "$profile" == strix-halo ]]; then
+        if [[ "$backend" == rocm && "$qsa_kernel_requested" != 0 ]]; then
+            qsa_kernel=1
+        fi
         if [[ "$backend" == vulkan ]]; then
             # The patched path is opt-in so other architectures and Vulkan
             # implementations retain pinned-upstream behavior.
@@ -310,6 +319,7 @@ else
         model_policy_args+=(--flash-attn "$flash_attn_strix_point")
     fi
 fi
+export PARACETAMOL_QWEN4EXP_QSA_KERNEL="$qsa_kernel"
 
 if [[ -n "$allowed_profiles" ]]; then
     [[ "$allowed_profiles" =~ ^(rdna4|strix-halo|strix-point)(,(rdna4|strix-halo|strix-point))*$ ]] ||
@@ -376,6 +386,9 @@ printf '  profile:       %s\n' "$profile"
 printf '  backend:       %s\n' "$backend"
 printf '  device:        %s\n' "$device"
 printf '  architecture:  %s\n' "$architecture"
+if [[ "$qsa_kernel" == 1 ]]; then
+    printf '  Qwen4exp QSA:  selected-key HIP kernels available (F16 K/V)\n'
+fi
 if ((gpu_count > 1)); then
     printf '  GPU split:     layer (%s devices)\n' "$gpu_count"
 fi
