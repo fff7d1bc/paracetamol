@@ -284,6 +284,10 @@ selection masks and fuses pooling and score reduction. Scoped matrix kernels
 also accelerate this model without changing K/V precision, quantization or
 sampling. Shared, gapped and unsupported cache layouts keep the ordinary
 attention graph. Vulkan and older Qwen families retain their existing paths.
+Single-token appends also reuse derived F32 indexer keys instead of preparing
+the entire history again. Prompt edits, rewinds and session restores invalidate
+that cache. It adds about 384 MiB at 256K for the current Flash-Next model and
+does not lower KV precision or change the model's context limit.
 The [hardware record](../hardware-acceptance.md)
 contains the paired prefill measurements and correctness limits.
 

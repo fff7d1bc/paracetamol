@@ -278,6 +278,17 @@ protected behavior is fixed.
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. The mask remains authoritative on fallback backends. A container-level `PARACETAMOL_QWEN4EXP_QSA_KERNEL=0` override disables it. | Upstream provides equivalent selected-key attention with the operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 | `hip-qwen4exp-graph-optimizations.patch` | Builds on the selected-key patch with compact whole-block selection, 512-query scorer strips, ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and existing small-tile MoE kernels. The graph requires a unique scalar prefix, supported F16 geometry and `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`. HIP dispatch remains exact `gfx1151`. Unsupported cache layouts retain the original graph, while maskless selected attention has a tested CPU fallback. The entrypoint enables this only with the Strix Halo ROCm kernel policy. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` restores the `r40` path. | Upstream equivalents retain block-selection and FP64 attention oracles, fusion alias/lifetime guards, prefix eligibility checks, near-256K retrieval and prefix reuse, and the older-model/backend regression screens. Never silently replace these with BF16 shadow weights or a new persistent derived-cache policy. |
+| `hip-qwen4exp-prepared-key-cache.patch` | Reuses F32 pooled, normalized and rotated indexer keys only for successful single-token Qwen4exp appends. F16 raw keys remain authoritative. All memory mutations, restore, failed evaluation and unsupported layouts invalidate derived state. Prefills retain the original graph. The first decode rebuilds and seeds derived storage. The entrypoint enables `PARACETAMOL_QWEN4EXP_QSA_CACHE=1` only with the accepted Strix Halo ROCm compact graph. Setting it to `0` restores recomputation. | An upstream equivalent preserves the exact preparation tests, successful-ubatch publication, mutation/restore invalidation, long-context retrieval, interruption recovery and same-image on/off measurements. Derived keys must not silently enter the saved-state format or change KV precision. |
+
+The `r42` prepared-key cache keeps the first two extractions intact. It adopts
+the fork's reuse idea with a smaller local state contract, not its physical-cell
+cache or fast-prefill machinery. Only a verified append of one token reuses
+keys. The last complete block and tail sentinel are refreshed with the same
+ordered F32 operations. Prefills keep their original graph without repeated
+copies into derived storage. The first decode then prepares all keys normally
+and seeds the cache. The cache is excluded from saved sessions and invalidated on
+restore. It adds about 384 MiB at the current Flash-Next 256K ceiling, with no
+change to the GGUF, F16 KV, residual precision, samplers or context limit.
 
 The September 29 `r41` follow-up keeps the first selected-key patch intact.
 It adds a narrowly scoped extraction from the same pinned Strix fork, not
@@ -285,8 +296,8 @@ another engine or a replacement source tree. Compact selection uses a budget
 of complete blocks plus the partial tail, matching the model reference rather
 than taking a fixed number of independently expanded token scores. F16 K/V,
 stored GGUF weights, F32 residuals, sampling and allocation policy are unchanged.
-The fork's BF16 matrix/residual paths, persistent pooled-key cache and global
-kernel tuning remain excluded. See the [hardware record](hardware-acceptance.md)
+That `r41` extraction excludes the fork's BF16 matrix/residual paths, persistent
+pooled-key cache and global kernel tuning. See the [hardware record](hardware-acceptance.md)
 for measured gains and the remaining performance gap.
 The compact graph also requires at most 262140 padded KV cells because the
 prefill kernel reserves a 16-bit block sentinel. A larger padded cache keeps
