@@ -55,6 +55,12 @@ revisions recorded in `catalog/catalog.json`.
   `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Paracetamol narrows their
   dispatch to the accepted F16 shape and leaves other models on the existing
   attention path.
+  A follow-up patch adapts the same fork's compact whole-block QSA selection,
+  ordered F32 score and pooling fusions, and Q8 matvec prefetch. Its small MoE
+  tiles use existing upstream kernels rather than the fork's global tile
+  table changes. These additions remain limited to explicitly opted-in
+  Qwen4exp graphs and exact `gfx1151` dispatch. The fork's BF16 shadow weights,
+  residual downcasts, and persistent pooled-key cache are not included.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice
