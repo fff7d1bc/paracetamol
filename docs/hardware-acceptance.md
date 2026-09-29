@@ -26,6 +26,56 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Qwen4exp selected-key kernels (2026-09-29)
+
+The scoped Qwen4exp HIP attention change in Paracetamol commit
+`734811e11505147d6427dbc6a8f88fb30fb52a6e` is `PASS` for the pinned
+Unsloth Qwen3.8 Flash-Next Dynamic Q4_K_XL GGUF on Aion's `gfx1151` ROCm
+path. It is not acceptance for future Qwen4 models or MTP. The locally built
+image is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r40`,
+ID `175803f83890045015f4a337d316c00830475803af2241d91d874b96bf52deeb`.
+The llama.cpp pin, GGUF, 262144 context, F16 K/V cache, direct model reader,
+and allocation policy are unchanged. Only exact Strix Halo ROCm receives the
+new selected-key kernels. Vulkan and older Qwen models retain their previous
+attention paths.
+
+The paired runs use the same experimental binary with
+`PARACETAMOL_QWEN4EXP_QSA_KERNEL=0` and `=1`, one slot, 2048 batch and
+microbatch, and the same uncached deterministic retrieval requests. Every
+run returned the exact verification code. These are single measurements, not
+a variance estimate or a model-quality comparison.
+
+| Prompt tokens | Kernel off, prompt tokens/s | Kernel on, prompt tokens/s | HTTP wall, off | HTTP wall, on |
+| ---: | ---: | ---: | ---: | ---: |
+| 32448 | 442.765 | 526.723 | 80.172 s | 68.030 s |
+| 129648 | 224.929 | 442.318 | 585.830 s | 302.423 s |
+
+At 129K the selected-key kernels nearly double prompt throughput and reduce
+request wall time by 48%. This is valuable, but it does not reproduce the
+fork's roughly 3x prefill claim. The broader fork was not imported because its
+other changes regressed the trusted Q8 path in the comparison. A separately
+tested scorer-strip addition did not materially improve the kernel-only result.
+
+The final managed image returned the correct code from a cold 246648-token
+prompt in 717.160 s total, with 350.212 prompt tokens/s. A byte-identical
+repeat reused 246644 prompt tokens and completed in 12.749 s. The regular
+Qwen3.8 27B Dynamic Q8_K_XL preset returned the correct 32K retrieval code at
+309.806 prompt tokens/s, matching its earlier `r39` screen near 309 tokens/s.
+The default Q8 MTP preset also passed retrieval and a medium-effort required
+function call. The final image's Vulkan Flash-Next preset returned the correct
+4K answer without the HIP kernel. A CPU-only small-model server reached
+`/health` with no GPU devices and normal confinement. All managed test
+containers were stopped, and no AMD GPU faults appeared in the kernel log
+during the test interval.
+
+The five selected-key operator cases passed on ROCm against the CPU reference,
+including poisoned masked cells, duplicate key IDs, and an FP64 oracle for
+short-query decode. The detailed run notes are retained on Aion at
+`~/.local/share/paracetamol/apps/acceptance/results/20260929-qwen4exp-qsa-kernels/results.md`.
+Other hardware classes are `N/P` for this optimization because dispatch is
+intentionally gated to `gfx1151`. The general application matrix below remains
+separate from this focused acceptance.
+
 ### Fedora 44 Strix Halo Flash-Next QSA gather (2026-09-25)
 
 The `gfx1151` Flash-Next inference screen is `PASS` on ROCm and Vulkan. This
