@@ -26,6 +26,92 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Qwen4exp graph optimizations (2026-09-29)
+
+The second extraction from the Strix fork builds on the selected-key kernels
+below. Paracetamol commit `e18bc898e1573f055b155b20d1d512feddb2608f` keeps
+the first patch intact and adds compact single-prefix selection, scorer strips, ordered F32 pooling
+and score fusions, scoped Q8 matvec prefetch and small expert-matrix tiles.
+It does not import the fork as another engine. The image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r41`, ID
+`bcc2eacd59e7daf50055621977dcb47597178f2b2e050e891cb5e35d5a62ab61`.
+The pinned Unsloth Flash-Next Dynamic Q4_K_XL is `PASS` on Aion's `gfx1151`
+ROCm path. This is not acceptance for future Qwen4 models or Flash-Next MTP.
+
+The paired comparison uses this same image with
+`PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` and `=1`. The original selected-key kernels
+remain enabled in both runs. Both use
+the same pinned Unsloth Flash-Next Dynamic Q4_K_XL, 262144 context, F16 K/V,
+2048 batch and microbatch, one slot and one sequential client. Temperature
+is zero, seed is 42 and reasoning is off. These isolated timing requests use
+upstream sampler defaults except the explicit temperature, rather than the
+managed model's mode-dependent sampler defaults. Model loading, allocation
+and the host's balanced power policy are unchanged.
+
+| Matched 129648-token request | First patch only | Both patches |
+| --- | ---: | ---: |
+| Cold prompt tokens/s | 417.325 | 523.438 |
+| Cold prompt processing | 310.665 s | 247.685 s |
+| Cold HTTP wall, including 128 output tokens | 323.894 s | 255.724 s |
+| Three cached requests, aggregate output tokens / total HTTP time | 9.664 tokens/s | 15.783 tokens/s |
+| Three cached requests, total HTTP time | 39.736 s | 24.330 s |
+
+The second patch improves prefill throughput by 25.4%, cuts cold request time
+by 21.0% and cuts cached request time by 38.8%. Each cached request generates
+128 tokens and reuses 129644 input tokens. All eight responses recover the
+correct verification code. Ignoring EOS for fixed-output timing is intentional
+and is not a completed-task quality benchmark. These are one paired cold run
+and three cached repetitions per variant, not a broad variance study.
+
+The fork still has a measurable lead. A separate run of its actual pinned
+binary reached 921.731 prompt tokens/s at 129K. Disabling its BF16 shadow
+matrix and residual machinery reduced that to 645.412 tokens/s, still ahead
+of this extraction. The remaining gap is therefore not explained solely by
+precision changes. Persistent pooled-key state, cross-split recurrent
+fusions, broad scheduler/kernel changes and BF16 shadow/residual paths are
+not included. A tested F16-input BLAS alternative for Q8 prefill was slower
+and was discarded.
+
+The normal managed preset also recovers all eight exact record/code pairs
+from 246701 input tokens, including the beginning and end of the prompt.
+It finishes naturally after 164 output tokens. Prefill takes 496.038 s
+(497.343 tokens/s), decode runs at 12.714 tokens/s and total HTTP time is
+508.943 s. A repeat returns the identical JSON, reuses 246697 input tokens
+and finishes in 13.073 s. This longer test uses the real managed sampling
+defaults and is a correctness/reuse screen, not an on/off timing comparison.
+Nested tool calls, tool-result continuation, cancellation recovery, prefix
+reuse, two clients queued through the single slot and sampler-policy checks
+also pass on the final managed Flash-Next preset.
+
+Compact selection follows the model reference's budget of complete blocks
+plus the partial tail. The prior expanded-token selection could include an
+extra partial block, so the new graph does not promise bit-identical answers.
+It retains F16 K/V, stored GGUF weights and F32 residuals. Shared, gapped or
+otherwise unsupported cache layouts use the ordinary graph.
+
+All four managed AMD targets and Vulkan build successfully. The final image's
+ROCm libraries pass 35 supported operator cases against CPU references and
+independent oracles, including nine Q8 cases exactly matching the original
+GPU result. An unsupported maskless attention geometry is rejected by HIP.
+Fourteen CPU fallback cases also pass against the final libraries, including
+that unsupported geometry.
+
+The prefix eligibility test and existing native allocation/reader tests pass
+during the image build. The ordinary dense Qwen3.8 27B Dynamic Q8_K_XL preset
+passes 32K retrieval at 309.785 prompt tokens/s, essentially unchanged from
+`r40` at 309.806. The default Q8 MTP preset passes 4K retrieval, nested tools,
+a medium-effort required function call and managed sampler checks. Its
+retrieval accepts 54 of 81 draft tokens, matching the previous screen.
+Vulkan Flash-Next returns the correct 4K answer without the new HIP graph.
+A CPU-only small-model server reaches `/health` with no GPU devices, no
+effective or bounding capabilities and the normal read-only confinement.
+All test containers are stopped. No GPU faults appear in the kernel journal
+during the production-image test interval. Other hardware classes are `N/P`
+for this optimization because dispatch is intentionally limited to `gfx1151`.
+
+Detailed results are retained on Aion at
+`~/.local/share/paracetamol/apps/acceptance/results/20260929-qwen4exp-graph-optimizations/results.md`.
+
 ### Fedora 44 Strix Halo Qwen4exp selected-key kernels (2026-09-29)
 
 The scoped Qwen4exp HIP attention change in Paracetamol commit
