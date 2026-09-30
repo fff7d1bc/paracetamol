@@ -1,0 +1,462 @@
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -44,6 +44,7 @@
+ #include "ggml-cuda/quantize.cuh"
+ #if defined(GGML_USE_HIP)
+ #include "ggml-cuda/qsa-score.cuh"
++#include "ggml-cuda/qsa-expand.cuh"
+ #include "ggml-cuda/gdn-conv.cuh"
+ #include "ggml-cuda/ple-conv.cuh"
+ #include "ggml-cuda/qwen4exp-hc.cuh"
+@@ -3567,6 +3568,105 @@
+ }
+ #endif
+ 
++#if defined(GGML_USE_HIP)
++static bool qwen_expand_ranges_overlap(const ggml_tensor * a, const ggml_tensor * b) {
++    if (!a->data || !b->data) return false;
++    const uintptr_t x=uintptr_t(a->data), y=uintptr_t(b->data);
++    return x<=y ? y-x<ggml_nbytes(a) : x-y<ggml_nbytes(b);
++}
++
++// QSA complete-block selection (qwen4exp_select_complete_blocks): top-512 blocks -> ascending order -> cells with
++// validity -> concat tail, as one kernel. The optional tail metadata nodes
++// give a 20-22 node subgraph for 512 selected blocks and 2051 cells.
++static int ggml_cuda_match_qsa_expand(const ggml_cgraph * graph, int first, ggml_cuda_qsa_expand_args & args) {
++    if (first + 19 >= graph->n_nodes) return 0;
++    if (graph->nodes[first]->op != GGML_OP_CONT || !graph->nodes[first]->src[0] || graph->nodes[first]->src[0]->op != GGML_OP_TOP_K) return 0;
++    if (strcmp(graph->nodes[first]->name, "qwen4exp_qsa_selected_blocks") != 0) return 0;
++    const ggml_op expected[] = {GGML_OP_CONT, GGML_OP_VIEW, GGML_OP_CPY, GGML_OP_ARGSORT,
++        GGML_OP_GET_ROWS, GGML_OP_RESHAPE, GGML_OP_RESHAPE, GGML_OP_GET_ROWS, GGML_OP_RESHAPE,
++        GGML_OP_CPY, GGML_OP_SCALE, GGML_OP_VIEW, GGML_OP_GET_ROWS, GGML_OP_SCALE, GGML_OP_UNARY,
++        GGML_OP_MUL, GGML_OP_SCALE, GGML_OP_CPY, GGML_OP_RESHAPE, GGML_OP_VIEW, GGML_OP_CONCAT};
++    const ggml_tensor * n[21];
++    for (int j = 0; j < 19; ++j) {
++        n[j] = graph->nodes[first+j];
++        if (n[j]->op != expected[j]) return 0;
++    }
++    // Model scorer strips use VIEW -> RESHAPE for their partial tail. A
++    // scheduler copy or a direct fixture can elide either metadata node.
++    int last = first + 19;
++    while (last < graph->n_nodes && last < first + 21 &&
++            (graph->nodes[last]->op == GGML_OP_VIEW || graph->nodes[last]->op == GGML_OP_RESHAPE)) ++last;
++    const int node_count = last - first + 1;
++    if (first + node_count > graph->n_nodes) return 0;
++    n[20] = graph->nodes[first+node_count-1];
++    if (n[20]->op != GGML_OP_CONCAT) return 0;
++    // the tail the concat reads: the scheduler may substitute an input copy for the graph's own view node (the tail
++    // indices are a host input), so take the concat's actual source rather than nodes[first+19]
++    n[19] = n[20]->src[1];
++    if (!n[19]) return 0;
++    auto source = [&](int node, int src, int producer) { return n[node]->src[src] == n[producer]; };
++    for (const auto & edge : {std::array<int,3>{1,0,0}, {2,0,0}, {3,0,2}, {4,0,1}, {4,1,3},
++            {5,0,4}, {6,0,5}, {7,1,6}, {8,0,7}, {9,0,8}, {10,0,9}, {12,0,11}, {12,1,5},
++            {13,0,12}, {14,0,13}, {15,0,10}, {15,1,14}, {16,0,15}, {17,0,16}, {18,0,17},
++            {20,0,18}}) {
++        if (!source(edge[0], edge[1], edge[2])) return 0;
++    }
++    const auto * blocks = n[0]->src[0];
++    const auto * scores = n[11]->src[0];
++    const auto * cells = n[7]->src[0];
++    const auto * tail = n[19];
++    if (!blocks || !scores || !cells || blocks->op != GGML_OP_TOP_K || blocks->src[0] != scores ||
++            blocks->type != GGML_TYPE_I32 || scores->type != GGML_TYPE_F32 || cells->type != GGML_TYPE_I32 ||
++            tail->type != GGML_TYPE_I32 || n[20]->type != GGML_TYPE_I32 ||
++            ggml_get_op_params_i32(n[3],0) != GGML_SORT_ORDER_ASC ||
++            ggml_get_unary_op(n[14]) != GGML_UNARY_OP_STEP || ggml_get_op_params_i32(n[20],0) != 0) return 0;
++    auto shape = [](const ggml_tensor * t, int64_t a, int64_t b, int64_t c=1, int64_t d=1) {
++        return t->ne[0]==a && t->ne[1]==b && t->ne[2]==c && t->ne[3]==d;
++    };
++    const int64_t nq = blocks->ne[1], nb = scores->ne[0];
++    if (nq < 1 || nq > 4096 || nb < 512 || nb > 65535 ||
++            !shape(blocks,512,nq) || !shape(scores,nb,nq) || !shape(cells,4,nb) || !shape(tail,3,nq) ||
++            !shape(n[0],512,nq) || !shape(n[1],1,512,nq) || !shape(n[2],512,nq) ||
++            !shape(n[3],512,nq) || !shape(n[4],1,512,nq) || !shape(n[5],512,nq) ||
++            !shape(n[6],512*nq,1) || !shape(n[7],4,512*nq) || !shape(n[8],4,512,nq) ||
++            !shape(n[9],4,512,nq) || !shape(n[10],4,512,nq) || !shape(n[11],1,nb,nq) ||
++            !shape(n[12],1,512,nq) || !shape(n[13],1,512,nq) || !shape(n[14],1,512,nq) ||
++            !shape(n[15],4,512,nq) || !shape(n[16],4,512,nq) || !shape(n[17],4,512,nq) ||
++            !shape(n[18],2048,nq) || !shape(n[20],2051,nq)) return 0;
++    for (int j : {2,9,10,11,12,13,14,15,16}) if (n[j]->type != GGML_TYPE_F32) return 0;
++    for (int j : {0,1,3,4,5,6,7,8,17,18,19,20}) if (n[j]->type != GGML_TYPE_I32) return 0;
++    for (int j : {10,13,16}) {
++        if (ggml_get_op_params_f32(n[j],0) != 1.0f || ggml_get_op_params_f32(n[j],1) != (j==16 ? -1.0f : 1.0f)) return 0;
++    }
++    for (const auto * t : {blocks,scores,cells,tail,n[2],n[9],n[17],n[20]}) {
++        if (!ggml_is_contiguous(t) || t->nb[0] != 4) return 0;
++    }
++    if (n[1]->view_offs != 0 || n[11]->view_offs != 0 ||
++            n[1]->nb[1] != 4 || n[1]->nb[2] != size_t(512)*4 ||
++            n[11]->nb[1] != 4 || n[11]->nb[2] != size_t(nb)*4) return 0;
++    int indices[22], count=0; ggml_op ops[22];
++    for (int j=0;j<node_count;++j) {
++        if (j==11 || (j>=19 && j<node_count-1)) continue;
++        indices[count]=first+j;ops[count++]=graph->nodes[first+j]->op;
++    }
++    const int outputs[] = {first+2,first+9,first+17,first+18,first+node_count-1};
++    if (!ggml_can_fuse_subgraph_ext(graph, indices, count, ops, outputs, 5)) return 0;
++    args = {blocks,scores,cells,tail,graph->nodes[first+2],graph->nodes[first+9],graph->nodes[first+17],graph->nodes[first+node_count-1]};
++    return node_count-1;
++}
++
++static bool ggml_cuda_qsa_expand_alias_ok(const ggml_cuda_qsa_expand_args & args) {
++    const ggml_tensor * outputs[] = {args.cast_blocks,args.cast_cells,args.expanded,args.output};
++    for (int i=0;i<4;++i) {
++        for (const auto * input : {args.blocks,args.scores,args.cells,args.tail}) {
++            if (qwen_expand_ranges_overlap(input,outputs[i])) return false;
++        }
++        for (int j=0;j<i;++j) if (qwen_expand_ranges_overlap(outputs[i],outputs[j])) return false;
++    }
++    return true;
++}
++#endif
++
+ // try and fuse nodes and return the number of nodes to skip
+ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, int i) {
+ 
+@@ -3578,6 +3678,14 @@
+     ggml_tensor * node = cgraph->nodes[i];
+ 
+ #if defined(GGML_USE_HIP)
++    if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_QSA_SELECTION")) {
++        ggml_cuda_qsa_expand_args args;
++        const int skip=ggml_cuda_match_qsa_expand(cgraph,i,args);
++        if (skip && ggml_cuda_qsa_expand_alias_ok(args)) {
++            ggml_cuda_op_qsa_expand(*cuda_ctx,args);
++            return skip;
++        }
++    }
+     if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_MMV_GROUP") && node->op == GGML_OP_MUL_MAT) {
+         ggml_tensor * nodes[4];
+         int outputs[4], count = 0, end = i;
+@@ -4728,6 +4836,22 @@
+     static const bool disable_fusion = getenv("GGML_CUDA_DISABLE_FUSION") != nullptr && std::atoi(getenv("GGML_CUDA_DISABLE_FUSION"));
+     if (!disable_fusion) {
+ #if defined(GGML_USE_HIP)
++        if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_QSA_SELECTION")) {
++            for (int i=0;i<cgraph->n_nodes;++i) {
++                ggml_cuda_qsa_expand_args args;
++                const int skip=ggml_cuda_match_qsa_expand(cgraph,i,args);
++                if (!skip) continue;
++                // Inputs and the CPY destinations remain live until the
++                // fused output. These are invocation-local, not cached state.
++                for (const auto * t : {args.blocks,args.scores,args.cells,args.tail,
++                        (const ggml_tensor *)args.cast_blocks,(const ggml_tensor *)args.cast_cells,
++                        (const ggml_tensor *)args.expanded}) {
++                    auto * root=const_cast<ggml_tensor *>(t->view_src ? t->view_src : t);
++                    params->add_alloc_dep(params->user_data,root,args.output);
++                }
++                i+=skip;
++            }
++        }
+         if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_NARROW_NORM")) for (int i = 0; i < cgraph->n_nodes; ++i) {
+             ggml_cuda_norm_gated_match norm;
+             int skip = ggml_cuda_norm_gated_match_at(cgraph, i, norm);
+diff --git a/ggml/src/ggml-cuda/qsa-expand.cu b/ggml/src/ggml-cuda/qsa-expand.cu
+new file mode 100644
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-expand.cu
+@@ -0,0 +1,72 @@
++#if defined(GGML_USE_HIP)
++// Adapted from halo-box/strix-llama.cpp (MIT),
++// 7a9196dad8b13b70fb3420886aadaf98fc09b849. No arithmetic downcasts.
++#include "common.cuh"
++#include "qsa-expand.cuh"
++
++struct expand_layout {
++    size_t block_row, score_row, cell_row, tail_row, output_row, cast_block_row, cast_cell_row, expanded_row;
++    int n_blocks;
++};
++
++__global__ __launch_bounds__(256) void qsa_expand_complete_blocks_512(
++        const char * blocks, const char * scores, const char * cells, const char * tail,
++        char * output, char * cast_blocks, char * cast_cells, char * expanded, expand_layout layout) {
++    const int query = blockIdx.x;
++    const int lane = threadIdx.x;
++    __shared__ int ordered[512];
++    const int * selected = reinterpret_cast<const int *>(blocks + query*layout.block_row);
++    for (int i = lane; i < 512; i += 256) {
++        ordered[i] = selected[i];
++        reinterpret_cast<float *>(cast_blocks + query*layout.cast_block_row)[i] = float(selected[i]);
++    }
++    __syncthreads();
++    for (int size = 2; size <= 512; size *= 2) {
++        for (int distance = size/2; distance; distance /= 2) {
++            for (int i = lane; i < 512; i += 256) {
++                const int other = i ^ distance;
++                if (other > i) {
++                    const int a = ordered[i], b = ordered[other];
++                    if ((i & size) ? a < b : a > b) { ordered[i] = b; ordered[other] = a; }
++                }
++            }
++            __syncthreads();
++        }
++    }
++    const float * score = reinterpret_cast<const float *>(scores + query*layout.score_row);
++    const int * remainder = reinterpret_cast<const int *>(tail + query*layout.tail_row);
++    int * out = reinterpret_cast<int *>(output + query*layout.output_row);
++    for (int i = lane; i < 2051; i += 256) {
++        if (i >= 2048) { out[i] = remainder[i-2048]; continue; }
++        const int block = ordered[i/4];
++        if (block < 0 || block >= layout.n_blocks) {
++            // TOP_K supplies valid rows. Still define every exposed output
++            // if corrupt IDs reach the kernel, rather than leaking scratch.
++            reinterpret_cast<float *>(cast_cells + query*layout.cast_cell_row)[i] = 0;
++            reinterpret_cast<int *>(expanded + query*layout.expanded_row)[i] = -1;
++            out[i] = -1;
++            continue;
++        }
++        const int cell = reinterpret_cast<const int *>(cells + block*layout.cell_row)[i%4];
++        const float valid = __fadd_rn(score[block], 1.0f) > 0.0f ? 1.0f : 0.0f;
++        const float value = float(cell);
++        reinterpret_cast<float *>(cast_cells + query*layout.cast_cell_row)[i] = value;
++        const float shifted = __fadd_rn(value, 1.0f);
++        const int result = int(__fadd_rn(__fmul_rn(shifted, valid), -1.0f));
++        reinterpret_cast<int *>(expanded + query*layout.expanded_row)[i] = result;
++        out[i] = result;
++    }
++}
++
++void ggml_cuda_op_qsa_expand(ggml_backend_cuda_context & ctx, const ggml_cuda_qsa_expand_args & a) {
++    expand_layout layout{a.blocks->nb[1], a.scores->nb[1], a.cells->nb[1], a.tail->nb[1], a.output->nb[1], a.cast_blocks->nb[1], a.cast_cells->nb[2], a.expanded->nb[2], int(a.scores->ne[0])};
++    const ggml_cuda_kernel_launch_params launch(dim3(a.output->ne[1]), dim3(256), 0, ctx.stream());
++    ggml_cuda_kernel_launch(qsa_expand_complete_blocks_512, launch,
++        (const char *)a.blocks->data, (const char *)a.scores->data, (const char *)a.cells->data,
++        (const char *)a.tail->data, (char *)a.output->data, (char *)a.cast_blocks->data,
++        (char *)a.cast_cells->data, (char *)a.expanded->data, layout);
++    CUDA_CHECK(cudaGetLastError());
++}
++
++
++#endif
+diff --git a/ggml/src/ggml-cuda/qsa-expand.cuh b/ggml/src/ggml-cuda/qsa-expand.cuh
+new file mode 100644
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qsa-expand.cuh
+@@ -0,0 +1,16 @@
++// Adapted from halo-box/strix-llama.cpp (MIT),
++// 7a9196dad8b13b70fb3420886aadaf98fc09b849. No arithmetic downcasts.
++#pragma once
++#include "ggml.h"
++struct ggml_backend_cuda_context;
++struct ggml_cuda_qsa_expand_args {
++    const ggml_tensor * blocks;
++    const ggml_tensor * scores;
++    const ggml_tensor * cells;
++    const ggml_tensor * tail;
++    ggml_tensor * cast_blocks;
++    ggml_tensor * cast_cells;
++    ggml_tensor * expanded;
++    ggml_tensor * output;
++};
++void ggml_cuda_op_qsa_expand(ggml_backend_cuda_context &, const ggml_cuda_qsa_expand_args &);
+diff --git a/src/models/qwen4exp-qsa.h b/src/models/qwen4exp-qsa.h
+--- a/src/models/qwen4exp-qsa.h
++++ b/src/models/qwen4exp-qsa.h
+@@ -7,6 +7,7 @@
+         ggml_tensor * members, ggml_tensor * tail, int64_t budget, int64_t ratio) {
+     const int64_t nb = score->ne[0], nq = score->ne[1];
+     auto * blocks = ggml_cont(ctx, ggml_top_k(ctx, score, budget));
++    ggml_set_name(blocks, "qwen4exp_qsa_selected_blocks");
+     auto * order = ggml_argsort(ctx, ggml_cast(ctx, blocks, GGML_TYPE_F32), GGML_SORT_ORDER_ASC);
+     auto * block_view = ggml_view_4d(ctx, blocks, 1, budget, nq, 1,
+             blocks->nb[0], blocks->nb[1], blocks->nb[2], 0);
+diff --git a/src/qwen4exp-qsa-prefix.h b/src/qwen4exp-qsa-prefix.h
+--- a/src/qwen4exp-qsa-prefix.h
++++ b/src/qwen4exp-qsa-prefix.h
+@@ -2,6 +2,8 @@
+ #include "llama-batch.h"
+ #include "llama-kv-cells.h"
+ #include <algorithm>
++#include <cstdlib>
++#include <cstring>
+ 
+ // A compact visibility record is valid only for a unique scalar prefix owned
+ // by one sequence. Never approximate a shared, gapped, or multimodal cache.
+@@ -13,13 +15,22 @@
+     const llama_seq_id seq = u.seq_id[0][0];
+     if (seq < 0 || seq >= LLAMA_MAX_SEQ) { return false; }
+     if (n_kv == 0 || n_kv > cells.size()) { return false; }
++    // Exact singleton equality avoids a population count for every cached
++    // cell while still rejecting every shared or foreign sequence bit.
++    // The patch-wide opt-out keeps an identical-image performance control.
++    const char * policy = std::getenv("PARACETAMOL_QWEN4EXP_QSA_SELECTION");
++    const bool exact = !policy || std::strcmp(policy, "0") != 0;
++    llama_kv_cells::seq_set_t expected;
++    expected.set(seq);
+     std::vector<bool> seen(n_kv, false);
+     uint32_t count = 0;
+     llama_pos maximum = -1;
+     for (uint32_t j = 0; j < n_kv; ++j) {
+         if (cells.is_empty(j)) { continue; }
+         const llama_pos pos = cells.pos_get(j);
+-        if (cells.seq_get_all(j).count() != 1 || !cells.seq_has(j, seq) || pos < 0 ||
++        const bool owner = exact ? cells.seq_get_all(j) == expected :
++            cells.seq_get_all(j).count() == 1 && cells.seq_has(j, seq);
++        if (!owner || pos < 0 ||
+                 uint32_t(pos) >= n_kv || seen[pos] ||
+                 (u.is_pos_2d() && (cells.ext_get(j).x != pos || cells.ext_get(j).y != pos))) { return false; }
+         seen[pos] = true;
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -9421,6 +9421,116 @@
+     }
+ };
+ 
++struct test_qsa_expand : public test_case {
++    int blocks, queries, budget, ratio;
++    bool extra_reader, sliced_tail;
++    ggml_tensor * scores=nullptr, *members=nullptr, *tails=nullptr;
++    std::vector<float> expected;
++    test_qsa_expand(int b,int q,int k=512,int r=4,bool extra=false,bool sliced=false)
++        : blocks(b),queries(q),budget(k),ratio(r),extra_reader(extra),sliced_tail(sliced) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_EXPAND"; }
++    std::string vars() override { return VARS_TO_STR6(blocks,queries,budget,ratio,extra_reader,sliced_tail); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 0; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        scores=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,blocks,queries);
++        members=ggml_new_tensor_1d(ctx,GGML_TYPE_I32,ratio*blocks);
++        tails=ggml_new_tensor_2d(ctx,GGML_TYPE_I32,ratio-1,queries);
++        if(sliced_tail) {
++            auto * storage=ggml_new_tensor_2d(ctx,GGML_TYPE_I32,ratio-1,queries+3);
++            tails=ggml_view_2d(ctx,storage,ratio-1,queries,storage->nb[1],2*storage->nb[1]);
++        }
++        auto * out=qwen4exp_select_blocks(ctx,scores,members,tails,budget,ratio);
++        if(extra_reader) {
++            ggml_tensor * selected=nullptr;
++            for(auto * t=ggml_get_first_tensor(ctx);t;t=ggml_get_next_tensor(ctx,t)) {
++                if(!strcmp(t->name,"qwen4exp_qsa_selected_blocks")) selected=t;
++            }
++            GGML_ASSERT(selected);
++            // CONT is elided by the fast path, so its independent reader
++            // must force ordinary execution rather than see stale storage.
++            out=ggml_concat(ctx,out,ggml_dup(ctx,selected),0);
++        }
++        return out;
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_case::initialize_tensors(ctx);
++        std::vector<float> s(size_t(blocks)*queries,-INFINITY);
++        std::vector<int32_t> m(ratio*blocks),t((ratio-1)*queries,-1);
++        const int width=ratio*budget+ratio-1+(extra_reader ? budget:0);
++        expected.assign(size_t(width)*queries,-1);
++        for(int b=0;b<blocks;++b) for(int d=0;d<ratio;++d) m[ratio*b+d]=ratio*((b*7)%blocks)+d;
++        for(int q=0;q<queries;++q) {
++            const int visible=extra_reader || q%3==0 ? blocks : q%3==1 ? std::min(blocks,17) : std::min(blocks,700);
++            std::vector<int> selected;
++            for(int b=0;b<visible;++b) {
++                // Coprime with every fixture block count, including65535.
++                s[size_t(q)*blocks+b]=1+(b*8191+q*7)%blocks;
++                selected.push_back(b);
++            }
++            // With every block selected, also test the exact STEP threshold.
++            if(blocks==budget && !extra_reader) {
++                s[size_t(q)*blocks]=-1.0f;
++                s[size_t(q)*blocks+1]=std::nextafter(-1.0f,0.0f);
++                s[size_t(q)*blocks+2]=std::nextafter(-1.0f,-INFINITY);
++            }
++            std::sort(selected.begin(),selected.end(),[&](int a,int b){return s[size_t(q)*blocks+a]>s[size_t(q)*blocks+b];});
++            if(selected.size()>size_t(budget)) selected.resize(budget);
++            if(extra_reader) for(int i=0;i<budget;++i) expected[size_t(q)*width+ratio*budget+ratio-1+i]=selected[i];
++            std::sort(selected.begin(),selected.end());
++            if(blocks==budget) {
++                selected.resize(blocks);
++                std::iota(selected.begin(),selected.end(),0);
++            }
++            int j=0;
++            for(int b:selected) {
++                if(!(s[size_t(q)*blocks+b]+1.0f>0.0f)) {
++                    if(blocks==budget) j+=ratio;
++                    continue;
++                }
++                for(int d=0;d<ratio;++d) expected[size_t(q)*width+j++]=m[ratio*b+d];
++            }
++            for(int d=0;d<q%ratio;++d) t[q*(ratio-1)+d]=ratio*blocks+d;
++            for(int d=0;d<ratio-1;++d) expected[size_t(q)*width+ratio*budget+d]=t[q*(ratio-1)+d];
++        }
++        ggml_backend_tensor_set(scores,s.data(),0,ggml_nbytes(scores));
++        ggml_backend_tensor_set(members,m.data(),0,ggml_nbytes(members));
++        ggml_backend_tensor_set(tails,t.data(),0,ggml_nbytes(tails));
++    }
++    double err(const float * actual,const float * cpu,size_t n) override {
++        if(n!=expected.size()) return 1;
++        const int width=ratio*budget+ratio-1+(extra_reader ? budget:0);
++        for(int q=0;q<queries;++q) {
++            const size_t off=size_t(q)*width;
++            if(blocks==budget || extra_reader || q%3==0) {
++                // Without a selection tie at the budget boundary, also
++                // require the exact ascending-block order, not just a set.
++                for(int i=0;i<ratio*budget;++i) {
++                    if(actual[off+i]!=expected[off+i] || cpu[off+i]!=expected[off+i]) return 1;
++                }
++            }
++            std::vector<float> want(expected.begin()+off,expected.begin()+off+ratio*budget);
++            std::vector<float> got(actual+off,actual+off+ratio*budget),ref(cpu+off,cpu+off+ratio*budget);
++            // Invisible -inf ties can select different unused blocks. Their
++            // positions may differ, but the selected physical cells must not.
++            std::sort(want.begin(),want.end());std::sort(got.begin(),got.end());std::sort(ref.begin(),ref.end());
++            if(got!=want || ref!=want) return 1;
++            for(int i=ratio*budget;i<ratio*budget+ratio-1;++i) {
++                if(actual[off+i]!=expected[off+i] || cpu[off+i]!=expected[off+i]) return 1;
++            }
++            if(extra_reader) {
++                const size_t start=off+ratio*budget+ratio-1;
++                std::vector<float> ew(expected.begin()+start,expected.begin()+start+budget);
++                std::vector<float> eg(actual+start,actual+start+budget),er(cpu+start,cpu+start+budget);
++                // TOP_K promises membership, not score-sorted output.
++                std::sort(ew.begin(),ew.end());std::sort(eg.begin(),eg.end());std::sort(er.begin(),er.end());
++                if(eg!=ew || er!=ew) return 1;
++            }
++        }
++        return 0;
++    }
++};
++
+ struct test_qsa_prefill : public test_case {
+     const int dim, queries, keys, selected, streams, ratio;
+     const bool interleaved, poison;
+@@ -11524,6 +11634,15 @@
+     // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
+     test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
+     test_cases.emplace_back(new test_qsa_blocks());
++    for(int blocks : {512,513,8193}) for(int queries : {1,17,513}) {
++        test_cases.emplace_back(new test_qsa_expand(blocks,queries));
++    }
++    test_cases.emplace_back(new test_qsa_expand(65535,1));
++    test_cases.emplace_back(new test_qsa_expand(513,17,512,4,true));
++    test_cases.emplace_back(new test_qsa_expand(513,17,511));
++    test_cases.emplace_back(new test_qsa_expand(513,17,512,2));
++    for(int queries : {17,512,2048}) test_cases.emplace_back(new test_qsa_expand(8193,queries,512,4,false,true));
++    test_cases.emplace_back(new test_qsa_expand(65535,17,512,4,false,true));
+     for (int blocks : {2, 65, 513, 8192, 65535}) {
+         for (bool tail : {false, true}) test_cases.emplace_back(new test_qsa_prepared(blocks, tail));
+     }
+diff --git a/tests/test-qwen4exp-qsa-prefix.cpp b/tests/test-qwen4exp-qsa-prefix.cpp
+--- a/tests/test-qwen4exp-qsa-prefix.cpp
++++ b/tests/test-qwen4exp-qsa-prefix.cpp
+@@ -49,5 +49,22 @@
+     check(!valid(),"non-scalar cached position");
+     cells.reset();
+     check(!valid(),"empty cache");
++    // Every sequence bit must be checked, including bits outside the first
++    // machine word. Exact-singleton comparison must not admit sharing.
++    u.n_tokens=1; u.n_pos=1; positions[0]=0;
++    for(int owner=0;owner<LLAMA_MAX_SEQ;++owner) {
++        cells.reset();
++        seq=owner;
++        cells.pos_set(0,0); cells.seq_add(0,owner);
++        check(valid(),"singleton sequence bit");
++        for(int other=0;other<LLAMA_MAX_SEQ;++other) {
++            if(other==owner) continue;
++            cells.seq_add(0,other);
++            check(!valid(),"shared sequence bit pair");
++            cells.seq_rm(0,other);
++        }
++        seq=(owner+1)%LLAMA_MAX_SEQ;
++        check(!valid(),"foreign singleton bit");
++    }
+     puts("Qwen4exp QSA prefix eligibility passed");
+ }

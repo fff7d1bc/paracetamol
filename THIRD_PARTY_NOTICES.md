@@ -73,6 +73,12 @@ revisions recorded in `catalog/catalog.json`.
   dot product and preserves the public residual labels used by control vectors
   and imatrix. This patch does not include the separate BF16 or
   F16 matrix experiments, shadow weights or reduced-precision residuals.
+  The selection extraction adapts the same fork's fused expansion of selected
+  QSA blocks into physical cells. It retains the reference's integer and F32
+  arithmetic, narrows dispatch to the reviewed graph and hardware, and
+  preserves auxiliary outputs and allocation lifetimes. A local equivalent
+  singleton-set check reduces CPU prefix-validation overhead without caching
+  or weakening sequence-ownership checks.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

@@ -26,6 +26,72 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Qwen4exp selection extraction (2026-09-30)
+
+The `r44` image adds precision-preserving selected-block expansion and an
+equivalent CPU singleton-set check on top of the four earlier extractions.
+The source baseline is Paracetamol `8f0a65c6413f15a89a72ab38108674765fe9b10e`.
+Upstream llama.cpp, the MIT Strix fork reference, model pins, balanced power
+profile, F16 KV and matrix arithmetic are unchanged. The new patch SHA-256 is
+`42ff460ebf1c663f7c2b463e0e7d73f7bb26caee66c53e246a018fe7badc7bd5`.
+The image is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r44`,
+ID `af12785843f2d8271a4e6c3d95676e83cdd0eaf2e181b0c737cbed478312e486`.
+
+The same-image control sets `PARACETAMOL_QWEN4EXP_QSA_SELECTION=0`. Both
+runs use the pinned Unsloth Flash-Next Dynamic Q4_K_XL, a 262144 context
+ceiling, F16 K/V, 2048 batch and microbatch, one slot and one sequential
+client. The fixed-output timing uses temperature zero, seed 42 and reasoning
+off. Other upstream sampler defaults, direct embedding reads and allocation
+policy match the preceding pipeline comparison. Cold means a fresh server
+and prompt cache, not an emptied OS file cache.
+
+| Matched 246701-token request | Selection off | Selection on |
+| --- | ---: | ---: |
+| Cold prompt tokens/s | 605.180 | 625.626 |
+| Cold prompt processing | 407.649 s | 394.327 s |
+| Cold HTTP wall, including 256 output tokens | 421.793 s | 407.253 s |
+| Three cached requests, aggregate output tokens / total HTTP time | 18.042 tokens/s | 19.405 tokens/s |
+| Three cached requests, total HTTP time | 42.567 s | 39.578 s |
+
+This is a 3.4% prefill gain and a 3.4% reduction in cold request time. The
+cached rate improves by 7.6% in this screen. There is one cold pair and three
+cached repetitions per variant, not a broad variance study. Each cached
+request reuses 246697 input tokens. All fixed-output requests recover the
+eight values. Both policies also pass two natural-stop exact-JSON checks.
+Fixed-output timing ignores EOS and is not a task-quality benchmark.
+
+The final image builds all four HIP targets and Vulkan. Its own libraries
+pass 165 supported GPU cases, 41 selected CPU cases and 18 GPU selection
+opt-out cases. Selection tests cover the actual sliced-tail view/reshape,
+large block counts, STEP boundaries and an additional reader that prevents
+fusion. Both CPU prefix policies pass every singleton sequence bit and
+shared-bit pair. Library closure and `pip check` pass. Eight natural-output
+state checks pass, including cancellation, prompt replacement and slot
+save/erase/restore. No new persistent state or precision downcast is added.
+
+The normal managed preset passes the same 246701-token natural JSON task in
+408.006 s at 618.256 prompt tokens/s, stopping after 164 output tokens. The
+repeat finishes in 8.945 s with 246697 cached input tokens. Tools and tool
+continuations, prefix reuse, cancellation recovery, two clients queued
+through one slot and mode-dependent sampling checks pass.
+
+Dense Qwen3.8 27B Dynamic Q8 passes 32K retrieval at 310.273 prompt tokens/s,
+matching the preceding 310.159 screen. The default dense MTP preset passes
+retrieval with 54/81 draft tokens accepted, sampling and a medium-effort
+required tool call. Native router switching from dense MTP to Flash-Next and
+back passes tool calls and continuations. Vulkan Flash-Next passes 4K
+retrieval. CPU-only startup retains a read-only root, no GPU devices, zero
+effective/bounding capabilities and `no-new-privileges`.
+
+This is `PASS` for the pinned Flash-Next ROCm path on `gfx1151`, not future
+Qwen4 models or Flash-Next MTP. Other architectures are `N/P` for this
+dispatch. The uninstrumented final-image kernel-journal window has no new
+entries. Earlier instrumented experiments are not included in that claim.
+All test containers are removed and the original balanced power settings
+remain in place. Detailed results, sources, commands and provenance are kept
+under `~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-selection/`
+on the acceptance host.
+
 ### Fedora 44 Strix Halo Qwen4exp pipeline extraction (2026-09-30)
 
 Paracetamol commit `b79f202884ac255489cac7a80e560d69b4166c71` adds a fourth

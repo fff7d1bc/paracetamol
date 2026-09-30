@@ -280,6 +280,8 @@ COPY applications/llama-cpp/hip-qwen4exp-prepared-key-cache.patch \
     /opt/paracetamol/llama-hip-qwen4exp-prepared-key-cache.patch
 COPY applications/llama-cpp/hip-qwen4exp-pipeline.patch \
     /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch
+COPY applications/llama-cpp/hip-qwen4exp-selection.patch \
+    /opt/paracetamol/llama-hip-qwen4exp-selection.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
@@ -312,6 +314,8 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-prepared-key-cache.patch && \
     git apply --check /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch && \
+    git apply --check /opt/paracetamol/llama-hip-qwen4exp-selection.patch && \
+    git apply /opt/paracetamol/llama-hip-qwen4exp-selection.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -403,7 +407,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations,hip-qwen4exp-prepared-key-cache,hip-qwen4exp-pipeline" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations,hip-qwen4exp-prepared-key-cache,hip-qwen4exp-pipeline,hip-qwen4exp-selection" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data
