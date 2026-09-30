@@ -68,8 +68,17 @@ type GatewayClientConfiguration struct {
 }
 
 type GatewayLlamaConfiguration struct {
-	Backend   *string
-	ModelsMax *int
+	Backend      *string
+	ModelsMax    *int
+	Qwen4expMath *string
+}
+
+// ValidateQwen4expMath checks internal matrix arithmetic, not GGUF or KV precision.
+func ValidateQwen4expMath(value string) error {
+	if value != "default" && value != "mixed" {
+		return fmt.Errorf("Qwen4exp math must be default or mixed, got %q", value)
+	}
+	return nil
 }
 
 func ApplicationByID(identifier string) (Application, bool) { return application.ByID(identifier) }
@@ -195,6 +204,11 @@ func validateConfiguration(configuration Configuration, path string) error {
 	if value := configuration.Gateway.LlamaCPP.ModelsMax; value != nil && *value < 1 {
 		return controlerr.New("[gateway.llama-cpp].models_max must be at least 1: %s", path)
 	}
+	if value := configuration.Gateway.LlamaCPP.Qwen4expMath; value != nil {
+		if err := ValidateQwen4expMath(*value); err != nil {
+			return controlerr.New("invalid [gateway.llama-cpp].qwen4exp_math in %s: %v", path, err)
+		}
+	}
 	if value := configuration.Gateway.Client.URL; value != nil {
 		if _, err := NormalizeGatewayURL(*value); err != nil {
 			return controlerr.New("invalid [gateway.client].url in %s: %v", path, err)
@@ -264,7 +278,10 @@ func DefaultContents(dataDir string) []byte {
 		"# api_key_file = \"/absolute/path/to/gateway.key\"\n\n" +
 		"[gateway.llama-cpp]\n" +
 		"backend = \"rocm\"\n" +
-		"models_max = 1\n")
+		"models_max = 1\n" +
+		"# Optional Flash-Next BF16/F16 matrices on one Strix Halo ROCm GPU.\n" +
+		"# GGUF and F16 KV are unchanged. Other models keep their normal paths.\n" +
+		"qwen4exp_math = \"default\"\n")
 }
 
 // SelectGatewayClientURL applies the public client precedence and returns a

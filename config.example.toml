@@ -25,3 +25,6 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
+# Optional Flash-Next BF16/F16 matrices on one Strix Halo ROCm GPU.
+# GGUF and F16 KV stay unchanged. Other models keep their normal paths.
+qwen4exp_math = "default"

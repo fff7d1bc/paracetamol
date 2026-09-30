@@ -154,6 +154,12 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 			return invalidConfigurationValue(setting, err)
 		}
 		configuration.Gateway.LlamaCPP.ModelsMax = &value
+	case "gateway.llama-cpp.qwen4exp_math":
+		value, err := parseConfigurationString(rawValue)
+		if err != nil {
+			return invalidConfigurationValue(setting, err)
+		}
+		configuration.Gateway.LlamaCPP.Qwen4expMath = &value
 	default:
 		return fmt.Errorf("unknown configuration setting %s", setting)
 	}

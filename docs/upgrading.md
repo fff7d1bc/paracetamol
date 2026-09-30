@@ -281,6 +281,42 @@ protected behavior is fixed.
 | `hip-qwen4exp-prepared-key-cache.patch` | Reuses F32 pooled, normalized and rotated indexer keys only for successful single-token Qwen4exp appends. F16 raw keys remain authoritative. All memory mutations, restore, failed evaluation and unsupported layouts invalidate derived state. Prefills retain the original graph. The first decode rebuilds and seeds derived storage. The entrypoint enables `PARACETAMOL_QWEN4EXP_QSA_CACHE=1` only with the accepted Strix Halo ROCm compact graph. Setting it to `0` restores recomputation. | An upstream equivalent preserves the exact preparation tests, successful-ubatch publication, mutation/restore invalidation, long-context retrieval, interruption recovery and same-image on/off measurements. Derived keys must not silently enter the saved-state format or change KV precision. |
 | `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
 | `hip-qwen4exp-selection.patch` | Fuses the private Qwen4exp 512-block selection graph on exact `gfx1151`, preserving integer/F32 arithmetic, tail cells, auxiliary outputs and allocation lifetimes. Replaces per-cell sequence population counts with equivalent singleton-set equality in compact-prefix validation. | An upstream equivalent passes selection oracles, real sliced-tail layouts, extra-reader fallback, every sequence-bit pair, populated-context retrieval and state/backend regressions. No arithmetic downcast or weaker prefix eligibility belongs here. |
+| `hip-qwen4exp-mixed-math.patch` | Explicit opt-in BF16 quantized-matrix operands, F16 operands for selected F32 projections, gated expert/HC fusions and paired F32 normalization. Requires the private Qwen4exp graph and exact `gfx1151`. F32 accumulation, outputs and residuals, GGUF and F16 KV remain unchanged. | Preserve the default-off host/entrypoint policy, architecture checks, explicit-F32 fallback, independent numerical oracles, fusion readers/lifetimes, near-256K retrieval and state recovery, quality screen and dense-model/backend regressions. Persistent shadows and BF16-only outputs are not part of this policy. |
+
+The `r45` mixed-math patch is independent of the precision-preserving
+selection optimization. The public `--qwen4exp-math default|mixed` policy is
+available for the gateway and direct llama.cpp server/CLI. Gateway config uses
+`[gateway.llama-cpp].qwen4exp_math`. The host rejects unsupported combinations,
+and the entrypoint checks the actual architecture before setting the private
+`PARACETAMOL_QWEN4EXP_FAST_MATH=1` backend gate. It clears inherited values
+first, so the ordinary default cannot silently inherit mixed arithmetic.
+The private gate also requires `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`.
+
+Matrix dispatch requires model-owned hints, reviewed quant formats,
+contiguous shapes and bounded geometry. Explicit F32 source or accumulator
+precision falls back. Q8 prefill starts at 512 tokens, routed experts and
+selected F32 projections at 256. Paired HC normalization changes the F32
+summation order but not residual storage. Auxiliary fusion reads and physical
+allocation lifetimes remain guarded. There is no persistent conversion cache
+or BF16 shadow state. Keep independent dequantized-F32 references and the
+frozen quality screen when refreshing this patch, rather than accepting only
+agreement with the CPU's quantized activation path.
+
+Run the full `QSA_|QWEN_` operator suite with mixed math disabled. The older
+`QWEN_Q8_MMV` fixture also includes large prefill cases and requires bitwise
+equality to unhinted Q8 arithmetic, so that assertion does not apply when the
+BF16 prefill path is selected. With mixed math enabled, retain its exact
+decode, unsupported-shape and zero-input checks. Use `QWEN_MMB` and
+`QWEN_MMB_REFERENCE` for mixed prefill, alongside the expert, gate/mix, HC
+and QSA suites. Do not loosen the original default-path equality checks to
+make the opt-in suite pass.
+
+The entrypoint runtime report is schema 2 and includes `qwen4exp_math`.
+Startup output, `status llama-cpp` and its copyable reproduction command
+must retain the resolved choice. The default dense model and its kernels
+must remain unchanged when the router serves it alongside Flash-Next.
+See [hardware acceptance](hardware-acceptance.md) for the measured image and
+the limits of the numerical and task-quality evidence.
 
 The `r44` selection patch builds on the four earlier extractions. The graph
 already selected whole blocks, but its ordinary gather, sort, cast and
@@ -297,8 +333,8 @@ the GPU fusion and the equivalent CPU singleton check for a same-image
 control. The CPU check still rejects shared, foreign, gapped or non-scalar
 prefixes. It adds no persistent state. The broader QSA graph policy remains
 the prerequisite, and there is no change to model pins, F16 KV, F32 residuals,
-matrix arithmetic, sampling or context limits. BF16/F16 experiments remain
-separate from the managed image.
+matrix arithmetic, sampling or context limits. The BF16/F16 matrix path is
+a separate, default-off patch and policy.
 
 The `r43` pipeline patch builds on those three extractions. It adapts direct
 GDN and PLE convolution, HC_POST normalization and injection, narrow RMS/gate fusion,

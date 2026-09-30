@@ -575,6 +575,7 @@ func (app *App) runLlama(mode string, args []string) error {
 	}
 	profileFlag := set.String("profile", "", "execution profile: auto, cpu, rdna4, strix-halo, or strix-point (default: auto)")
 	backend := set.String("backend", "rocm", "GPU inference backend: rocm or vulkan")
+	qwenMath := set.String("qwen4exp-math", "default", "Flash-Next matrix arithmetic: default or opt-in mixed BF16/F16 (one Strix Halo ROCm GPU)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
@@ -618,6 +619,9 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err := requireChoice(*backend, "backend", "rocm", "vulkan"); err != nil {
 		return err
 	}
+	if err := config.ValidateQwen4expMath(*qwenMath); err != nil {
+		return controlerr.Usage("%v", err)
+	}
 	if contextExplicit && *contextSize < 0 {
 		return controlerr.Usage("--context must be zero or positive")
 	}
@@ -639,6 +643,9 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := runtime.ValidateQwen4expMath(*qwenMath, *backend, profileValue, selectedNodes); err != nil {
+		return controlerr.Usage("%v", err)
+	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
 	if err != nil {
 		return err
@@ -653,6 +660,7 @@ func (app *App) runLlama(mode string, args []string) error {
 		return err
 	}
 	options := runtime.LlamaOptions{Profile: profileValue, Mode: mode, DataDir: dataRoot, Backend: *backend, ModelsMax: modelsMaxValue, RenderNodes: selectedNodes, AutoRemove: true, Unconfined: *unconfined, Detach: detach}
+	options.Qwen4expMath = *qwenMath
 	application, _ := config.ApplicationByID("llama-cpp")
 	if mode == "server" {
 		options.Listen = firstNonEmpty(listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen))

@@ -28,6 +28,7 @@ var llamaRuntimeKeys = map[string]bool{
 	"gpu_count": true, "router": true, "models_max": true, "context": true,
 	"listen": true, "host_listen": true, "port": true, "api_key": true,
 	"unified_memory": true, "vulkan_f16_kv_contiguize": true,
+	"qwen4exp_math": true,
 }
 
 var routerModelIdentifier = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -42,7 +43,7 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 		}
 		values[key] = value
 	}
-	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "1" || values["mode"] != "server" {
+	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "2" || values["mode"] != "server" {
 		return nil, controlerr.New("unsupported llama.cpp runtime report")
 	}
 	for key := range values {
@@ -52,6 +53,12 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 	}
 	if values["backend"] != "rocm" && values["backend"] != "vulkan" {
 		return nil, controlerr.New("invalid backend in llama.cpp runtime report")
+	}
+	if err := config.ValidateQwen4expMath(values["qwen4exp_math"]); err != nil {
+		return nil, controlerr.New("invalid Qwen4exp math in llama.cpp runtime report")
+	}
+	if values["qwen4exp_math"] == "mixed" && (values["backend"] != "rocm" || values["architecture"] != "gfx1151" || values["gpu_count"] != "1" || values["profile"] != "strix-halo") {
+		return nil, controlerr.New("unsupported mixed Qwen4exp math in llama.cpp runtime report")
 	}
 	if values["profile"] == "auto" || platform.ValidateProfile(values["profile"]) != nil {
 		return nil, controlerr.New("invalid profile in llama.cpp runtime report")
@@ -269,6 +276,7 @@ func (app *App) llamaStatus(requested string) error {
 		{"Authentication", map[bool]string{true: "configured (value redacted)", false: "none"}[runtimeReport["api_key"] == "1"]},
 		{allocationLabel, allocationValue},
 		{"Vulkan F16 KV fix", onOff(runtimeReport["vulkan_f16_kv_contiguize"])},
+		{"Flash-Next math", runtimeReport["qwen4exp_math"] + " (GGUF and KV unchanged)"},
 	}
 	if router != nil {
 		serverRows = append(serverRows, [2]string{"Loaded-model limit", runtimeReport["models_max"]}, [2]string{"Configured models", strconv.Itoa(len(router))})
@@ -531,6 +539,7 @@ func llamaReproductionCommand(environment, runtimeReport map[string]string, pres
 		command = append(command, "--model", "GGUF_PATH")
 	}
 	command = append(command, "--backend", runtimeReport["backend"], "--profile", runtimeReport["profile"])
+	command = append(command, "--qwen4exp-math", runtimeReport["qwen4exp_math"])
 	for _, node := range strings.Split(environment["PARACETAMOL_RENDER_NODES"], ",") {
 		if node != "" {
 			command = append(command, "--render-node", node)

@@ -26,6 +26,148 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Qwen4exp opt-in mixed arithmetic (2026-09-30)
+
+The `r45` image adds an explicit mixed-math option on top of Paracetamol
+`e500049cdd9e257a3a2c7ed5fc4611a8e78234b1`. The default arithmetic, default
+dense Qwen model, GGUF bytes, F16 K/V and balanced host power settings stay
+unchanged. This is a scoped extraction from the pinned MIT Strix fork, not a
+switch to that fork. Upstream llama.cpp remains
+`7ab4ee7baad2d920464cbacfad4f4b07cf111fd2` and the fork reference remains
+`7a9196dad8b13b70fb3420886aadaf98fc09b849`.
+
+The image is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r45`,
+ID `c46b4e6366177df248d53866872d8d5309b1bf04b2ea2e015f9116cdc4ec89a2`.
+The mixed-math patch SHA-256 is
+`fed411acb56285192bc2139f2eba621d39e3f0a7929b7058bb609900c87b336b`.
+
+The same-image comparison uses the pinned Unsloth Flash-Next Dynamic
+Q4_K_XL at revision `c8b5954a88c2775c546b92593eda40ea041d3176`. The context
+ceiling is 262144, K/V is F16, batch and microbatch are 2048, and there is one
+slot and one sequential client. Direct embedding reads, allocation policy,
+temperature zero, seed 42 and reasoning off match the preceding selection
+comparison. The isolated timing requests retain upstream sampler defaults
+otherwise. Normal managed sampling is checked separately.
+
+| 32501 input tokens | Default math | Mixed math | Pinned full fork |
+| --- | ---: | ---: | ---: |
+| Cold prompt tokens/s | 769.867 | 967.461 | 1030.857 |
+| Cold HTTP wall, including 256 output tokens | 54.584 s | 45.498 s | 43.192 s |
+
+At 32K, mixed prefill is 25.7% faster than default and 6.1% below the full
+fork. Cold request time falls by 16.6%. Three cached requests generate 768
+tokens in 36.548 s with default math and 35.878 s with mixed math, or 21.013
+and 21.406 tokens/s respectively. That 1.9% difference is not evidence of a
+meaningful decode gain. Both modes pass all four fixed-output retrieval
+checks and two separate natural-stop exact-JSON checks.
+
+| 246701 input tokens | Default math | Mixed math | Pinned full fork |
+| --- | ---: | ---: | ---: |
+| Cold prompt tokens/s | 609.708 | 758.481 | 822.616 |
+| Cold HTTP wall, including 256 output tokens | 417.915 s | 338.237 s | 312.406 s |
+
+Near the 256K ceiling, mixed prefill is 24.4% faster than default and 7.8%
+below the full fork. Cold request time falls by 19.1%. The three cached
+requests take 40.361 s and 39.320 s for 768 output tokens, or 19.028 and
+19.532 tokens/s. That small difference is not a meaningful decode claim.
+Both modes pass all four fixed retrievals and two natural-stop exact-JSON
+checks. Mixed math also passes the eight output checks around prefix reuse,
+tail and early edits, cancellation, replacement and slot save/erase/restore.
+The restored request performs a fresh prefill rather than claiming serialized
+derived-cache reuse.
+
+The fork reference uses `HIP_LAUNCH_BLOCKING=1`, which was needed for its
+accepted run. The Paracetamol image does not. Cold means fresh server/prompt
+state, not an emptied OS file cache. Fixed-output timing ignores EOS and is
+not a finished-task quality benchmark. Each policy has one cold measurement
+and three cached repetitions per context size, not a broad variance study.
+
+The new policy uses BF16 operands for eligible Q8 and expert matrices, F16
+operands for selected F32 projections, and a paired F32 normalization and
+injection reduction. Accumulators, outputs and residuals remain F32. It
+does not import the fork's BF16-only residual storage, shadow tensors or a
+persistent conversion cache. It can change answers and does not claim
+bitwise equivalence or universal quality parity.
+
+The remaining fork gap is not simply an unported optimization. A diagnostic
+fork build with its BF16-only output marks disabled reaches 778.112 prompt
+tokens/s at the same near-256K input, only 2.6% above the clean mixed path.
+That is evidence that the fork's more aggressive intermediate storage matters,
+not an exact additive attribution of every difference. A separate 256 MiB
+conversion-cache and producer-shadow prototype gave 706.513 rather than
+709.050 tokens/s at long context despite verified cache hits. It was rejected,
+as were a slower raw-BF16 indexer and an unhelpful normalization-loop unroll.
+The integrated option deliberately avoids their state and maintenance cost.
+
+The image builds all four HIP targets and Vulkan. Its own libraries pass
+221 mixed-policy GPU cases plus 19 exact decode/fallback cases, all 244
+default-policy GPU cases, 143 CPU reference cases and both prefix policies.
+The mixed cases include independent dequantized-F32 matrix references,
+explicit F32 precision fallback, expert quant formats, extra-reader fallback,
+F32 residual preservation and unsupported geometry. Library closure and
+`pip check` pass.
+
+The first combined test invocation also ran four old bitwise Q8 prefill
+comparisons under the deliberately different BF16 policy. Those asserted
+equivalence that the opt-in does not promise, while every new numerical
+oracle passed. The suites are now
+partitioned by precision contract. Those four Q8 equality tests remain
+unchanged and pass under the default policy. The paired F32 normalization
+checks separately allow a maximum absolute delta of 5e-6 for the changed
+summation order, while residual outputs must still match exactly.
+The initial log is retained alongside the final results.
+
+The public managed preset with `--qwen4exp-math mixed` independently passes
+the 246701-token natural-stop exact-JSON request in 334.541 s, with 757.392
+prompt tokens/s and 164 output tokens. Its cached repeat takes 8.808 s with
+246697 prompt tokens reused. Tool call/follow-up, live cache reuse,
+cancellation recovery, two clients queued through one slot and sampling
+defaults/overrides pass. The runtime report and copyable reproduction command
+both retain the resolved mixed policy.
+
+A frozen eight-request precision screen compares both policies on ledger
+arithmetic, event-state tracking, Go interval merging and an EINTR-aware
+reader, each with thinking off and medium. Both score 6/8 overall and 4/4
+at medium. Both pass both Go tasks at both levels, and both fail the same
+two thinking-off bookkeeping tasks. Every answer stops naturally without
+reaching the 4096-token limit. Each request performs an uncached roughly
+8K-token prefill with temperature zero and seed 42. The task-spec SHA-256 is
+`9e9b3f1a89d97308a96584472cd8c8367b815401f5fdc4d558a07c77d3478459`.
+Generated code is graded offline in bubblewrap without access to the home
+directory or checkout. Positive and negative grader controls pass.
+
+This is a small one-shot regression screen, not the full Pi coding-agent
+evaluation or evidence of universal quality parity. The answers and output
+lengths differ. Faster task completion here cannot be attributed entirely
+to kernel speed when the generated work also changes.
+
+With mixed math enabled, dense Qwen3.8 Q8 passes the 32K retrieval screen
+at 310.247 prompt tokens/s, compared with 310.273 in the preceding `r44`
+check. The dense MTP preset passes retrieval, tool call/follow-up, medium
+required-tool output and sampling defaults/overrides. Its retrieval accepts
+54 of 81 draft tokens. The native router passes dense → Flash-Next → dense
+tool exchanges. These are regression checks, not a dense-model speedup claim.
+Vulkan with default math passes its 4K Flash-Next retrieval. CPU-only startup
+passes the read-only root, no GPU devices, zero effective/bounding
+capabilities and `no-new-privileges` checks.
+
+The public gateway also passes dense → Flash-Next → dense tool exchanges
+with mixed math enabled, reports six successful requests and stops cleanly.
+All test containers are removed. The uninstrumented production acceptance
+window from 09:43 through 10:52 CEST has no new kernel-journal entries.
+Earlier profiler bus-lock/exit warnings remain in the experimental evidence
+and are not presented as clean production runs. Aion remains on balanced
+platform power and `balance_performance` CPU EPP.
+
+This opt-in is `PASS` for the pinned Flash-Next model on Aion's `gfx1151`.
+Other GPU classes are `N/P` because dispatch is disabled there, despite their
+successful compilation. This does not accept future Qwen4 models, Flash-Next
+MTP or broad task-quality equivalence. Both the default dense model and
+default arithmetic remain unchanged. Host Tier 1 checks, forced normal build
+and the race detector pass. Raw results, frozen graders, numerical logs,
+source snapshots, diagnostic ablations and provenance are retained on Aion
+under `~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-math/`.
+
 ### Fedora 44 Strix Halo Qwen4exp selection extraction (2026-09-30)
 
 The `r44` image adds precision-preserving selected-block expansion and an
@@ -185,6 +327,10 @@ and launch blocking did not close the gap. The tested prototype still does
 not meet the requested 5-10% prefill target. The production F32 path remains
 26.9% below the fork near 256K. Conversion reuse and persistent
 reduced-precision state are remaining candidates, not established safe wins.
+
+These are the earlier `r43` findings. The September 30 selection and opt-in
+mixed-math records above supersede that remaining-gap assessment and document
+the rejected cache experiments.
 
 The pinned Flash-Next ROCm path is `PASS` on Aion's `gfx1151`, not acceptance
 for future Qwen4 models or Flash-Next MTP. Other GPU classes are `N/P` for
