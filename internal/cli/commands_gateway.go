@@ -35,7 +35,6 @@ func (app *App) runGateway(args []string) (result error) {
 	listenFlag := set.String("listen", "", "additional host IP on which to publish; loopback remains available (default: loopback only)")
 	portFlag := set.String("port", "", fmt.Sprintf("gateway port shared by local and published endpoints. Using --port alone selects loopback (default: %d)", config.DefaultGatewayPort))
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
-	qwenMath := set.String("qwen4exp-math", "default", "Flash-Next matrix arithmetic: default or opt-in mixed BF16/F16 (one Strix Halo ROCm GPU)")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
 	keyFile := set.String("api-key-file", "", "private file containing the optional gateway Bearer key")
@@ -58,7 +57,7 @@ func (app *App) runGateway(args []string) (result error) {
 		return err
 	}
 	gatewayConfiguration := configuration.Gateway
-	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, qwenMath, modelsMax, startupTimeout); err != nil {
+	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
 		return err
 	}
 	for _, application := range applications {
@@ -90,9 +89,6 @@ func (app *App) runGateway(args []string) (result error) {
 	selectedNodes, err := app.resolveDevices(profile, nodes, nodes != nil)
 	if err != nil {
 		return err
-	}
-	if err := runtime.ValidateQwen4expMath(*qwenMath, *backend, profile, selectedNodes); err != nil {
-		return controlerr.Usage("%v", err)
 	}
 	dataRoot, err := app.resolveDataDir(*dataFlag, false)
 	if err != nil {
@@ -129,9 +125,6 @@ func (app *App) runGateway(args []string) (result error) {
 	}
 	routerPath := ""
 	routerContents := ""
-	if *qwenMath == "mixed" && !seen[string(textmodel.BackendLlamaCPP)] {
-		return controlerr.Usage("--qwen4exp-math mixed requires the llama-cpp application")
-	}
 	if seen[string(textmodel.BackendLlamaCPP)] {
 		routerContents, err = runtime.RenderRouterModels(managed, *backend, platform.ModelProfile(profile, selectedNodes), registry.IDs(string(textmodel.BackendLlamaCPP)))
 		if err != nil {
@@ -143,7 +136,6 @@ func (app *App) runGateway(args []string) (result error) {
 	lifecycle, err := gateway.NewContainerLifecycle(gateway.LifecycleOptions{
 		Catalog: managed, Registry: registry, DataRoot: dataRoot, Profile: profile,
 		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax,
-		Qwen4expMath: *qwenMath,
 		RouterPreset: routerPath, SourceRevision: app.projectRevision(),
 		VolumeSuffix: app.podman().SELinuxVolumeSuffix(app.Context), Unconfined: *unconfined,
 		StartupTimeout: *startupTimeout, Runner: app.Runner, Log: gatewayLog,
@@ -207,7 +199,7 @@ func (app *App) runGateway(args []string) (result error) {
 	app.writeGatewayStartup(gatewayStartup{
 		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
-		Backend: *backend, ModelsMax: *modelsMax, Qwen4expMath: *qwenMath, Registry: registry, Configuration: configuration.Path,
+		Backend: *backend, ModelsMax: *modelsMax, Registry: registry, Configuration: configuration.Path,
 		Authenticated: apiKey != "",
 	})
 	serveResults := make(chan error, len(listeners))
@@ -243,7 +235,6 @@ type gatewayStartup struct {
 	RenderNodes        []string
 	Backend            string
 	ModelsMax          int
-	Qwen4expMath       string
 	Registry           gateway.Registry
 	Configuration      string
 	Authenticated      bool
@@ -299,14 +290,8 @@ func renderNodeEnvironmentConfigured(environment map[string]string) bool {
 	return plural || environment[prefix+"_RENDER_NODE"] != ""
 }
 
-func applyGatewayConfiguration(set *commandFlags, environment map[string]string, configuration config.Configuration, applications, nodes *stringList, backend, qwenMath *string, modelsMax *int, startupTimeout *time.Duration) error {
+func applyGatewayConfiguration(set *commandFlags, environment map[string]string, configuration config.Configuration, applications, nodes *stringList, backend *string, modelsMax *int, startupTimeout *time.Duration) error {
 	gatewayConfiguration := configuration.Gateway
-	if !set.changed("qwen4exp-math") && gatewayConfiguration.LlamaCPP.Qwen4expMath != nil {
-		*qwenMath = *gatewayConfiguration.LlamaCPP.Qwen4expMath
-	}
-	if err := config.ValidateQwen4expMath(*qwenMath); err != nil {
-		return controlerr.Usage("%v", err)
-	}
 	if !set.changed("application") {
 		*applications = append(*applications, gatewayConfiguration.Applications...)
 	}
@@ -390,9 +375,6 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	for _, application := range summary.Applications {
 		if application == "llama-cpp" {
 			rows = append(rows, [2]string{"llama.cpp", fmt.Sprintf("%s · up to %d loaded %s", summary.Backend, summary.ModelsMax, plural(summary.ModelsMax, "model", "models"))})
-			if summary.Qwen4expMath == "mixed" {
-				rows = append(rows, [2]string{"Flash-Next math", "mixed BF16/F16 matrices · F16 KV unchanged"})
-			}
 			break
 		}
 	}

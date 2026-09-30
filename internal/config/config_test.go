@@ -96,6 +96,7 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 	}{
 		"unknown section":     {"[other]\n", "unknown configuration section"},
 		"unknown setting":     {"[gateway]\nmodelz_max = 2\n", "unknown configuration setting"},
+		"removed mixed math":  {"[gateway.llama-cpp]\nqwen4exp_math = 'mixed'\n", "unknown configuration setting"},
 		"outside section":     {"port = 7455\n", "outside a configuration section"},
 		"data path":           {"[storage]\ndata_dir = 'relative'\n", "non-empty absolute path"},
 		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},

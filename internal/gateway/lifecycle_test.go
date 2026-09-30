@@ -170,24 +170,6 @@ func TestContainerLifecycleRefusesManagedDirectContainer(t *testing.T) {
 	}
 }
 
-func TestContainerLifecycleCarriesQwenMathToRouter(t *testing.T) {
-	lifecycle := llamaLifecycleFixture(t, &lifecycleRunner{})
-	for _, mode := range []string{"default", "mixed"} {
-		options := lifecycle.options
-		options.Qwen4expMath = mode
-		options.Profile = "strix-halo"
-		options.RenderNodes = []string{"/dev/dri/renderD128"}
-		candidate, err := NewContainerLifecycle(options)
-		if err != nil {
-			t.Fatal(err)
-		}
-		cmd, _, _, err := candidate.command(AllocationLlamaCPP)
-		if err != nil || !strings.Contains(strings.Join(cmd, " "), "PARACETAMOL_LLAMA_QWEN4EXP_MATH="+mode) {
-			t.Fatalf("cmd=%v err=%v", cmd, err)
-		}
-	}
-}
-
 func TestContainerLifecycleReclaimsOnlyItsExactStaleContainer(t *testing.T) {
 	name := gatewayContainerNames[AllocationLlamaCPP]
 	runner := &lifecycleRunner{conflict: name + "\n", running: true}

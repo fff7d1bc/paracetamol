@@ -19,7 +19,6 @@ type LlamaOptions struct {
 	Mode                         string
 	DataDir                      string
 	Backend                      string
-	Qwen4expMath                 string
 	SourceRevision               string
 	Model                        string
 	ManagedModel                 string
@@ -77,12 +76,6 @@ type LlamaBenchmarkOptions struct {
 var LlamaBenchmarkContainer = identity.Container("llama-cpp-benchmark")
 
 func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
-	if options.Qwen4expMath == "" {
-		options.Qwen4expMath = "default"
-	}
-	if err := ValidateQwen4expMath(options.Qwen4expMath, options.Backend, options.Profile, options.RenderNodes); err != nil {
-		return nil, err
-	}
 	layout := storage.Layout{Root: options.DataDir}
 	readOnly := readOnlySharedSuffix(volumeSuffix)
 	application, _ := config.ApplicationByID("llama-cpp")
@@ -109,7 +102,6 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("llama-cpp")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
 	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
 	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
-	command = env(command, "PARACETAMOL_LLAMA_QWEN4EXP_MATH", options.Qwen4expMath)
 	command = env(command, "PARACETAMOL_LLAMA_ALLOWED_PROFILES", strings.Join(options.AllowedProfiles, ","))
 	command = env(command, "PARACETAMOL_SOURCE_REVISION", options.SourceRevision)
 	command = env(command, "PARACETAMOL_LLAMA_MODE", options.Mode)
@@ -195,18 +187,6 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	}
 	command = append(command, options.Arguments...)
 	return command, nil
-}
-
-// Validate the requested policy on the host, then let the entrypoint enforce
-// it against the architecture actually exposed to the container.
-func ValidateQwen4expMath(value, backend, profile string, nodes []string) error {
-	if err := config.ValidateQwen4expMath(value); err != nil {
-		return err
-	}
-	if value == "mixed" && (backend != "rocm" || len(nodes) != 1 || (profile != "auto" && profile != "strix-halo")) {
-		return fmt.Errorf("mixed Qwen4exp math requires ROCm and one Strix Halo GPU (profile auto or strix-halo)")
-	}
-	return nil
 }
 
 // LlamaBenchmarkCommand deliberately bypasses the interactive/server policy
