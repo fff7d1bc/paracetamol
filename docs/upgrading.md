@@ -280,6 +280,25 @@ protected behavior is fixed.
 | `hip-qwen4exp-graph-optimizations.patch` | Builds on the selected-key patch with compact whole-block selection, 512-query scorer strips, ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and existing small-tile MoE kernels. The graph requires a unique scalar prefix, supported F16 geometry and `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`. HIP dispatch remains exact `gfx1151`. Unsupported cache layouts retain the original graph, while maskless selected attention has a tested CPU fallback. The entrypoint enables this only with the Strix Halo ROCm kernel policy. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` restores the `r40` path. | Upstream equivalents retain block-selection and FP64 attention oracles, fusion alias/lifetime guards, prefix eligibility checks, near-256K retrieval and prefix reuse, and the older-model/backend regression screens. Never silently replace these with BF16 shadow weights or a new persistent derived-cache policy. |
 | `hip-qwen4exp-prepared-key-cache.patch` | Reuses F32 pooled, normalized and rotated indexer keys only for successful single-token Qwen4exp appends. F16 raw keys remain authoritative. All memory mutations, restore, failed evaluation and unsupported layouts invalidate derived state. Prefills retain the original graph. The first decode rebuilds and seeds derived storage. The entrypoint enables `PARACETAMOL_QWEN4EXP_QSA_CACHE=1` only with the accepted Strix Halo ROCm compact graph. Setting it to `0` restores recomputation. | An upstream equivalent preserves the exact preparation tests, successful-ubatch publication, mutation/restore invalidation, long-context retrieval, interruption recovery and same-image on/off measurements. Derived keys must not silently enter the saved-state format or change KV precision. |
 | `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
+| `hip-qwen4exp-selection.patch` | Fuses the private Qwen4exp 512-block selection graph on exact `gfx1151`, preserving integer/F32 arithmetic, tail cells, auxiliary outputs and allocation lifetimes. Replaces per-cell sequence population counts with equivalent singleton-set equality in compact-prefix validation. | An upstream equivalent passes selection oracles, real sliced-tail layouts, extra-reader fallback, every sequence-bit pair, populated-context retrieval and state/backend regressions. No arithmetic downcast or weaker prefix eligibility belongs here. |
+
+The `r44` selection patch builds on the four earlier extractions. The graph
+already selected whole blocks, but its ordinary gather, sort, cast and
+validity operations still ran separately. The new kernel combines those
+operations without changing which blocks or tail cells are selected. It
+recognizes the model's sliced-tail view/reshape as well as direct and
+scheduler-copied inputs. A model marker, exact shapes, input/output types,
+reader checks and physical-range guards constrain dispatch. Unsupported
+graphs use the existing operations. All exposed intermediate outputs remain
+materialized and live through the fusion.
+
+`PARACETAMOL_QWEN4EXP_QSA_SELECTION=0` inside the container disables both
+the GPU fusion and the equivalent CPU singleton check for a same-image
+control. The CPU check still rejects shared, foreign, gapped or non-scalar
+prefixes. It adds no persistent state. The broader QSA graph policy remains
+the prerequisite, and there is no change to model pins, F16 KV, F32 residuals,
+matrix arithmetic, sampling or context limits. BF16/F16 experiments remain
+separate from the managed image.
 
 The `r43` pipeline patch builds on those three extractions. It adapts direct
 GDN and PLE convolution, HC_POST normalization and injection, narrow RMS/gate fusion,
