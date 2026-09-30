@@ -1,8 +1,8 @@
 diff --git a/src/llama-memory-hybrid-idx.cpp b/src/llama-memory-hybrid-idx.cpp
-index 8e67f77cc..9b55e8dbf 100644
+index e07653c6f..d9d0601bd 100644
 --- a/src/llama-memory-hybrid-idx.cpp
 +++ b/src/llama-memory-hybrid-idx.cpp
-@@ -66,7 +66,39 @@ llama_memory_hybrid_idx::llama_memory_hybrid_idx(
+@@ -71,7 +71,39 @@ llama_memory_hybrid_idx::llama_memory_hybrid_idx(
              model, hparams_idx, type_k, type_v, v_trans, offload, unified,
              kv_size, n_seq_max, n_pad, n_swa, swa_type,
              nullptr, filter_idx, nullptr, nullptr, "idx_");
@@ -43,7 +43,7 @@ index 8e67f77cc..9b55e8dbf 100644
  
  llama_memory_context_ptr llama_memory_hybrid_idx::init_batch(llama_batch_allocr & balloc, uint32_t n_ubatch, bool embd_all) {
      // note: repeats llama_memory_hybrid::init_batch, as the indexer needs the attention slot infos that the base context hides
-@@ -138,10 +170,15 @@ llama_memory_context_ptr llama_memory_hybrid_idx::init_full() {
+@@ -143,10 +175,15 @@ llama_memory_context_ptr llama_memory_hybrid_idx::init_full() {
  }
  
  llama_memory_context_ptr llama_memory_hybrid_idx::init_update(llama_context * lctx, bool optimize) {
@@ -60,7 +60,7 @@ index 8e67f77cc..9b55e8dbf 100644
      llama_memory_hybrid::clear(data);
  
      if (mem_idx) {
-@@ -150,6 +187,7 @@ void llama_memory_hybrid_idx::clear(bool data) {
+@@ -183,6 +220,7 @@ llama_pos llama_memory_hybrid_idx::mem_idx_stale_pos(llama_seq_id seq_id, llama_
  }
  
  bool llama_memory_hybrid_idx::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_pos p1) {
@@ -68,7 +68,7 @@ index 8e67f77cc..9b55e8dbf 100644
      // same order as llama_memory_hybrid::seq_rm: the recurrent cache can refuse, so try it first
      if (!get_mem_recr()->seq_rm(seq_id, p0, p1)) {
          return false;
-@@ -163,6 +201,7 @@ bool llama_memory_hybrid_idx::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_po
+@@ -204,6 +242,7 @@ bool llama_memory_hybrid_idx::seq_rm(llama_seq_id seq_id, llama_pos p0, llama_po
  }
  
  void llama_memory_hybrid_idx::seq_cp(llama_seq_id seq_id_src, llama_seq_id seq_id_dst, llama_pos p0, llama_pos p1) {
@@ -76,7 +76,7 @@ index 8e67f77cc..9b55e8dbf 100644
      llama_memory_hybrid::seq_cp(seq_id_src, seq_id_dst, p0, p1);
  
      if (mem_idx) {
-@@ -171,6 +210,7 @@ void llama_memory_hybrid_idx::seq_cp(llama_seq_id seq_id_src, llama_seq_id seq_i
+@@ -215,6 +254,7 @@ void llama_memory_hybrid_idx::seq_cp(llama_seq_id seq_id_src, llama_seq_id seq_i
  }
  
  void llama_memory_hybrid_idx::seq_keep(llama_seq_id seq_id) {
@@ -84,7 +84,7 @@ index 8e67f77cc..9b55e8dbf 100644
      llama_memory_hybrid::seq_keep(seq_id);
  
      if (mem_idx) {
-@@ -179,6 +219,7 @@ void llama_memory_hybrid_idx::seq_keep(llama_seq_id seq_id) {
+@@ -225,6 +265,7 @@ void llama_memory_hybrid_idx::seq_keep(llama_seq_id seq_id) {
  }
  
  void llama_memory_hybrid_idx::seq_add(llama_seq_id seq_id, llama_pos p0, llama_pos p1, llama_pos shift) {
@@ -92,7 +92,7 @@ index 8e67f77cc..9b55e8dbf 100644
      llama_memory_hybrid::seq_add(seq_id, p0, p1, shift);
  
      if (mem_idx) {
-@@ -187,6 +228,7 @@ void llama_memory_hybrid_idx::seq_add(llama_seq_id seq_id, llama_pos p0, llama_p
+@@ -236,6 +277,7 @@ void llama_memory_hybrid_idx::seq_add(llama_seq_id seq_id, llama_pos p0, llama_p
  }
  
  void llama_memory_hybrid_idx::seq_div(llama_seq_id seq_id, llama_pos p0, llama_pos p1, int d) {
@@ -100,7 +100,7 @@ index 8e67f77cc..9b55e8dbf 100644
      llama_memory_hybrid::seq_div(seq_id, p0, p1, d);
  
      if (mem_idx) {
-@@ -196,6 +238,9 @@ void llama_memory_hybrid_idx::seq_div(llama_seq_id seq_id, llama_pos p0, llama_p
+@@ -246,6 +288,9 @@ void llama_memory_hybrid_idx::seq_div(llama_seq_id seq_id, llama_pos p0, llama_p
  
  std::map<ggml_backend_buffer_type_t, size_t> llama_memory_hybrid_idx::memory_breakdown() const {
      std::map<ggml_backend_buffer_type_t, size_t> mb = llama_memory_hybrid::memory_breakdown();
@@ -110,7 +110,7 @@ index 8e67f77cc..9b55e8dbf 100644
  
      if (mem_idx) {
          for (const auto & buft_size : mem_idx->memory_breakdown()) {
-@@ -220,6 +265,7 @@ void llama_memory_hybrid_idx::state_write(llama_io_write_i & io, llama_seq_id se
+@@ -270,6 +315,7 @@ void llama_memory_hybrid_idx::state_write(llama_io_write_i & io, llama_seq_id se
  }
  
  void llama_memory_hybrid_idx::state_read(llama_io_read_i & io, llama_seq_id seq_id, llama_state_seq_flags flags) {
@@ -118,7 +118,7 @@ index 8e67f77cc..9b55e8dbf 100644
      // note: repeats llama_memory_hybrid::state_read
      // the indexer needs the attention cache's cells, and a half-failed restore must leave all three caches alike
  
-@@ -252,6 +298,7 @@ void llama_memory_hybrid_idx::state_read(llama_io_read_i & io, llama_seq_id seq_
+@@ -308,6 +354,7 @@ void llama_memory_hybrid_idx::state_read(llama_io_read_i & io, llama_seq_id seq_
  }
  
  void llama_memory_hybrid_idx::state_drop(llama_seq_id seq_id) {
@@ -126,7 +126,7 @@ index 8e67f77cc..9b55e8dbf 100644
      // dropped directly, not via seq_rm: the recurrent cache may refuse it and then only the other two get cleared
      if (seq_id < 0) {
          clear(true);
-@@ -297,10 +344,11 @@ void llama_memory_hybrid_idx::set_input_qsa_compact(
+@@ -358,10 +405,11 @@ void llama_memory_hybrid_idx::set_input_qsa_compact(
      auto * positions = (int32_t *) blk_pos->data;
      auto * bounds = (int32_t *) limits->data;
      auto * tail = (int32_t *) tails->data;
@@ -140,18 +140,18 @@ index 8e67f77cc..9b55e8dbf 100644
          for (int64_t b = 0; b < blocks; ++b) { positions[axis*blocks + b] = b < complete ? b*ratio : 0; }
      }
      for (int64_t b = 0; b < blocks; ++b) { bounds[b] = b < complete ? b*ratio : INT32_MAX; }
-@@ -684,6 +732,9 @@ llama_memory_hybrid_idx_context::llama_memory_hybrid_idx_context(
-         new llama_kv_cache_context(mem->get_mem_idx(), std::move(sinfos_idx), ubatches)) {}
+@@ -913,6 +961,9 @@ llama_memory_hybrid_idx_context::llama_memory_hybrid_idx_context(
+ llama_memory_hybrid_idx_context::~llama_memory_hybrid_idx_context() = default;
  
  bool llama_memory_hybrid_idx_context::next() {
 +    // decode() calls next only after successful graph evaluation. Failed or
 +    // aborted evaluation calls seq_rm instead, invalidating the derived keys.
 +    if (batch_context && mem) mem->qsa_state.commit();
      compact_support = -1;
-     if (ctx_idx) {
-         ctx_idx->next();
-@@ -702,9 +753,44 @@ bool llama_memory_hybrid_idx_context::apply() {
-         res = res & ctx_idx->apply();
+     // Clear only after a successful ubatch.
+     if (i_cur == 0 && mem != nullptr) {
+@@ -946,6 +997,11 @@ bool llama_memory_hybrid_idx_context::apply() {
+         i_kpool  = i_cur;
      }
  
 +    if (batch_context && mem && !mem->qsa_keys.empty()) {
@@ -160,6 +160,10 @@ index 8e67f77cc..9b55e8dbf 100644
 +    }
 +
      return res;
+ }
+ 
+@@ -954,6 +1010,36 @@ bool llama_memory_hybrid_idx_context::kpool_track() const {
+     return mem != nullptr && mem->get_mem_idx() != nullptr && mem->get_kpool() > 0 && !ns_ubatch.empty();
  }
  
 +void llama_memory_hybrid_idx::qsa_cache_begin(const llama_ubatch & u, bool valid) const {
@@ -196,7 +200,7 @@ index 8e67f77cc..9b55e8dbf 100644
      return static_cast<const llama_kv_cache_context *>(ctx_idx.get());
  }
 diff --git a/src/llama-memory-hybrid-idx.h b/src/llama-memory-hybrid-idx.h
-index e48bbdc2d..bc4f86d61 100644
+index 7899c4879..2dd6300d9 100644
 --- a/src/llama-memory-hybrid-idx.h
 +++ b/src/llama-memory-hybrid-idx.h
 @@ -1,6 +1,7 @@
@@ -205,10 +209,10 @@ index e48bbdc2d..bc4f86d61 100644
  #include "llama-memory-hybrid.h"
 +#include "qwen4exp-key-cache.h"
  
- #include <memory>
- #include <vector>
-@@ -93,6 +94,12 @@ public:
-                               const llama_ubatch & ubatch, uint32_t n_kv, uint32_t ratio) const;
+ #include <array>
+ #include <limits>
+@@ -125,6 +126,12 @@ public:
+     void mem_idx_stale_clear() { mem_idx_stale.fill(POS_CLEAN); }
  
  private:
 +    friend class llama_memory_hybrid_idx_context;
@@ -220,7 +224,7 @@ index e48bbdc2d..bc4f86d61 100644
      // forget seq_id (all of it if seq_id < 0) in every cache at once, so a failed restore cannot leave the caches out of step
      // seq_id < 0 drops the whole context, as the caches themselves do on a failed restore
      void state_drop(llama_seq_id seq_id);
-@@ -155,6 +162,11 @@ public:
+@@ -226,6 +233,11 @@ public:
                                ggml_tensor * limits, ggml_tensor * tails,
                                const llama_ubatch & ubatch, uint32_t ratio) const;
  
@@ -230,13 +234,13 @@ index e48bbdc2d..bc4f86d61 100644
 +    void qsa_cache_mark(int layer) const;
 +
  private:
-     const llama_memory_hybrid_idx * mem = nullptr;
+     llama_memory_hybrid_idx * mem = nullptr;
      // Cache only within one applied ubatch. Every layer asks the same question,
 diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
-index 29dfded82..97e7f89b9 100644
+index 6f74eeaa7..857e87f24 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -531,6 +531,34 @@ static bool qwen4exp_compact_qsa(const llama_memory_hybrid_idx_context * mctx,
+@@ -534,6 +534,34 @@ static bool qwen4exp_compact_qsa(const llama_memory_hybrid_idx_context * mctx,
  
  // QSA attends to a budget of whole blocks of compress_ratio tokens, plus the incomplete tail
  // one mean-pooled indexer key scores each block; set_input resolves the cache layout
@@ -270,8 +274,8 @@ index 29dfded82..97e7f89b9 100644
 +
  class llama_model_qwen4exp::llm_graph_input_qsa : public llm_graph_input_i {
  public:
-     llm_graph_input_qsa(const llama_memory_hybrid_idx_context * mctx, uint32_t ratio, bool blk_bias) :
-@@ -668,32 +696,65 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_top_k(
+     llm_graph_input_qsa(const llama_memory_hybrid_idx_context * mctx, uint32_t ratio, bool blk_bias, bool causal_attn) :
+@@ -674,32 +702,65 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_top_k(
      ggml_tensor * k_all = mctx_idx->get_k(ctx0, il);
      k_all = ggml_view_3d(ctx0, k_all, idx_dim, n_kv, n_stream, k_all->nb[2], k_all->nb[3], 0);
  
@@ -412,7 +416,7 @@ index 000000000..6b428c66a
 +    }
 +};
 diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
-index a5b7e3e22..8eb5d1da1 100644
+index 03d03cf73..ce335df7e 100644
 --- a/tests/CMakeLists.txt
 +++ b/tests/CMakeLists.txt
 @@ -160,6 +160,7 @@ if (NOT WIN32 OR NOT BUILD_SHARED_LIBS)
@@ -423,59 +427,11 @@ index a5b7e3e22..8eb5d1da1 100644
      llama_build_and_test(test-batch-alloc.cpp)
      llama_build_and_test(test-chat.cpp WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
      target_include_directories(test-chat PRIVATE ${PROJECT_SOURCE_DIR}/tools/server)
-diff --git a/tests/test-qwen4exp-key-cache.cpp b/tests/test-qwen4exp-key-cache.cpp
-new file mode 100644
-index 000000000..27028f8bc
---- /dev/null
-+++ b/tests/test-qwen4exp-key-cache.cpp
-@@ -0,0 +1,42 @@
-+#include "../src/qwen4exp-key-cache.h"
-+#include <cstdio>
-+#include <cstdlib>
-+
-+#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); std::abort(); } } while (0)
-+int main() {
-+    qwen4exp_key_cache_state s(2);
-+    // Prefill does not populate derived storage. The first decode does.
-+    s.begin(0, 0, 4096, true); s.commit();
-+    s.begin(0, 4096, 1, true); CHECK(!s.fast(0));
-+    s.mark(0); s.mark(1); s.commit();
-+    s.begin(0, 4097, 1, true); CHECK(s.fast(0) && s.fast(1));
-+    s.invalidate();
-+    s.begin(0, 0, 3, true); s.mark(0); s.commit();
-+    s.begin(0, 3, 1, true); CHECK(s.fast(0) && !s.fast(1));
-+    s.invalidate();
-+    s.begin(0, 0, 4096, true);
-+    CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
-+    for (int p = 4096; p < 4110; ++p) {
-+        s.begin(0, p, 1, true); CHECK(s.fast(0) && s.fast(1));
-+        s.mark(0); s.mark(1); s.commit();
-+    }
-+    // A missing layer cannot be treated as computed.
-+    s.begin(0, 4110, 1, true); s.mark(0); s.commit();
-+    s.begin(0, 4111, 1, true); CHECK(s.fast(0) && !s.fast(1));
-+    s.invalidate(); CHECK(!s.fast(0));
-+    // Cancellation after marking but before successful commit must not publish.
-+    s.begin(0, 5000, 1, true); CHECK(!s.fast(0)); s.mark(0);
-+    s.begin(0, 5001, 1, true); CHECK(!s.fast(0));
-+    s.mark(0); s.commit();
-+    // Rewinds and replacements rebuild even when the sequence ID is unchanged.
-+    s.begin(0, 4000, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
-+    s.begin(1, 4001, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
-+    s.begin(1, 4002, 1, false); CHECK(!s.fast(0));
-+    // A full prefill re-establishes the cache after invalidation.
-+    s.begin(2, 0, 8192, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
-+    s.begin(2, 8192, 2, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
-+    s.begin(2, 8194, 1, true); CHECK(s.fast(0));
-+    s.invalidate(); // clear, seq_rm/cp/keep/add/div, restore, or layout update
-+    s.begin(2, 8194, 1, true); CHECK(!s.fast(0));
-+    std::puts("Qwen4exp prepared-key cache ledger passed");
-+}
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index b82d442b7..0d64d1ed2 100644
+index a4746270c..315dcf336 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -8956,6 +8956,74 @@ struct test_qwen_q8_matvec : public test_case {
+@@ -9166,6 +9166,74 @@ struct test_qwen_q8_matvec : public test_case {
      }
  };
  
@@ -550,7 +506,7 @@ index b82d442b7..0d64d1ed2 100644
  struct test_qsa_pool : public test_case {
      ggml_type type;
      int blocks, streams;
-@@ -11158,6 +11226,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -11453,6 +11521,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
      test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
      test_cases.emplace_back(new test_qsa_blocks());
@@ -560,3 +516,51 @@ index b82d442b7..0d64d1ed2 100644
      for (auto type : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_1 }) {
          test_cases.emplace_back(new test_qwen_moe_tiles(type, 512, 513, true));
          test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false));
+diff --git a/tests/test-qwen4exp-key-cache.cpp b/tests/test-qwen4exp-key-cache.cpp
+new file mode 100644
+index 000000000..27028f8bc
+--- /dev/null
++++ b/tests/test-qwen4exp-key-cache.cpp
+@@ -0,0 +1,42 @@
++#include "../src/qwen4exp-key-cache.h"
++#include <cstdio>
++#include <cstdlib>
++
++#define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #x); std::abort(); } } while (0)
++int main() {
++    qwen4exp_key_cache_state s(2);
++    // Prefill does not populate derived storage. The first decode does.
++    s.begin(0, 0, 4096, true); s.commit();
++    s.begin(0, 4096, 1, true); CHECK(!s.fast(0));
++    s.mark(0); s.mark(1); s.commit();
++    s.begin(0, 4097, 1, true); CHECK(s.fast(0) && s.fast(1));
++    s.invalidate();
++    s.begin(0, 0, 3, true); s.mark(0); s.commit();
++    s.begin(0, 3, 1, true); CHECK(s.fast(0) && !s.fast(1));
++    s.invalidate();
++    s.begin(0, 0, 4096, true);
++    CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    for (int p = 4096; p < 4110; ++p) {
++        s.begin(0, p, 1, true); CHECK(s.fast(0) && s.fast(1));
++        s.mark(0); s.mark(1); s.commit();
++    }
++    // A missing layer cannot be treated as computed.
++    s.begin(0, 4110, 1, true); s.mark(0); s.commit();
++    s.begin(0, 4111, 1, true); CHECK(s.fast(0) && !s.fast(1));
++    s.invalidate(); CHECK(!s.fast(0));
++    // Cancellation after marking but before successful commit must not publish.
++    s.begin(0, 5000, 1, true); CHECK(!s.fast(0)); s.mark(0);
++    s.begin(0, 5001, 1, true); CHECK(!s.fast(0));
++    s.mark(0); s.commit();
++    // Rewinds and replacements rebuild even when the sequence ID is unchanged.
++    s.begin(0, 4000, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
++    s.begin(1, 4001, 1, true); CHECK(!s.fast(0)); s.mark(0); s.commit();
++    s.begin(1, 4002, 1, false); CHECK(!s.fast(0));
++    // A full prefill re-establishes the cache after invalidation.
++    s.begin(2, 0, 8192, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    s.begin(2, 8192, 2, true); CHECK(!s.fast(0)); s.mark(0); s.mark(1); s.commit();
++    s.begin(2, 8194, 1, true); CHECK(s.fast(0));
++    s.invalidate(); // clear, seq_rm/cp/keep/add/div, restore, or layout update
++    s.begin(2, 8194, 1, true); CHECK(!s.fast(0));
++    std::puts("Qwen4exp prepared-key cache ledger passed");
++}

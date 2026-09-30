@@ -57,7 +57,7 @@ index 1484c9b07bda..996a0c290c03 100644
      const int64_t idx_dim  = hparams.indexer_head_size;
 @@ -549,7 +550,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_top_k(
      // the rest is the visible/not test the attention mask already carries, so upload the per-block half only: 1/ratio of the cells
-     // alibi writes distances instead of a mask and non-causal keeps future cells, so both opt out
+     // alibi writes distances instead of a mask, so it opts out
      // the mask also holds an mrope rule for the query's own position, but only 2d image positions can differ there
 -    const bool blk_bias = kq_mask != nullptr &&
 +    // the gather path needs the per-cell bias: it carries the full visibility of every
@@ -65,7 +65,7 @@ index 1484c9b07bda..996a0c290c03 100644
 +    // serve directly as the attention mask over the gathered set
 +    const bool blk_bias = !gather && kq_mask != nullptr &&
          kq_mask->ne[0] == n_kv && kq_mask->ne[1] == n_tps && kq_mask->ne[3] == n_stream &&
-         cparams.causal_attn && !hparams.use_alibi;
+         !hparams.use_alibi;
  
 @@ -662,7 +666,12 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_top_k(
      cb(expanded, "indexer_score_tokens", il);

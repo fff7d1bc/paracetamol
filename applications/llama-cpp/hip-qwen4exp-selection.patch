@@ -1,7 +1,8 @@
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 48b023a4c..028450da0 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -44,6 +44,7 @@
+@@ -45,6 +45,7 @@
  #include "ggml-cuda/quantize.cuh"
  #if defined(GGML_USE_HIP)
  #include "ggml-cuda/qsa-score.cuh"
@@ -9,7 +10,7 @@ diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
  #include "ggml-cuda/gdn-conv.cuh"
  #include "ggml-cuda/ple-conv.cuh"
  #include "ggml-cuda/qwen4exp-hc.cuh"
-@@ -3567,6 +3568,105 @@
+@@ -3579,6 +3580,105 @@ static int qsa_match_score(const ggml_cgraph * g, int i, ggml_cuda_idx_relu_sum_
  }
  #endif
  
@@ -115,7 +116,7 @@ diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
  // try and fuse nodes and return the number of nodes to skip
  static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, int i) {
  
-@@ -3578,6 +3678,14 @@
+@@ -3590,6 +3690,14 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
      ggml_tensor * node = cgraph->nodes[i];
  
  #if defined(GGML_USE_HIP)
@@ -130,9 +131,9 @@ diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
      if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_MMV_GROUP") && node->op == GGML_OP_MUL_MAT) {
          ggml_tensor * nodes[4];
          int outputs[4], count = 0, end = i;
-@@ -4728,6 +4836,22 @@
-     static const bool disable_fusion = getenv("GGML_CUDA_DISABLE_FUSION") != nullptr && std::atoi(getenv("GGML_CUDA_DISABLE_FUSION"));
+@@ -4761,6 +4869,22 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
      if (!disable_fusion) {
+         // add alloc deps for performance positive fusions. This may increase the overall compute buffer size.
  #if defined(GGML_USE_HIP)
 +        if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_QSA_SELECTION")) {
 +            for (int i=0;i<cgraph->n_nodes;++i) {
@@ -155,6 +156,7 @@ diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
              int skip = ggml_cuda_norm_gated_match_at(cgraph, i, norm);
 diff --git a/ggml/src/ggml-cuda/qsa-expand.cu b/ggml/src/ggml-cuda/qsa-expand.cu
 new file mode 100644
+index 000000000..e962b928e
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-expand.cu
 @@ -0,0 +1,72 @@
@@ -232,6 +234,7 @@ new file mode 100644
 +#endif
 diff --git a/ggml/src/ggml-cuda/qsa-expand.cuh b/ggml/src/ggml-cuda/qsa-expand.cuh
 new file mode 100644
+index 000000000..2bd66c269
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-expand.cuh
 @@ -0,0 +1,16 @@
@@ -252,9 +255,10 @@ new file mode 100644
 +};
 +void ggml_cuda_op_qsa_expand(ggml_backend_cuda_context &, const ggml_cuda_qsa_expand_args &);
 diff --git a/src/models/qwen4exp-qsa.h b/src/models/qwen4exp-qsa.h
+index fd7007804..21b8f4bbd 100644
 --- a/src/models/qwen4exp-qsa.h
 +++ b/src/models/qwen4exp-qsa.h
-@@ -7,6 +7,7 @@
+@@ -7,6 +7,7 @@ inline ggml_tensor * qwen4exp_select_blocks(ggml_context * ctx, ggml_tensor * sc
          ggml_tensor * members, ggml_tensor * tail, int64_t budget, int64_t ratio) {
      const int64_t nb = score->ne[0], nq = score->ne[1];
      auto * blocks = ggml_cont(ctx, ggml_top_k(ctx, score, budget));
@@ -263,6 +267,7 @@ diff --git a/src/models/qwen4exp-qsa.h b/src/models/qwen4exp-qsa.h
      auto * block_view = ggml_view_4d(ctx, blocks, 1, budget, nq, 1,
              blocks->nb[0], blocks->nb[1], blocks->nb[2], 0);
 diff --git a/src/qwen4exp-qsa-prefix.h b/src/qwen4exp-qsa-prefix.h
+index 5e199c1b6..fa6e91c6f 100644
 --- a/src/qwen4exp-qsa-prefix.h
 +++ b/src/qwen4exp-qsa-prefix.h
 @@ -2,6 +2,8 @@
@@ -274,7 +279,7 @@ diff --git a/src/qwen4exp-qsa-prefix.h b/src/qwen4exp-qsa-prefix.h
  
  // A compact visibility record is valid only for a unique scalar prefix owned
  // by one sequence. Never approximate a shared, gapped, or multimodal cache.
-@@ -13,13 +15,22 @@
+@@ -13,13 +15,22 @@ inline bool qwen4exp_qsa_prefix_valid(const llama_kv_cells & cells, const llama_
      const llama_seq_id seq = u.seq_id[0][0];
      if (seq < 0 || seq >= LLAMA_MAX_SEQ) { return false; }
      if (n_kv == 0 || n_kv > cells.size()) { return false; }
@@ -299,9 +304,10 @@ diff --git a/src/qwen4exp-qsa-prefix.h b/src/qwen4exp-qsa-prefix.h
                  (u.is_pos_2d() && (cells.ext_get(j).x != pos || cells.ext_get(j).y != pos))) { return false; }
          seen[pos] = true;
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index a989148af..dd38c8eca 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -9421,6 +9421,116 @@
+@@ -9631,6 +9631,116 @@ struct test_qsa_blocks : public test_case {
      }
  };
  
@@ -418,7 +424,7 @@ diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
  struct test_qsa_prefill : public test_case {
      const int dim, queries, keys, selected, streams, ratio;
      const bool interleaved, poison;
-@@ -11524,6 +11634,15 @@
+@@ -11819,6 +11929,15 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
      test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
      test_cases.emplace_back(new test_qsa_blocks());
@@ -435,9 +441,10 @@ diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
          for (bool tail : {false, true}) test_cases.emplace_back(new test_qsa_prepared(blocks, tail));
      }
 diff --git a/tests/test-qwen4exp-qsa-prefix.cpp b/tests/test-qwen4exp-qsa-prefix.cpp
+index 41f5df36e..4a6020c29 100644
 --- a/tests/test-qwen4exp-qsa-prefix.cpp
 +++ b/tests/test-qwen4exp-qsa-prefix.cpp
-@@ -49,5 +49,22 @@
+@@ -49,5 +49,22 @@ int main() {
      check(!valid(),"non-scalar cached position");
      cells.reset();
      check(!valid(),"empty cache");
