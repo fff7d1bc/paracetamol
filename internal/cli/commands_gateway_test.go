@@ -138,32 +138,20 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 	set.VarWithShort(&applications, "application", "a", "fixture")
 	set.Var(&nodes, "render-node", "fixture")
 	backend := set.String("backend", "rocm", "fixture")
-	qwenMath := set.String("qwen4exp-math", "default", "fixture")
 	modelsMax := set.Int("models-max", 1, "fixture")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "fixture")
 	if err := parseFlags(set, []string{"-a", "llama-cpp", "--models-max", "3"}); err != nil {
 		t.Fatal(err)
 	}
 	configuredBackend := "vulkan"
-	configuredMath := "mixed"
 	configuredModels := 2
 	configuredTimeout := "45m"
 	configuration := config.Configuration{Path: "/profiles/aion.toml", Gateway: config.GatewayConfiguration{
 		Applications: []string{"dwarfstar"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
-		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels, Qwen4expMath: &configuredMath},
+		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels},
 	}}
-	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, qwenMath, modelsMax, startupTimeout); err != nil {
+	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
 		t.Fatal(err)
-	}
-	if *qwenMath != "mixed" {
-		t.Fatal("math config was not applied")
-	}
-	if err := set.Set("qwen4exp-math", "default"); err != nil {
-		t.Fatal(err)
-	}
-	nodes = nil
-	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, qwenMath, modelsMax, startupTimeout); err != nil || *qwenMath != "default" {
-		t.Fatalf("math flag override=%q err=%v", *qwenMath, err)
 	}
 	if strings.Join(applications, ",") != "llama-cpp" || strings.Join(nodes, ",") != "/dev/dri/renderD128" || *backend != "vulkan" || *modelsMax != 3 || *startupTimeout != 45*time.Minute {
 		t.Fatalf("applications=%v nodes=%v backend=%s models=%d timeout=%s", applications, nodes, *backend, *modelsMax, *startupTimeout)

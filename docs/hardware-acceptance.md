@@ -26,10 +26,67 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
-### Fedora 44 Strix Halo Qwen4exp opt-in mixed arithmetic (2026-09-30)
+### Fedora 44 Strix Halo mixed-math removal (2026-09-30)
 
-The `r45` image adds an explicit mixed-math option on top of Paracetamol
-`e500049cdd9e257a3a2c7ed5fc4611a8e78234b1`. The default arithmetic, default
+The `r46` image removes the downstream mixed-arithmetic feature introduced
+in Paracetamol `03ba79b62f66b36bd5e6f8b6fe35caa8e66418ac`. Its source patch,
+build wiring, CLI flag, config setting and runtime-report field are gone.
+There is no compatibility alias or hidden enable switch. The five earlier
+precision-preserving Flash-Next extractions still apply automatically on
+their accepted Strix Halo ROCm path. Model pins, dense Qwen default, F16 K/V,
+upstream matrix arithmetic and host power policy are unchanged.
+
+The build reused the accepted `r44` layers. The resulting image
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r46` is
+byte-identical to that image, with ID
+`af12785843f2d8271a4e6c3d95676e83cdd0eaf2e181b0c737cbed478312e486`.
+This is an exact restoration, not a fresh native compilation or a new
+performance result. The earlier near-256K retrieval, state-recovery and
+four-HIP-target/Vulkan build evidence applies to these same image bytes.
+The slower precision-preserving prefill numbers apply, not the retired
+experiment's near-fork results.
+
+Fresh checks against the restored image pass 165 GPU operator cases,
+41 CPU reference cases, 18 selection-disabled cases and both prefix
+policies. Library closure and `pip check` pass. The removed fast-math gate
+is absent from the image's HIP and model libraries.
+
+The updated normal launcher and runtime report pass. A 32501-token
+Flash-Next request and its cached repeat return the exact eight-value JSON
+and stop naturally at 164 output tokens. Tool call/follow-up, cache reuse,
+cancellation recovery, two clients queued through one slot and sampling
+defaults/overrides pass. These are functional screens, not broad task-quality
+evidence or a new performance comparison.
+
+Dense Qwen3.8 Q8 MTP passes retrieval, medium required-tool output and
+sampling checks. Both the native router and public gateway pass dense →
+Flash-Next → dense tool exchanges. The gateway reports six successful
+requests and stops cleanly. Vulkan passes 4K Flash-Next retrieval. CPU-only
+startup retains its read-only root, no GPU devices, zero effective/bounding
+capabilities and `no-new-privileges`.
+
+These fresh checks are `PASS` on Aion's `gfx1151`. Other GPU classes remain
+`N/P` for the extracted fast paths because dispatch is disabled there. No
+near-256K run was repeated for this removal because the image is identical
+to the already accepted one. All test containers were removed. The kernel
+journal has no new entries during the 11:40–11:47 CEST acceptance window.
+Balanced platform power and `balance_performance` CPU EPP remain unchanged.
+Host Tier 1 checks, forced normal build and the race detector pass. Rejected
+removed-flag/config tests pass. Raw results, image identity, test drivers and
+the source diff are retained on Aion under
+`~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-removal/`.
+
+### Fedora 44 Strix Halo retired mixed arithmetic experiment (2026-09-30)
+
+This experiment was **removed entirely in `r46`**. Its kernels and public
+controls are no longer shipped. The screen below did not demonstrate a
+quality regression, but was too small to establish broad quality parity.
+The project chose to keep the precision-preserving optimizations without a
+reduced-operand-precision mode. The near-fork performance below describes the
+retired experiment, not the supported image.
+
+The experimental `r45` image added an explicit mixed-math option on top of
+Paracetamol `e500049cdd9e257a3a2c7ed5fc4611a8e78234b1`. The default arithmetic, default
 dense Qwen model, GGUF bytes, F16 K/V and balanced host power settings stay
 unchanged. This is a scoped extraction from the pinned MIT Strix fork, not a
 switch to that fork. Upstream llama.cpp remains
@@ -159,11 +216,12 @@ Earlier profiler bus-lock/exit warnings remain in the experimental evidence
 and are not presented as clean production runs. Aion remains on balanced
 platform power and `balance_performance` CPU EPP.
 
-This opt-in is `PASS` for the pinned Flash-Next model on Aion's `gfx1151`.
+The retired opt-in passed this finite acceptance screen for the pinned
+Flash-Next model on Aion's `gfx1151`.
 Other GPU classes are `N/P` because dispatch is disabled there, despite their
 successful compilation. This does not accept future Qwen4 models, Flash-Next
 MTP or broad task-quality equivalence. Both the default dense model and
-default arithmetic remain unchanged. Host Tier 1 checks, forced normal build
+default arithmetic remained unchanged. Host Tier 1 checks, forced normal build
 and the race detector pass. Raw results, frozen graders, numerical logs,
 source snapshots, diagnostic ablations and provenance are retained on Aion
 under `~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-math/`.
@@ -328,9 +386,10 @@ not meet the requested 5-10% prefill target. The production F32 path remains
 26.9% below the fork near 256K. Conversion reuse and persistent
 reduced-precision state are remaining candidates, not established safe wins.
 
-These are the earlier `r43` findings. The September 30 selection and opt-in
+These are the earlier `r43` findings. The September 30 selection and retired
 mixed-math records above supersede that remaining-gap assessment and document
-the rejected cache experiments.
+the rejected cache experiments. Only the precision-preserving extractions
+remain in the supported image.
 
 The pinned Flash-Next ROCm path is `PASS` on Aion's `gfx1151`, not acceptance
 for future Qwen4 models or Flash-Next MTP. Other GPU classes are `N/P` for

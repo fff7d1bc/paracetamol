@@ -7,7 +7,7 @@ import (
 	"paracetamol/internal/catalog"
 )
 
-const validLlamaRuntimeReport = `schema=2
+const validLlamaRuntimeReport = `schema=1
 mode=server
 profile=strix-halo
 backend=rocm
@@ -24,7 +24,6 @@ port=8080
 api_key=0
 unified_memory=1
 vulkan_f16_kv_contiguize=0
-qwen4exp_math=default
 `
 
 func TestParseLlamaRuntimeReport(t *testing.T) {
@@ -34,31 +33,6 @@ func TestParseLlamaRuntimeReport(t *testing.T) {
 	}
 	if parsed["architecture"] != "gfx1151" || parsed["context"] != "262144" {
 		t.Fatalf("unexpected report: %#v", parsed)
-	}
-}
-
-func TestLlamaRuntimeReportMixedMathScope(t *testing.T) {
-	mixed := strings.Replace(validLlamaRuntimeReport, "qwen4exp_math=default", "qwen4exp_math=mixed", 1)
-	if _, err := parseLlamaRuntimeReport(mixed); err != nil {
-		t.Fatal(err)
-	}
-	for _, mode := range []string{"default", "mixed"} {
-		report, err := parseLlamaRuntimeReport(strings.Replace(validLlamaRuntimeReport, "qwen4exp_math=default", "qwen4exp_math="+mode, 1))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, router := range []string{"0", "1"} {
-			report["router"] = router
-			cmd := llamaReproductionCommand(nil, report, nil)
-			if !strings.Contains(strings.Join(cmd, " "), "--qwen4exp-math "+mode) {
-				t.Fatal(cmd)
-			}
-		}
-	}
-	for _, pair := range [][2]string{{"backend=rocm", "backend=vulkan"}, {"architecture=gfx1151", "architecture=gfx1201"}, {"gpu_count=1", "gpu_count=2"}, {"qwen4exp_math=mixed", "qwen4exp_math=bf16"}, {"schema=2", "schema=1"}} {
-		if _, err := parseLlamaRuntimeReport(strings.Replace(mixed, pair[0], pair[1], 1)); err == nil {
-			t.Fatalf("accepted %v", pair)
-		}
 	}
 }
 

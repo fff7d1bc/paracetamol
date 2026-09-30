@@ -200,6 +200,23 @@ func TestDwarfStarHelpKeepsThinkingControlInCLIMode(t *testing.T) {
 	}
 }
 
+func TestRunRejectsRemovedMixedMathOption(t *testing.T) {
+	for _, command := range [][]string{
+		{"run", "gateway"},
+		{"run", "llama-cpp", "server"},
+		{"run", "llama-cpp", "cli"},
+	} {
+		for _, value := range []string{"default", "mixed"} {
+			arguments := append(append([]string{}, command...), "--no-config", "--qwen4exp-math", value)
+			var stdout, stderr bytes.Buffer
+			status := Main(context.Background(), arguments, strings.NewReader(""), &stdout, &stderr)
+			if status != 2 || !strings.Contains(stderr.String(), "flag provided but not defined") {
+				t.Fatalf("%v status=%d stdout=%q stderr=%q", arguments, status, stdout.String(), stderr.String())
+			}
+		}
+	}
+}
+
 func TestCleanupRejectsFlagsOutsideSelectedScope(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"cleanup", "containers", "--image-tag", "example"},
