@@ -26,6 +26,140 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp source refresh (2026-09-30)
+
+Acceptance is `PASS` on Aion's `gfx1151`. This refresh advances llama.cpp from `7ab4ee7`
+to `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193 upstream commits, on top
+of Paracetamol `574dc693ef15cf57015fc6e9f8b2a86371804a9f`. All 13 downstream
+patches remain. Eight apply unchanged and five are rebased. The
+[patch ledger](upgrading.md#llamacpp-downstream-patch-ledger) records the
+upstream audit and the API changes preserved during rebasing.
+
+The image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-2090f60-r47`, ID
+`8e5f3ce367aa7ff026aaee0043f67c6001c5b95a327d37c161ec65d13341213c`.
+It was rebuilt without application layer cache for all four HIP targets and
+Vulkan. ROCm 10.0, Ubuntu 26.04, model artifacts, templates, samplers, default
+dense Q8 MTP model and F16 K/V are unchanged. The retired mixed-arithmetic
+feature is not reintroduced.
+
+On Aion's `gfx1151`, native operator checks pass 165 QSA/Qwen GPU cases,
+41 CPU reference cases, 18 selection-disabled cases, 75 GDN cases, both
+prefix policies and prepared-key invalidation tests. The nine selected
+model-free upstream tests pass. Runtime library closure, four-target code
+objects and `pip check` pass. Managed Qwen3 0.6B GPU acceptance passes.
+Upstream HC numerical controls pass 38 HIP and 26 Vulkan cases, including
+the new gated post-combine fusion. Installed OS and Python package versions
+match the baseline image.
+
+A new hardware fixture populates the real Flash-Next cache beyond 4K tokens,
+seeds its derived keys and compares logits after restore, a non-causal then
+causal transition, and clear plus restore. All three comparisons have zero
+normalized mean squared error and the same top token. This directly tests
+the downstream graph-buffer reservation retained around upstream's changed
+causal-mode API.
+
+The initial operator invocation stopped at an obsolete fixture argument.
+Upstream's MMQ source-precision API now rejects F32 there. The fixture now
+uses the supported explicit Q8 override while retaining its exact comparison
+against the unfused upstream path. A separate state-driver invocation
+rejected the allocator flag before loading a model because it selected the
+generic rather than CLI option set. Both initial logs are retained. Neither
+was a model-output failure, and neither fix changes production arithmetic.
+
+Paired timings use the previous `r46` image, identical managed Unsloth Qwen3.8
+27B Dynamic Q8_K_XL bytes, batch 2048, microbatch 512, F16 K/V and three
+repetitions. These native cases do not use MTP. Each measures 512 prompt
+tokens or 128 generated tokens, with either empty context or 32768 cached
+tokens. Aion remains on its balanced platform profile and
+`balance_performance` CPU EPP.
+
+| Backend and cached depth | Old prompt tokens/s | New prompt tokens/s | Old decode tokens/s | New decode tokens/s |
+| --- | ---: | ---: | ---: | ---: |
+| ROCm, empty | 370.917 | 366.825 | 7.203 | 7.214 |
+| ROCm, 32K | 263.969 | 264.255 | 6.759 | 6.778 |
+| Vulkan, empty | 280.747 | 366.907 | 7.313 | 7.313 |
+| Vulkan, 32K | 201.091 | 242.123 | 6.788 | 6.790 |
+
+These ROCm differences are within ordinary variation. The shallow
+Vulkan prefill gain is about 31%, and the 32K gain is about 20%, with no
+decode gain. The other native cases pass for Q8 cache on both backends and
+Q4 cache on HIP, all at 32K. HIP changes are below 1%. Vulkan Q8-cache prefill
+rises from 169.072 to 233.469 tokens/s, while decode remains 6.967 tokens/s.
+These are native timing controls, not task-quality comparisons.
+
+The ROCm router passes reasoning off and named efforts, streaming, nested
+tool calls and follow-up, native Responses, per-mode sampling defaults,
+explicit overrides, history templates and cache reuse on dense Qwen3.8 Q8
+with and without MTP and on Flash-Next. Both 32K Flash-Next archive requests
+recover all six exact values. Switching back to dense Q8, two concurrent
+clients and cancellation recovery also pass. Both Qwen3.6 MTP variants,
+Muse with and without DFlash, Qwen3.8 Q4 MTP, Gemma MTP and KAT pass their
+applicable protocol screens.
+
+The Vulkan router passes the dense Q8 MTP/non-MTP and Flash-Next functional
+screens, both 32K Flash-Next retrievals, switchback, concurrency and
+cancellation recovery too.
+
+On ROCm, the dense server exposes four slots with unified KV and a
+262144-token per-sequence limit. Flash-Next exposes one slot with non-unified
+KV at the same limit. Timing clients are sequential. The separate two-client
+check tests correctness, not a throughput claim.
+
+The populated-context comparison uses the same 247165-token public Go/docs
+corpus on both images, medium reasoning, temperature zero and seed 42. Both
+models recover all six distributed archive values and stop naturally. Dense
+Q8 produces identical answer and reasoning text on both images, including
+all three subsequent cached continuations. Flash-Next returns the same exact
+retrieval answer but its reasoning is not identical, using 199 versus 195
+completion tokens. These are retrieval and recovery screens, not broad
+quality-parity evidence.
+
+| ROCm model at 247165 input tokens | Old prompt tokens/s | New prompt tokens/s | Old cold HTTP seconds | New cold HTTP seconds |
+| --- | ---: | ---: | ---: | ---: |
+| Dense Q8 MTP | 139.417 | 139.468 | 1792.161 | 1791.398 |
+| Flash-Next Dynamic Q4_K_XL | 621.271 | 628.821 | 408.695 | 403.505 |
+
+For each image/model pair, three cached continuations generate 768 tokens
+in total. Aggregate tokens divided by total HTTP wall time are 7.767 → 7.802
+tokens/s for dense Q8 and 16.859 → 17.141 for Flash-Next. Those windows
+intentionally end at 256 output tokens each and are not completed-task
+scores. Cache reuse counts match between images. There is one cold request
+and three cached windows per pair, so the small differences do not establish
+a meaningful ROCm speedup. Cold means fresh prompt state, not an emptied
+filesystem cache. Fresh requests, cancellation and model switchback pass
+after the populated-context tests.
+
+One-shot CLI generation passes for the tiny model on ROCm and Vulkan, and
+for dense Q8 MTP and Flash-Next on ROCm. The 32K Q8-cache controls on both
+backends and Q4-cache control on ROCm pass output and tool-call checks too.
+These optional cache tests do not change the F16 preset defaults.
+
+The public gateway starts with no backend loaded, passes dense → Flash-Next
+→ dense tool exchanges and streaming, and keeps its child publication on
+an ephemeral loopback port. Managed Pi and Maki each perform real file-read
+and shell calls and return both exact results. The gateway stops cleanly and
+removes its owned backend. The exact final image also passes CPU-only empty
+router startup with a read-only root and no GPU devices.
+
+Host Tier 1 checks and the forced normal build pass. The full source-file
+manifest is verified against Aion's checkout, since its Git metadata predates
+this delivery. All test containers are stopped and removed, the previous
+image is retained, and no gateway was running before the tests to restore.
+The kernel remains `7.1.7-200.fc44.x86_64` with the same 112 GiB GPU memory
+allowance and balanced power policy. No new AMDGPU fault or reset is logged.
+The journal retains the initial failed operator fixture's libc trap and a
+Python diagnostic's CPU split-lock notification, rather than being reported
+as entirely empty.
+
+Actual GPU acceptance of this source update on `gfx1150`, `gfx1200` and
+`gfx1201` is `BLOCKED` by unavailable hardware. Their code-object builds do
+not replace inference evidence. The extracted Flash-Next fast paths remain
+disabled outside their accepted `gfx1151` dispatch. Raw results, initial
+failures, test drivers, source manifest and image identities are retained on
+Aion under
+`~/.local/share/paracetamol/apps/acceptance/results/20260930-llama-upstream-refresh/`.
+
 ### Fedora 44 Strix Halo mixed-math removal (2026-09-30)
 
 The `r46` image removes the downstream mixed-arithmetic feature introduced

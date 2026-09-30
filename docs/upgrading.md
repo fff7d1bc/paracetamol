@@ -282,6 +282,50 @@ protected behavior is fixed.
 | `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
 | `hip-qwen4exp-selection.patch` | Fuses the private Qwen4exp 512-block selection graph on exact `gfx1151`, preserving integer/F32 arithmetic, tail cells, auxiliary outputs and allocation lifetimes. Replaces per-cell sequence population counts with equivalent singleton-set equality in compact-prefix validation. | An upstream equivalent passes selection oracles, real sliced-tail layouts, extra-reader fallback, every sequence-bit pair, populated-context retrieval and state/backend regressions. No arithmetic downcast or weaker prefix eligibility belongs here. |
 
+The September 30 source refresh pins
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193 upstream commits after the
+previous `7ab4ee7` pin. All 13 downstream patches remain necessary under the
+removal gates above. Eight apply unchanged. The QSA gather, compact graph,
+prepared-key cache, pipeline and selection patches are rebased.
+
+The rebases preserve upstream's new GLM pooled-cache bookkeeping, graph
+allocation dependencies and matrix source-precision parameter. GLM's pooled
+cache is not a replacement for the Qwen4exp derived-key cache. The private
+Qwen Q8 prefetch instantiations explicitly retain Q8 activation precision and
+leave upstream's other matrix paths alone. This does not reintroduce the
+retired mixed-arithmetic experiment.
+
+The grouped-matrix override test also follows the new upstream API. MMQ now
+accepts undefined, Q8 or Q4 source precision and rejects the former F32 test
+value. The fixture uses an explicit supported Q8 override to keep checking
+that the private shortcut defers to upstream. This is a test-input update,
+not a change to the model's computation or KV cache.
+
+Upstream no longer reserves graph buffers on causal-attention changes. The
+compact Qwen4exp graph still changes shape when it falls back to non-causal
+attention, so its patch retains a narrowly scoped reserve on that transition.
+`applications/llama-cpp/test-qwen4exp-state.cpp` is a hardware acceptance
+fixture for this boundary. It populates more than 4K tokens, seeds derived
+keys, switches causal mode and checks logits after restore and clear. Compile
+it against the matching patched source and libraries, then run it on the
+managed Flash-Next model with the normal direct-reader ROCm policy and all
+three QSA graph, kernel and cache switches enabled. It is not an image-build
+or CPU-startup substitute for inference acceptance.
+
+The upstream review also distinguishes closed proposals from merged fixes.
+[PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863) and
+[PR 28136](https://github.com/ggml-org/llama.cpp/pull/28136) were closed without
+merging. The newer direct-reader proposal,
+[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030), remains open, as
+do [QSA gather](https://github.com/ggml-org/llama.cpp/pull/28213),
+[pooled QSA keys](https://github.com/ggml-org/llama.cpp/pull/28699) and
+[Flash-Next MTP](https://github.com/ggml-org/llama.cpp/pull/28243).
+These statuses were checked on September 30. None is grounds to remove an
+existing guard or enable Flash-Next MTP in this refresh.
+The [refresh acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-source-refresh-2026-09-30)
+contains the paired ROCm/Vulkan measurements, populated-context checks and
+hardware-coverage limits.
+
 The `r44` selection patch builds on the four earlier extractions. The graph
 already selected whole blocks, but its ordinary gather, sort, cast and
 validity operations still ran separately. The new kernel combines those
