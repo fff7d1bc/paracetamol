@@ -30,6 +30,7 @@ model_load_strix_point="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_POINT:-}"
 qsa_kernel_requested="${PARACETAMOL_QWEN4EXP_QSA_KERNEL:-auto}"
 qsa_graph_requested="${PARACETAMOL_QWEN4EXP_QSA_GRAPH:-auto}"
 qsa_cache_requested="${PARACETAMOL_QWEN4EXP_QSA_CACHE:-auto}"
+qwen_math="${PARACETAMOL_LLAMA_QWEN4EXP_MATH:-default}"
 allowed_profiles="${PARACETAMOL_LLAMA_ALLOWED_PROFILES:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
@@ -344,6 +345,19 @@ fi
 # Derived keys share the compact graph's scope and invalidation contract.
 export PARACETAMOL_QWEN4EXP_QSA_CACHE="$qsa_cache"
 
+# Reset inherited backend knobs. Mixed arithmetic is an explicit host policy,
+# checked again against the actual device rather than trusting profile auto.
+export PARACETAMOL_QWEN4EXP_FAST_MATH=0
+case "$qwen_math" in
+    default) ;;
+    mixed)
+        [[ "$qsa_graph" == 1 && "$backend" == rocm && "$architecture" == gfx1151 && "$gpu_count" == 1 ]] ||
+            die "mixed Qwen4exp math requires one Strix Halo ROCm GPU and the QSA graph policy"
+        export PARACETAMOL_QWEN4EXP_FAST_MATH=1
+        ;;
+    *) die "invalid Qwen4exp math '$qwen_math' (expected default or mixed)" ;;
+esac
+
 if [[ -n "$allowed_profiles" ]]; then
     [[ "$allowed_profiles" =~ ^(rdna4|strix-halo|strix-point)(,(rdna4|strix-halo|strix-point))*$ ]] ||
         die "invalid backend profile restriction"
@@ -384,10 +398,11 @@ done
 # profile and backend device names resolved here without persisting stale
 # state or scraping unbounded application logs.
 {
-    printf 'schema=1\n'
+    printf 'schema=2\n'
     printf 'mode=%s\n' "$mode"
     printf 'profile=%s\n' "$profile"
     printf 'backend=%s\n' "$backend"
+    printf 'qwen4exp_math=%s\n' "$qwen_math"
     printf 'device=%s\n' "$device"
     printf 'backend_devices=%s\n' "${backend_devices:-none}"
     printf 'architecture=%s\n' "$architecture"
@@ -409,6 +424,11 @@ printf '  profile:       %s\n' "$profile"
 printf '  backend:       %s\n' "$backend"
 printf '  device:        %s\n' "$device"
 printf '  architecture:  %s\n' "$architecture"
+if [[ "$qwen_math" == mixed ]]; then
+    printf '  Flash-Next math: mixed BF16/F16 matrices (opt-in), F32 outputs, F16 KV unchanged\n'
+else
+    printf '  Flash-Next math: default (mixed arithmetic disabled)\n'
+fi
 if [[ "$qsa_kernel" == 1 ]]; then
     printf '  Qwen4exp QSA:  selected-key HIP kernels available (F16 K/V)\n'
     if [[ "$qsa_graph" == 1 ]]; then

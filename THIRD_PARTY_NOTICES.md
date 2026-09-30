@@ -79,6 +79,13 @@ revisions recorded in `catalog/catalog.json`.
   preserves auxiliary outputs and allocation lifetimes. A local equivalent
   singleton-set check reduces CPU prefix-validation overhead without caching
   or weakening sequence-ownership checks.
+  A separate opt-in mixed-math extraction adapts the fork's Q8 and routed
+  expert BF16 matrix tiles, F16 operand projections, gate/mix fusion and
+  paired F32 normalization. It retains F32 accumulators, outputs and residuals
+  and the original F16 KV format. It excludes persistent conversion caches,
+  shadow tensors and BF16-only residual storage. Dispatch is restricted to
+  the private Qwen4exp graph on one Strix Halo ROCm GPU, with numerical,
+  precision-override and fusion-lifetime checks.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

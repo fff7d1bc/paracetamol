@@ -58,6 +58,7 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
+qwen4exp_math = "default"
 ```
 
 Select another file globally either before or after the command:
@@ -75,6 +76,13 @@ selected missing file, an unknown key, or a malformed value is an error.
 Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
 command-line-only.
+
+`qwen4exp_math = "mixed"` opts into BF16/F16 matrix arithmetic for Flash-Next
+on a single Strix Halo ROCm GPU. The default remains `"default"`. The same
+choice is available as `run gateway --qwen4exp-math mixed`, and an explicit
+`--qwen4exp-math default` overrides the file. It leaves other models, GGUF
+files and F16 KV caches unchanged. See the [precision tradeoff and direct
+server examples](guides/tuning.md#flash-next-mixed-matrix-arithmetic).
 
 Gateway clients resolve their endpoint in this order: `--gateway-url`,
 `PARACETAMOL_GATEWAY_URL`, `[gateway.client].url`, then the built-in loopback

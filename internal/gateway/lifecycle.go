@@ -37,6 +37,7 @@ type LifecycleOptions struct {
 	Profile           string
 	RenderNodes       []string
 	LlamaBackend      string
+	Qwen4expMath      string
 	LlamaModelsMax    int
 	RouterPreset      string
 	SourceRevision    string
@@ -71,6 +72,12 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	}
 	if options.LlamaModelsMax < 1 {
 		return nil, fmt.Errorf("gateway llama.cpp models-max must be positive")
+	}
+	if options.Qwen4expMath == "" {
+		options.Qwen4expMath = "default"
+	}
+	if err := runtime.ValidateQwen4expMath(options.Qwen4expMath, options.LlamaBackend, options.Profile, options.RenderNodes); err != nil {
+		return nil, err
 	}
 	if options.StartupTimeout <= 0 {
 		options.StartupTimeout = DefaultStartupTimeout
@@ -242,6 +249,7 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 		command, err := runtime.LlamaCommand(runtime.LlamaOptions{
 			Image: application.Image, Profile: lifecycle.options.Profile, Mode: "server",
 			DataDir: lifecycle.options.DataRoot, Backend: lifecycle.options.LlamaBackend,
+			Qwen4expMath:   lifecycle.options.Qwen4expMath,
 			SourceRevision: lifecycle.options.SourceRevision, RouterPreset: lifecycle.options.RouterPreset,
 			ModelsMax: lifecycle.options.LlamaModelsMax, RenderNodes: lifecycle.options.RenderNodes,
 			Listen: "127.0.0.1", Port: application.Port, Detach: true, Unconfined: lifecycle.options.Unconfined,

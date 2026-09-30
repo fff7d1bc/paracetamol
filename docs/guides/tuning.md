@@ -262,6 +262,51 @@ CPU-connected PCIe slots. If peer access behaves badly with IOMMU translation,
 AMD documents `iommu=pt` as the first host setting to test. Treat it as a
 measured hardware workaround, not a default Paracetamol requirement.
 
+## Flash-Next mixed matrix arithmetic
+
+The normal arithmetic path remains the default. On one Strix Halo GPU with
+the ROCm backend, you can opt into faster Flash-Next matrix kernels:
+
+```bash
+./paracetamol run gateway --qwen4exp-math mixed
+```
+
+For a persistent gateway setting, set `qwen4exp_math = "mixed"` under
+`[gateway.llama-cpp]` in your config. An explicit `--qwen4exp-math default`
+overrides that setting. Direct llama.cpp commands use the flag, not the
+gateway configuration:
+
+```bash
+./paracetamol run llama-cpp server \
+  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl \
+  --qwen4exp-math mixed
+
+./paracetamol run llama-cpp server --router --qwen4exp-math mixed
+```
+
+This changes internal arithmetic, not the model quant or cache format. The
+eligible quantized matrices use BF16 operands. Selected F32 projections use
+F16 operands. Accumulators, outputs and residuals remain F32, and the managed
+F16 KV cache stays F16. No persistent BF16 shadow tensors or conversion cache
+are introduced. Unsupported shapes and explicitly requested F32 matrix
+precision retain the ordinary kernels.
+
+The change mainly targets prompt processing. It can change generated answers,
+and passing numerical and retrieval tests does not establish quality parity
+on every task. Keep the default if preserving the existing arithmetic matters
+more than prefill speed. Neither choice changes the default dense Qwen model
+or its kernels, including when the router switches between dense Qwen and
+Flash-Next.
+
+Startup output identifies mixed math when selected. `status llama-cpp` also
+includes the resolved arithmetic policy. CPU, Vulkan, multiple GPUs and other
+GPU architectures reject this opt-in. The gate is specific to the tested
+Qwen4exp graph, not a promise about future Qwen architectures. The
+[hardware acceptance record](../hardware-acceptance.md) records measurements
+and their limitations. Ordinary managed `benchmark llama-cpp` runs retain
+default arithmetic. Do not compare those results to a mixed-math server
+without recording the difference.
+
 ## Benchmarks
 
 Managed ComfyUI benchmark results record image, content pins, profile, render

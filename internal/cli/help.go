@@ -43,6 +43,7 @@ var metavarByFlag = map[string]string{
 	"port":                   "PORT",
 	"preset":                 "PRESET",
 	"profile":                "PROFILE",
+	"qwen4exp-math":          "POLICY",
 	"prompt":                 "TEXT",
 	"prompt-tokens":          "TOKENS",
 	"render-node":            "PATH",

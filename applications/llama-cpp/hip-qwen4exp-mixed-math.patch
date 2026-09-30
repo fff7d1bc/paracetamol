@@ -1,0 +1,1556 @@
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 900e4e7..ec79cd4 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -457,6 +457,7 @@ extern "C" {
+         // Downstream opt-in. Other models/backends keep their ordinary matvec.
+         GGML_HINT_QWEN4EXP_Q8_DECODE = 2,
+         GGML_HINT_SMALL_MOE_TILES   = 3,
++        GGML_HINT_QWEN4EXP_F32      = 4,
+     };
+ 
+     // model file types
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 5d11534..14d1323 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -32,6 +32,7 @@
+ #include "ggml-cuda/mmq.cuh"
+ #include "ggml-cuda/mmvf.cuh"
+ #include "ggml-cuda/qwen4exp-mmv.cuh"
++#include "ggml-cuda/qwen4exp-mmb.cuh"
+ #include "ggml-cuda/mmvq.cuh"
+ #include "ggml-cuda/moe-weighted-reduction.cuh"
+ #include "ggml-cuda/norm.cuh"
+@@ -1830,6 +1831,8 @@ static bool ggml_cuda_should_fuse_mul_mat_vec_q(const ggml_tensor * tensor) {
+ }
+ 
+ static void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
++    if (ggml_cuda_qwen4exp_mmb(ctx, src0, src1, dst)) return;
++    if (ggml_cuda_qwen4exp_f32_wmma(ctx, src0, src1, dst)) return;
+     GGML_TENSOR_BINARY_OP_LOCALS
+ 
+ #if defined(GGML_USE_HIP)
+@@ -1921,6 +1924,7 @@ static bool ggml_cuda_mul_mat_id_needs_sync(const ggml_tensor * dst, const int c
+ }
+ 
+ static void ggml_cuda_mul_mat_id(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
++    if (ggml_cuda_qwen4exp_expert_down(ctx, dst)) return;
+     const ggml_tensor * src0 = dst->src[0];
+     const ggml_tensor * src1 = dst->src[1];
+     const ggml_tensor * ids  = dst->src[2];
+@@ -3449,6 +3453,26 @@ static bool qsa_fusion_enabled(const ggml_backend_cuda_context * ctx, const char
+         ggml_cuda_info().devices[ctx->device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151;
+ }
+ 
++static int qwen_gate_mix_match(const ggml_cgraph * graph,int i,ggml_tensor *& out) {
++    const char * enabled=getenv("PARACETAMOL_QWEN4EXP_FAST_MATH");
++    if (!enabled || strcmp(enabled,"1")) return 0;
++    auto * mm=graph->nodes[i];
++    if (mm->op!=GGML_OP_MUL_MAT || mm->op_params[1]!=GGML_HINT_QWEN4EXP_Q8_DECODE ||
++            mm->op_params[0]!=GGML_PREC_DEFAULT || mm->op_params[3]!=GGML_PREC_DEFAULT ||
++            mm->src[0]->type!=GGML_TYPE_Q8_0 || mm->ne[1]<512) return 0;
++    int end=i+1;
++    while (end<graph->n_nodes && end<i+4 && graph->nodes[end]->op==GGML_OP_RESHAPE) ++end;
++    if (end>=graph->n_nodes || end>i+3) return 0;
++    auto * pre=graph->nodes[end];
++    if (pre->op!=GGML_OP_DSV4_HC_PRE || pre->op_params[1]!=1 ||
++            !pre->src[0] || !pre->src[1] || pre->src[1]->op!=GGML_OP_RESHAPE ||
++            pre->src[1]->src[0]!=mm || !ggml_are_same_shape(pre->src[0],pre->src[1])) return 0;
++    std::vector<ggml_op> ops;
++    for (int j=i;j<=end;++j) ops.push_back(graph->nodes[j]->op);
++    if (!ggml_can_fuse_subgraph(graph,i,ops.size(),ops.data(),&end,1)) return 0;
++    out=pre;return end-i;
++}
++
+ static bool qsa_ranges_overlap(const ggml_tensor * a, const ggml_tensor * b) {
+     const uintptr_t av = (uintptr_t) a->data, bv = (uintptr_t) b->data;
+     return av <= bv ? bv-av < ggml_nbytes(a) : av-bv < ggml_nbytes(b);
+@@ -3703,6 +3727,25 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+             return end-i;
+         }
+     }
++    const char * expert_bf16=getenv("PARACETAMOL_QWEN4EXP_FAST_MATH");
++    if (expert_bf16 && strcmp(expert_bf16,"1")==0 && qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_FAST_MATH") &&
++            node->op == GGML_OP_MUL_MAT_ID && i+2 < cgraph->n_nodes) {
++        auto * second=cgraph->nodes[i+1];
++        auto * glu=cgraph->nodes[i+2];
++        const int output=i+2;
++        if (second->op == GGML_OP_MUL_MAT_ID && glu->op == GGML_OP_GLU &&
++                ((glu->src[0] == node && glu->src[1] == second) ||
++                 (glu->src[1] == node && glu->src[0] == second)) &&
++                ggml_can_fuse_subgraph(cgraph,i,{GGML_OP_MUL_MAT_ID,GGML_OP_MUL_MAT_ID,GGML_OP_GLU},{output}) &&
++                ggml_cuda_check_fusion_memory_ranges(cgraph,i,3,&output,1) &&
++                ggml_cuda_qwen4exp_expert_glu(*cuda_ctx,glu->src[0],glu->src[1],glu)) return 2;
++    }
++    if (qsa_fusion_enabled(cuda_ctx,"PARACETAMOL_QWEN4EXP_FAST_MATH")) {
++        ggml_tensor * out=nullptr;
++        const int span=qwen_gate_mix_match(cgraph,i,out),output=i+span;
++        if (span && ggml_cuda_check_fusion_memory_ranges(cgraph,i,span+1,&output,1) &&
++                ggml_cuda_qwen4exp_gate_mix(*cuda_ctx,node,out->src[0],out)) return span;
++    }
+     if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_HC_NORM")) {
+         qwen_hc_match hc;
+         if (qwen_hc_inject_match_at(cgraph, i, hc, true)) {
+@@ -4864,6 +4907,14 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+                 }
+             }
+         }
++        if (qsa_fusion_enabled(cuda_ctx,"PARACETAMOL_QWEN4EXP_FAST_MATH")) for (int i=0;i<cgraph->n_nodes;++i) {
++            ggml_tensor * out=nullptr;
++            if (qwen_gate_mix_match(cgraph,i,out)) {
++                for (auto * t : {cgraph->nodes[i]->src[0],cgraph->nodes[i]->src[1],out->src[0]}) {
++                    params->add_alloc_dep(params->user_data,t->view_src ? t->view_src : t,out);
++                }
++            }
++        }
+         if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_HC_NORM")) for (int i = 0; i < cgraph->n_nodes; ++i) {
+             qwen_hc_match hc;
+             if (qwen_hc_inject_match_at(cgraph, i, hc, false)) {
+diff --git a/ggml/src/ggml-cuda/qwen4exp-expert.cu b/ggml/src/ggml-cuda/qwen4exp-expert.cu
+new file mode 100644
+index 0000000..6a67d98
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qwen4exp-expert.cu
+@@ -0,0 +1,537 @@
++// Opt-in Qwen4exp Q4_K/Q5_K expert gate/up fusion. Derived from
++// halo-box/strix-llama.cpp 7a9196dad8b13b70fb3420886aadaf98fc09b849 (MIT).
++// No persistent conversion cache, shadow weights or BF16-only outputs.
++#include "qwen4exp-mmb.cuh"
++#include "mmid.cuh"
++#include "unary.cuh"
++#if defined(GGML_USE_HIP)
++namespace {
++typedef short v16s __attribute__((ext_vector_type(16)));
++typedef float v8f __attribute__((ext_vector_type(8)));
++constexpr int MMB_BK=64, MMB_NT=256, MMB_LDS_STRIDE=72;
++__device__ __forceinline__ uint16_t mmb_f2bf(float f) {
++    uint32_t u=__float_as_uint(f);
++    if ((u&0x7fffffffU)>0x7f800000U) return uint16_t((u>>16)|0x0040U);
++    return uint16_t((u+0x7fffu+((u>>16)&1u))>>16);
++}
++__device__ __forceinline__ uint32_t mmb_pack2(float a,float b) {
++    return uint32_t(mmb_f2bf(a))|(uint32_t(mmb_f2bf(b))<<16);
++}
++// Quantized weights have finite F16 scales and bounded integer codes. Avoid
++// repeating the activation NaN check for every decoded weight element.
++__device__ __forceinline__ uint32_t mmb_weight2(float a,float b) {
++    uint32_t x=__float_as_uint(a),y=__float_as_uint(b);
++    x+=0x7fffu+((x>>16)&1u); y+=0x7fffu+((y>>16)&1u);
++    return (x>>16)|(y&0xffff0000u);
++}
++__device__ __forceinline__ float mmb_h2f(uint16_t h) {
++    return float(__builtin_bit_cast(_Float16,h));
++}
++__global__ void mmb_cvt_f32_bf16(const float * __restrict__ x, uint16_t * __restrict__ y, const size_t n) {
++    size_t i = ((size_t)blockIdx.x * blockDim.x + threadIdx.x) * 8;
++    if (i + 8 <= n) {
++        const float4 a = *(const float4 *)(x + i), b = *(const float4 *)(x + i + 4);
++        uint4 o; o.x = mmb_pack2(a.x, a.y); o.y = mmb_pack2(a.z, a.w); o.z = mmb_pack2(b.x, b.y); o.w = mmb_pack2(b.z, b.w);
++        *(uint4 *)(y + i) = o;
++    } else {
++        for (; i < n; ++i) y[i] = mmb_f2bf(x[i]);
++    }
++}
++
++template<bool Q5>
++__device__ __forceinline__ void mmb_dq_q4k_slice(uint4 q0, uint4 q1, uint4 meta, uint4 h0, uint4 h1, int slice, uint32_t * out) {
++    const float d = mmb_h2f((uint16_t) meta.x), dm = mmb_h2f((uint16_t)(meta.x >> 16));
++    auto byte = [&](int i) { const uint32_t word = i < 4 ? meta.y : i < 8 ? meta.z : meta.w; return (word >> (8 * (i & 3))) & 255; };
++    auto scale_min = [&](int i, float & ds, float & ms) {
++        const uint32_t sc = i < 4 ? byte(i) & 63 : (byte(i + 4) & 15) | ((byte(i - 4) >> 6) << 4);
++        const uint32_t mn = i < 4 ? byte(i + 4) & 63 : (byte(i + 4) >> 4) | ((byte(i) >> 6) << 4);
++        ds = d * sc; ms = dm * mn;
++    };
++    float d0, d1, m0, m1;
++    scale_min(2 * slice, d0, m0); scale_min(2 * slice + 1, d1, m1);
++    const uint32_t words[8] = {q0.x, q0.y, q0.z, q0.w, q1.x, q1.y, q1.z, q1.w};
++    const uint32_t high[8] = {h0.x,h0.y,h0.z,h0.w,h1.x,h1.y,h1.z,h1.w};
++#pragma unroll
++    for (int j = 0; j < 8; ++j) {
++        const uint32_t q = words[j];
++        uint32_t lo=q&0x0f0f0f0fu,hi=(q>>4)&0x0f0f0f0fu;
++        if constexpr(Q5) {
++            lo|=((high[j]>>(2*slice))&0x01010101u)<<4;
++            hi|=((high[j]>>(2*slice+1))&0x01010101u)<<4;
++        }
++        out[2*j] = mmb_weight2(d0 * (lo & 255) - m0, d0 * ((lo >> 8) & 255) - m0);
++        out[2*j + 1] = mmb_weight2(d0 * ((lo >> 16) & 255) - m0, d0 * (lo >> 24) - m0);
++        out[16 + 2*j] = mmb_weight2(d1 * (hi & 255) - m1, d1 * ((hi >> 8) & 255) - m1);
++        out[16 + 2*j + 1] = mmb_weight2(d1 * ((hi >> 16) & 255) - m1, d1 * (hi >> 24) - m1);
++    }
++}
++
++
++template <typename DRowFn>
++__device__ __forceinline__ void mmb_store_tile(const v8f & acc, float * __restrict__ stg, float * __restrict__ D, const int M, DRowFn drow, const int n_base, const int m_base, const int lane) {
++    const int cm = lane & 15, cn = lane >> 4;
++#pragma unroll
++    for (int e = 0; e < 8; ++e) { stg[(2 * e + cn) * 16 + cm] = acc[e]; }
++    __syncthreads();
++    const int n = lane >> 1, half = lane & 1;
++    const int dr = drow(n_base + n);
++    if (dr >= 0) {
++        const float4 v0 = *(const float4 *)(stg + n * 16 + half * 8), v1 = *(const float4 *)(stg + n * 16 + half * 8 + 4);
++        const size_t base = (size_t)dr * M + m_base + half * 8;
++        const bool full = m_base + 16 <= M;
++        {
++            if (full && (M & 3) == 0) { *(float4 *)(D + base) = v0; *(float4 *)(D + base + 4) = v1; }
++            else { const float vv[8] = {v0.x, v0.y, v0.z, v0.w, v1.x, v1.y, v1.z, v1.w};
++#pragma unroll
++                   for (int k = 0; k < 8; ++k) { if (m_base + half * 8 + k < M) D[base + k] = vv[k]; } }
++        }
++    }
++    __syncthreads();
++}
++template <int BM, int BN, int WTM, int WTN, int WTYPE, bool TAIL, typename XRowFn, typename DRowFn>
++__device__ __forceinline__ void mmb_tile_gemm_glu(const uint8_t * __restrict__ Wg, const uint8_t * __restrict__ Wu, const size_t wrow_bytes, const int a_rows,
++        const uint16_t * __restrict__ Xh, const int K, XRowFn xrow, float * __restrict__ D, const int M, DRowFn drow, const int m0,
++        const int n_cols, uint16_t * Ag, uint16_t * Au, uint16_t * Bs) {
++    constexpr int WAVES_M = BM / WTM, TM = WTM / 16, TN = WTN / 16;
++    constexpr int A_ITEMS = (BM + MMB_NT - 1) / MMB_NT;
++    constexpr int B_ITEMS = (BN * 8) / MMB_NT;
++    const int tid = threadIdx.x, lane = tid & 31, wave = tid >> 5;
++    const int wm = wave % WAVES_M, wn = wave / WAVES_M;
++    uint4 g0[A_ITEMS], g1[A_ITEMS], u0[A_ITEMS], u1[A_ITEMS];
++    uint4 gm[A_ITEMS], um[A_ITEMS];
++    uint4 gh0[A_ITEMS],gh1[A_ITEMS],uh0[A_ITEMS],uh1[A_ITEMS];
++    constexpr bool Q5=WTYPE==32+GGML_TYPE_Q5_K;
++    uint4 bst[B_ITEMS];
++    int brow[B_ITEMS];
++#pragma unroll
++    for (int i = 0; i < B_ITEMS; ++i) { const int c = tid + i * MMB_NT; brow[i] = xrow(c >> 3); }
++    int weight_ks = 0;
++    auto load_regs = [&](const int ks) {
++        weight_ks = ks;
++#pragma unroll
++        for (int i = 0; i < A_ITEMS; ++i) {
++            const int row = tid + i * MMB_NT;
++
++                if (row < BM && row < a_rows) {
++                    constexpr size_t block_bytes=Q5 ? sizeof(block_q5_K):sizeof(block_q4_K);
++                    const uint8_t * pg = Wg + (size_t)row * wrow_bytes + (size_t)(ks / 4) * block_bytes;
++                    const uint8_t * pu = Wu + (size_t)row * wrow_bytes + (size_t)(ks / 4) * block_bytes;
++                    gm[i] = *(const uint4 *)pg; um[i] = *(const uint4 *)pu;
++                    if constexpr(Q5) {
++                        gh0[i]=*(const uint4 *)(pg+16); gh1[i]=*(const uint4 *)(pg+32);
++                        uh0[i]=*(const uint4 *)(pu+16); uh1[i]=*(const uint4 *)(pu+32);
++                    } else { gh0[i]=gh1[i]=uh0[i]=uh1[i]=make_uint4(0,0,0,0); }
++                    const int offset = (Q5 ? 48:16) + (ks & 3) * 32;
++                    g0[i] = *(const uint4 *)(pg + offset); g1[i] = *(const uint4 *)(pg + offset + 16);
++                    u0[i] = *(const uint4 *)(pu + offset); u1[i] = *(const uint4 *)(pu + offset + 16);
++                } else { gh0[i]=gh1[i]=uh0[i]=uh1[i]=gm[i] = um[i] = g0[i] = g1[i] = u0[i] = u1[i] = make_uint4(0,0,0,0); }
++
++        }
++#pragma unroll
++        for (int i = 0; i < B_ITEMS; ++i) {
++            const int c = tid + i * MMB_NT; const int off = (c & 7) * 8;
++            bst[i] = (brow[i] >= 0) ? *(const uint4 *)(Xh + (size_t)brow[i] * K + ks * MMB_BK + off) : make_uint4(0,0,0,0);
++        }
++    };
++    auto store_lds = [&]() {
++
++
++#pragma unroll
++        for (int i = 0; i < A_ITEMS; ++i) {
++            const int row = tid + i * MMB_NT;
++            if (row < BM) {
++
++                    mmb_dq_q4k_slice<Q5>(g0[i], g1[i], gm[i], gh0[i],gh1[i],weight_ks & 3, (uint32_t *)(Ag + row * MMB_LDS_STRIDE));
++                    mmb_dq_q4k_slice<Q5>(u0[i], u1[i], um[i], uh0[i],uh1[i],weight_ks & 3, (uint32_t *)(Au + row * MMB_LDS_STRIDE));
++
++            }
++        }
++#pragma unroll
++        for (int i = 0; i < B_ITEMS; ++i) { const int c = tid + i * MMB_NT; *(uint4 *)(Bs + (c >> 3) * MMB_LDS_STRIDE + (c & 7) * 8) = bst[i]; }
++    };
++    v8f accg[TM][TN], accu[TM][TN];
++#pragma unroll
++    for (int i = 0; i < TM; ++i)
++#pragma unroll
++        for (int j = 0; j < TN; ++j)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { accg[i][j][e] = 0.f; accu[i][j][e] = 0.f; }
++    bool jact[TN];
++#pragma unroll
++    for (int j = 0; j < TN; ++j) jact[j] = !TAIL || (wn * WTN + j * 16) < n_cols;
++    const int nks = K / MMB_BK;
++    load_regs(0); store_lds(); __syncthreads();
++    for (int ks = 0; ks < nks; ++ks) {
++        if (ks + 1 < nks) load_regs(ks + 1);
++#pragma unroll
++        for (int kk = 0; kk < MMB_BK; kk += 16) {
++            v16s ag[TM], au[TM], b[TN]; const int r = lane & 15;
++#pragma unroll
++            for (int i = 0; i < TM; ++i) { const int off = (wm * WTM + i * 16 + r) * MMB_LDS_STRIDE + kk;
++                ag[i] = __builtin_bit_cast(v16s, (uint4[2]){*(const uint4 *)(Ag + off), *(const uint4 *)(Ag + off + 8)});
++                au[i] = __builtin_bit_cast(v16s, (uint4[2]){*(const uint4 *)(Au + off), *(const uint4 *)(Au + off + 8)}); }
++#pragma unroll
++            for (int j = 0; j < TN; ++j) { if constexpr (TAIL) { if (!jact[j]) continue; } const uint16_t * p = Bs + (wn * WTN + j * 16 + r) * MMB_LDS_STRIDE + kk;
++                b[j] = __builtin_bit_cast(v16s, (uint4[2]){*(const uint4 *)p, *(const uint4 *)(p + 8)}); }
++#pragma unroll
++            for (int i = 0; i < TM; ++i)
++#pragma unroll
++                for (int j = 0; j < TN; ++j) {
++                    if constexpr (TAIL) { if (!jact[j]) continue; }
++                    accg[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(b[j], ag[i], accg[i][j]);
++                    accu[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(b[j], au[i], accu[i][j]);
++                }
++        }
++        __syncthreads();
++        if (ks + 1 < nks) store_lds();
++        __syncthreads();
++    }
++    float * stg = (float *)((BN * MMB_LDS_STRIDE * 2 >= MMB_NT / 32 * 1024) ? Bs : Ag) + wave * 256;
++#pragma unroll
++    for (int i = 0; i < TM; ++i) {
++        const int ml = wm * WTM + i * 16; const bool ok = ml < a_rows;
++#pragma unroll
++        for (int j = 0; j < TN; ++j) {
++            if (ok && jact[j]) {
++                v8f v;
++#pragma unroll
++                for (int e = 0; e < 8; ++e) { v[e] = ggml_cuda_op_silu_single(accg[i][j][e]) * accu[i][j][e]; }
++                mmb_store_tile(v, stg, D, M, drow, wn * WTN + j * 16, m0 + ml, lane);
++            } else { __syncthreads(); __syncthreads(); }
++        }
++    }
++}
++
++template <int BM, int BN, int WTM, int WTN, int WTYPE = 32 + GGML_TYPE_Q4_K>
++__global__ void __launch_bounds__(MMB_NT, 2)
++mmb_routed_glu_kernel(const uint8_t * __restrict__ Wg, const uint8_t * __restrict__ Wu, const size_t expert_bytes, const uint16_t * __restrict__ Xh,
++        float * __restrict__ D,         const int32_t * __restrict__ ids_src, const int32_t * __restrict__ ids_dst, const int32_t * __restrict__ bounds,
++        const uint32_t * __restrict__ desc, const int M, const int K) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE; // WMMA kernels are RDNA3-only; the host gate keeps other devices off this path
++#else
++    __shared__ __align__(16) uint16_t Ag[BM * MMB_LDS_STRIDE];
++    __shared__ __align__(16) uint16_t Au[BM * MMB_LDS_STRIDE];
++    __shared__ __align__(16) uint16_t Bs[BN * MMB_LDS_STRIDE];
++    const uint32_t dsc = desc[blockIdx.y];
++    if (dsc == UINT32_MAX) return;
++    const int e = dsc & 0xffff, jt = dsc >> 16;
++    const int r0 = bounds[e] + jt * BN, cnt = bounds[e + 1] - r0;
++    const int m0 = blockIdx.x * BM;
++    const size_t wrow_bytes = size_t(K/256)*(WTYPE==32+GGML_TYPE_Q5_K ? sizeof(block_q5_K):sizeof(block_q4_K));
++    mmb_tile_gemm_glu<BM, BN, WTM, WTN, WTYPE, true>(Wg + (size_t)e * expert_bytes + (size_t)m0 * wrow_bytes, Wu + (size_t)e * expert_bytes + (size_t)m0 * wrow_bytes, wrow_bytes, M - m0, Xh, K,
++        [&](int i) { return (i < cnt) ? ids_src[r0 + i] : -1; }, D, M, [&](int i) { return (i < cnt) ? ids_dst[r0 + i] : -1; }, m0, cnt, Ag, Au, Bs);
++#endif
++}
++
++__device__ __forceinline__ void mmb_dq_q51_pair(uint4 a, uint4 b, uint4 c, uint32_t * out) {
++    const uint32_t words[12] = {a.x,a.y,a.z,a.w,b.x,b.y,b.z,b.w,c.x,c.y,c.z,c.w};
++#pragma unroll
++    for (int block = 0; block < 2; ++block) {
++        const uint32_t dm = words[block * 6], high = words[block * 6 + 1];
++        const float d = mmb_h2f((uint16_t)dm), m = mmb_h2f((uint16_t)(dm >> 16));
++#pragma unroll
++        for (int j = 0; j < 4; ++j) {
++            const uint32_t q = words[block * 6 + 2 + j];
++            float lo[4], hi[4];
++#pragma unroll
++            for (int lane = 0; lane < 4; ++lane) {
++                const int low = ((q >> (8 * lane)) & 15) | (((high >> (4 * j + lane)) & 1) << 4);
++                const int upper = ((q >> (8 * lane + 4)) & 15) | (((high >> (16 + 4 * j + lane)) & 1) << 4);
++                lo[lane] = d * low + m; hi[lane] = d * upper + m;
++            }
++            out[block * 16 + 2*j] = mmb_weight2(lo[0],lo[1]);
++            out[block * 16 + 2*j + 1] = mmb_weight2(lo[2],lo[3]);
++            out[block * 16 + 8 + 2*j] = mmb_weight2(hi[0],hi[1]);
++            out[block * 16 + 8 + 2*j + 1] = mmb_weight2(hi[2],hi[3]);
++        }
++    }
++}
++
++// Q8 block pairs are four-byte aligned, not necessarily sixteen-byte aligned.
++__device__ __forceinline__ uint4 expert_load4(const uint8_t * p) {
++    const auto * u=reinterpret_cast<const uint32_t *>(p);
++    return make_uint4(u[0],u[1],u[2],u[3]);
++}
++__device__ __forceinline__ void expert_dq_q8(uint4 a,uint4 b,uint4 c,uint4 d,uint32_t tail,uint32_t * out) {
++    const uint32_t words[17]={a.x,a.y,a.z,a.w,b.x,b.y,b.z,b.w,c.x,c.y,c.z,c.w,d.x,d.y,d.z,d.w,tail};
++#pragma unroll
++    for(int block=0;block<2;++block) {
++        const float scale=mmb_h2f(uint16_t(block ? words[8]>>16:words[0]));
++#pragma unroll
++        for(int j=0;j<8;++j) {
++            const uint32_t q=block ? words[9+j]:(words[j]>>16)|(words[j+1]<<16);
++            out[block*16+2*j]=mmb_weight2(scale*int8_t(q),scale*int8_t(q>>8));
++            out[block*16+2*j+1]=mmb_weight2(scale*int8_t(q>>16),scale*int8_t(q>>24));
++        }
++    }
++}
++
++template <int BM, int BN, int WTM, int WTN, int WTYPE, bool TAIL, typename XRowFn, typename DRowFn>
++__device__ __forceinline__ void mmb_tile_gemm(const uint8_t * __restrict__ Wbase, const size_t wrow_bytes, const int a_rows,
++        const uint16_t * __restrict__ Xh, const int K, XRowFn xrow, float * __restrict__ D, const int M, DRowFn drow, const int m0,
++        const int n_cols, uint16_t * As, uint16_t * Bs) {
++    constexpr int WAVES_M = BM / WTM, TM = WTM / 16, TN = WTN / 16;
++    constexpr int A_ITEMS = (BM + MMB_NT - 1) / MMB_NT;
++    constexpr int B_ITEMS = (BN * 8) / MMB_NT;
++    const int tid = threadIdx.x, lane = tid & 31, wave = tid >> 5;
++    const int wm = wave % WAVES_M, wn = wave / WAVES_M;
++    uint4 a0[A_ITEMS], a1[A_ITEMS], a3[A_ITEMS],a4[A_ITEMS];
++    uint32_t a5[A_ITEMS];
++    constexpr bool Q8=WTYPE==32+GGML_TYPE_Q8_0;
++    uint4 bst[B_ITEMS];
++    int brow[B_ITEMS];
++#pragma unroll
++    for (int i = 0; i < B_ITEMS; ++i) { const int c = tid + i * MMB_NT; brow[i] = xrow(c >> 3); }
++
++    auto load_regs = [&](const int ks) {
++#pragma unroll
++        for (int i = 0; i < A_ITEMS; ++i) {
++            const int row = tid + i * MMB_NT;
++            if (row < BM && row < a_rows) {
++                if constexpr(Q8) {
++                    const uint8_t * p=Wbase+size_t(row)*wrow_bytes+size_t(ks)*68;
++                    a0[i]=expert_load4(p); a1[i]=expert_load4(p+16); a3[i]=expert_load4(p+32);
++                    a4[i]=expert_load4(p+48); a5[i]=*(const uint32_t *)(p+64);
++                } else {
++                    const uint4 * p=(const uint4 *)(Wbase+size_t(row)*wrow_bytes+size_t(ks)*48);
++                    a0[i]=p[0]; a1[i]=p[1]; a3[i]=p[2]; a4[i]=make_uint4(0,0,0,0); a5[i]=0;
++                }
++            } else { a0[i]=a1[i]=a3[i]=a4[i]=make_uint4(0,0,0,0); a5[i]=0; }
++        }
++#pragma unroll
++        for (int i = 0; i < B_ITEMS; ++i) {
++            const int c = tid + i * MMB_NT; const int off = (c & 7) * 8;
++            bst[i] = (brow[i] >= 0) ? *(const uint4 *)(Xh + (size_t)brow[i] * K + ks * MMB_BK + off) : make_uint4(0,0,0,0);
++        }
++    };
++    auto store_lds = [&]() {
++#pragma unroll
++        for (int i=0; i<A_ITEMS; ++i) {
++            const int row=tid+i*MMB_NT;
++            if (row<BM) {
++                if constexpr(Q8) expert_dq_q8(a0[i],a1[i],a3[i],a4[i],a5[i],(uint32_t *)(As+row*MMB_LDS_STRIDE));
++                else mmb_dq_q51_pair(a0[i],a1[i],a3[i],(uint32_t *)(As+row*MMB_LDS_STRIDE));
++            }
++        }
++#pragma unroll
++        for (int i = 0; i < B_ITEMS; ++i) { const int c = tid + i * MMB_NT; *(uint4 *)(Bs + (c >> 3) * MMB_LDS_STRIDE + (c & 7) * 8) = bst[i]; }
++    };
++
++    v8f acc[TM][TN];
++#pragma unroll
++    for (int i = 0; i < TM; ++i)
++#pragma unroll
++        for (int j = 0; j < TN; ++j)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.f;
++
++    bool jact[TN];
++#pragma unroll
++    for (int j = 0; j < TN; ++j) jact[j] = !TAIL || (wn * WTN + j * 16) < n_cols;   // whole fragments past the valid columns are never stored
++    const int nks = K / MMB_BK;
++    load_regs(0); store_lds(); __syncthreads();
++    for (int ks = 0; ks < nks; ++ks) {
++        if (ks + 1 < nks) load_regs(ks + 1);
++#pragma unroll
++        for (int kk = 0; kk < MMB_BK; kk += 16) {
++            v16s a[TM], b[TN]; const int r = lane & 15;
++#pragma unroll
++            for (int i = 0; i < TM; ++i) { const uint16_t * p = As + (wm * WTM + i * 16 + r) * MMB_LDS_STRIDE + kk;
++                const uint4 v0 = *(const uint4 *)p, v1 = *(const uint4 *)(p + 8); a[i] = __builtin_bit_cast(v16s, (uint4[2]){v0, v1}); }
++#pragma unroll
++            for (int j = 0; j < TN; ++j) { if constexpr (TAIL) { if (!jact[j]) continue; } const uint16_t * p = Bs + (wn * WTN + j * 16 + r) * MMB_LDS_STRIDE + kk;
++                const uint4 v0 = *(const uint4 *)p, v1 = *(const uint4 *)(p + 8); b[j] = __builtin_bit_cast(v16s, (uint4[2]){v0, v1}); }
++#pragma unroll
++            for (int i = 0; i < TM; ++i)
++#pragma unroll
++                for (int j = 0; j < TN; ++j) { if constexpr (TAIL) { if (!jact[j]) continue; } acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(b[j], a[i], acc[i][j]); }
++        }
++        __syncthreads();
++        if (ks + 1 < nks) store_lds();
++        __syncthreads();
++    }
++    // epilogue through LDS (per-wave 1 KB stage in the now-free A/B tile area); tiles are 16 rows, a_rows is a
++    // multiple of 32 in this model, so whole tiles are either valid or beyond a_rows
++    float * stg = (float *)((BN * MMB_LDS_STRIDE * 2 >= MMB_NT / 32 * 1024) ? Bs : As) + wave * 256;
++#pragma unroll
++    for (int i = 0; i < TM; ++i) {
++        const int ml = wm * WTM + i * 16; const bool ok = ml < a_rows;
++#pragma unroll
++        for (int j = 0; j < TN; ++j) {
++            if (ok && jact[j]) mmb_store_tile(acc[i][j], stg, D, M, drow, wn * WTN + j * 16, m0 + ml, lane);
++            else { __syncthreads(); __syncthreads(); }
++        }
++    }
++}
++template <int BM, int BN, int WTM, int WTN, int WTYPE = 32 + GGML_TYPE_Q5_1>
++__global__ void __launch_bounds__(MMB_NT, 2)
++mmb_routed_kernel(const uint8_t * __restrict__ W, const size_t expert_bytes, const uint16_t * __restrict__ Xh, float * __restrict__ D,
++                const int32_t * __restrict__ ids_src, const int32_t * __restrict__ ids_dst, const int32_t * __restrict__ bounds,
++        const uint32_t * __restrict__ desc, const int M, const int K) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE; // WMMA kernels are RDNA3-only; the host gate keeps other devices off this path
++#else
++    __shared__ __align__(16) uint16_t As[BM * MMB_LDS_STRIDE];
++    __shared__ __align__(16) uint16_t Bs[BN * MMB_LDS_STRIDE];
++    const uint32_t dsc = desc[blockIdx.y];
++    if (dsc == UINT32_MAX) return;   // uniform across the block, before any barrier
++    const int e = dsc & 0xffff, jt = dsc >> 16;
++    const int r0 = bounds[e] + jt * BN, cnt = bounds[e + 1] - r0;
++    const int m0 = blockIdx.x * BM;
++    const size_t wrow_bytes = size_t(K/32)*(WTYPE==32+GGML_TYPE_Q8_0 ? sizeof(block_q8_0):sizeof(block_q5_1));
++    mmb_tile_gemm<BM, BN, WTM, WTN, WTYPE, true>(W + (size_t)e * expert_bytes + (size_t)m0 * wrow_bytes, wrow_bytes, M - m0, Xh, K,
++        [&](int i) { return (i < cnt) ? ids_src[r0 + i] : -1; }, D, M, [&](int i) { return (i < cnt) ? ids_dst[r0 + i] : -1; }, m0, cnt, As, Bs);
++#endif
++}
++// two tile classes: experts with >= thresh rows get BN_BIG-row tiles, the rest BN_SMALL-row tiles (fewer wasted rows on tiny experts)
++__global__ void mmb_build_desc2(const int32_t * __restrict__ bounds, uint32_t * __restrict__ desc_big, uint32_t * __restrict__ desc_small,
++        const int E, const int nbig_max, const int nsmall_max, const int BN_BIG, const int BN_SMALL, const int thresh) {
++    __shared__ int sb[1024], ss[1024];
++    const int e = threadIdx.x;
++    for (int i = e; i < nbig_max;   i += blockDim.x) desc_big[i]   = UINT32_MAX;
++    for (int i = e; i < nsmall_max; i += blockDim.x) desc_small[i] = UINT32_MAX;
++    int cnt = (e < E) ? bounds[e + 1] - bounds[e] : 0;
++    const bool big = cnt >= thresh;
++    const int tb = big ? (cnt + BN_BIG - 1) / BN_BIG : 0;
++    const int ts = big ? 0 : (cnt + BN_SMALL - 1) / BN_SMALL;
++    sb[e] = tb; ss[e] = ts;
++    __syncthreads();
++    for (int off = 1; off < 1024; off <<= 1) {
++        const int vb = (e >= off) ? sb[e - off] : 0, vs = (e >= off) ? ss[e - off] : 0;
++        __syncthreads();
++        sb[e] += vb; ss[e] += vs;
++        __syncthreads();
++    }
++    const int bb = sb[e] - tb, bs = ss[e] - ts;
++    for (int jt = 0; jt < tb; ++jt) { const int idx = bb + jt; if (idx < nbig_max)   desc_big[idx]   = (uint32_t)e | ((uint32_t)jt << 16); }
++    for (int jt = 0; jt < ts; ++jt) { const int idx = bs + jt; if (idx < nsmall_max) desc_small[idx] = (uint32_t)e | ((uint32_t)jt << 16); }
++}
++
++} // namespace
++#endif
++
++bool ggml_cuda_qwen4exp_expert_glu(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * gate, const ggml_tensor * up, ggml_tensor * out) {
++#if defined(GGML_USE_HIP)
++    if (!ggml_cuda_qwen4exp_fast_math(ctx) ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            gate->op!=GGML_OP_MUL_MAT_ID || up->op!=GGML_OP_MUL_MAT_ID ||
++            ggml_get_op_params_i32(gate,1)!=GGML_HINT_SMALL_MOE_TILES ||
++            ggml_get_op_params_i32(up,1)!=GGML_HINT_SMALL_MOE_TILES ||
++            ggml_get_op_params_i32(gate,0)!=GGML_PREC_DEFAULT || ggml_get_op_params_i32(up,0)!=GGML_PREC_DEFAULT ||
++            ggml_get_op_params_i32(gate,3)!=GGML_PREC_DEFAULT || ggml_get_op_params_i32(up,3)!=GGML_PREC_DEFAULT ||
++            gate->src[1]!=up->src[1] || gate->src[2]!=up->src[2] ||
++            out->op!=GGML_OP_GLU || ggml_get_glu_op(out)!=GGML_GLU_OP_SWIGLU ||
++            ggml_get_op_params_i32(out,1)!=0 || out->src[0]!=gate || out->src[1]!=up) return false;
++    const auto * gw=gate->src[0], * uw=up->src[0], * x=gate->src[1], * ids=gate->src[2];
++    if ((gw->type!=GGML_TYPE_Q4_K && gw->type!=GGML_TYPE_Q5_K) || uw->type!=gw->type ||
++            !ggml_are_same_shape(gw,uw) || !ggml_are_same_stride(gw,uw) ||
++            x->type!=GGML_TYPE_F32 || out->type!=GGML_TYPE_F32 || ids->type!=GGML_TYPE_I32 ||
++            !ggml_is_contiguous(gw) || !ggml_is_contiguous(uw) || !ggml_is_contiguous(x) ||
++            !ggml_is_contiguous(out) || !ggml_are_same_shape(gate,up) || !ggml_are_same_shape(gate,out) ||
++            gw->ne[3]!=1 || x->ne[3]!=1 || out->ne[3]!=1 || ids->ne[2]!=1 || ids->ne[3]!=1 ||
++            ids->nb[0]!=sizeof(int32_t) || ids->nb[1]%sizeof(int32_t) ||
++            gw->ne[0]%256 || gw->ne[1]%32 || gw->ne[0]>10240 || gw->ne[1]>4096 ||
++            gw->ne[2]<1 || gw->ne[2]>1024 || ids->ne[0]<1 || ids->ne[0]>16 || ids->ne[0]>gw->ne[2] ||
++            ids->ne[1]<256 || ids->ne[1]>4096 ||
++            x->ne[0]!=gw->ne[0] || (x->ne[1]!=1 && x->ne[1]!=ids->ne[0]) || x->ne[2]!=ids->ne[1] ||
++            out->ne[0]!=gw->ne[1] || out->ne[1]!=ids->ne[0] || out->ne[2]!=ids->ne[1] ||
++            uintptr_t(gw->data)%16 || uintptr_t(uw->data)%16 || uintptr_t(x->data)%16 || uintptr_t(out->data)%16) return false;
++    const int K=gw->ne[0], M=gw->ne[1], E=gw->ne[2], T=ids->ne[1], used=ids->ne[0], channels=x->ne[1];
++    const int rows=used*T;
++    const size_t nx=size_t(K)*channels*T;
++    ggml_cuda_pool_alloc<uint16_t> input(ctx.pool(),nx);
++    const uint16_t * converted=input.get();
++    mmb_cvt_f32_bf16<<<(nx+2047)/2048,256,0,ctx.stream()>>>((const float *)x->data, input.get(), nx);
++    ggml_cuda_pool_alloc<int32_t> source(ctx.pool(),rows), dest(ctx.pool(),rows), bounds(ctx.pool(),E+1);
++    if (!ggml_cuda_qwen_mm_ids(ctx,(const int32_t *)ids->data,source.get(),dest.get(),bounds.get(),
++            E,T,used,channels,ids->nb[1]/sizeof(int32_t),x->nb[2]/x->nb[1],false,ctx.stream())) {
++        ggml_cuda_launch_mm_ids_helper((const int32_t *)ids->data,source.get(),dest.get(),bounds.get(),
++            E,T,used,channels,ids->nb[1]/sizeof(int32_t),x->nb[2]/x->nb[1],false,ctx.stream());
++    }
++    constexpr int BN=128, SMALL=32, THRESH=128;
++    const int nb=rows/BN+E+1, ns=E*((THRESH+SMALL-1)/SMALL)+1;
++    ggml_cuda_pool_alloc<uint32_t> big(ctx.pool(),nb), small(ctx.pool(),ns);
++    mmb_build_desc2<<<1,1024,0,ctx.stream()>>>(bounds.get(),big.get(),small.get(),E,nb,ns,BN,SMALL,THRESH);
++    if(gw->type==GGML_TYPE_Q5_K) {
++        mmb_routed_glu_kernel<64,128,32,32,32+GGML_TYPE_Q5_K><<<dim3((M+63)/64,nb),256,0,ctx.stream()>>>(
++            (const uint8_t *)gw->data,(const uint8_t *)uw->data,gw->nb[2],converted,(float *)out->data,
++            source.get(),dest.get(),bounds.get(),big.get(),M,K);
++        mmb_routed_glu_kernel<64,32,16,16,32+GGML_TYPE_Q5_K><<<dim3((M+63)/64,ns),256,0,ctx.stream()>>>(
++            (const uint8_t *)gw->data,(const uint8_t *)uw->data,gw->nb[2],converted,(float *)out->data,
++            source.get(),dest.get(),bounds.get(),small.get(),M,K);
++        CUDA_CHECK(cudaGetLastError());
++        return true;
++    }
++    mmb_routed_glu_kernel<64,128,32,32><<<dim3((M+63)/64,nb),256,0,ctx.stream()>>>(
++        (const uint8_t *)gw->data,(const uint8_t *)uw->data,gw->nb[2],converted,(float *)out->data,
++        source.get(),dest.get(),bounds.get(),big.get(),M,K);
++    mmb_routed_glu_kernel<64,32,16,16><<<dim3((M+63)/64,ns),256,0,ctx.stream()>>>(
++        (const uint8_t *)gw->data,(const uint8_t *)uw->data,gw->nb[2],converted,(float *)out->data,
++        source.get(),dest.get(),bounds.get(),small.get(),M,K);
++    CUDA_CHECK(cudaGetLastError());
++    return true;
++#else
++    GGML_UNUSED(ctx); GGML_UNUSED(gate); GGML_UNUSED(up); GGML_UNUSED(out);
++    return false;
++#endif
++}
++
++bool ggml_cuda_qwen4exp_expert_down(ggml_backend_cuda_context & ctx, ggml_tensor * out) {
++#if defined(GGML_USE_HIP)
++    const auto * w=out->src[0], * x=out->src[1], * ids=out->src[2];
++    if (!ggml_cuda_qwen4exp_fast_math(ctx) ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            ggml_get_op_params_i32(out,1)!=GGML_HINT_SMALL_MOE_TILES ||
++            ggml_get_op_params_i32(out,0)!=GGML_PREC_DEFAULT ||
++            ggml_get_op_params_i32(out,3)!=GGML_PREC_DEFAULT ||
++            (w->type!=GGML_TYPE_Q5_1 && w->type!=GGML_TYPE_Q8_0) || x->type!=GGML_TYPE_F32 || ids->type!=GGML_TYPE_I32 || out->type!=GGML_TYPE_F32 ||
++            !ggml_is_contiguous(w) || !ggml_is_contiguous(x) || !ggml_is_contiguous(out) ||
++            w->ne[3]!=1 || x->ne[3]!=1 || out->ne[3]!=1 || ids->ne[2]!=1 || ids->ne[3]!=1 ||
++            ids->nb[0]!=sizeof(int32_t) || ids->nb[1]%sizeof(int32_t) ||
++            w->ne[0]%64 || w->ne[1]%32 || w->ne[0]>10240 || w->ne[1]>4096 ||
++            w->ne[2]<1 || w->ne[2]>1024 || ids->ne[0]<1 || ids->ne[0]>16 || ids->ne[0]>w->ne[2] ||
++            ids->ne[1]<256 || ids->ne[1]>4096 ||
++            x->ne[0]!=w->ne[0] || (x->ne[1]!=1 && x->ne[1]!=ids->ne[0]) || x->ne[2]!=ids->ne[1] ||
++            out->ne[0]!=w->ne[1] || out->ne[1]!=ids->ne[0] || out->ne[2]!=ids->ne[1] ||
++            uintptr_t(w->data)%16 || uintptr_t(x->data)%16 || uintptr_t(out->data)%16) return false;
++    const int K=w->ne[0], M=w->ne[1], E=w->ne[2], T=ids->ne[1], used=ids->ne[0], channels=x->ne[1];
++    const int rows=used*T;
++    const size_t nx=size_t(K)*channels*T;
++    ggml_cuda_pool_alloc<uint16_t> input(ctx.pool(),nx);
++    const uint16_t * converted=input.get();
++    mmb_cvt_f32_bf16<<<(nx+2047)/2048,256,0,ctx.stream()>>>((const float *)x->data, input.get(), nx);
++    ggml_cuda_pool_alloc<int32_t> source(ctx.pool(),rows), dest(ctx.pool(),rows), bounds(ctx.pool(),E+1);
++    if (!ggml_cuda_qwen_mm_ids(ctx,(const int32_t *)ids->data,source.get(),dest.get(),bounds.get(),
++            E,T,used,channels,ids->nb[1]/sizeof(int32_t),x->nb[2]/x->nb[1],false,ctx.stream())) {
++        ggml_cuda_launch_mm_ids_helper((const int32_t *)ids->data,source.get(),dest.get(),bounds.get(),
++            E,T,used,channels,ids->nb[1]/sizeof(int32_t),x->nb[2]/x->nb[1],false,ctx.stream());
++    }
++    constexpr int BN=128, SMALL=32, THRESH=128;
++    const int nb=rows/BN+E+1, ns=E*((THRESH+SMALL-1)/SMALL)+1;
++    ggml_cuda_pool_alloc<uint32_t> big(ctx.pool(),nb), small(ctx.pool(),ns);
++    mmb_build_desc2<<<1,1024,0,ctx.stream()>>>(bounds.get(),big.get(),small.get(),E,nb,ns,BN,SMALL,THRESH);
++    if(w->type==GGML_TYPE_Q8_0) {
++        mmb_routed_kernel<128,128,32,64,32+GGML_TYPE_Q8_0><<<dim3((M+127)/128,nb),256,0,ctx.stream()>>>(
++            (const uint8_t *)w->data,w->nb[2],converted,(float *)out->data,
++            source.get(),dest.get(),bounds.get(),big.get(),M,K);
++        mmb_routed_kernel<128,32,32,16,32+GGML_TYPE_Q8_0><<<dim3((M+127)/128,ns),256,0,ctx.stream()>>>(
++            (const uint8_t *)w->data,w->nb[2],converted,(float *)out->data,
++            source.get(),dest.get(),bounds.get(),small.get(),M,K);
++        CUDA_CHECK(cudaGetLastError());
++        return true;
++    }
++    mmb_routed_kernel<128,128,32,64><<<dim3((M+127)/128,nb),256,0,ctx.stream()>>>(
++        (const uint8_t *)w->data,w->nb[2],converted,(float *)out->data,
++        source.get(),dest.get(),bounds.get(),big.get(),M,K);
++    mmb_routed_kernel<128,32,32,16><<<dim3((M+127)/128,ns),256,0,ctx.stream()>>>(
++        (const uint8_t *)w->data,w->nb[2],converted,(float *)out->data,
++        source.get(),dest.get(),bounds.get(),small.get(),M,K);
++    CUDA_CHECK(cudaGetLastError());
++    return true;
++#else
++    GGML_UNUSED(ctx); GGML_UNUSED(out);
++    return false;
++#endif
++}
+diff --git a/ggml/src/ggml-cuda/qwen4exp-f32.cu b/ggml/src/ggml-cuda/qwen4exp-f32.cu
+new file mode 100644
+index 0000000..3ea76d4
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qwen4exp-f32.cu
+@@ -0,0 +1,111 @@
++// Opt-in extraction from halo-box/strix-llama.cpp, MIT,
++// 7a9196dad8b13b70fb3420886aadaf98fc09b849. Not a default precision policy.
++#include "qwen4exp-mmb.cuh"
++#if defined(GGML_USE_HIP)
++namespace {
++typedef short v16s __attribute__((ext_vector_type(16)));
++typedef float v8f __attribute__((ext_vector_type(8)));
++constexpr int MMB_NT = 256;
++// F32 storage, F16 matrix operands, F32 accumulation. This deliberately does
++// not claim the compensated arithmetic suggested by the fork's "f32split" name.
++__device__ __forceinline__ uint16_t qwen_half(float x) {
++    return __builtin_bit_cast(uint16_t, (_Float16) x);
++}
++template <int BM, int BN, int WTM, int WTN>
++__global__ void __launch_bounds__(MMB_NT, 2)
++qwen_f32_half_kernel(const float * __restrict__ W, const float * __restrict__ X, float * __restrict__ D, const int M, const int K, const int T) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    // This extraction is compiled for the RDNA3 instruction shape only.
++    NO_DEVICE_CODE;
++#else
++    constexpr int BKs = 32, LS = BKs + 8, WAVES_M = BM / WTM, TM = WTM / 16, TN = WTN / 16;
++    static_assert(WAVES_M * (BN / WTN) * 32 == MMB_NT, "tile must use every wave");
++    __shared__ __align__(16) uint16_t Ah[BM * LS], Bh[BN * LS];
++    const int tid = threadIdx.x, lane = tid & 31, wave = tid >> 5, wm = wave % WAVES_M, wn = wave / WAVES_M;
++    const int m0 = blockIdx.x * BM, t0 = blockIdx.y * BN;
++    v8f acc[TM][TN];
++#pragma unroll
++    for (int i = 0; i < TM; ++i)
++#pragma unroll
++        for (int j = 0; j < TN; ++j)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) acc[i][j][e] = 0.f;
++    constexpr int A_CH = BM * BKs / 4, B_CH = BN * BKs / 4;
++    for (int k0 = 0; k0 < K; k0 += BKs) {
++        for (int idx = tid; idx < A_CH; idx += MMB_NT) { const int row = idx >> 3, c4 = (idx & 7) * 4; const int m = m0 + row;
++            float4 v = make_float4(0.f,0.f,0.f,0.f); if (m < M) v = *(const float4 *)(W + (size_t) m * K + k0 + c4);
++            const uint16_t h[4] = {qwen_half(v.x), qwen_half(v.y), qwen_half(v.z), qwen_half(v.w)};
++            *(uint2 *)(Ah + row * LS + c4) = make_uint2((uint32_t)h[0] | ((uint32_t)h[1] << 16), (uint32_t)h[2] | ((uint32_t)h[3] << 16));
++        }
++        for (int idx = tid; idx < B_CH; idx += MMB_NT) { const int row = idx >> 3, c4 = (idx & 7) * 4; const int t = t0 + row;
++            float4 v = make_float4(0.f,0.f,0.f,0.f); if (t < T) v = *(const float4 *)(X + (size_t) t * K + k0 + c4);
++            const uint16_t h[4] = {qwen_half(v.x), qwen_half(v.y), qwen_half(v.z), qwen_half(v.w)};
++            *(uint2 *)(Bh + row * LS + c4) = make_uint2((uint32_t)h[0] | ((uint32_t)h[1] << 16), (uint32_t)h[2] | ((uint32_t)h[3] << 16));
++        }
++        __syncthreads();
++        const int r = lane & 15;
++#pragma unroll
++        for (int kk = 0; kk < BKs; kk += 16) {
++            v16s ah[TM], bh[TN];
++#pragma unroll
++            for (int i = 0; i < TM; ++i) { const int off = (wm * WTM + i * 16 + r) * LS + kk;
++                ah[i] = __builtin_bit_cast(v16s, (uint4[2]){*(const uint4 *)(Ah + off), *(const uint4 *)(Ah + off + 8)});
++            }
++#pragma unroll
++            for (int j = 0; j < TN; ++j) { const int off = (wn * WTN + j * 16 + r) * LS + kk;
++                bh[j] = __builtin_bit_cast(v16s, (uint4[2]){*(const uint4 *)(Bh + off), *(const uint4 *)(Bh + off + 8)});
++            }
++#pragma unroll
++            for (int i = 0; i < TM; ++i)
++#pragma unroll
++                for (int j = 0; j < TN; ++j) {
++                    acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(bh[j], ah[i], acc[i][j]);
++                }
++        }
++        __syncthreads();
++    }
++    const int cm = lane & 15, cn = lane >> 4;
++#pragma unroll
++    for (int i = 0; i < TM; ++i) { const int m = m0 + wm * WTM + i * 16 + cm; if (m >= M) continue;
++#pragma unroll
++        for (int j = 0; j < TN; ++j)
++#pragma unroll
++            for (int e = 0; e < 8; ++e) { const int t = t0 + wn * WTN + j * 16 + 2 * e + cn; if (t < T) D[(size_t) t * M + m] = acc[i][j][e]; } }
++#endif
++}
++
++
++} // namespace
++#endif
++
++bool ggml_cuda_qwen4exp_f32_wmma(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * w, const ggml_tensor * x, ggml_tensor * out) {
++#if defined(GGML_USE_HIP)
++    // The accepted mode uses F16 operands with F32 accumulation.
++    if (!ggml_cuda_qwen4exp_fast_math(ctx) ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            w->type != GGML_TYPE_F32 || ggml_get_op_params_i32(out,1) != GGML_HINT_QWEN4EXP_F32 ||
++            ggml_get_op_params_i32(out,0) != GGML_PREC_DEFAULT ||
++            ggml_get_op_params_i32(out,3) != GGML_PREC_DEFAULT ||
++            x->type != GGML_TYPE_F32 || out->type != GGML_TYPE_F32 ||
++            !ggml_is_contiguous(w) || !ggml_is_contiguous(x) || !ggml_is_contiguous(out) ||
++            w->ne[2]!=1 || w->ne[3]!=1 || x->ne[2]!=1 || x->ne[3]!=1 || out->ne[2]!=1 || out->ne[3]!=1 ||
++            w->ne[0]!=x->ne[0] || w->ne[1]!=out->ne[0] || x->ne[1]!=out->ne[1] ||
++            w->ne[0]%32 || w->ne[1]<1 || x->ne[1]<256 ||
++            w->ne[0]>32768 || w->ne[1]>1024 || x->ne[1]>32768 ||
++            uintptr_t(x->data)%16 || uintptr_t(w->data)%16 || uintptr_t(out->data)%16) return false;
++    const int K=w->ne[0], M=w->ne[1], T=x->ne[1];
++    if (M <= 64) {
++        qwen_f32_half_kernel<64,128,16,64><<<dim3((M+63)/64,(T+127)/128),256,0,ctx.stream()>>>(
++            (const float *) w->data, (const float *) x->data, (float *) out->data, M, K, T);
++    } else {
++        qwen_f32_half_kernel<128,128,32,64><<<dim3((M+127)/128,(T+127)/128),256,0,ctx.stream()>>>(
++            (const float *) w->data, (const float *) x->data, (float *) out->data, M, K, T);
++    }
++    CUDA_CHECK(cudaGetLastError());
++    return true;
++#else
++    GGML_UNUSED(ctx); GGML_UNUSED(w); GGML_UNUSED(x); GGML_UNUSED(out);
++    return false;
++#endif
++}
+diff --git a/ggml/src/ggml-cuda/qwen4exp-hc.cu b/ggml/src/ggml-cuda/qwen4exp-hc.cu
+index 3abc196..8e5b8b3 100644
+--- a/ggml/src/ggml-cuda/qwen4exp-hc.cu
++++ b/ggml/src/ggml-cuda/qwen4exp-hc.cu
+@@ -1,4 +1,5 @@
+ #include "qwen4exp-hc.cuh"
++#include "qwen4exp-mmb.cuh"
+ #include "ggml-backend-impl.h"
+ 
+ // Adapt the Strix fork's combined residual/RMS operation to upstream's HC_POST
+@@ -109,6 +110,75 @@ static __global__ void qwen_hc_norm_inject_kernel(const float * x, const float *
+     }
+ }
+ 
++// Opt-in paired F32 loads/reduction, without any
++// BF16 residual storage. This changes the RMS sum order, not its precision.
++template <bool INJECT>
++static __global__ void __launch_bounds__(256, 2) qwen_hc_paired_kernel(
++        const float * x, const float * residual, const float * weights, const float * gamma,
++        const float * projection, float * post, float * norm, float * inject, int embd, float eps) {
++    const int token=INJECT ? blockIdx.x : blockIdx.y, tid=threadIdx.x;
++    __shared__ float partial[4][8];
++    __shared__ float dots[4][8];
++    float dot[4]={};
++    const int first=INJECT ? 0 : blockIdx.x;
++    const int last=INJECT ? 4 : first+1;
++    for (int stream=first;stream<last;++stream) {
++        const int64_t row=int64_t(token)*4+stream;
++        const float w=weights[row];
++        float2 values[6];
++        float sum=0;
++#pragma unroll
++        for (int k=0;k<6;++k) {
++            const int col=2*(tid+256*k);
++            values[k]=make_float2(0,0);
++            if (col<embd) {
++                const float2 xv=*(const float2 *)(x+int64_t(token)*embd+col);
++                const float2 rv=*(const float2 *)(residual+row*embd+col);
++                float2 v=make_float2(xv.x*w,xv.y*w);
++                v.x+=rv.x; v.y+=rv.y;
++                values[k]=v;
++                *(float2 *)(post+row*embd+col)=v;
++                sum+=v.x*v.x+v.y*v.y;
++            }
++        }
++        sum=warp_reduce_sum(sum);
++        if (tid%32==0) partial[stream][tid/32]=sum;
++        __syncthreads();
++        sum=warp_reduce_sum(tid%32<8 ? partial[stream][tid%32] : 0.0f);
++        const float scale=rsqrtf(sum/embd+eps);
++#pragma unroll
++        for (int k=0;k<6;++k) {
++            const int col=2*(tid+256*k);
++            if (col<embd) {
++                const float2 gv=*(const float2 *)(gamma+stream*embd+col);
++                const float2 v=make_float2(scale*values[k].x*gv.x,scale*values[k].y*gv.y);
++                *(float2 *)(norm+row*embd+col)=v;
++                if constexpr (INJECT) {
++#pragma unroll
++                    for (int r=0;r<4;++r) {
++                        const float2 pv=*(const float2 *)(projection+(r*4+stream)*embd+col);
++                        dot[r]+=v.x*pv.x+v.y*pv.y;
++                    }
++                }
++            }
++        }
++    }
++    if constexpr (INJECT) {
++#pragma unroll
++        for (int r=0;r<4;++r) {
++            const float sum=warp_reduce_sum(dot[r]);
++            if (tid%32==0) dots[r][tid/32]=sum;
++        }
++        __syncthreads();
++        if (tid<4) {
++            float sum=0;
++#pragma unroll
++            for (int wave=0;wave<8;++wave) sum+=dots[tid][wave];
++            inject[int64_t(token)*4+tid]=sum;
++        }
++    }
++}
++
+ bool qwen_hc_match_at(const ggml_cgraph * graph, int i, qwen_hc_match & m, bool aliases) {
+     if (i+2 >= graph->n_nodes) return false;
+     auto * post = graph->nodes[i];
+@@ -179,6 +249,24 @@ bool qwen_hc_inject_match_at(const ggml_cgraph * graph, int i, qwen_hc_match & m
+ 
+ void qwen_hc_combine_norm(ggml_backend_cuda_context & ctx, const qwen_hc_match & m) {
+     const auto * p = m.post;
++    bool aligned=p->ne[0]%2==0;
++    for (const auto * t : std::initializer_list<const ggml_tensor *>{p->src[0],p->src[1],m.gamma,p,m.norm}) {
++        aligned=aligned && uintptr_t(t->data)%8==0;
++    }
++    if (m.inject) aligned=aligned && uintptr_t(m.inject->src[0]->data)%8==0;
++    if (ggml_cuda_qwen4exp_fast_math(ctx) && aligned) {
++        auto launch=[&](auto injection) {
++            constexpr bool inj=decltype(injection)::value;
++            const dim3 grid=inj ? dim3(p->ne[2]) : dim3(4,p->ne[2]);
++            qwen_hc_paired_kernel<inj><<<grid,256,0,ctx.stream()>>>(
++                (const float *)p->src[0]->data,(const float *)p->src[1]->data,(const float *)p->src[2]->data,
++                (const float *)m.gamma->data,m.inject ? (const float *)m.inject->src[0]->data : nullptr,
++                (float *)p->data,(float *)m.norm->data,m.inject ? (float *)m.inject->data : nullptr,p->ne[0],m.eps);
++        };
++        if (m.inject) launch(std::true_type{}); else launch(std::false_type{});
++        CUDA_CHECK(cudaGetLastError());
++        return;
++    }
+     if (m.inject) {
+         qwen_hc_norm_inject_kernel<<<p->ne[2],256,0,ctx.stream()>>>(
+             (const float *)p->src[0]->data,(const float *)p->src[1]->data,(const float *)p->src[2]->data,
+diff --git a/ggml/src/ggml-cuda/qwen4exp-mmb.cu b/ggml/src/ggml-cuda/qwen4exp-mmb.cu
+new file mode 100644
+index 0000000..321968f
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qwen4exp-mmb.cu
+@@ -0,0 +1,286 @@
++// Opt-in matrix extraction from halo-box/strix-llama.cpp, MIT,
++// 7a9196dad8b13b70fb3420886aadaf98fc09b849. Explicit opt-in only.
++// No shadow-weight cache, BF16-only tensor marks or reduced-precision residuals.
++#include "qwen4exp-mmb.cuh"
++
++#if defined(GGML_USE_HIP)
++namespace {
++typedef short v16s __attribute__((ext_vector_type(16)));
++typedef float v8f __attribute__((ext_vector_type(8)));
++
++__device__ __forceinline__ uint16_t qwen_bf16(float f) {
++    uint32_t u = __float_as_uint(f);
++    if ((u & 0x7fffffffU) > 0x7f800000U) return uint16_t((u >> 16) | 0x0040U);
++    u += 0x7fffu + ((u >> 16) & 1u);
++    return uint16_t(u >> 16);
++}
++__device__ __forceinline__ uint4 qwen_load4(const uint8_t * p) {
++    // A pair of Q8 blocks occupies 68 bytes. Only four-byte alignment is
++    // guaranteed here, unlike the BF16 input and shared-memory tiles.
++    const uint32_t * u = reinterpret_cast<const uint32_t *>(p);
++    return make_uint4(u[0], u[1], u[2], u[3]);
++}
++__device__ __forceinline__ uint32_t qwen_bf16_pair(float a, float b) {
++    return uint32_t(qwen_bf16(a)) | (uint32_t(qwen_bf16(b)) << 16);
++}
++__device__ __forceinline__ uint32_t qwen_weight_pair(float a, float b) {
++    uint32_t x=__float_as_uint(a),y=__float_as_uint(b);
++    x+=0x7fffu+((x>>16)&1u); y+=0x7fffu+((y>>16)&1u);
++    return (x>>16)|(y&0xffff0000u);
++}
++static __global__ void qwen_bf16_input(const float * x, uint16_t * y, size_t n) {
++    const size_t i = ((size_t) blockIdx.x * blockDim.x + threadIdx.x) * 8;
++    if (i + 8 <= n) {
++        const float4 a = *(const float4 *)(x+i), b = *(const float4 *)(x+i+4);
++        *(uint4 *)(y+i) = make_uint4(qwen_bf16_pair(a.x,a.y),qwen_bf16_pair(a.z,a.w),
++            qwen_bf16_pair(b.x,b.y),qwen_bf16_pair(b.z,b.w));
++    }
++}
++
++// The fork's Q8_0 -> BF16 shared-memory tile decoder. Stored weights stay Q8.
++__device__ __forceinline__ void qwen_bf16_q8_row(const uint4 a, const uint4 b,
++        const uint4 c, const uint4 d, uint32_t tail, uint32_t * out) {
++    const uint32_t w[17] = {a.x,a.y,a.z,a.w,b.x,b.y,b.z,b.w,c.x,c.y,c.z,c.w,d.x,d.y,d.z,d.w,tail};
++    const float d0 = float(__builtin_bit_cast(_Float16,uint16_t(w[0])));
++    const float d1 = float(__builtin_bit_cast(_Float16,uint16_t(w[8]>>16)));
++#pragma unroll
++    for (int blk=0; blk<2; ++blk) {
++        const float scale = blk ? d1 : d0;
++#pragma unroll
++        for (int k=0; k<8; ++k) {
++            const uint32_t v = blk ? w[9+k] : (w[k]>>16) | (w[k+1]<<16);
++            out[16*blk+2*k] = qwen_weight_pair(scale*int8_t(v),scale*int8_t(v>>8));
++            out[16*blk+2*k+1] = qwen_weight_pair(scale*int8_t(v>>16),scale*int8_t(v>>24));
++        }
++    }
++}
++
++template <int BN, int WTM>
++static __global__ __launch_bounds__(256,2) void qwen_q8_bf16_wmma(
++        const uint8_t * W, const uint16_t * X, float * D, int M, int K, int T) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE;
++#else
++    constexpr int BM=128, BK=64, LS=72, WTN=64, WM=BM/WTM, TM=WTM/16, TN=WTN/16;
++    static_assert(WM*(BN/WTN)*32 == 256, "whole waves");
++    __shared__ __align__(16) uint16_t As[BM*LS], Bs[BN*LS];
++    const int tid=threadIdx.x, lane=tid&31, wave=tid>>5, wm=wave%WM, wn=wave/WM;
++    const int m0=blockIdx.x*BM, t0=blockIdx.y*BN;
++    const size_t row_bytes=size_t(K/32)*34;
++    uint4 wa{},wb{},wc{},wd{};
++    uint32_t wt=0;
++    constexpr int B_ITEMS=BN*8/256;
++    uint4 bx[B_ITEMS];
++    auto load = [&](int ks) {
++        if (tid < BM && m0+tid < M) {
++            const uint8_t * p=W+size_t(m0+tid)*row_bytes+size_t(ks)*68;
++            wa=qwen_load4(p); wb=qwen_load4(p+16);
++            wc=qwen_load4(p+32); wd=qwen_load4(p+48); wt=*(const uint32_t *)(p+64);
++        } else if (tid < BM) { wa=wb=wc=wd=make_uint4(0,0,0,0); wt=0; }
++#pragma unroll
++        for (int i=0; i<B_ITEMS; ++i) {
++            const int c=tid+i*256, row=t0+(c>>3), col=(c&7)*8;
++            bx[i]=row<T ? *(const uint4 *)(X+size_t(row)*K+ks*BK+col) : make_uint4(0,0,0,0);
++        }
++    };
++    auto store = [&]() {
++        if (tid<BM) qwen_bf16_q8_row(wa,wb,wc,wd,wt,(uint32_t *)(As+tid*LS));
++#pragma unroll
++        for (int i=0; i<B_ITEMS; ++i) {
++            const int c=tid+i*256;
++            *(uint4 *)(Bs+(c>>3)*LS+(c&7)*8)=bx[i];
++        }
++    };
++    v8f acc[TM][TN] = {};
++    load(0); store(); __syncthreads();
++    for (int ks=0; ks<K/BK; ++ks) {
++        if (ks+1<K/BK) load(ks+1);
++#pragma unroll
++        for (int kk=0; kk<BK; kk+=16) {
++            v16s a[TM], b[TN];
++#pragma unroll
++            for (int i=0; i<TM; ++i) {
++                const uint16_t * p=As+(wm*WTM+i*16+(lane&15))*LS+kk;
++                a[i]=__builtin_bit_cast(v16s,(uint4[2]){*(const uint4 *)p,*(const uint4 *)(p+8)});
++            }
++#pragma unroll
++            for (int j=0; j<TN; ++j) {
++                const uint16_t * p=Bs+(wn*WTN+j*16+(lane&15))*LS+kk;
++                b[j]=__builtin_bit_cast(v16s,(uint4[2]){*(const uint4 *)p,*(const uint4 *)(p+8)});
++            }
++#pragma unroll
++            for (int i=0; i<TM; ++i)
++#pragma unroll
++                for (int j=0; j<TN; ++j)
++                    acc[i][j]=__builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(b[j],a[i],acc[i][j]);
++        }
++        __syncthreads();
++        if (ks+1<K/BK) store();
++        __syncthreads();
++    }
++    // Reuse dead activation LDS for the fork's coalesced F32 epilogue.
++    float * stg=reinterpret_cast<float *>(Bs)+wave*256;
++#pragma unroll
++    for (int i=0; i<TM; ++i) {
++        const int m=m0+wm*WTM+i*16;
++#pragma unroll
++        for (int j=0; j<TN; ++j) {
++#pragma unroll
++            for (int e=0; e<8; ++e) stg[(2*e+(lane>>4))*16+(lane&15)]=acc[i][j][e];
++            __syncthreads();
++            const int n=lane>>1, half=lane&1, t=t0+wn*WTN+j*16+n;
++            if (t<T && m+half*8<M) {
++                const float4 a=*(const float4 *)(stg+n*16+half*8);
++                const float4 b=*(const float4 *)(stg+n*16+half*8+4);
++                *(float4 *)(D+size_t(t)*M+m+half*8)=a;
++                *(float4 *)(D+size_t(t)*M+m+half*8+4)=b;
++            }
++            __syncthreads();
++        }
++    }
++#endif
++}
++
++// Fork gate/mix layout, but residual inputs, gate accumulator and result all
++// remain F32. Only matrix operands use the opt-in BF16 policy.
++static __global__ __launch_bounds__(256,2) void qwen_bf16_gate_mix(
++        const uint8_t * W,const uint16_t * Lo,const float * Xn,float * Out,
++        int E,int K,int T,float scale) {
++#if defined(__HIP_DEVICE_COMPILE__) && !defined(RDNA3)
++    NO_DEVICE_CODE;
++#else
++    constexpr int CH=32,BN=128,LS=72;
++    __shared__ __align__(16) uint16_t As[128*LS],Bs[BN*LS];
++    const int tid=threadIdx.x,lane=tid&31,wave=tid>>5,wm=wave&1,wn=wave>>1;
++    const int e0=blockIdx.x*CH,t0=blockIdx.y*BN;
++    const size_t row_bytes=size_t(K/32)*34;
++    uint4 a{},b{},c{},d{},bx[4]; uint32_t tail=0;
++    auto load=[&](int ks) {
++        if (tid<128) {
++            const int row=(tid/CH)*E+e0+tid%CH;
++            const uint8_t * p=W+size_t(row)*row_bytes+size_t(ks)*68;
++            a=qwen_load4(p);b=qwen_load4(p+16);c=qwen_load4(p+32);d=qwen_load4(p+48);
++            tail=*(const uint32_t *)(p+64);
++        }
++#pragma unroll
++        for (int i=0;i<4;++i) {
++            const int idx=tid+i*256,t=t0+(idx>>3);
++            bx[i]=t<T ? *(const uint4 *)(Lo+size_t(t)*K+ks*64+(idx&7)*8) : make_uint4(0,0,0,0);
++        }
++    };
++    auto store=[&]() {
++        if (tid<128) qwen_bf16_q8_row(a,b,c,d,tail,(uint32_t *)(As+tid*LS));
++#pragma unroll
++        for (int i=0;i<4;++i) {
++            const int idx=tid+i*256;
++            *(uint4 *)(Bs+(idx>>3)*LS+(idx&7)*8)=bx[i];
++        }
++    };
++    v8f acc[4][2]={};
++    load(0);store();__syncthreads();
++    for (int ks=0;ks<K/64;++ks) {
++        if (ks+1<K/64) load(ks+1);
++#pragma unroll
++        for (int kk=0;kk<64;kk+=16) {
++            v16s av[4],bv[2];
++#pragma unroll
++            for (int stream=0;stream<4;++stream) {
++                const uint16_t * p=As+(stream*CH+wm*16+(lane&15))*LS+kk;
++                av[stream]=__builtin_bit_cast(v16s,(uint4[2]){*(const uint4 *)p,*(const uint4 *)(p+8)});
++            }
++#pragma unroll
++            for (int j=0;j<2;++j) {
++                const uint16_t * p=Bs+(wn*32+j*16+(lane&15))*LS+kk;
++                bv[j]=__builtin_bit_cast(v16s,(uint4[2]){*(const uint4 *)p,*(const uint4 *)(p+8)});
++            }
++#pragma unroll
++            for (int stream=0;stream<4;++stream)
++#pragma unroll
++                for (int j=0;j<2;++j) acc[stream][j]=__builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(bv[j],av[stream],acc[stream][j]);
++        }
++        __syncthreads();if (ks+1<K/64) store();__syncthreads();
++    }
++    const int ch=e0+wm*16+(lane&15);
++#pragma unroll
++    for (int j=0;j<2;++j) {
++#pragma unroll
++        for (int e=0;e<8;++e) {
++            const int t=t0+wn*32+j*16+2*e+(lane>>4);
++            if (t<T) {
++                float sum=0;
++#pragma unroll
++                for (int stream=0;stream<4;++stream) {
++                    const float gate=1.0f/(1.0f+expf(-acc[stream][j][e]));
++                    sum+=Xn[(size_t(t)*4+stream)*E+ch]*gate;
++                }
++                Out[size_t(t)*E+ch]=scale*sum;
++            }
++        }
++    }
++#endif
++}
++
++} // namespace
++#endif
++
++bool ggml_cuda_qwen4exp_mmb(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * w, const ggml_tensor * x, ggml_tensor * out) {
++#if defined(GGML_USE_HIP)
++    if (!ggml_cuda_qwen4exp_fast_math(ctx) ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            w->type != GGML_TYPE_Q8_0 || ggml_get_op_params_i32(out,1) != GGML_HINT_QWEN4EXP_Q8_DECODE ||
++            ggml_get_op_params_i32(out,0) != GGML_PREC_DEFAULT ||
++            ggml_get_op_params_i32(out,3) != GGML_PREC_DEFAULT ||
++            x->type != GGML_TYPE_F32 || out->type != GGML_TYPE_F32 ||
++            !ggml_is_contiguous(w) || !ggml_is_contiguous(x) || !ggml_is_contiguous(out) ||
++            w->ne[2]!=1 || w->ne[3]!=1 || x->ne[2]!=1 || x->ne[3]!=1 || out->ne[2]!=1 || out->ne[3]!=1 ||
++            w->ne[0]!=x->ne[0] || w->ne[1]!=out->ne[0] || x->ne[1]!=out->ne[1] ||
++            w->ne[0]%64 || w->ne[1]%32 || x->ne[1]<512 ||
++            w->ne[0]>32768 || w->ne[1]>32768 || x->ne[1]>32768 ||
++            uintptr_t(x->data)%16 || uintptr_t(w->data)%16 || uintptr_t(out->data)%16) return false;
++    const int K=w->ne[0], M=w->ne[1], T=x->ne[1];
++    const size_t n=size_t(K)*T;
++    ggml_cuda_pool_alloc<uint16_t> input(ctx.pool(),n);
++    qwen_bf16_input<<<(n+2047)/2048,256,0,ctx.stream()>>>((const float *)x->data,input.get(),n);
++    if (M>=6144 && K>=2560) {
++        qwen_q8_bf16_wmma<256,64><<<dim3((M+127)/128,(T+255)/256),256,0,ctx.stream()>>>(
++            (const uint8_t *)w->data,input.get(),(float *)out->data,M,K,T);
++    } else {
++        qwen_q8_bf16_wmma<128,32><<<dim3((M+127)/128,(T+127)/128),256,0,ctx.stream()>>>(
++            (const uint8_t *)w->data,input.get(),(float *)out->data,M,K,T);
++    }
++    CUDA_CHECK(cudaGetLastError());
++    return true;
++#else
++    GGML_UNUSED(ctx); GGML_UNUSED(w); GGML_UNUSED(x); GGML_UNUSED(out);
++    return false;
++#endif
++}
++
++bool ggml_cuda_qwen4exp_gate_mix(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * matrix,const ggml_tensor * normalized,ggml_tensor * out) {
++#if defined(GGML_USE_HIP)
++    const auto * w=matrix->src[0],*lo=matrix->src[1];
++    if (!ggml_cuda_qwen4exp_fast_math(ctx) || ggml_cuda_info().devices[ctx.device].cc!=GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            matrix->op!=GGML_OP_MUL_MAT || matrix->op_params[1]!=GGML_HINT_QWEN4EXP_Q8_DECODE ||
++            matrix->op_params[0]!=GGML_PREC_DEFAULT || matrix->op_params[3]!=GGML_PREC_DEFAULT ||
++            !w || !lo || w->type!=GGML_TYPE_Q8_0 || lo->type!=GGML_TYPE_F32 ||
++            normalized->type!=GGML_TYPE_F32 || out->type!=GGML_TYPE_F32 ||
++            !ggml_is_contiguous(w) || !ggml_is_contiguous(lo) || !ggml_is_contiguous(normalized) || !ggml_is_contiguous(out)) return false;
++    const int64_t E=out->ne[0],K=w->ne[0],T=out->ne[1];
++    if (E<32 || E>8192 || E%32 || K<64 || K>4096 || K%64 || T<512 || T>4096 ||
++            w->ne[1]!=4*E || w->ne[2]!=1 || w->ne[3]!=1 ||
++            lo->ne[0]!=K || lo->ne[1]!=T || lo->ne[2]!=1 || lo->ne[3]!=1 ||
++            normalized->ne[0]!=E || normalized->ne[1]!=4 || normalized->ne[2]!=T || normalized->ne[3]!=1 ||
++            out->ne[2]!=1 || out->ne[3]!=1 || out->op!=GGML_OP_DSV4_HC_PRE || out->op_params[1]!=1 ||
++            uintptr_t(w->data)%4 || uintptr_t(lo->data)%16 || uintptr_t(normalized->data)%4 || uintptr_t(out->data)%4) return false;
++    float scale;memcpy(&scale,out->op_params,sizeof(scale));
++    ggml_cuda_pool_alloc<uint16_t> input(ctx.pool(),size_t(K)*T);
++    qwen_bf16_input<<<(K*T+2047)/2048,256,0,ctx.stream()>>>((const float *)lo->data,input.get(),K*T);
++    qwen_bf16_gate_mix<<<dim3(E/32,(T+127)/128),256,0,ctx.stream()>>>(
++        (const uint8_t *)w->data,input.get(),(const float *)normalized->data,(float *)out->data,E,K,T,scale);
++    CUDA_CHECK(cudaGetLastError());return true;
++#else
++    GGML_UNUSED(ctx);GGML_UNUSED(matrix);GGML_UNUSED(normalized);GGML_UNUSED(out);return false;
++#endif
++}
+diff --git a/ggml/src/ggml-cuda/qwen4exp-mmb.cuh b/ggml/src/ggml-cuda/qwen4exp-mmb.cuh
+new file mode 100644
+index 0000000..cb23c4f
+--- /dev/null
++++ b/ggml/src/ggml-cuda/qwen4exp-mmb.cuh
+@@ -0,0 +1,24 @@
++#pragma once
++#include "common.cuh"
++
++// Explicit mixed-math policy. GGUF, F16 KV and canonical F32 outputs stay intact.
++inline bool ggml_cuda_qwen4exp_fast_math(const ggml_backend_cuda_context & ctx) {
++#if defined(GGML_USE_HIP)
++    const char * mode = getenv("PARACETAMOL_QWEN4EXP_FAST_MATH");
++    const char * graph = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
++    return mode && !strcmp(mode, "1") && graph && !strcmp(graph, "1") &&
++        ggml_cuda_info().devices[ctx.device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151;
++#else
++    GGML_UNUSED(ctx);
++    return false;
++#endif
++}
++bool ggml_cuda_qwen4exp_mmb(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * weights, const ggml_tensor * input, ggml_tensor * output);
++bool ggml_cuda_qwen4exp_f32_wmma(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * weights, const ggml_tensor * input, ggml_tensor * output);
++bool ggml_cuda_qwen4exp_expert_glu(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * gate, const ggml_tensor * up, ggml_tensor * output);
++bool ggml_cuda_qwen4exp_expert_down(ggml_backend_cuda_context & ctx, ggml_tensor * output);
++bool ggml_cuda_qwen4exp_gate_mix(ggml_backend_cuda_context & ctx,
++        const ggml_tensor * matrix, const ggml_tensor * normalized, ggml_tensor * output);
+diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
+index f758fd5..f942c96 100644
+--- a/src/models/qwen4exp.cpp
++++ b/src/models/qwen4exp.cpp
+@@ -474,6 +474,8 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
+ 
+     ggml_build_forward_expand(gf, cur);
+     const char * fast = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
++    const char * math = getenv("PARACETAMOL_QWEN4EXP_FAST_MATH");
++    const bool mixed_math = math && std::string(math) == "1";
+     if (fast && std::string(fast)=="1") {
+         for (int i=0;i<ggml_graph_n_nodes(gf);++i) {
+             auto * node=ggml_graph_node(gf,i);
+@@ -484,8 +486,12 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
+                     node->op_params[1]==GGML_HINT_NONE) {
+                 ggml_mul_mat_set_hint(node,GGML_HINT_QWEN4EXP_Q8_DECODE);
+             }
++            if (mixed_math && node->op == GGML_OP_MUL_MAT && node->src[0]->type == GGML_TYPE_F32 &&
++                    node->op_params[1] == GGML_HINT_NONE) {
++                ggml_mul_mat_set_hint(node, GGML_HINT_QWEN4EXP_F32);
++            }
+             if (node->op == GGML_OP_MUL_MAT_ID && node->op_params[1] == GGML_HINT_NONE &&
+-                    (node->src[0]->type == GGML_TYPE_Q4_K || node->src[0]->type == GGML_TYPE_Q5_1 ||
++                    (node->src[0]->type == GGML_TYPE_Q4_K || (mixed_math && node->src[0]->type == GGML_TYPE_Q5_K) || node->src[0]->type == GGML_TYPE_Q5_1 ||
+                      node->src[0]->type == GGML_TYPE_Q8_0)) {
+                 ggml_mul_mat_set_hint(node, GGML_HINT_SMALL_MOE_TILES);
+             }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 5a4b406..7ac55e7 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -8914,6 +8914,58 @@ struct test_falcon : public test_llm {
+ 
+ #include "../src/models/qwen4exp-qsa.h"
+ 
++struct test_qwen_mmb : public test_mul_mat {
++    const bool hint;
++    const bool force_f32;
++    test_qwen_mmb(int rows, int tokens, int cols, bool hint = true, ggml_type type = GGML_TYPE_Q8_0, bool force_f32 = false)
++        : test_mul_mat(type, GGML_TYPE_F32, rows, tokens, cols, {1,1}, {1,1}), hint(hint), force_f32(force_f32) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_MMB"; }
++    std::string vars() override { return test_mul_mat::vars() + "," + VARS_TO_STR2(hint, force_f32); }
++    double max_nmse_err() override {
++        return type_a == GGML_TYPE_F32 ? (force_f32 || !hint ? 1e-10 : 1e-6) : 5e-4;
++    }
++    double err(const float * a, const float * b, size_t n) override {
++        const double e = nmse(a,b,n);
++        printf("NMSE=%.12g ", e);
++        return e;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        ggml_tensor * out = test_mul_mat::build_graph(ctx);
++        if (hint) ggml_mul_mat_set_hint(out, type_a == GGML_TYPE_Q8_0 ? GGML_HINT_QWEN4EXP_Q8_DECODE : GGML_HINT_QWEN4EXP_F32);
++        if (force_f32) {
++            GGML_ASSERT(ggml_prec_set_acc(out, GGML_PREC_F32));
++            GGML_ASSERT(ggml_prec_set_src(out, GGML_PREC_F32, 1));
++        }
++        return out;
++    }
++};
++
++// Compare each device's quantized calculation to a dequantized F32 matrix,
++// not just to the CPU's own quantized activation path.
++struct test_qwen_mmb_reference : public test_qwen_mmb {
++    test_qwen_mmb_reference(int rows,int tokens,int cols)
++        : test_qwen_mmb(rows,tokens,cols) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_MMB_REFERENCE"; }
++    bool run_whole_graph() override { return true; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * fast=test_qwen_mmb::build_graph(ctx);
++        // CPU dequantized DUP currently dereferences src[1]. Use the supported
++        // CPY form with an explicit destination for this independent oracle.
++        auto * weights=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,k,m);
++        auto * reference=ggml_mul_mat(ctx,ggml_cpy(ctx,fast->src[0],weights),fast->src[1]);
++        GGML_ASSERT(ggml_prec_set_acc(reference,GGML_PREC_F32));
++        GGML_ASSERT(ggml_prec_set_src(reference,GGML_PREC_F32,1));
++        return ggml_concat(ctx,fast,reference,1);
++    }
++    double err(const float * a,const float * b,size_t count) override {
++        const size_t size=size_t(m)*this->n;
++        if (count!=2*size) return nmse(a,b,count);
++        const double gpu=nmse(a+size,a,size), cpu=nmse(b+size,b,size), reference=nmse(a+size,b+size,size);
++        printf("GPU-vs-F32=%.12g CPU-vs-F32=%.12g reference=%.12g ",gpu,cpu,reference);
++        return reference>1e-7 ? INFINITY : gpu;
++    }
++};
++
+ struct test_qwen_narrow_norm : public test_case {
+     int cols, rows;
+     bool gated, strided, extra_reader;
+@@ -9012,7 +9064,15 @@ struct test_qwen_hc_norm : public test_case {
+     bool run_whole_graph() override { return true; }
+     double max_nmse_err() override { return 0; }
+     double err(const float * actual, const float *, size_t n) override {
+-        for (size_t i = 0; i < n; ++i) if (actual[i] != 0.0f) return INFINITY;
++        const bool paired=getenv("PARACETAMOL_QWEN4EXP_FAST_MATH") && !strcmp(getenv("PARACETAMOL_QWEN4EXP_FAST_MATH"), "1");
++        const size_t norm_size=size_t(embd)*4*tokens;
++        float max_delta=0;
++        for (size_t i = 0; i < n; ++i) {
++            const float tolerance=paired && i<norm_size ? 5e-6f : 0;
++            if (!std::isfinite(actual[i]) || fabsf(actual[i])>tolerance) return INFINITY;
++            max_delta=std::max(max_delta,fabsf(actual[i]));
++        }
++        if (paired) printf("paired F32 norm max_abs_delta=%.9g ",max_delta);
+         return 0;
+     }
+     ggml_tensor * build_graph(ggml_context * ctx) override {
+@@ -9025,7 +9085,7 @@ struct test_qwen_hc_norm : public test_case {
+             if (marked) ggml_set_name(post, "qwen4exp_hc_combine");
+             auto * norm = ggml_rms_norm(ctx, post, 1e-6f);
+             auto * result = ggml_mul(ctx, norm, gamma);
+-            if (marked) ggml_set_name(result, "qwen4exp_hc_norm");
++            if (marked) ggml_set_name(result,"qwen4exp_hc_norm");
+             auto * output = ggml_concat(ctx, ggml_reshape_1d(ctx, result, embd*4*tokens),
+                 ggml_reshape_1d(ctx, post, embd*4*tokens), 0);
+             if (extra_reader) output = ggml_concat(ctx, output,
+@@ -9038,6 +9098,33 @@ struct test_qwen_hc_norm : public test_case {
+     }
+ };
+ 
++// Direct CPU-reference companion to the same-GPU branch-difference checks.
++struct test_qwen_hc_vector : public test_case {
++    int embd, tokens;
++    test_qwen_hc_vector(int e,int t) : embd(e),tokens(t) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_HC_VECTOR"; }
++    std::string vars() override { return VARS_TO_STR2(embd,tokens); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 1e-10; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * x=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd,tokens);
++        auto * res=ggml_new_tensor_3d(ctx,GGML_TYPE_F32,embd,4,tokens);
++        auto * weights=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,4,tokens);
++        auto * gamma=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd,4);
++        auto * projection=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd*4,4);
++        auto * post=ggml_dsv4_hc_post(ctx,x,res,weights,nullptr);
++        auto * norm=ggml_mul(ctx,ggml_rms_norm(ctx,post,1e-6f),gamma);
++        ggml_set_name(norm,"qwen4exp_hc_norm");
++        auto * flat=ggml_reshape_2d(ctx,norm,embd*4,tokens);
++        auto * dot=ggml_mul_mat(ctx,projection,flat);
++        ggml_set_name(dot,"qwen4exp_hc_inject");
++        ggml_build_forward_expand(gf,dot);
++        const int64_t n=int64_t(embd)*4*tokens;
++        return ggml_concat(ctx,ggml_concat(ctx,ggml_reshape_1d(ctx,post,n),ggml_reshape_1d(ctx,norm,n),0),
++            ggml_reshape_1d(ctx,dot,4*tokens),0);
++    }
++};
++
+ struct test_qwen_hc_inject : public test_case {
+     int embd, tokens;
+     bool extra_reader;
+@@ -9049,7 +9136,11 @@ struct test_qwen_hc_inject : public test_case {
+     double err(const float * a,const float * b,size_t n) override {
+         const size_t norm_size=size_t(embd)*4*tokens, dot_size=4*tokens;
+         if (n!=norm_size*2+dot_size*2) return nmse(a,b,n);
+-        for (size_t i=0;i<norm_size*2;++i) if (a[i]!=0 || b[i]!=0) return INFINITY;
++        const bool paired=getenv("PARACETAMOL_QWEN4EXP_FAST_MATH") && !strcmp(getenv("PARACETAMOL_QWEN4EXP_FAST_MATH"), "1");
++        for (size_t i=0;i<norm_size*2;++i) {
++            const float tolerance=paired && i>=norm_size ? 5e-6f : 0;
++            if (!std::isfinite(a[i]) || fabsf(a[i])>tolerance || b[i]!=0) return INFINITY;
++        }
+         const double result=nmse(a+norm_size*2,a+norm_size*2+dot_size,dot_size);
+         const double ref=nmse(a+norm_size*2+dot_size,b+norm_size*2+dot_size,dot_size);
+         printf("F32-dot NMSE=%.12g reference=%.12g ",result,ref);
+@@ -9093,6 +9184,36 @@ struct test_qwen_hc_inject : public test_case {
+     }
+ };
+ 
++struct test_qwen_gate_mix : public test_case {
++    int embd,cols,tokens;
++    bool extra;
++    test_qwen_gate_mix(int embd,int cols,int tokens,bool extra=false) : embd(embd),cols(cols),tokens(tokens),extra(extra) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_GATE_MIX"; }
++    std::string vars() override { return VARS_TO_STR4(embd,cols,tokens,extra); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 1e-4; }
++    double err(const float * a,const float * b,size_t n) override {
++        const double e=nmse(a,b,n);printf("NMSE=%.12g ",e);return e;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * weights=ggml_new_tensor_2d(ctx,GGML_TYPE_Q8_0,cols,embd*4);
++        auto * lo=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,cols,tokens);
++        auto * xn=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd*4,tokens);
++        auto * norm=ggml_reshape_3d(ctx,xn,embd,4,tokens);
++        ggml_build_forward_expand(gf,norm);
++        auto * gate=ggml_mul_mat(ctx,weights,lo);
++        ggml_mul_mat_set_hint(gate,GGML_HINT_QWEN4EXP_Q8_DECODE);
++        auto * pre=ggml_dsv4_hc_pre_gated(ctx,norm,ggml_reshape_3d(ctx,gate,embd,4,tokens),0.25f);
++        ggml_build_forward_expand(gf,pre);
++        if (extra) {
++            auto * reader=ggml_sqr(ctx,gate);
++            ggml_set_output(reader);
++            ggml_build_forward_expand(gf,reader);
++        }
++        return pre;
++    }
++};
++
+ struct test_qwen_gdn_conv : public test_case {
+     int channels, tokens, slots;
+     bool extra_reader, mutate_state;
+@@ -9154,6 +9275,74 @@ struct test_qwen_moe_tiles : public test_mul_mat_id {
+     }
+ };
+ 
++struct test_qwen_expert_glu : public test_mul_mat_id {
++    const bool extra_reader;
++    const bool reference;
++    test_qwen_expert_glu(int experts,int used,int rows,int tokens,bool broadcast,bool extra=false,bool reference=false,int cols=256,ggml_type quant=GGML_TYPE_Q4_K)
++        : test_mul_mat_id(quant,GGML_TYPE_F32,experts,used,broadcast,rows,tokens,cols),extra_reader(extra),reference(reference) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_EXPERT_GLU"; }
++    bool run_whole_graph() override { return true; }
++    double err(const float * a, const float * b, size_t n) override {
++        if (reference && n==size_t(m*this->n*n_used*2)) {
++            const size_t size=n/2;
++            const double gpu=nmse(a+size,a,size),cpu=nmse(b+size,b,size),ref=nmse(a+size,b+size,size);
++            printf("GPU-vs-F32=%.12g CPU-vs-F32=%.12g reference=%.12g ",gpu,cpu,ref);
++            return ref>1e-7 ? INFINITY : gpu;
++        }
++        const double e=nmse(a,b,n); printf("NMSE=%.12g ",e); return e;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * gate=test_mul_mat_id::build_graph(ctx);
++        auto * w=ggml_new_tensor_3d(ctx,type_a,k,m,n_mats);
++        auto * up=ggml_mul_mat_id(ctx,w,gate->src[1],gate->src[2]);
++        ggml_mul_mat_set_hint(gate,GGML_HINT_SMALL_MOE_TILES);
++        ggml_mul_mat_set_hint(up,GGML_HINT_SMALL_MOE_TILES);
++        auto * out=ggml_swiglu_split(ctx,gate,up);
++        if (reference) {
++            auto mm=[&](ggml_tensor * original) {
++                auto * indices=ggml_cast(ctx,ggml_arange(ctx,0,float(m*n_mats),1),GGML_TYPE_I32);
++                auto * wf=ggml_reshape_3d(ctx,ggml_get_rows(ctx,
++                    ggml_reshape_2d(ctx,original->src[0],k,m*n_mats),indices),k,m,n_mats);
++                auto * r=ggml_mul_mat_id(ctx,wf,original->src[1],original->src[2]);
++                GGML_ASSERT(ggml_prec_set_acc(r,GGML_PREC_F32));
++                GGML_ASSERT(ggml_prec_set_src(r,GGML_PREC_F32,1));
++                return r;
++            };
++            out=ggml_concat(ctx,out,ggml_swiglu_split(ctx,mm(gate),mm(up)),2);
++        }
++        return extra_reader ? ggml_add(ctx,out,gate) : out;
++    }
++};
++
++struct test_qwen_expert_down : public test_mul_mat_id {
++    const bool reference;
++    test_qwen_expert_down(int experts,int used,int rows,int tokens,bool broadcast,int cols=640,bool reference=false,ggml_type quant=GGML_TYPE_Q5_1)
++        : test_mul_mat_id(quant,GGML_TYPE_F32,experts,used,broadcast,rows,tokens,cols),reference(reference) {}
++    std::string op_desc(ggml_tensor *) override { return "QWEN_EXPERT_DOWN"; }
++    bool run_whole_graph() override { return true; }
++    double err(const float * a, const float * b, size_t n) override {
++        if (reference && n==size_t(m*this->n*n_used*2)) {
++            const size_t size=n/2;
++            const double gpu=nmse(a+size,a,size),cpu=nmse(b+size,b,size),ref=nmse(a+size,b+size,size);
++            printf("GPU-vs-F32=%.12g CPU-vs-F32=%.12g reference=%.12g ",gpu,cpu,ref);
++            return ref>1e-7 ? INFINITY : gpu;
++        }
++        const double e=nmse(a,b,n); printf("NMSE=%.12g ",e); return e;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * out=test_mul_mat_id::build_graph(ctx);
++        ggml_mul_mat_set_hint(out,GGML_HINT_SMALL_MOE_TILES);
++        if (reference) {
++            auto * wf=ggml_cpy(ctx,out->src[0],ggml_new_tensor_3d(ctx,GGML_TYPE_F32,k,m,n_mats));
++            auto * r=ggml_mul_mat_id(ctx,wf,out->src[1],out->src[2]);
++            GGML_ASSERT(ggml_prec_set_acc(r,GGML_PREC_F32));
++            GGML_ASSERT(ggml_prec_set_src(r,GGML_PREC_F32,1));
++            return ggml_concat(ctx,out,r,2);
++        }
++        return out;
++    }
++};
++
+ struct test_qwen_moe_reduce : public test_mul_mat_id {
+     bool scaled;
+     test_qwen_moe_reduce(int rows, int tokens, bool scaled)
+@@ -11653,10 +11842,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         for (int tokens : {1, 17, 512}) test_cases.emplace_back(new test_qwen_hc_norm(embd, tokens));
+     }
+     test_cases.emplace_back(new test_qwen_hc_norm(2560, 17, true));
++    test_cases.emplace_back(new test_qwen_hc_vector(2560, 512));
++    test_cases.emplace_back(new test_qwen_hc_vector(2049, 256));
+     for (int embd : {1024, 2560, 3072}) {
+         for (int tokens : {255, 256, 513}) test_cases.emplace_back(new test_qwen_hc_inject(embd, tokens));
+     }
+     test_cases.emplace_back(new test_qwen_hc_inject(2560, 256, true));
++    for (int tokens : {511,512,513}) {
++        test_cases.emplace_back(new test_qwen_gate_mix(64,320,tokens));
++        test_cases.emplace_back(new test_qwen_gate_mix(2560,320,tokens));
++    }
++    test_cases.emplace_back(new test_qwen_gate_mix(64,320,512,true));
+     for (int cols : {64, 128, 256}) {
+         for (bool gated : {false, true}) {
+             test_cases.emplace_back(new test_qwen_narrow_norm(cols, 4096, gated));
+@@ -11685,7 +11881,60 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         test_cases.emplace_back(new test_qwen_moe_tiles(type, 129, 513, true));
+         test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 8, true));
+     }
++    for (int tokens : {511, 512, 513, 768}) {
++        test_cases.emplace_back(new test_qwen_mmb(128, tokens, 320));
++        test_cases.emplace_back(new test_qwen_mmb(768, tokens, 2560));
++    }
++    for (int rows : {4, 48, 129, 512}) {
++        test_cases.emplace_back(new test_qwen_mmb(rows, 513, 2560, true, GGML_TYPE_F32));
++    }
++    test_cases.emplace_back(new test_qwen_mmb(4, 512, 10240, true, GGML_TYPE_F32));
++    test_cases.emplace_back(new test_qwen_mmb(512, 255, 2560, true, GGML_TYPE_F32));
++    test_cases.emplace_back(new test_qwen_mmb(512, 512, 2560, false, GGML_TYPE_F32));
++    test_cases.emplace_back(new test_qwen_mmb(512, 512, 2560, true, GGML_TYPE_F32, true));
++    test_cases.emplace_back(new test_qwen_mmb(6144, 513, 2560));
++    test_cases.emplace_back(new test_qwen_mmb(320, 513, 10240));
++    test_cases.emplace_back(new test_qwen_mmb(32, 512, 320));
++    test_cases.emplace_back(new test_qwen_mmb(256, 512, 6144));
++    test_cases.emplace_back(new test_qwen_mmb(256, 512, 64));
++    test_cases.emplace_back(new test_qwen_mmb(128, 512, 320, false));
++    test_cases.emplace_back(new test_qwen_mmb(129, 512, 320));
++    test_cases.emplace_back(new test_qwen_mmb_reference(128, 511, 320));
++    test_cases.emplace_back(new test_qwen_mmb_reference(128, 512, 320));
++    test_cases.emplace_back(new test_qwen_mmb_reference(320, 513, 2560));
+     test_cases.emplace_back(new test_qwen_q8_matvec(32,1));
++    for (int tokens : {255,256,257,513}) {
++        test_cases.emplace_back(new test_qwen_expert_glu(8,2,96,tokens,true));
++        test_cases.emplace_back(new test_qwen_expert_glu(512,10,128,tokens,true));
++    }
++    test_cases.emplace_back(new test_qwen_expert_glu(8,2,128,256,false));
++    test_cases.emplace_back(new test_qwen_expert_glu(512,10,128,257,false));
++    test_cases.emplace_back(new test_qwen_expert_glu(8,2,129,256,true));
++    test_cases.emplace_back(new test_qwen_expert_glu(8,2,128,256,true,true));
++    test_cases.emplace_back(new test_qwen_expert_glu(16,10,640,257,true,false,false,2560));
++    for (int tokens : {255,256,257,513}) {
++        test_cases.emplace_back(new test_qwen_expert_down(8,2,96,tokens,true));
++        test_cases.emplace_back(new test_qwen_expert_down(512,10,128,tokens,false));
++    }
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,2560,256,false));
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,129,256,false));
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,128,256,false,320));
++    for (int tokens : {255,256}) {
++        test_cases.emplace_back(new test_qwen_expert_glu(8,2,128,tokens,true,false,true));
++        test_cases.emplace_back(new test_qwen_expert_down(8,2,128,tokens,false,640,true));
++    }
++    for(int tokens:{255,256,257,513}) {
++        test_cases.emplace_back(new test_qwen_expert_glu(8,2,96,tokens,true,false,false,256,GGML_TYPE_Q5_K));
++        test_cases.emplace_back(new test_qwen_expert_down(8,2,96,tokens,false,640,false,GGML_TYPE_Q8_0));
++    }
++    test_cases.emplace_back(new test_qwen_expert_glu(512,10,128,257,true,false,false,256,GGML_TYPE_Q5_K));
++    test_cases.emplace_back(new test_qwen_expert_glu(16,10,640,257,true,false,true,2560,GGML_TYPE_Q5_K));
++    test_cases.emplace_back(new test_qwen_expert_glu(8,2,129,256,true,false,false,256,GGML_TYPE_Q5_K));
++    test_cases.emplace_back(new test_qwen_expert_glu(8,2,128,256,true,true,false,256,GGML_TYPE_Q5_K));
++    test_cases.emplace_back(new test_qwen_expert_down(512,10,128,257,false,640,false,GGML_TYPE_Q8_0));
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,2560,256,false,640,true,GGML_TYPE_Q8_0));
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,129,256,false,640,false,GGML_TYPE_Q8_0));
++    test_cases.emplace_back(new test_qwen_expert_down(8,2,128,256,false,320,false,GGML_TYPE_Q8_0));
+     for (int cols : {320, 2560, 10240}) {
+         for (int count : {2, 3, 4}) test_cases.emplace_back(new test_qwen_q8_group(cols, count));
+     }
