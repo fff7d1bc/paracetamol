@@ -37,6 +37,10 @@ revisions recorded in `catalog/catalog.json`.
   `ce82541acbaf5c532c0727d6ccb6de2b0b0c948d` to avoid unsafe direct
   `ROCm_Host` computation on integrated HIP devices while preserving pinned
   host allocation.
+  The router disconnect correction and its upstream regression test come
+  from llama.cpp PR 29707 at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`,
+  also under MIT. It closes the child connection when the proxy request ends
+  and bounds the response queue's wait across unrelated wakeups.
   The HIP build also carries the tiled F32 gated-delta-net prefill kernel
   from Piotr Wilkin's MIT-licensed llama.cpp fork at commit
   `964c6f2f0b66008243883298f3f535bc99f5998c`. Paracetamol restricts its dispatch

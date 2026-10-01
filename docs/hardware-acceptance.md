@@ -26,6 +26,71 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo router cancellation (2026-10-01)
+
+Router cancellation is `PASS` on the acceptance host's `gfx1151`. The accepted change adds
+[upstream PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at
+`31b5b49bf600d43ea3b95a52f6b05650a71679c9` to Paracetamol
+`d58a7fc03479630c2e7916c96ed8e3a1a74f3567`. The llama.cpp source pin remains
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`.
+
+The image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-2090f60-r48`, ID
+`5b273803ca046d955bbeb3c50600678000c06d1f55d57d0efa15d734ba815853`.
+It was built and tested on September 30 without application layer cache,
+including all four HIP targets and Vulkan. The October 1 integration uses
+the exact same patch and build inputs. Runtime library closure, code-object
+checks, `pip check` and CPU-only empty-router startup pass. The CPU router
+has a read-only root and no GPU devices.
+
+The baseline `r47` router kept generating after a non-streaming client
+disconnected. Its child was still busy after 5.04 seconds and had generated
+105 tokens. The test waits for actual generation before closing the socket
+and requests 8192 tokens with EOS ignored, so a natural completion cannot
+stand in for cancellation. Streaming cancellation already passed.
+
+With `r48`, both streaming and non-streaming disconnects return the child
+slot to idle. The public gateway passes 18 such checks across dense Q8 MTP,
+Flash-Next and a switch back to dense Q8 MTP. Observed cancellation time is
+0.21–0.72 seconds. Follow-up requests, tool exchanges and streaming pass.
+The gateway starts with no backend loaded, publishes its backend only on an
+ephemeral loopback port, and removes its owned container on exit. Pi and
+Maki each perform real file-read and shell calls and return both exact
+fixture values.
+
+The native ROCm router passes the reasoning, tools, Responses, sampling,
+history-template and cache-reuse screens for dense Qwen3.8 Q8 with and
+without MTP and for Flash-Next. Two 32K Flash-Next retrieval requests recover
+all six exact values. Both Qwen3.6 MTP variants, Muse with and without
+DFlash, Qwen3.8 Q4 MTP, Gemma MTP and KAT pass their applicable protocol
+screens. Concurrent clients and model switchback also pass.
+
+There is no new model-performance claim. `libllama.so.0`, `libggml-hip.so.0`
+and `libggml-vulkan.so.0` are byte-identical between `r47` and `r48`. Model
+files, templates, sampling defaults, F16 K/V and inference arithmetic are
+unchanged. The earlier 247K acceptance is not repeated for this
+server-lifecycle change. Other candidate performance patches are not
+included.
+
+September 30 host Tier 1 checks, the forced normal build and the Go race
+pass succeed. No new kernel errors appear during the final acceptance
+interval. The acceptance host remains on kernel `7.1.7-200.fc44.x86_64`, balanced platform
+profile, `balance_performance` CPU EPP and its existing 112 GiB GPU memory
+allowance. Other GPU architectures have no new hardware acceptance from
+this change.
+
+The source snapshots, baseline failure, raw requests, image and library
+manifests, build output and regression logs are retained on the acceptance host below
+`~/.local/share/paracetamol/apps/acceptance/results/20260930-llama-pr-trials/`.
+
+The October 1 delivery repeats the gateway checks on that exact image. All
+18 disconnects pass in 0.21–0.73 seconds, as do dense → Flash-Next → dense
+tool exchanges, Pi/Maki tool execution, clean shutdown, CPU-only startup and
+runtime dependency checks. Host Tier 1, the forced normal build and the Go
+race pass also succeed. No new kernel journal entries appear, and the acceptance host is
+left idle. Delivery logs are retained beside the earlier archive under
+`20261001-router-cancellation/`.
+
 ### Fedora 44 Strix Halo llama.cpp source refresh (2026-09-30)
 
 Acceptance is `PASS` on the acceptance host's `gfx1151`. This refresh advances llama.cpp from `7ab4ee7`
