@@ -270,6 +270,7 @@ protected behavior is fixed.
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
 | `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
+| `router-disconnect.patch` | Carries [PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`. Stops the child HTTP connection when its proxy closes and uses one response-wait deadline across wakeups. Includes the upstream non-streaming disconnect regression. | Upstream passes both streaming and non-streaming disconnects through the router and gateway. Observe the child slot becoming idle, not just a successful follow-up request. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
@@ -284,9 +285,14 @@ protected behavior is fixed.
 
 The September 30 source refresh pins
 `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193 upstream commits after the
-previous `7ab4ee7` pin. All 13 downstream patches remain necessary under the
-removal gates above. Eight apply unchanged. The QSA gather, compact graph,
+previous `7ab4ee7` pin. All 13 existing downstream patches remain necessary
+under the removal gates above. Eight apply unchanged. The QSA gather, compact graph,
 prepared-key cache, pipeline and selection patches are rebased.
+
+The October 1 delivery adds router disconnect propagation as the fourteenth
+patch, without changing inference arithmetic or defaults. Its
+[acceptance record](hardware-acceptance.md#fedora-44-strix-halo-router-cancellation-2026-10-01)
+distinguishes child-slot cancellation from follow-up request recovery.
 
 The rebases preserve upstream's new GLM pooled-cache bookkeeping, graph
 allocation dependencies and matrix source-precision parameter. GLM's pooled

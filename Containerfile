@@ -262,6 +262,8 @@ COPY applications/llama-cpp/hip-apu-host-buffer.patch \
     /opt/paracetamol/llama-hip-apu-host-buffer.patch
 COPY applications/llama-cpp/reasoning-controls.patch \
     /opt/paracetamol/llama-reasoning-controls.patch
+COPY applications/llama-cpp/router-disconnect.patch \
+    /opt/paracetamol/llama-router-disconnect.patch
 COPY applications/llama-cpp/quantized-kv-flash-attention.patch \
     /opt/paracetamol/llama-quantized-kv-flash-attention.patch
 COPY applications/llama-cpp/vulkan-f16-kv-contiguize.patch \
@@ -294,6 +296,8 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-hip-apu-host-buffer.patch && \
     git apply --check /opt/paracetamol/llama-reasoning-controls.patch && \
     git apply /opt/paracetamol/llama-reasoning-controls.patch && \
+    git apply --check /opt/paracetamol/llama-router-disconnect.patch && \
+    git apply /opt/paracetamol/llama-router-disconnect.patch && \
     git apply --check /opt/paracetamol/llama-quantized-kv-flash-attention.patch && \
     git apply /opt/paracetamol/llama-quantized-kv-flash-attention.patch && \
     git apply --check /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch && \
@@ -407,7 +411,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations,hip-qwen4exp-prepared-key-cache,hip-qwen4exp-pipeline,hip-qwen4exp-selection" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,reasoning-controls,router-disconnect,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations,hip-qwen4exp-prepared-key-cache,hip-qwen4exp-pipeline,hip-qwen4exp-selection" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

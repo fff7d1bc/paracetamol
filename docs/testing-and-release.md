@@ -296,6 +296,17 @@ and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
 
+For llama.cpp cancellation, cover both streaming and non-streaming requests
+through the native router and through the gateway. Wait until a child slot
+has actually generated tokens, disconnect that client, and observe the slot
+returning to idle through the private native `/slots?model=MODEL_ID` endpoint.
+Keep the request's output limit high enough that natural completion cannot
+masquerade as successful cancellation. Record the disconnect-to-idle time and
+then check a normal follow-up request. A successful follow-up alone is not
+proof that the abandoned work stopped, especially with several slots. Do not
+expose this diagnostic route on the public gateway or publish the child port
+outside loopback for the test.
+
 First-output timing must ignore role-only and usage-only SSE chunks and remain
 unavailable for non-streaming responses. Check text, reasoning and tool-call
 streams, plus fragmented, malformed and oversized events. Cache-reuse totals
