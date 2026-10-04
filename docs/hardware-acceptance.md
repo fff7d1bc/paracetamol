@@ -26,6 +26,181 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo native engine trials (2026-10-04)
+
+The accepted production change from this investigation is the
+[DwarfStar update below](#fedora-44-strix-halo-dwarfstar-0aaea5a-update-2026-10-04),
+commit `ba84d69`. The llama.cpp refresh is held at a correctness gate.
+Gufo and the custom HIP runtime remain experiments, not new applications or
+runtime defaults. The trusted dense Qwen3.8 27B Q8 MTP default is unchanged.
+
+All GPU runs use the acceptance host's `gfx1151`, Fedora 44, kernel
+`7.1.7-200.fc44.x86_64`, ROCm 10.0, 128 GB LPDDR5X-8000 and existing
+112 GiB GPU allowance. The platform remains `balanced`, with
+`balance_performance` CPU EPP. Builds and GPU timings do not overlap.
+No model download, host tuning, kernel update or system ROCm replacement is
+part of this investigation. Other GPU architectures remain untested.
+
+#### llama.cpp refresh held on populated-state restore
+
+The candidate is `46847e61582097979f539595d893d83d8e1d1af1`, 99 upstream
+commits after the accepted `2090f60` pin. The new
+[QSA cache/indexer implementation](https://github.com/ggml-org/llama.cpp/pull/29751)
+replaces the structure used by several downstream optimizations. It needs a
+real port, not patch-context adjustments. The subsequent
+[indexer workspace reduction](https://github.com/ggml-org/llama.cpp/pull/29825)
+reduces score temporaries by processing heads separately and applying ReLU
+in place. It does not halve the GGUF, total KV cache or total model footprint.
+Paracetamol's existing compact graph already differs from the upstream
+baseline used in that PR's memory measurements.
+
+The eight-patch candidate retains the necessary buffer, protocol, reader and
+allocation fixes but uses upstream attention. It passes the short API,
+retrieval, tool, cache and cancellation screens. A further selected-key and
+pipeline port passes 133 CPU QSA/Qwen operator cases, 131 HIP QSA/Qwen cases
+and 75 HIP GDN cases. These successes do not override the state failure.
+
+The state fixture populates more than 4K tokens, saves the session and
+compares the next-token logits after restore, a causal-mode transition and
+clear-plus-restore. The gate requires finite logits, normalized mean-square
+error at most `1e-6` and unchanged top-1 prediction.
+
+| Build or diagnostic | Ordinary restore | Causal transition and restore | Clear and restore |
+| --- | --- | --- | --- |
+| Accepted `r48` | NMSE 0 | NMSE 0 | NMSE 0 |
+| New eight-patch base | NMSE 0 | NMSE 0 | **FAIL**, NMSE 0.005675 |
+| Port with canonical selected-ID ordering | NMSE 0 | NMSE 0 | **FAIL**, NMSE 0.008493 |
+
+Turning off HIP graphs or all fusion makes the eight-patch base pass.
+Disabling only the new shared-expert fusion does not. The first selected-key
+port also needed canonical ID ordering to restore deterministically.
+The remaining failure is not attributed to a particular upstream PR. This
+is not an unpatched-upstream reproduction, and unchanged top-1 in this
+fixture is not evidence of either broad quality parity or user-visible
+garbage output.
+
+The production pin, fourteen patches and `r48` image are untouched. The
+incomplete rebase, exact fixture and diagnostic changes are archived for a
+focused follow-up. Disabling all graphs or fusion is not adopted as a
+production workaround.
+
+#### Gufo comparison with the accepted llama.cpp baseline
+
+[Gufo v0.7.0](https://github.com/gufo-org/gufo/tree/aedc129ffa98f00ebb1b1c8b75df60b2d987c48d)
+is built locally from MIT-licensed C++/HIP source at
+`aedc129ffa98f00ebb1b1c8b75df60b2d987c48d`. The inspected build does not
+fetch an opaque inference-engine binary. Its isolated image is
+`f6bedb12272d483fd6aa5f4e874cd76adad36d7d1a7e9e094df1455ecd96678f`.
+
+Both engines load the exact same four managed Unsloth Flash-Next
+`UD-Q4_K_XL` shards, without MTP, at a 262144-token ceiling with one active
+client. Actual request JSON is replayed, with temperature zero and seed 42.
+Retrieval uses medium reasoning and six exact marker values in a varied
+text corpus. Model-reported prompt counts agree. Gufo uses its reviewed
+one-hardware-queue setup, while llama.cpp uses the accepted production
+configuration. This compares configured engines, not identical kernels or
+arithmetic.
+
+| Workload | Current llama.cpp HTTP wall time | Gufo HTTP wall time |
+| --- | --- | --- |
+| 32,167-token retrieval, mean of two | 51.470 s | 33.486 s |
+| 247,165-token retrieval, one cold call | 415.957 s | 215.238 s |
+| Short fixed generation, three calls / 768 output tokens | 36.416 s | 30.112 s |
+| Warm near-247K generation, two calls / 512 output tokens | 26.988 s | 22.299 s |
+
+Both engines recover all six markers at 4K, 32K and near 247K. The long
+retrieval produces 199 completion tokens in each engine. Reported long
+prefill throughput is 609.8 tokens/s for llama.cpp and 1196.1 for Gufo,
+about 1.96 times higher. Warm fixed-generation wall time is 17.4% lower.
+Aggregate throughput is output tokens divided by total HTTP wall time, not
+the sum of individual request rates. Fixed generation windows deliberately
+truncate output and are not graded completed coding tasks.
+
+Cache capacity matters. The initial Gufo run uses a 4 GiB RAM-cache budget
+and completes the long retrieval correctly. Its next request can restore
+only 61,440 tokens, so that continuation is deliberately stopped rather than
+reported as a comparable warm timing. A separate 28 GiB-cache run first
+processes the continuation cold, then measures two fully warmed calls.
+Those reuse 247,163 tokens. The corresponding llama.cpp calls reuse 247,159
+and reevaluate four. Only the warmed calls enter the last table row.
+
+The larger Gufo cache run reaches about 8.63 GiB host memory available in
+backend logs, while five-second host samples reach 9.13 GiB. The comparable
+llama.cpp host samples reach 21.54 GiB. The 28 GiB setting is a chosen cache
+budget, not a demonstrated minimum or intrinsic model footprint. Neither
+run triggers the 4 GiB host-available guard.
+
+Gufo also passes thinking-mode, math, typed-tool/replay, streaming, Responses,
+cache and cancellation/recovery checks. That is useful compatibility
+evidence, not a coding-quality grade. Its source narrows some F32 tensors
+to F16 and uses F16 intermediate matrix paths. F16 KV and identical GGUF
+files therefore do **not** establish the arithmetic parity required for
+Paracetamol's precision-preserving llama.cpp patches. No quality regression
+is demonstrated by these small checks, but no broad equivalence is either.
+Gufo remains unintegrated pending that separate decision and evaluation.
+
+#### Isolated retained-PM4 runtime trial
+
+The runtime experiment builds HIP and ROCr from
+[`pwilkin/rocm-systems`](https://github.com/pwilkin/rocm-systems/tree/7dda3ac6cfe6bbe0b7f08c23a67cfa118d8641a1)
+at `7dda3ac6cfe6bbe0b7f08c23a67cfa118d8641a1`, using the local toolbox recipe
+as a reference. Private libraries live only in the experimental image.
+The accepted `r48` llama.cpp binaries, model shards, F16 KV and matrix
+arithmetic are unchanged.
+
+All short arms set `GPU_MAX_HW_QUEUES=1`. The custom-runtime off/on arms both
+use `DEBUG_HIP_GRAPH_CLASSIC_PATH=0`, changing only
+`DEBUG_HIP_GRAPH_PM4`. Thus their comparison does not also change graph
+executor. All three pass the original populated-state fixture with NMSE 0,
+plus two 32K retrievals, cache reuse and cancellation/recovery.
+
+| Short generation arm | Total HTTP wall time, 768 output tokens |
+| --- | --- |
+| Stock runtime | 36.474 s |
+| Custom runtime, PM4 off | 35.599 s |
+| Custom runtime, PM4 on | 31.547 s |
+
+The on arm reduces wall time by 13.5% against stock and 11.4% against the
+same custom runtime with PM4 off. All nine fixed-generation outputs are
+byte-identical across the three arms. There is no short-prefill gain.
+Aggregate 32K prefill is 777.5, 773.6 and 766.7 tokens/s respectively.
+Repeating the stock short control after the long run gives 36.414 s, within
+0.2% of its initial result.
+
+The on arm also passes the 247,165-token retrieval, three fixed-generation
+continuations, fresh-request recovery, cache and cancellation checks. Cold
+retrieval takes 404.655 s, with 625.1 tokens/s reported prefill, versus
+415.957 s and 609.8 on the original baseline. It generates 195 rather than
+199 completion tokens, so wall time is not a fixed-output speed comparison.
+The last two fully warm 256-token calls total 23.972 s versus 26.988 s,
+11.2% less wall time. Those calls have matching cache-hit counts and output
+lengths. This long comparison also changes the hardware-queue setting from
+the original production baseline. Only the short three-arm comparison
+isolates the PM4 switch itself. Five-second host samples retain at least
+21.34 GiB available memory, without triggering the 4 GiB stop guard.
+
+The diagnostic run confirms `[hipGraph][PM4] retained 2924 dispatches in
+84233 dwords`, rather than inferring activation from an environment flag.
+Live process mappings also confirm the private HIP/ROCr libraries are
+loaded. Diagnostic logging is excluded from the timing table. This remains
+a small sequential screen, not a general model or runtime qualification.
+
+The reference recipe explicitly warns that managed allocation combined with
+retained PM4 corrupts its MTP context. This investigation therefore stays on
+Flash-Next's existing no-unified-memory, non-MTP path. It does not test or
+change the default dense Q8 MTP path. A custom runtime requires wider
+correctness, model and maintenance review before production adoption.
+
+The final kernel window contains no GPU fault, SVM failure, reset or OOM
+event. It contains the Python split-lock notices documented in the
+DwarfStar update below. All experiment containers are stopped and removed,
+and the acceptance host is left idle with its original host settings and main checkout.
+
+Raw requests, exact source diffs, build inputs, images, logs and results are
+retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261004-native-refresh/`.
+Raw corpus requests are private and must not be published with this summary.
+
 ### Fedora 44 Strix Halo DwarfStar `0aaea5a` update (2026-10-04)
 
 This update advances DwarfStar from

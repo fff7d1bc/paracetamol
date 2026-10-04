@@ -343,6 +343,17 @@ The [refresh acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llam
 contains the paired ROCm/Vulkan measurements, populated-context checks and
 hardware-coverage limits.
 
+The October 4 refresh attempt at `46847e61582097979f539595d893d83d8e1d1af1`
+is **held**, not the current production pin. Upstream replaced the QSA
+cache/indexer implementation and reduced indexer-score workspace. The
+rebased candidate fails the populated clear-and-restore logit gate even
+with upstream attention. Model-free operator tests and short API success
+are insufficient to accept it. The
+[native-engine trial record](hardware-acceptance.md#fedora-44-strix-halo-native-engine-trials-2026-10-04)
+preserves the failure, diagnostics and private source archive for the next
+attempt. Do not drop downstream safeguards or silently disable all graphs
+to make this refresh pass.
+
 The `r44` selection patch builds on the four earlier extractions. The graph
 already selected whole blocks, but its ordinary gather, sort, cast and
 validity operations still ran separately. The new kernel combines those
