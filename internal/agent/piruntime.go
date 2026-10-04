@@ -62,8 +62,8 @@ func LoadPiSource(root string) (PiSource, error) {
 		Dependencies map[string]string `json:"dependencies"`
 		Engines      map[string]string `json:"engines"`
 	}
-	if err := json.Unmarshal(packageJSON, &manifest); err != nil || len(manifest.Dependencies) != 1 || !exactVersion.MatchString(manifest.Dependencies[PiPackage]) {
-		return PiSource{}, fmt.Errorf("Pi package manifest must have one exact %s dependency", PiPackage)
+	if err := json.Unmarshal(packageJSON, &manifest); err != nil || len(manifest.Dependencies) != 2 || !exactVersion.MatchString(manifest.Dependencies[PiPackage]) || !exactVersion.MatchString(manifest.Dependencies["html-to-text"]) {
+		return PiSource{}, fmt.Errorf("Pi package manifest must pin exactly %s and html-to-text", PiPackage)
 	}
 	requirement := manifest.Engines["node"]
 	if !strings.HasPrefix(requirement, ">=") {
@@ -87,8 +87,13 @@ func LoadPiSource(root string) (PiSource, error) {
 		return PiSource{}, fmt.Errorf("Pi package lock is invalid")
 	}
 	version := manifest.Dependencies[PiPackage]
-	if lock.Packages[""].Dependencies[PiPackage] != version || lock.Packages["node_modules/"+PiPackage].Version != version {
+	if len(lock.Packages[""].Dependencies) != len(manifest.Dependencies) {
 		return PiSource{}, fmt.Errorf("Pi package lock does not pin the manifest")
+	}
+	for name, pinned := range manifest.Dependencies {
+		if lock.Packages[""].Dependencies[name] != pinned || lock.Packages["node_modules/"+name].Version != pinned {
+			return PiSource{}, fmt.Errorf("Pi package lock does not pin %s", name)
+		}
 	}
 	for path, metadata := range lock.Packages {
 		if path == "" {

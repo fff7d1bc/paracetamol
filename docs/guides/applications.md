@@ -659,6 +659,23 @@ automatic retry, compaction retry, or queued continuation, managed interactive
 sessions add a full-width `Worked for 2m 56s` divider. The divider remains in
 restored scrollback but does not enter the model context.
 
+An optional terminal notification fires at the same settled boundary. It is
+off by default and never runs a desktop command or opens the host D-Bus socket.
+Choose the protocol your terminal supports:
+
+```bash
+./paracetamol agent run pi -- --completion-notify osc777
+# Kitty
+./paracetamol agent run pi -- --completion-notify osc99
+# Terminal bell, whose sound or visual behavior depends on terminal settings
+./paracetamol agent run pi -- --completion-notify bell
+```
+
+`osc777` follows Pi's upstream notification example for terminals such as
+Ghostty and WezTerm. Terminal settings, SSH and multiplexers can suppress
+notifications. Print mode, RPC and redirected output never emit them.
+The message means Pi is ready for input, not that the task succeeded.
+
 Pi or Maki can run on a client host while the gateway runs on a different GPU
 host. A non-loopback `--listen` adds that publication while preserving the
 gateway's IPv4 loopback endpoint for clients on the GPU host. Publish only on
@@ -756,9 +773,9 @@ installed by `./paracetamol agent install pi`; it never searches `PATH` for
 another Pi. The repository's package manifest and lockfile pin the complete
 npm dependency tree, while system Node.js remains the only runtime. The
 installed tree is mounted read-only and kept separate from the generated
-`models.json`, Paracetamol's model-picker extension, and Pi's private managed
+`models.json`, Paracetamol's managed extensions, and Pi's private managed
 state. The model file uses Pi's `openai-completions` provider and lists the same
-reviewed llama.cpp presets and DwarfStar model. Both managed resources are
+reviewed llama.cpp presets and DwarfStar model. Managed resources are
 refreshed atomically on every launch. Pi's normal `~/.pi/agent` state is not
 read or modified. The launcher disables Pi's update checks and telemetry
 during managed sessions. It declines project `.pi` resources by default,
@@ -778,8 +795,8 @@ installation. A local `pi install -l` still requires explicit project approval
 before its project resources can load.
 
 Pi's `mcp` management commands also use this private state without needing a
-running inference gateway. No MCP server or web-search package is installed
-by default.
+running inference gateway. No MCP server is installed by default. The small
+managed web extension below uses direct HTTP requests and needs no MCP server.
 
 `bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes one
 executable provider description and a small generated `init.lua` inside
@@ -860,10 +877,55 @@ to run a real shell request:
 
 Pi's managed `--offline` setting disables automatic catalog refreshes and
 other background network activity. It does not block shell commands or
-extension requests. There is no built-in web-search tool in the managed
-configuration. `curl` can fetch a known URL, but scraping a search engine is
-not a dependable search API. DuckDuckGo HTML/Lite may return a bot challenge
-even when DNS and HTTPS work, and disabling the sandbox does not fix that.
+extension requests. Managed Pi includes `web_fetch` for known URLs and an
+optional Brave-backed `web_search`. Neither makes background requests or
+uses another model to summarize results.
+
+`web_fetch` extracts HTML to text while retaining code whitespace and link
+targets. It also accepts plain text, Markdown and JSON. Each result contains
+at most 8,000 text characters and provides `next_offset` for continuation.
+Positive offsets read the same snapshot, so pagination does not download the
+page repeatedly. Offset zero fetches a fresh page. Pi keeps four snapshots in
+memory, clears them on session start, and reports when a snapshot has expired.
+Responses are limited to 2 MiB and 30 seconds, with up to five redirects and
+200,000 extracted characters per snapshot. Larger extracted text is explicitly
+marked as clipped. This is not a browser or a PDF reader. It cannot solve
+JavaScript challenges, log in, or recover content the server did not send.
+
+To enable search, obtain a [Brave Search API key](https://api-dashboard.search.brave.com/)
+and save only the key in a private `brave-search.key` file. With the default
+data directory, its host path is:
+
+```text
+~/.local/share/paracetamol/apps/pi/sandbox/data/pi/agent/brave-search.key
+```
+
+Create it with your editor after launching managed Pi once, then run:
+
+```bash
+chmod 600 ~/.local/share/paracetamol/apps/pi/sandbox/data/pi/agent/brave-search.key
+```
+
+Restart Pi or use `/reload`. `/web` shows whether search is enabled and the
+key path as seen by Pi. Inside the sandbox, that same directory appears as
+`/run/paracetamol/home/.local/share/pi/agent`. A custom data directory changes
+the host prefix. Do not paste the key into chat or put it in command-line
+arguments. Paracetamol never overwrites this user-owned file. The key is used
+only in the Brave request header and is not sent when fetching result URLs.
+
+Without a valid key, `web_search` is not advertised to the model. With one,
+each explicit search call requests five results with bounded titles, snippets
+and URLs, plus an optional next page. Queries are sent to Brave and consume
+your API quota. Page fetches contact the destination sites directly without
+cookies or authentication. They have the same host-network reach as `curl`,
+including local services. This is not a new network security boundary.
+The model's file tools can read private Pi state, including this key, just as
+they can read its provider credentials. External text remains untrusted even
+after HTML extraction.
+
+Scraping a search engine is not a dependable substitute for the API.
+DuckDuckGo HTML/Lite may return a bot challenge even when DNS and HTTPS work,
+and disabling the sandbox does not fix that.
 
 The launcher refuses `/`, the host home directory, or another ancestor of the
 home as the writable scope. Start it from the repository you intend to expose.

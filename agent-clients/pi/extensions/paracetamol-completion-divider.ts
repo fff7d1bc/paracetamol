@@ -3,6 +3,12 @@ import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const ENTRY_TYPE = "paracetamol-completion-divider";
+const NOTIFICATIONS: Record<string, string> = {
+	off: "",
+	bell: "\x07",
+	osc777: "\x1b]777;notify;Pi;Ready for input\x07",
+	osc99: "\x1b]99;i=paracetamol:d=0;Pi\x1b\\\x1b]99;i=paracetamol:p=body;Ready for input\x1b\\",
+};
 
 interface CompletionData {
 	elapsedMilliseconds: number;
@@ -49,6 +55,12 @@ class CompletionDivider implements Component {
 
 export default function paracetamolCompletionDivider(pi: ExtensionAPI): void {
 	let startedAt: number | undefined;
+	let notification = "";
+	pi.registerFlag("completion-notify", {
+		type: "string",
+		default: "off",
+		description: "Terminal notification after Pi settles: off, bell, osc777, osc99",
+	});
 
 	pi.registerEntryRenderer<CompletionData>(
 		ENTRY_TYPE,
@@ -80,10 +92,19 @@ export default function paracetamolCompletionDivider(pi: ExtensionAPI): void {
 		const elapsedMilliseconds = performance.now() - startedAt;
 		startedAt = undefined;
 		pi.appendEntry<CompletionData>(ENTRY_TYPE, { elapsedMilliseconds });
+		// Only fixed terminal sequences, never model text or a project title.
+		// Do not emit control bytes in print/RPC output or a redirected stream.
+		if (notification && process.stdout.isTTY) process.stdout.write(notification);
 	});
 
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event, ctx) => {
 		startedAt = undefined;
+		const mode = pi.getFlag("completion-notify") ?? "off";
+		notification = typeof mode === "string" && Object.hasOwn(NOTIFICATIONS, mode)
+			? NOTIFICATIONS[mode] : "";
+		if (ctx.mode === "tui" && !(typeof mode === "string" && Object.hasOwn(NOTIFICATIONS, mode))) {
+			ctx.ui.notify("Invalid --completion-notify. Use off, bell, osc777 or osc99. Notifications disabled.", "warning");
+		}
 	});
 
 	pi.on("session_shutdown", () => {

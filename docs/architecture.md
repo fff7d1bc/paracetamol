@@ -902,6 +902,22 @@ elapsed-time marker to the transcript. Unlike `agent_end`, that boundary
 guarantees that no automatic retry, compaction retry, or queued continuation
 remains. The marker is a durable custom session entry, so restored scrollback
 retains it while the model context excludes it.
+An explicit `--completion-notify` Pi flag optionally emits a fixed terminal
+bell or OSC notification at that same boundary. It never includes model text,
+changes model context, emits outside an interactive TTY, or accesses D-Bus.
+
+The managed web extension registers bounded page fetching and, only when a
+valid private `brave-search.key` exists in the private agent directory, Brave
+web search. Its requests run within Pi's existing shared-network sandbox.
+The launcher supplies `PARACETAMOL_PI_RUNTIME` so HTML extraction resolves
+the pinned `html-to-text` dependency from the read-only managed npm tree,
+never project `node_modules`. There is no remote extraction service, extra
+model call or background crawler. Fetch continuation uses four bounded
+in-memory snapshots. API credentials remain user-owned private files and are
+never copied to page-fetch requests, provider URLs or tool output. They are
+not protected from Pi's own file tools. The normal launcher and evaluation
+adapter share the Pi environment constructor; frozen evaluations continue
+to disable all extensions.
 
 `internal/agent/models.go` owns reviewed coding-task sampling metadata for
 every maintained llama.cpp agent preset. Pi receives static fields as

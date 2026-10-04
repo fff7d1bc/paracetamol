@@ -9,6 +9,27 @@ permissions:
   contents: read
 
 jobs:
+  pi-extensions:
+    name: Managed Pi extensions
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.22.1'
+          package-manager-cache: false
+      - name: Install locked runtime without lifecycle scripts
+        run: |
+          mkdir -p build/pi-tests
+          cp agent-clients/pi/package.json agent-clients/pi/package-lock.json build/pi-tests/
+          npm ci --prefix build/pi-tests --cache build/npm-cache --ignore-scripts --no-audit --no-fund
+      - name: Test managed extensions without external services
+        run: make test-pi PI_RUNTIME="$PWD/build/pi-tests"
+
   tier-1:
     name: Go 1.26 and container resources
     runs-on: ubuntu-24.04
