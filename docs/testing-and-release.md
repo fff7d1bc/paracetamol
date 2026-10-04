@@ -42,6 +42,26 @@ CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
+Managed Pi extensions have a separate Node.js test suite so the normal Go
+controller checks still work without Node or npm. Install the reviewed Pi
+runtime, then use the absolute `Runtime` path printed by the installer:
+
+```bash
+make test-pi PI_RUNTIME=/absolute/path/to/managed/runtime
+```
+
+Run this suite for extension or managed Pi dependency changes. It tests
+notification settlement and output isolation, HTML extraction, bounded
+pagination, key-file safety, provider errors, redirects and cancellation.
+The dedicated CI job installs the same lockfile without lifecycle scripts
+into `build/` and runs these tests. It never contacts a search API.
+For live acceptance, fetch one public page through sandboxed Pi on an
+inference host. Verify the tool result, not only the final model answer.
+With a locally configured Brave key, also make one explicit search request.
+Without a key, report that live search acceptance remains untested rather
+than treating provider fixtures as a live result. For notifications, exercise
+a real TUI and confirm emission only at settlement and silence in print/RPC.
+
 For a Go or Makefile change, also force the ordinary checkout binary through
 its atomic publication path rather than relying on an older incremental
 artifact:

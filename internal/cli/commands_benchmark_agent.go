@@ -341,7 +341,7 @@ func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRunti
 	if _, err := agent.PreparePiState(plan, dataRoot); err != nil {
 		return evaluation.HarnessResult{}, err
 	}
-	child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0", "PI_OFFLINE": "1", "TERM": "dumb", "GIT_AUTHOR_NAME": identity.DisplayName + " Evaluation", "GIT_AUTHOR_EMAIL": "evaluation@invalid.local"}
+	child := agent.PiEnvironment(map[string]string{"TERM": "dumb", "GIT_AUTHOR_NAME": identity.DisplayName + " Evaluation", "GIT_AUTHOR_EMAIL": "evaluation@invalid.local"}, filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), piRuntime.Root, true)
 	readOnly := []agent.Mount{{Source: piRuntime.Root, Destination: piRuntime.Root}}
 	if task.Toolchain == "go" {
 		readOnly = append(readOnly, agent.Mount{Source: filepath.Join(evaluationRoot, "cache", "go-mod"), Destination: filepath.Join(agent.SandboxRuntime, "go-mod")})

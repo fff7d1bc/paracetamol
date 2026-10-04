@@ -163,15 +163,12 @@ func (app *App) agentPi(args []string) error {
 		return err
 	}
 	command := plan.Command
-	environment := agent.PiEnvironment(app.Environment, agentDir, plan.Mode == "session")
+	environment := agent.PiEnvironment(app.Environment, agentDir, plan.RuntimeRoot, plan.Mode == "session")
 	if plan.Remote {
 		app.writeAgentRemoteGateway("Pi", plan.Endpoint, plan.Authenticated)
 	}
 	if *sandbox {
-		child := map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
-		if plan.Mode == "session" {
-			child["PI_OFFLINE"] = "1"
-		}
+		child := agent.PiEnvironment(nil, filepath.Join(agent.SandboxHome, ".local", "share", "pi", "agent"), plan.RuntimeRoot, plan.Mode == "session")
 		sandboxPlan, err := agent.CreateSandboxPlan(app.Context, app.Runner, command, dataRoot, mustWorkingDirectory(), "pi", child, app.Environment, []agent.Mount{{Source: plan.RuntimeRoot, Destination: plan.RuntimeRoot}})
 		if err != nil {
 			return err

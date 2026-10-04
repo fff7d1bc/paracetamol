@@ -261,6 +261,75 @@ func TestPinnedPiRuntimeSource(t *testing.T) {
 	}
 }
 
+func TestPiRuntimeRejectsUnpinnedExtractionDependency(t *testing.T) {
+	source, err := LoadPiSource(filepath.Join(projectRoot(t), "agent-clients", "pi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct{ name, manifest, lock string }{
+		{"floating", strings.Replace(string(source.PackageJSON), `"html-to-text": "10.0.1"`, `"html-to-text": "^10.0.1"`, 1), string(source.PackageLock)},
+		{"mismatched-lock", string(source.PackageJSON), strings.Replace(string(source.PackageLock), `"html-to-text": "10.0.1"`, `"html-to-text": "10.0.0"`, 1)},
+		{"extra-dependency", strings.Replace(string(source.PackageJSON), `"html-to-text": "10.0.1"`, `"html-to-text": "10.0.1", "other": "1.0.0"`, 1), string(source.PackageLock)},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(item.manifest), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "package-lock.json"), []byte(item.lock), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadPiSource(root); err == nil {
+				t.Fatal("accepted an unreviewed dependency graph")
+			}
+		})
+	}
+}
+
+func TestPiManagedExtensionsAndRuntimeEnvironment(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := CreatePiPlanForModels(context.Background(), managed, projectRoot(t), "http://127.0.0.1:7455/v1", nil, PiRuntime{Root: "/reviewed/runtime", Node: "/node", Entrypoint: "/pi"}, []string{RecommendedModel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataRoot := t.TempDir()
+	dir, err := PreparePiState(plan, dataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, expected := range map[string][]byte{"paracetamol-web.ts": plan.WebTools, "paracetamol-completion-divider.ts": plan.CompletionDivider, "paracetamol-model-picker.ts": plan.ModelPicker} {
+		path := filepath.Join(dir, "extensions", name)
+		actual, err := os.ReadFile(path)
+		if err != nil || len(actual) == 0 || !bytes.Equal(actual, expected) {
+			t.Fatalf("extension %s not installed: %v", name, err)
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("extension %s is not private: %v", name, err)
+		}
+	}
+	keyPath := filepath.Join(dir, "brave-search.key")
+	if err := os.WriteFile(keyPath, []byte("test-private-key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PreparePiState(plan, dataRoot); err != nil {
+		t.Fatal(err)
+	}
+	if key, err := os.ReadFile(keyPath); err != nil || string(key) != "test-private-key" {
+		t.Fatal("relaunch changed user-owned search credentials")
+	}
+	env := PiEnvironment(nil, dir, plan.RuntimeRoot, true)
+	if len(env) != 5 || env["PARACETAMOL_PI_RUNTIME"] != plan.RuntimeRoot || env["PI_OFFLINE"] != "1" {
+		t.Fatalf("private environment=%v", env)
+	}
+	if _, exists := PiEnvironment(env, dir, plan.RuntimeRoot, false)["PI_OFFLINE"]; exists {
+		t.Fatal("management mode kept session offline setting")
+	}
+}
+
 func TestPiConfigExposesOnlyAgentModels(t *testing.T) {
 	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
 	if err != nil {

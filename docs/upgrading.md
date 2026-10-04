@@ -85,6 +85,12 @@ license fields required by the immutable-metadata validator. Do not weaken
 that check or guess licenses to compensate. Installing an already reviewed
 lockfile does not require updating the host's npm.
 
+The manifest also pins `html-to-text` for the managed web extension. The
+loader accepts only these two reviewed direct dependencies and requires the
+lockfile to match both. HTML extraction is local and does not use an external
+service. Run `make test-pi PI_RUNTIME=/absolute/runtime/path` after changing
+either dependency, in addition to the normal launcher and acceptance checks.
+
 Review the complete lockfile change, including package versions, registry
 origins, integrity values, licenses, engine requirements, and native optional
 dependencies. Update `THIRD_PARTY_NOTICES.md`, user requirements, and exact Pi

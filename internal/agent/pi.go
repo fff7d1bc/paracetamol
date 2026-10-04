@@ -26,6 +26,7 @@ type PiPlan struct {
 	Config            []byte
 	ModelPicker       []byte
 	CompletionDivider []byte
+	WebTools          []byte
 	Mode              string
 	Remote            bool
 	Authenticated     bool
@@ -155,6 +156,10 @@ func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 	if err != nil {
 		return PiPlan{}, err
 	}
+	plan.WebTools, err = regularFile(filepath.Join(projectRoot, "agent-clients", "pi", "extensions", "paracetamol-web.ts"), "Pi web extension")
+	if err != nil {
+		return PiPlan{}, err
+	}
 	if mode != "session" {
 		plan.Command = append(prefix, arguments...)
 		return plan, nil
@@ -184,7 +189,7 @@ func PreparePiState(plan PiPlan, dataRoot string) (string, error) {
 	if err := storage.ValidateManagedParent(filepath.Join(agentDir, "models.json"), paths.Root, dataRoot, "Pi model config"); err != nil {
 		return "", err
 	}
-	for path, contents := range map[string][]byte{filepath.Join(agentDir, "models.json"): plan.Config, filepath.Join(extensions, "paracetamol-model-picker.ts"): plan.ModelPicker, filepath.Join(extensions, "paracetamol-completion-divider.ts"): plan.CompletionDivider} {
+	for path, contents := range map[string][]byte{filepath.Join(agentDir, "models.json"): plan.Config, filepath.Join(extensions, "paracetamol-model-picker.ts"): plan.ModelPicker, filepath.Join(extensions, "paracetamol-completion-divider.ts"): plan.CompletionDivider, filepath.Join(extensions, "paracetamol-web.ts"): plan.WebTools} {
 		if err := writeAtomic(path, contents, 0o600, false); err != nil {
 			return "", err
 		}
@@ -192,9 +197,10 @@ func PreparePiState(plan PiPlan, dataRoot string) (string, error) {
 	return agentDir, nil
 }
 
-func PiEnvironment(base map[string]string, agentDir string, offline bool) map[string]string {
+func PiEnvironment(base map[string]string, agentDir, runtimeRoot string, offline bool) map[string]string {
 	result := cloneEnvironment(base)
 	result["PI_CODING_AGENT_DIR"] = agentDir
+	result["PARACETAMOL_PI_RUNTIME"] = runtimeRoot
 	result["PI_SKIP_VERSION_CHECK"] = "1"
 	result["PI_TELEMETRY"] = "0"
 	if offline {

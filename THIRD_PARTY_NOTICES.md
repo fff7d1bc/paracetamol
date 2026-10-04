@@ -106,6 +106,11 @@ revisions recorded in `catalog/catalog.json`.
   the package and its transitive npm tree with registry integrity values in
   `agent-clients/pi/package-lock.json`; it does not redistribute the installed
   packages. Their package metadata remains in the managed runtime tree.
+- The managed Pi web extension uses MIT-licensed `html-to-text` 10.0.1 for
+  local HTML extraction. Its complete dependency tree, including the
+  htmlparser2 parser, is pinned with registry integrity and license metadata
+  in the same npm lockfile. Brave Search is an optional external API, not an
+  installed third-party executable.
 - PyTorch is BSD-3-Clause. ROCm components have component-specific licenses
   supplied with AMD's packages. Python packages retain the license metadata
   installed with their distributions.
