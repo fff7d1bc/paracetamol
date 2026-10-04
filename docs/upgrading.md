@@ -80,6 +80,11 @@ npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 cd ../..
 ```
 
+Use npm 11 or newer to generate the lockfile. Older npm releases can omit
+license fields required by the immutable-metadata validator. Do not weaken
+that check or guess licenses to compensate. Installing an already reviewed
+lockfile does not require updating the host's npm.
+
 Review the complete lockfile change, including package versions, registry
 origins, integrity values, licenses, engine requirements, and native optional
 dependencies. Update `THIRD_PARTY_NOTICES.md`, user requirements, and exact Pi

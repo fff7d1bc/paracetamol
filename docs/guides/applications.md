@@ -602,7 +602,7 @@ limit counts model children and is not a memory-fit calculation. Use
 fit; otherwise the one-model default unloads the idle child before loading a
 different preset.
 
-Paracetamol manages its own pinned Pi runtime. It requires Node.js 22.19 or
+Paracetamol manages its own pinned Pi 1.0.2 runtime. It requires Node.js 22.19 or
 newer and npm from the host distribution, then installs the repository-locked
 npm tree below the selected Paracetamol data directory:
 
@@ -613,6 +613,12 @@ npm tree below the selected Paracetamol data directory:
 The command is idempotent. Rerun it after pulling a change to
 `agent-clients/pi/package-lock.json`; an ordinary launch never downloads or
 repairs the runtime.
+
+Pi 1.0 uses fullscreen by default. To retain normal terminal scrollback,
+set `tuiMode` to `regular` in Pi's `/settings` or pass
+`./paracetamol agent run pi -- --tui-mode regular`. The managed family picker
+and completion divider remain enabled. Model selection and server-owned
+sampling defaults are unchanged.
 
 Maki is distributed separately. Put its `maki` executable on `PATH` before
 using the Paracetamol launcher.
@@ -771,6 +777,10 @@ writable project and host network inside the sandbox, so review them before
 installation. A local `pi install -l` still requires explicit project approval
 before its project resources can load.
 
+Pi's `mcp` management commands also use this private state without needing a
+running inference gateway. No MCP server or web-search package is installed
+by default.
+
 `bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes one
 executable provider description and a small generated `init.lua` inside
 Maki's Paracetamol-owned XDG directories. The provider inherits Maki's native
@@ -840,6 +850,20 @@ the otherwise private `/run`, the launcher restores only that exact resolver
 target as a read-only bind so DNS continues to follow the host configuration.
 When Avahi is active, the launcher also binds only its exact Unix socket so
 NSS can resolve LAN `.local` names without exposing the rest of host `/run`.
+
+Web fetching does not require `--no-sandbox`. For example, enter this in Pi
+to run a real shell request:
+
+```text
+!curl --fail --show-error --location --max-time 20 https://example.com/
+```
+
+Pi's managed `--offline` setting disables automatic catalog refreshes and
+other background network activity. It does not block shell commands or
+extension requests. There is no built-in web-search tool in the managed
+configuration. `curl` can fetch a known URL, but scraping a search engine is
+not a dependable search API. DuckDuckGo HTML/Lite may return a bot challenge
+even when DNS and HTTPS work, and disabling the sandbox does not fix that.
 
 The launcher refuses `/`, the host home directory, or another ancestor of the
 home as the writable scope. Start it from the repository you intend to expose.

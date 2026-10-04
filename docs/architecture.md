@@ -920,7 +920,7 @@ recording the resolved tuple.
 
 Pi recognizes package and configuration commands only when the command is its
 first argument. The launcher classifies `install`, `remove`, `uninstall`,
-`update`, `list`, `config`, and `auth` before adding session defaults, runs
+`update`, `list`, `config`, `auth`, and `mcp` before adding session defaults, runs
 them online when requested, and points them at the same private state used by
 managed sessions. User-installed package resources therefore load on later
 launches without exposing Pi's ordinary host state. Informational `--help` and
