@@ -84,11 +84,12 @@ revisions recorded in `catalog/catalog.json`.
   singleton-set check reduces CPU prefix-validation overhead without caching
   or weakening sequence-ownership checks.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
-  commit `6289c516273979173abbc062209a81dd3706b804`. The final image keeps only
+  commit `0aaea5a238fb41a35106a551e73c8409dfb751ac`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice
-  includes the vendored ggml kernel authors. The separately bundled Iris image
-  decoder's MIT notice is retained as `iris.LICENSE` alongside the DwarfStar
-  license under `/usr/local/share/licenses/paracetamol/dwarfstar`.
+  includes the vendored ggml kernel authors and DeepSeek. The separately
+  bundled Iris image decoder's MIT notice is retained as `iris.LICENSE`
+  alongside the DwarfStar license under
+  `/usr/local/share/licenses/paracetamol/dwarfstar`.
   The local build also carries the MIT-licensed GLM tool-argument correction
   from upstream PR 1016 at commit
   `9db96f0e96928e2245664b83e0498145e86a4c25`. It uses the request's declared

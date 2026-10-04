@@ -889,6 +889,25 @@ The [Strix Halo acceptance record](hardware-acceptance.md#fedora-44-strix-halo-d
 separates ordinary and DSpark performance from protocol checks and deferred
 hardware coverage. This update does not add an unreleased model family.
 
+The 2026-10-04 update to `0aaea5a238fb41a35106a551e73c8409dfb751ac`
+reviews the next 80 upstream commits. The ROCm kernel files are unchanged,
+while shared server, cache routing, reasoning and tool-rendering code moves
+forward. The WMMA fallback still applies unchanged. PR 1016 remains open at
+the same head, so the GLM type correction is rebased rather than removed.
+Upstream now retains per-property schemas for Qwen, but does not own the GLM
+correction. The shared syntax dispatcher must pass the request's schema
+orders through to both parsers. Upstream's tool replay test helper already
+forwards those schemas and no longer needs a patch hunk. The build-time
+model-free server test gate is retained.
+
+This source includes Qwen3.8 Flash-Next and DeepSeek V4.1 implementations,
+but explicitly refuses those models on ROCm. Their Metal/CUDA support does
+not expand Paracetamol's managed DwarfStar model set. The existing DeepSeek
+V4 Flash 0731 artifacts, DSpark opt-in, temperature-zero DSpark contract and
+three-binary image remain unchanged. See the
+[October 4 acceptance record](hardware-acceptance.md#fedora-44-strix-halo-dwarfstar-0aaea5a-update-2026-10-04)
+for measured coverage and the other-architecture handoff.
+
 Arbitrary MTP support, multi-GPU, distributed execution, SSD streaming,
 evaluation, and the upstream native agent remain outside this procedure until
 Paracetamol deliberately adopts one of those surfaces.

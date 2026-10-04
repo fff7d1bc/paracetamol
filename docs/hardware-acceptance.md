@@ -26,6 +26,83 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo DwarfStar `0aaea5a` update (2026-10-04)
+
+This update advances DwarfStar from
+`6289c516273979173abbc062209a81dd3706b804` to
+`0aaea5a238fb41a35106a551e73c8409dfb751ac`, an 80-commit range, on top of
+Paracetamol `757ba19`. The delivery is identified by this section's
+introducing commit. ROCm 10.0, Ubuntu 26.04, managed model bytes, context
+defaults and DSpark policy are unchanged.
+
+The acceptance host remains on Fedora 44, kernel `7.1.7-200.fc44.x86_64`, Ryzen AI Max+ 395
+`gfx1151`, `/dev/dri/renderD128`, 128 GB LPDDR5X-8000 and its existing
+112 GiB GPU allowance. Platform profile is `balanced` and CPU EPP is
+`balance_performance`. No host setting changes or overlapping GPU workloads
+are part of these measurements.
+
+The final `--no-layer-cache` build produces
+`localhost/paracetamol:dwarfstar-ubuntu26.04-rocm10.0-0aaea5a-r11`, image ID
+`a6387f5dfdcf0093781486021a733387080d5d48444f79f3c34832084fe009d7`.
+Runtime dependency closure, `pip check`, retained-binary help, all four HIP
+code objects and minimal-image checks pass. The MIT and Iris notices remain
+in the image. Compared with the measured candidate, the CLI and benchmark
+are byte-identical. The server matches after stripping debug/build-ID data
+following a whitespace-only patch cleanup. The final tagged image is tested
+again with GPU acceptance and the client/gateway checks below.
+
+The ordinary and DSpark servers both pass at the managed 131072-token
+ceiling. Checks cover thinking off/on, a 6,618-token retrieval input, nested
+typed tool arguments and tool-result replay, streaming, Responses,
+conversation-cache reuse and cancellation followed by a correct fresh
+answer. This is a 128K allocation test, not a 128K populated conversation.
+The automated acceptance case and ordinary/DSpark CLI checks also pass.
+
+The short performance screen uses three sequential requests with the same
+33-token prompt, temperature zero, seed 42, no prompt-cache hits and 256
+generated tokens each. The partial Go worker-pool outputs hold generation
+length fixed. They are not graded coding tasks.
+
+| Path | Previous total HTTP wall time | Updated total HTTP wall time |
+| --- | --- | --- |
+| Ordinary, 768 output tokens | 51.786 s | 51.520 s |
+| DSpark, 768 output tokens | 50.241 s | 50.263 s |
+
+There is no meaningful speed change in this screen. DSpark remains opt-in.
+The ROCm kernel files themselves are unchanged. Shared server, cache routing,
+reasoning and tool-rendering code is updated. The gfx11 WMMA fallback still
+applies unchanged, and the GLM typed-argument patch is rebased onto the new
+shared parser signatures. Upstream's model-free server tests and additional
+memory, session-state, sampling, TCP failure and image-decoding tests pass.
+
+Real Pi and Maki runs through the gateway both execute file-read and shell
+tools and return the two actual fixture values. Pi's off run emits no
+reasoning. The gateway switches from the unchanged dense Q8 llama.cpp model
+to DwarfStar and back successfully. It starts unloaded, publishes the backend
+only on an ephemeral loopback port, retains the read-only container and
+removes its exact owned container on exit.
+
+Host Tier 1 checks and a forced normal Go build pass. The kernel journal
+through the DwarfStar checks has no GPU fault, reset, SVM or OOM event. It
+does contain Python split-lock notices during the unchanged PyTorch preflight
+probe. Those notices are not silently counted as a clean kernel journal.
+
+This does not add Flash-Next or DeepSeek V4.1 to the DwarfStar catalog. The
+[selected upstream source](https://github.com/antirez/ds4/blob/0aaea5a238fb41a35106a551e73c8409dfb751ac/ds4.c)
+explicitly rejects both on ROCm, despite its Metal/CUDA implementations.
+
+`gfx1150`, `gfx1200` and `gfx1201` inference remains `BLOCKED` for this
+update because representative memory-capable hardware is unavailable.
+The [previous DwarfStar handoff](#fedora-44-strix-halo-dwarfstar-6289c51-update-2026-09-09)
+still applies with the new source and image. Four compiled device targets
+do not constitute four hardware passes.
+
+Source identities, build output, raw requests, client events, runtime
+inspection and kernel logs are retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261004-native-refresh/`.
+The same archive separates the unaccepted llama.cpp rebase and Gufo/PM4
+experiments from this accepted DwarfStar update.
+
 ### Managed Pi 1.0.2 and sandbox networking (2026-10-04)
 
 Client acceptance is `PASS` on the acceptance host with the unchanged `r48` llama.cpp image
