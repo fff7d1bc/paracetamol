@@ -101,7 +101,7 @@ revisions recorded in `catalog/catalog.json`.
   optional DSpark support GGUF comes from the same MIT-licensed repository at
   revision `86bb38ce2ba7a98ab0e550359fec5f48859dc723` and is independently pinned
   by exact size and SHA-256.
-- Pi Coding Agent 0.84.2 is installed on explicit request from the
+- Pi Coding Agent 1.0.2 is installed on explicit request from the
   MIT-licensed `@earendil-works/pi-coding-agent` npm package. Paracetamol pins
   the package and its transitive npm tree with registry integrity values in
   `agent-clients/pi/package-lock.json`; it does not redistribute the installed

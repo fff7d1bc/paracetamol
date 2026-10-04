@@ -104,7 +104,7 @@ func TestClientKeyStaysInPrivateProviderFiles(t *testing.T) {
 }
 
 func TestClientModeKeepsManagementIndependentOfGatewayCredentials(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"install", "plugin"}, {"update", "--extensions"}, {"auth"}} {
+	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"install", "plugin"}, {"update", "--extensions"}, {"auth"}, {"mcp", "list"}} {
 		if PiMode(args) == "session" {
 			t.Fatalf("Pi mode for %v", args)
 		}
@@ -396,12 +396,14 @@ func TestPiManagementDoesNotContactGateway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:1/v1", []string{"list"}, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.Mode != "management" || len(plan.Config) == 0 {
-		t.Fatalf("plan=%#v", plan)
+	for _, args := range [][]string{{"list"}, {"mcp", "list"}, {"mcp", "add", "search", "--url", "http://127.0.0.1:9999/mcp"}} {
+		plan, err := CreatePiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:1/v1", args, PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Mode != "management" || len(plan.Config) == 0 {
+			t.Fatalf("plan=%#v", plan)
+		}
 	}
 }
 

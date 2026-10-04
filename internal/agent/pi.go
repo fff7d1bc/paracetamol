@@ -95,7 +95,7 @@ func PiMode(arguments []string) string {
 	if len(arguments) > 0 && contains([]string{"--help", "-h", "--version", "-v"}, arguments[0]) {
 		return "passthrough"
 	}
-	if len(arguments) > 0 && contains([]string{"install", "remove", "uninstall", "update", "list", "config", "auth"}, arguments[0]) {
+	if len(arguments) > 0 && contains([]string{"install", "remove", "uninstall", "update", "list", "config", "auth", "mcp"}, arguments[0]) {
 		return "management"
 	}
 	return "session"

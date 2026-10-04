@@ -26,6 +26,37 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Managed Pi 1.0.2 and sandbox networking (2026-10-04)
+
+Client acceptance is `PASS` on the acceptance host with the unchanged `r48` llama.cpp image
+and managed model files. Pi advances from 0.84.2 to 1.0.2, with all 146 npm
+packages pinned by registry integrity and license metadata. Installation
+passes on the development host's Node.js 22.22.1 and the acceptance host's Node.js 24.18.0 without package
+lifecycle scripts. No host package or inference setting changes.
+
+Ten live managed-Pi runs cover Qwen3.8 dense Q8 MTP at off, low, medium and
+xhigh, Qwen3.6 dense Q8 MTP at off and high, and Muse DFlash 256K at low,
+medium, high and xhigh. Captured requests retain the correct native reasoning
+fields. Qwen requests omit sampling overrides, leaving the existing
+server-side mode-aware defaults authoritative. Both off cases contain no
+reasoning. Every run executes real file-read and shell calls successfully.
+
+The Qwen3.8 off run also fetches an HTTPS page through `curl` inside the
+ordinary sandbox. Interactive `!curl` works too. Separate comparisons on both
+hosts get HTTP 200 inside and outside the exact managed sandbox. DuckDuckGo
+HTML and Lite instead return HTTP 202 bot challenges in both environments.
+Those failures are not evidence that the sandbox blocks networking.
+
+The fullscreen UI retains family-grouped model selection, the immediate
+reasoning selector and the settled-run completion divider. The sandbox hides
+the host SSH directory and GPU device while keeping its project and private
+state writable. No sandbox tier, search service or plugin is added.
+
+These are client integration checks, not a model-performance comparison or
+new GPU-architecture acceptance. Commands, raw requests, Pi events and
+network comparisons are retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261004-pi-refresh/`.
+
 ### Fedora 44 Strix Halo router cancellation (2026-10-01)
 
 Router cancellation is `PASS` on the acceptance host's `gfx1151`. The accepted change adds
