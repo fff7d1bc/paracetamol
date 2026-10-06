@@ -323,11 +323,25 @@ compact Qwen4exp graph still changes shape when it falls back to non-causal
 attention, so its patch retains a narrowly scoped reserve on that transition.
 `applications/llama-cpp/test-qwen4exp-state.cpp` is a hardware acceptance
 fixture for this boundary. It populates more than 4K tokens, seeds derived
-keys, switches causal mode and checks logits after restore and clear. Compile
+keys, switches causal mode and checks logits after restore and clear. Its
+`--state-smoke` variant isolates clear/restore without a causal transition or
+speculative decoding. Run that
+[fast state screen](testing-and-release.md#fast-flash-next-state-screen)
+before the larger update matrix. Compile
 it against the matching patched source and libraries, then run it on the
 managed Flash-Next model with the normal direct-reader ROCm policy and all
 three QSA graph, kernel and cache switches enabled. It is not an image-build
 or CPU-startup substitute for inference acceptance.
+
+The October 6 isolation follow-up changes the interpretation of the refresh
+hold. Unpatched `d7a695ef679138c13d86359b84c1731d36213d32` passes with
+resident embeddings. Adding only the explicit reader reproduces the logit
+failure, while recreating HIP executable graphs on recapture clears the
+bounded test without disabling ordinary replay. This is a reader/runtime
+interaction, not evidence that MTP or every new upstream build is broken.
+The candidate workaround remains experimental. Follow the
+[isolation record](hardware-acceptance.md#fedora-44-strix-halo-flash-next-state-isolation-2026-10-06)
+and complete the remaining acceptance before changing the production pin.
 
 The upstream review also distinguishes closed proposals from merged fixes.
 [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863) and

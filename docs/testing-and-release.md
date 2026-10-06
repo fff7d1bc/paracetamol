@@ -583,6 +583,51 @@ a faster unrelated architecture merely because it is convenient.
 
 Do not treat one successful tiny workflow as acceptance of every model family.
 
+#### Fast Flash-Next state screen
+
+Before a large llama.cpp refresh matrix, run
+`applications/llama-cpp/test-qwen4exp-state.cpp` with `--state-smoke`.
+It prefills 4096 deterministic tokens, decodes two more, saves sequence state
+and compares the next token's full logits after ordinary restore and three
+clear-and-restore cycles. It uses no sampler, speculative decoder, harness,
+HTTP service or causal-mode transition. The default without `--state-smoke`
+retains the causal-transition regression test.
+
+Compile the fixture in the matching llama.cpp builder, against that build's
+headers and libraries. Do not reuse a fixture executable across different
+patch stacks. `common_params` has no stable ABI. Keep the resulting executable
+below the checkout's ignored `build/` tree and bind it read-only into the
+corresponding runtime image. Use the normal rootless, read-only, network-none
+GPU confinement and only the selected render node.
+
+Inside that runtime, the direct-reader invocation is
+
+```sh
+env -u GGML_CUDA_ENABLE_UNIFIED_MEMORY /opt/probe/test-qwen4exp-state \
+  --state-smoke --model /models/FIRST_FLASH_NEXT_SHARD.gguf \
+  --device ROCm0 --gpu-layers 999 --flash-attn on \
+  --ctx-size 8192 --batch-size 2048 --ubatch-size 2048 \
+  --cache-type-k f16 --cache-type-v f16 --load-mode none \
+  --lazy-mode on-direct --override-tensor per_layer_token_embd.weight=CPU \
+  --no-host --fit off
+```
+
+Set the three QSA switches to `1` when testing the accepted compact-graph
+stack. Leave them unset for upstream attention. The fixture prints those
+switches and the graph-disable overrides rather than requiring downstream
+features, so it can also test unpatched upstream.
+
+For an unpatched control, replace `--lazy-mode on-direct` with
+`--lazy-mode off` and check available memory first. This makes the embedding
+table resident and is not the managed long-context policy. On the October 6
+Strix Halo screen it reached about 109 GiB of used host memory at 8K context.
+Do not substitute mmap for this control without a separate residency check.
+
+Any nonfinite logit, top-1 mismatch or normalized squared error above `1e-6`
+fails the screen. Load time and test time are printed separately. A passing
+screen is permission to continue acceptance, not evidence of long-context
+quality, speculative correctness or a production-ready source update.
+
 ## Release checklist
 
 Paracetamol does not currently publish prebuilt images, so “release” means a
