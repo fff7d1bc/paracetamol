@@ -354,6 +354,29 @@ preserves the failure, diagnostics and private source archive for the next
 attempt. Do not drop downstream safeguards or silently disable all graphs
 to make this refresh pass.
 
+The October 6 retry at `6753a033f058fbf778d282556ed9b16c78de7c71`
+is also **held**. It includes the newer pooled-cache scatter and graph-shape
+fixes, but the eight-patch screening build still changes logits after
+clear-and-restore with HIP graphs enabled. Disabling graphs passes the
+fixture and remains a diagnostic, not an accepted workaround. See the
+[retry record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-retry-2026-10-06).
+
+Flash-Next MTP is now upstream through
+[PR 29761](https://github.com/ggml-org/llama.cpp/pull/29761), merged on
+October 1. It supersedes the closed, unmerged PR 28243. At Unsloth revision
+`766911a6b7369840a91dbcd95f9f997acaab6cd6`, all four managed UD-Q4_K_XL
+target shards still have their existing sizes and hashes. Only the three
+self-contained MTP files changed, with a duplicate Q8 head also added at the
+repository root. The shared heads did not change. Do not follow the stale
+MTP README's fork-only requirement or shared-head recommendation as evidence
+of current mainline compatibility.
+
+The candidate self-contained Q8 head has a corrected draft-layer compression
+ratio in its GGUF metadata. Header inspection is not inference acceptance.
+Resolve the runtime restore failure before downloading and accepting that
+draft, measuring MTP at populated context, or changing the catalog. The
+existing target GGUFs do not need a new pin or download for this refresh.
+
 The `r44` selection patch builds on the four earlier extractions. The graph
 already selected whole blocks, but its ordinary gather, sort, cast and
 validity operations still ran separately. The new kernel combines those
