@@ -26,6 +26,83 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo Flash-Next state isolation (2026-10-06)
+
+**REPRODUCED AND NARROWED.** The failure is not sufficient evidence of a
+general upstream regression. Current upstream passes this test with resident
+embeddings. Adding only Paracetamol's explicit embedding reader reproduces
+the failure. A small experimental HIP graph-update workaround clears it.
+MTP is absent throughout, so disabling MTP would not address this reproducer.
+The production pin and `r48` image remain unchanged pending full acceptance.
+
+The test uses the same Fedora 44 `gfx1151` host, kernel
+`7.1.7-200.fc44.x86_64`, ROCm 10.0, 128 GB LPDDR5X-8000, 112 GiB GPU
+allowance and balanced power policy as the earlier retry. No host tuning,
+GGUF change or download is involved. The model is the managed Unsloth
+Flash-Next UD-Q4_K_XL, with 8K context, F16 K/V, batch and ubatch 2048,
+full GPU layer offload and the embedding table assigned to CPU.
+
+The maintained fixture now has a
+[`--state-smoke` mode](testing-and-release.md#fast-flash-next-state-screen).
+It populates 4098 deterministic tokens, saves the sequence, obtains reference
+logits for one more token, restores once normally, then clears and restores
+three times. There is no sampler, harness, router or causal-mode switch.
+The failure needs none of those extra variables. Explicit synchronization
+before clearing does not remove it.
+
+| Source and path | Ordinary restore | Three clear/restore cycles |
+| --- | --- | --- |
+| Accepted `2090f60`, all production patches and direct reader | NMSE 0 | NMSE 0 throughout |
+| Eight-patch `6753a03`, direct reader | NMSE 0 | FAIL, NMSE 0.0021881 to 0.0087478 |
+| Eight-patch `6753a03`, resident embeddings | NMSE 0 | NMSE 0 throughout |
+| Unpatched `d7a695e`, resident embeddings | NMSE 0 | NMSE 0 throughout |
+| `d7a695e` with only the direct-reader patch | NMSE 0 | Same failure as the eight-patch build |
+| Reader-only build with llama graph reuse disabled | NMSE 0 | Same failure |
+| Reader-only build with fresh HIP executables on graph recapture | NMSE 0 | NMSE 0 throughout |
+
+The full current-upstream pin is
+`d7a695ef679138c13d86359b84c1731d36213d32`. The pure-upstream and
+reader-only images are separate from the managed image. Both retain the
+same locally built ROCm runtime. Removing the other patches rules them out
+as necessary causes of this reproduction, not as universally correct.
+
+With the maintained fixture, the reader-only failure takes 35.4 seconds
+including a 23.8-second load. The test itself takes 11.6 seconds. The
+accepted production control takes 38.5 seconds including loading and 5.7
+seconds for the test. Loader/page-cache variation matters, so these numbers
+describe reproducer cost rather than an inference-speed comparison.
+The unpatched resident control takes 83.2 seconds in the initial run and
+reaches about 109 GiB of used host memory. It completes without the mmap
+resident-limit failure seen in the earlier retry. This is a safe short
+control on this host, not a replacement for SSD streaming at 256K.
+
+The experimental workaround destroys and reinstantiates the executable
+after a HIP graph is recaptured instead of calling `hipGraphExecUpdate`.
+Unchanged graphs still replay normally. It changes no weights, KV precision,
+samplers or matrix arithmetic. The zero-error result repeats with the
+diagnostic switch and with a clean standalone workaround patch. The latter
+passes the smoke test in 42.1 seconds including loading. The full fixture,
+including the causal transition, also passes every comparison with NMSE 0
+in 45.4 seconds. This identifies
+the update path as a useful workaround boundary, but does not establish
+whether the root defect belongs to HIP's update implementation or the graph
+llama.cpp supplies to it.
+
+Small random-weight Qwen4exp controls do not reproduce the failure and are
+not accepted as substitutes for the real-model screen. The remaining gates
+for a source update include the full managed patch selection, server/router
+behavior, dense and speculative controls, populated long context, runtime
+closure and performance. Other GPU architectures are not tested here.
+There is no reason to block the investigation on Flash-Next MTP or to adopt
+a blanket graph-disable policy based on this result.
+
+The private evidence archive is
+`apps/acceptance/results/20261006-qwen4exp-state-isolation` on the acceptance
+host. It retains exact source pins, image identities, build recipes, fixture,
+reader and diagnostic patches, logs and a SHA-256 manifest. The clean
+workaround remains there as an experiment, not a production patch. Test
+containers are removed and the host returns to idle.
+
 ### Fedora 44 Strix Halo llama.cpp refresh retry (2026-10-06)
 
 **HOLD.** The accepted source remains
