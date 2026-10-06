@@ -26,6 +26,96 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp refresh retry (2026-10-06)
+
+**HOLD.** The accepted source remains
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, image policy `r48`.
+No production image tag, source patch, model artifact, sampling policy or
+default changes in this retry. Flash-Next MTP is not enabled.
+
+The candidate `6753a033f058fbf778d282556ed9b16c78de7c71` is 146 commits
+after the accepted source and 47 after the October 4 held candidate. Relevant
+new merges include
+[constant pooled-cache graph shapes](https://github.com/ggml-org/llama.cpp/pull/29958),
+[shared-pool scatter race fixes](https://github.com/ggml-org/llama.cpp/pull/29994),
+and [batch-independent CUDA allocation dependencies](https://github.com/ggml-org/llama.cpp/pull/29986).
+Their presence does not by itself establish that the earlier restore failure
+is fixed.
+
+The screen uses the same Fedora 44 `gfx1151` host, kernel
+`7.1.7-200.fc44.x86_64`, ROCm 10.0, 128 GB LPDDR5X-8000, 112 GiB GPU
+allowance, balanced platform profile and `balance_performance` CPU EPP.
+The isolated incremental image compiles HIP for all four supported targets
+and Vulkan, but only Strix Halo ROCm executes this inference fixture. It is
+not a final cold build or a release acceptance result.
+
+As in the previous attempt, the screening source retains the first six
+compatibility patches plus the rebased explicit reader and allocation-policy
+patches. It uses upstream Qwen4exp attention, not the unaccepted port of the
+six downstream attention and pipeline patches. The fixture is adapted to
+upstream's new batch API without changing its tokens, sequence positions or
+logit tolerance.
+
+At context 8192, batch and ubatch 2048, F16 K/V, one sequence and 4098
+populated tokens, the candidate records NMSE 0 for ordinary restore and for
+the causal-mode transition followed by restore. Clear-and-restore fails at
+NMSE `0.00218812799`, above the `1e-6` gate. Top-1 remains token 248046
+throughout. Turning off HIP graphs gives NMSE 0 in all three checks.
+Unchanged top-1 is not evidence of broad quality parity, and this fixture
+does not demonstrate generally broken generated answers.
+
+A separate ordinary mmap/lazy-read diagnostic encounters repeated AMD SVM
+resident-memory mapping-limit errors during loading. It is stopped before
+reaching the state test, so it neither reproduces nor clears the logit
+failure. The direct reader remains necessary for the accepted policy. No
+host memory limit, kernel or power setting is changed. This remains a
+downstream screening reproduction, not an unpatched-upstream bug report.
+
+The runtime hold stops further performance, populated-256K and MTP testing
+in this retry. Disabling all graphs is not adopted as a production fix.
+The accepted `r48` build is retested after the mmap diagnostic and passes
+all three restore checks with NMSE 0 and its normal graph optimizations
+enabled. All experiment containers are removed and the host returns to idle.
+
+The private evidence archive is below
+`apps/acceptance/results/20261006-llama-refresh` on the acceptance host.
+It retains the exact eight-patch diff, adapted fixture, build recipe, logs,
+image identity and pinned Hugging Face metadata with a SHA-256 manifest.
+The experimental image is retained separately and is not a managed default.
+
+#### Unsloth artifact audit and MTP status
+
+Mainline MTP support arrived through
+[PR 29761](https://github.com/ggml-org/llama.cpp/pull/29761) on October 1.
+The older PR 28243 was closed without merging. The Unsloth MTP README at the
+audited revision still describes the older fork-based implementation and
+must not substitute for inspecting the selected llama.cpp source.
+
+The audited repository revision is
+`766911a6b7369840a91dbcd95f9f997acaab6cd6`, dated October 6. Its four
+UD-Q4_K_XL target shards match the managed
+`c8b5954a88c2775c546b92593eda40ea041d3176` artifacts byte-for-byte by
+their published SHA-256 and size. Across the October 5 refresh, the three
+self-contained MTP files change hashes without changing sizes. The three
+shared MTP files and all other existing GGUFs remain unchanged. A duplicate
+self-contained Q8 head appears at the repository root on October 6.
+
+The potential companion is `MTP/mtp-Qwen3.8-Flash-Next-Q8_0.gguf`,
+4,137,429,120 bytes, SHA-256
+`58a47d6a216307e9b97172d5bfdc3436a8994b632f5e436b9bb6edf8951da8d1`.
+Comparing the old and new GGUF headers finds one metadata change, the final
+entry of `qwen4exp.attention.compress_ratios` from 0 to 4. The tokenizer,
+template, tensor descriptors and data offset match. Only bounded header
+downloads are inspected, so this is not a full tensor-payload comparison or
+a verified managed installation. The repack still lacks its declared license
+text and retains the existing license-risk boundary.
+
+The other motivating thread describes
+[Kyojin](https://github.com/Yamz-Labs/kyojin), an ExLlamaV3-based engine
+using EXL3 weights, not a mainline llama.cpp update. Its reported speed and
+quality figures are not measurements of Paracetamol's GGUF or runtime. It
+is neither built nor integrated in this retry.
+
 ### Fedora 44 Strix Halo native engine trials (2026-10-04)
 
 The accepted production change from this investigation is the
