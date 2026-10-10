@@ -17,7 +17,8 @@ make static
 PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
   applications/llama-cpp/entrypoint.sh \
-  applications/dwarfstar/entrypoint.sh
+  applications/dwarfstar/entrypoint.sh \
+  applications/gufo/entrypoint.sh
 find catalog -type f -name '*.json' -print0 | \
   xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check
@@ -225,6 +226,17 @@ unresolved `ldd` entries, link both `libggml-hip` and `libggml-vulkan`, and
 retain rocBLAS/hipBLASLt payloads only for `gfx1150`, `gfx1151`, `gfx1200`,
 and `gfx1201`. CPU startup is not GPU inference acceptance.
 
+For Gufo, build the managed `gufo` target, check `gufo --help`, `ldd`,
+retained licenses, and `pip check` inside its final image. A CPU-only
+invocation of the managed entrypoint must reject missing `gfx1151`, not claim
+inference success. The GPU acceptance command is
+`./paracetamol acceptance --application gufo --accept-license --non-interactive`.
+It starts a separately named constrained server on an ephemeral loopback port,
+checks an actual off-mode answer, saves the response, and removes that exact
+container. This is a short smoke at the configured ceiling, not a populated
+256K test. Follow the [Gufo upgrade procedure](upgrading.md#upgrade-gufo) for
+long-context, client, gateway, and memory acceptance.
+
 For DwarfStar, run `ds4`, `ds4-server`, and `ds4-bench` help with the
 entrypoint overridden, inspect all three with `ldd`, and confirm that the
 final image has no `ds4-agent`, `ds4-eval`, GCC build toolchain, Git checkout,
@@ -314,7 +326,7 @@ Paracetamol session header is not forwarded upstream. Exercise normal JSON,
 fragmented SSE, client disconnect,
 and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
-`gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
+`gateway |`, `llama-cpp |`, `dwarfstar |`, or `gufo |` prefix.
 
 For llama.cpp cancellation, cover both streaming and non-streaming requests
 through the native router and through the gateway. Wait until a child slot

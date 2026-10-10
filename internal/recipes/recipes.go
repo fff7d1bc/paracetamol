@@ -19,6 +19,9 @@ type Recipe struct {
 func (recipe Recipe) NextCommand() string { return identity.Command(recipe.Next...) }
 
 var byApplication = map[string][]Recipe{
+	"gufo": {
+		{ID: "qwen3.8-flash-next", Application: "gufo", Description: "Unsloth Flash-Next Dynamic Q4_K_XL, 256K, Strix Halo (shared GGUFs)", Bundles: []string{"gufo-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}, Next: []string{"run", "gateway", "-a", "gufo"}},
+	},
 	"comfyui": {
 		{ID: "image", Application: "comfyui", Description: "Qwen Image FP8, 4-step Lightning", Bundles: []string{"qwen-image-2512-fp8-lightning"}, Next: []string{"run", "comfyui"}},
 		{ID: "edit", Application: "comfyui", Description: "Qwen Image Edit FP8, 4-step Lightning", Bundles: []string{"qwen-image-edit-2511-fp8-lightning"}, Next: []string{"run", "comfyui"}},

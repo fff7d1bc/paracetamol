@@ -846,6 +846,37 @@ merges or materially changes DFlash2 is therefore a retest trigger, not
 permission to integrate it. Follow the snapshot's backend, context, quality,
 and fail-closed promotion gate before adding a managed preset.
 
+## Upgrade Gufo
+
+Gufo's source pin is `GUFO_COMMIT` in `Containerfile`. Its image tag belongs
+to `internal/application/registry.go`. Review both the upstream source and
+its dependency/build scripts before updating either. The final image must
+continue to use Paracetamol's shared ROCm runtime, never an upstream image,
+engine binary, or separately selected ROCm version.
+
+1. Review changes to the native HTTP server, Qwen4Exp kernels, tokenizer,
+   template, mode-aware sampling, cache allocation, and source licenses.
+2. Update the full commit pin, image tag, and third-party notice together.
+   `build gufo` compiles the HIP kernels for `gfx1151` and checks the runtime
+   linker closure, help startup, and `pip check`.
+3. Run the host and entrypoint tests. Verify one selected render node, a
+   read-only root and four exact read-only GGUF mounts. Unsupported hardware,
+   extra arguments, stale receipts, and non-reviewed reasoning must fail.
+4. On Strix Halo, run `acceptance --application gufo`, then gateway lazy start,
+   real Pi and Maki tools, off/medium/xhigh, streaming, cancellation, replay,
+   and switching to llama.cpp. Inspect private loopback publication and cleanup.
+5. Repeat the 32K and near-247K populated-context checks at the 256K ceiling,
+   including warm continuation and host memory monitoring. A short request at
+   a large ceiling is not long-context acceptance. Keep disk cache and
+   speculation off unless separately reviewed and accepted.
+6. Record exact image, source, model pins, outputs, memory headroom, and kernel
+   errors in hardware acceptance. Different internal arithmetic must not be
+   presented as numerical or coding-quality equivalence with llama.cpp.
+
+The managed model initially reuses llama.cpp's existing pinned four-shard
+Flash-Next bundle. Updating the engine does not authorize updating those
+weights or adding the newer MTP sidecar.
+
 ## Upgrade DwarfStar
 
 DwarfStar is a native multi-architecture application and must stay on the

@@ -36,3 +36,5 @@
 !applications/dwarfstar/entrypoint.sh
 !applications/dwarfstar/multiarch-wmma-fallback.patch
 !applications/dwarfstar/glm-tool-argument-types.patch
+!applications/gufo/
+!applications/gufo/entrypoint.sh

@@ -14,6 +14,7 @@ type Allocation string
 const (
 	AllocationLlamaCPP  Allocation = "llama-cpp"
 	AllocationDwarfStar Allocation = "dwarfstar"
+	AllocationGufo      Allocation = "gufo"
 )
 
 type AllocationState string
@@ -112,7 +113,7 @@ func NewScheduler(lifecycle Lifecycle, queueMax int, limits map[Allocation]int) 
 	}
 	cloned := make(map[Allocation]int, len(limits))
 	for allocation, limit := range limits {
-		if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar || limit < 0 {
+		if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar && allocation != AllocationGufo || limit < 0 {
 			return nil, fmt.Errorf("invalid concurrency limit for %q", allocation)
 		}
 		cloned[allocation] = limit
@@ -129,7 +130,7 @@ func NewScheduler(lifecycle Lifecycle, queueMax int, limits map[Allocation]int) 
 }
 
 func (scheduler *Scheduler) Acquire(ctx context.Context, allocation Allocation) (*Lease, error) {
-	if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar {
+	if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar && allocation != AllocationGufo {
 		return nil, fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
 	request := acquireRequest{id: scheduler.nextID.Add(1), ctx: ctx, allocation: allocation, reply: make(chan acquireResult)}

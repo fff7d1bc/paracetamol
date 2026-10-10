@@ -156,7 +156,7 @@ func (app *App) commandAcceptance(args []string) error {
 		return err
 	}
 	for _, application := range applications {
-		if err := requireChoice(application, "application", "comfyui", "llama-cpp", "dwarfstar"); err != nil {
+		if err := requireChoice(application, "application", "comfyui", "llama-cpp", "dwarfstar", "gufo"); err != nil {
 			return err
 		}
 	}
@@ -268,10 +268,13 @@ func (app *App) commandAcceptance(args []string) error {
 		return controlerr.New("CPU device-isolation probe returned incomplete output")
 	}
 	explicitDwarf := containsString(applications, "dwarfstar")
+	if detected.ID != "strix-halo" && containsString(applications, "gufo") {
+		return controlerr.New("Gufo acceptance requires Strix Halo")
+	}
 	if detected.ID != "strix-halo" && !explicitDwarf {
 		filtered := cases[:0]
 		for _, candidate := range cases {
-			if candidate.application != "dwarfstar" {
+			if candidate.application != "dwarfstar" && candidate.application != "gufo" {
 				filtered = append(filtered, candidate)
 			}
 		}
@@ -479,7 +482,7 @@ func validateAcceptanceResult(result acceptanceResult, cases []acceptanceCase) e
 			return controlerr.New("acceptance checkpoint case %d has invalid metadata", index+1)
 		}
 		if entry.Status == "pass" || entry.Status == "review" || entry.Status == "blocked" {
-			needsEvidence := candidate.id == "comfyui-image" || candidate.id == "comfyui-video" || candidate.id == "llama-cpp"
+			needsEvidence := candidate.id == "comfyui-image" || candidate.id == "comfyui-video" || candidate.id == "llama-cpp" || candidate.id == "gufo"
 			if needsEvidence && len(entry.Artifacts) == 0 {
 				return controlerr.New("acceptance checkpoint case %q lacks result evidence", entry.Identifier)
 			}
@@ -573,6 +576,7 @@ func captureAcceptanceArtifact(path string) (acceptanceArtifact, error) {
 
 func selectedAcceptanceCases(applications []string) []acceptanceCase {
 	all := []acceptanceCase{{"host-gpu", "GPU operation and exact device isolation", "", "", false}, {"comfyui-image", "ComfyUI Qwen Image FP8 Lightning generation", "comfyui", "qwen-image-2512-fp8-lightning", true}, {"comfyui-video", "ComfyUI Wan 2.2 FP8 Lightning five-frame generation", "comfyui", "wan-2.2-t2v-14b-fp8-lightning", true}, {"llama-cpp", "llama.cpp Qwen3 0.6B GPU offload benchmark", "llama-cpp", "llama-qwen-qwen3-0.6b-q8-0", false}, {"dwarfstar", "DwarfStar direct-answer generation", "dwarfstar", "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix", false}}
+	all = append(all, acceptanceCase{"gufo", "Gufo Flash-Next HTTP generation at the configured context ceiling", "gufo", "gufo-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl", false})
 	if len(applications) == 0 {
 		return all
 	}
@@ -632,6 +636,8 @@ func findAcceptanceCase(cases []acceptanceCase, identifier string) (acceptanceCa
 
 func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceCase, dataRoot, profile, renderNode string, port int, suiteID, memory, kernel string) ([]string, error) {
 	switch candidate.id {
+	case "gufo":
+		return app.runGufoAcceptance(managed, dataRoot, profile, renderNode, suiteID)
 	case "host-gpu":
 		return []string{}, nil
 	case "comfyui-image", "comfyui-video":

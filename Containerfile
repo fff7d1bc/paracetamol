@@ -9,6 +9,7 @@ ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2
 ARG LLAMA_CPP_COMMIT=2090f60f0b60b67b3bcc96573c6e68a0c33f30c7
 ARG DWARFSTAR_COMMIT=0aaea5a238fb41a35106a551e73c8409dfb751ac
+ARG GUFO_COMMIT=665fc182445dc2685f2a9b2b4314aa7d92a858c2
 
 FROM ${UBUNTU_IMAGE} AS content-tools
 
@@ -499,3 +500,68 @@ WORKDIR /data
 EXPOSE 8000
 STOPSIGNAL SIGINT
 ENTRYPOINT ["/usr/local/bin/paracetamol-dwarfstar-entrypoint"]
+
+# Gufo shares the managed ROCm runtime, not upstream's Nix/container images.
+# Its kernels intentionally target only Strix Halo. Models remain offline,
+# receipt-verified host content and are never downloaded by the image.
+FROM native-rocm-sdk AS gufo-sdk
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cmake ninja-build pkg-config libicu-dev libcurl4-openssl-dev \
+        libpng-dev libjpeg-dev libwebp-dev libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+FROM gufo-sdk AS gufo-builder
+
+ARG GUFO_COMMIT
+WORKDIR /opt/gufo
+RUN git init . && \
+    git remote add origin https://github.com/gufo-org/gufo.git && \
+    git fetch --depth=1 origin "${GUFO_COMMIT}" && \
+    git checkout --detach FETCH_HEAD && \
+    test "$(git rev-parse HEAD)" = "${GUFO_COMMIT}" && \
+    rocm_root="$(rocm-sdk path --root)" && \
+    site_packages="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_HIP_ARCHITECTURES=gfx1151 \
+        "-DCMAKE_HIP_COMPILER=${rocm_root}/lib/llvm/bin/clang++" \
+        "-DCMAKE_PREFIX_PATH=${rocm_root};$(rocm-sdk path --cmake)" \
+        "-DCMAKE_BUILD_RPATH=${rocm_root}/lib" \
+        "-DCMAKE_INSTALL_RPATH=${site_packages}/_rocm_sdk_core/lib;${site_packages}/_rocm_sdk_libraries/lib" \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_TESTING=OFF -DGUFO_BUILD_TOOLS=OFF \
+        "-DGUFO_RELEASE_VERSION=$(tr -d '\n' < version.txt)" \
+        "-DGUFO_REVISION=${GUFO_COMMIT}" && \
+    cmake --build build --parallel 12 --target gufo && \
+    DESTDIR=/opt/gufo-install cmake --install build
+
+FROM ${ROCM_RUNTIME_IMAGE} AS gufo
+
+ARG GUFO_COMMIT
+ARG ROCM_VERSION
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libicu78 libcurl4t64 libpng16-16t64 libjpeg-turbo8 libwebp7 libgomp1 && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=gufo-builder /opt/gufo-install/usr/local/ /usr/local/
+COPY applications/gufo/entrypoint.sh /usr/local/bin/paracetamol-gufo-entrypoint
+RUN chmod 0755 /usr/local/bin/paracetamol-gufo-entrypoint && \
+    ldd /usr/local/bin/gufo | tee /tmp/gufo-ldd.txt && \
+    ! grep -q 'not found' /tmp/gufo-ldd.txt && \
+    gufo --help >/dev/null && \
+    python -m pip check
+ENV HOME=/data/home \
+    XDG_CACHE_HOME=/tmp \
+    GPU_MAX_HW_QUEUES=1
+LABEL org.opencontainers.image.title="Paracetamol Gufo" \
+      org.opencontainers.image.description="Locally built Gufo text inference for Strix Halo" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.revision="${GUFO_COMMIT}" \
+      io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
+      io.github.fff7d1bc.paracetamol.gpu.targets="gfx1151"
+WORKDIR /data
+EXPOSE 8080
+STOPSIGNAL SIGINT
+ENTRYPOINT ["/usr/local/bin/paracetamol-gufo-entrypoint"]

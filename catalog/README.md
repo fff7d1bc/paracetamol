@@ -48,6 +48,12 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   `sampling_policy` optionally references one catalog policy when the model's
   authoritative sampling differs between thinking and non-thinking requests.
 
+- `gufo_presets` owns Gufo's serving limits, RAM snapshot budget, and native
+  reasoning capabilities. Its bundle reuses existing `llama-models` GGUF
+  artifacts and receipts without a second physical copy. The distinct model
+  ID selects the engine. Sampling and templates belong to pinned Gufo source,
+  not `llama_sampling_policies`.
+
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination
 collisions.
@@ -56,7 +62,8 @@ collisions.
 
 The catalog currently covers ComfyUI image, edit, and video stacks; managed
 llama.cpp GGUF presets; and the high-memory DwarfStar model with its optional
-DSpark support artifact. Do not maintain a second inventory in this file.
+DSpark support artifact, plus the Gufo Flash-Next variant. Do not maintain a
+second inventory in this file.
 Inspect the catalog through the same public commands users run:
 
 ```bash

@@ -93,11 +93,11 @@ func (app *App) contentList(args []string) error {
 	}
 	if view == "models" {
 		if *application != "" {
-			if err := requireChoice(*application, "model inventory application", "llama-cpp", "dwarfstar"); err != nil {
+			if err := requireChoice(*application, "model inventory application", "llama-cpp", "dwarfstar", "gufo"); err != nil {
 				return err
 			}
 		}
-		if len(scans) > 0 && *application == "dwarfstar" {
+		if len(scans) > 0 && *application != "" && *application != "llama-cpp" {
 			return controlerr.Usage("--scan applies only to llama.cpp GGUF models")
 		}
 		dataRoot, err := app.resolveDataDir(*dataFlag, false)
@@ -165,7 +165,7 @@ func (app *App) contentList(args []string) error {
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Applications:"))
-	for applicationIndex, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
+	for applicationIndex, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar", "gufo"} {
 		values, _ := recipes.ForApplication(applicationID)
 		if applicationIndex > 0 {
 			fmt.Fprintln(app.Stdout)
@@ -450,7 +450,7 @@ func (app *App) contentInstall(args []string) error {
 		}
 	}
 	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Success("All selected content is verified and ready."))
-	if target == "comfyui" || target == "llama-cpp" || target == "dwarfstar" {
+	if recipes.IsApplication(target) {
 		if recipe, recipeErr := recipes.Find(target, selection); recipeErr == nil {
 			terminal.Next(recipe.NextCommand())
 		}
@@ -519,7 +519,7 @@ func (app *App) guidedContentSelection(managed catalog.Catalog, application stri
 	var choices []topChoice
 	var rows [][]string
 	terminal := app.terminal(app.Stdout)
-	for _, application := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
+	for _, application := range []string{"comfyui", "llama-cpp", "dwarfstar", "gufo"} {
 		spec, _ := config.ApplicationByID(application)
 		choices = append(choices, topChoice{application: application})
 		rows = append(rows, []string{terminal.Command(application), spec.DisplayName + " reviewed recipes"})
@@ -614,7 +614,7 @@ func selectBundles(managed catalog.Catalog, target, selection string) ([]catalog
 		}
 		return result, nil
 	}
-	if target == "comfyui" || target == "llama-cpp" || target == "dwarfstar" {
+	if recipes.IsApplication(target) {
 		if selection == "" {
 			return nil, controlerr.Usage("%s requires a recipe or all", target)
 		}
@@ -736,7 +736,7 @@ func stringSliceContains(values []string, wanted string) bool {
 }
 
 func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool, selectedApplication string) error {
-	applications := []string{"llama-cpp", "dwarfstar"}
+	applications := []string{"llama-cpp", "dwarfstar", "gufo"}
 	if selectedApplication != "" {
 		applications = []string{selectedApplication}
 	}
@@ -748,6 +748,10 @@ func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, sc
 			if err := app.printLlamaModelInventory(managed, dataRoot, scans, details); err != nil {
 				return err
 			}
+		} else if application == "gufo" {
+			if err := app.printGufoModelInventory(managed, dataRoot, details); err != nil {
+				return err
+			}
 		} else if err := app.printDwarfStarModelInventory(managed, dataRoot, details); err != nil {
 			return err
 		}
@@ -757,11 +761,47 @@ func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, sc
 	if !details {
 		fmt.Fprintln(app.Stdout, terminal.Muted("Use --details to find install commands and managed runtime policy."))
 	}
-	if selectedApplication != "dwarfstar" {
+	if selectedApplication == "" || selectedApplication == "llama-cpp" {
 		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready llama.cpp preset with --preset; use a local GGUF row's absolute path with --model."))
 	}
-	if selectedApplication != "llama-cpp" {
+	if selectedApplication == "" || selectedApplication == "dwarfstar" {
 		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready DwarfStar model with 'run dwarfstar server'."))
+	}
+	if selectedApplication == "" || selectedApplication == "gufo" {
+		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready Gufo model with 'run gufo server' or 'run gateway -a gufo' on Strix Halo."))
+	}
+	return nil
+}
+
+func (app *App) printGufoModelInventory(managed catalog.Catalog, dataRoot string, details bool) error {
+	store, err := verification.Load(dataRoot)
+	if err != nil {
+		return err
+	}
+	terminal := app.terminal(app.Stdout)
+	fmt.Fprintln(app.Stdout, terminal.Heading("Gufo models (Strix Halo)"))
+	var ids []string
+	for id := range managed.GufoPresets {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		preset := managed.GufoPresets[id]
+		bundle := managed.Bundles[preset.Bundle]
+		statuses, err := content.InspectBundle(store, managed, bundle, dataRoot, false)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(app.Stdout, "  %s  %s  %s\n", terminal.State(bundleModelState(statuses)), humanSize(managed.BundleSize(bundle)), terminal.Command(id))
+		if details {
+			writeDetailRows(app.Stdout, terminal, [][2]string{
+				{"Model", content.ArtifactPath(dataRoot, managed.Artifacts[preset.Artifact])},
+				{"Storage", "shared verified GGUFs with llama.cpp, no duplicate download"},
+				{"Context", fmt.Sprint(preset.DefaultContext)}, {"Reasoning", "off, medium (default), xhigh"},
+				{"Sampling", "server-side thinking/non-thinking defaults"}, {"RAM cache bytes", fmt.Sprint(preset.CacheRAMBytes)},
+				{"Speculation", "off"}, {"Install", identity.Command("content", "install", "gufo", "qwen3.8-flash-next")},
+			})
+		}
 	}
 	return nil
 }

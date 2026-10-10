@@ -20,10 +20,11 @@ var exactBundleCategories = []exactBundleCategory{
 	{ID: "comfyui-addons", Description: "ComfyUI — workflows and add-ons"},
 	{ID: "llama-cpp", Description: "llama.cpp"},
 	{ID: "dwarfstar", Description: "DwarfStar"},
+	{ID: "gufo", Description: "Gufo (Strix Halo)"},
 }
 
 func categoryForExactBundle(bundle catalog.Bundle) (string, error) {
-	if bundle.Application == "llama-cpp" || bundle.Application == "dwarfstar" {
+	if bundle.Application == "llama-cpp" || bundle.Application == "dwarfstar" || bundle.Application == "gufo" {
 		return bundle.Application, nil
 	}
 	if bundle.Application != "comfyui" {
@@ -70,6 +71,7 @@ func availableExactBundleCategories(managed catalog.Catalog, application string)
 		"comfyui":   {"comfyui-images": true, "comfyui-videos": true, "comfyui-addons": true},
 		"llama-cpp": {"llama-cpp": true},
 		"dwarfstar": {"dwarfstar": true},
+		"gufo":      {"gufo": true},
 	}
 	var filter map[string]bool
 	if application != "" {
@@ -96,7 +98,7 @@ func availableExactBundleCategories(managed catalog.Catalog, application string)
 }
 
 func exactBundleDisplayID(bundle catalog.Bundle, category string) string {
-	prefix := map[string]string{"llama-cpp": "llama-", "dwarfstar": "dwarfstar-"}[category]
+	prefix := map[string]string{"llama-cpp": "llama-", "dwarfstar": "dwarfstar-", "gufo": "gufo-"}[category]
 	return strings.TrimPrefix(bundle.ID, prefix)
 }
 

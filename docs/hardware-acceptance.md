@@ -26,6 +26,86 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo managed Gufo integration (2026-10-10)
+
+**PASS for the reviewed Flash-Next path.** Gufo is now a separate source-built
+application, not a replacement for llama.cpp or DwarfStar. Dense Qwen3.8 27B
+Q8 MTP remains the client default. No llama.cpp patch, model file, host tuning,
+kernel, or ROCm version changed for this integration.
+
+The source pin is Gufo 0.11.0
+`665fc182445dc2685f2a9b2b4314aa7d92a858c2`, built against the existing ROCm
+10.0 runtime as `localhost/paracetamol:gufo-ubuntu26.04-rocm10.0-665fc18-r1`.
+The long-context and client tests used image
+`032f835fc6f8239c84985175489f37265839d052ce0edc634ecb233b507854cb`.
+The delivered image is
+`d6a3385df7cc9dcef94ad589bf3176430d16f01f68be9d9ef603d026c32ee179`.
+It corrects only the entrypoint's port label to distinguish the container
+bind from gateway-owned ephemeral host publication. Its Gufo executable is
+unchanged, and automated GPU acceptance and runtime checks passed again.
+No downstream Gufo patch was needed. The engine and HIP kernels are compiled
+from source, not taken from an upstream image or binary distribution.
+
+The host is Aion, Fedora 44, kernel `7.1.7-200.fc44.x86_64`, `gfx1151`,
+128 GB LPDDR5X-8000, 112 GiB GPU allowance, balanced platform profile and
+balance_performance EPP. The model is the existing four-shard Unsloth
+Flash-Next UD-Q4_K_XL at revision
+`c8b5954a88c2775c546b92593eda40ea041d3176`. Gufo references those same
+verified files. There is no second download, quant conversion, projector,
+draft model, or MTP sidecar.
+
+The managed policy is 262,144 context tokens, F16 K/V, one session, medium
+reasoning by default, a 28 GiB RAM snapshot budget, no disk cache, and
+speculation off. An 8K direct-server screen passed first. At the full ceiling,
+temperature-zero corpus probes gave the following results.
+
+| Check | HTTP wall time | Result |
+| --- | ---: | --- |
+| 32,167-token retrieval | 28.575 s | All six values correct, 211 output tokens |
+| 247,165-token retrieval | 189.116 s | All six values correct, 199 output tokens |
+| First long continuation | 11.269 s | 256 output tokens, 245,760 cached input tokens |
+| Warm continuation 1 | 10.036 s | 256 output tokens, 247,158 cached input tokens |
+| Warm continuation 2 | 10.000 s | 256 output tokens, 247,158 cached input tokens |
+
+The near-limit cold prefill took 181.267 seconds, about 1,364 tokens/s.
+Warm decode was about 26.0 tokens/s. These are single-host acceptance probes,
+not a fresh head-to-head benchmark or a coding-quality ranking. The minimum
+sampled `MemAvailable` during the long checks was 27.59 GiB. The 4 GiB guard
+did not trigger. No new GPU faults, resets, or OOM events were found in the
+test-window kernel log. The later PyTorch host-GPU acceptance probe emitted
+two x86 split-lock notices for its Python process and still passed. Those
+notices did not come from Gufo.
+
+Additional checks passed for off/medium/xhigh, typed tool arguments and tool
+replay, SSE, cancellation followed by a successful request, and history
+isolation. Seeded output with omitted samplers matched explicitly supplied
+Gufo defaults in both thinking and non-thinking modes. Real sandboxed Pi
+sessions completed file and shell tools at all three reasoning settings.
+Maki 0.4.8 completed tool exchanges, and its interactive mode sent the expected
+off/medium/xhigh values. Its headless `--print` path instead sent off despite
+`always_thinking`, so those runs are not counted as thinking-mode acceptance.
+
+Gateway startup remained lazy. Switching Gufo to the trusted dense Q8 MTP
+llama.cpp model and back passed, with only one backend container resident.
+Inspection confirmed a read-only root, zero effective capabilities, exactly
+`/dev/kfd` and `renderD128`, four read-only shard mounts, and ephemeral loopback
+publication. The final model-free runtime checks passed, and the managed
+entrypoint rejected absent GPU devices. The new automated Gufo acceptance
+case passed in 19.18 seconds including loading, then removed its exact
+container. All test services were stopped.
+
+Gufo changes internal matrix arithmetic relative to the precision-preserving
+llama.cpp path. F16 KV and unchanged GGUF bytes do not establish numerical or
+broad quality equivalence. Other GPUs and lower-memory hosts are **N/P** for
+this managed integration. DwarfStar retirement and Gufo speculation are not
+part of this change.
+
+Evidence is retained on Aion under
+`~/.local/share/paracetamol/apps/acceptance/results/20261010-gufo-integration/`.
+It includes exact requests and responses, client transcripts, sampling
+comparisons, image/container inspection, memory samples, kernel logs,
+automated acceptance, build logs, helper sources, and the delivered patch.
+
 ### Fedora 44 Strix Halo Flash-Next state isolation (2026-10-06)
 
 **REPRODUCED AND NARROWED.** The failure is not sufficient evidence of a

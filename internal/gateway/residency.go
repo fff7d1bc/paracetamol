@@ -57,10 +57,10 @@ func (server *Server) modelStatus(ctx context.Context, scheduler SchedulerStatus
 		return models
 	}
 	switch scheduler.Allocation {
-	case AllocationDwarfStar:
-		state, diagnostic := dwarfStarModelState(scheduler.State)
+	case AllocationDwarfStar, AllocationGufo:
+		state, diagnostic := singleModelState(scheduler.State, string(scheduler.Allocation))
 		for index := range models {
-			if server.registry.Models[index].Backend == textmodel.BackendDwarfStar {
+			if string(server.registry.Models[index].Backend) == string(scheduler.Allocation) {
 				models[index].State = state
 				models[index].Diagnostic = diagnostic
 			}
@@ -89,7 +89,7 @@ func (server *Server) modelStatus(ctx context.Context, scheduler SchedulerStatus
 	return models
 }
 
-func dwarfStarModelState(state AllocationState) (ModelState, string) {
+func singleModelState(state AllocationState, application string) (ModelState, string) {
 	switch state {
 	case StateStarting:
 		return ModelLoading, ""
@@ -98,9 +98,9 @@ func dwarfStarModelState(state AllocationState) (ModelState, string) {
 	case StateFailed:
 		return ModelFailed, ""
 	case StateStopping:
-		return ModelUnknown, "DwarfStar residency is unavailable while the backend stops"
+		return ModelUnknown, application + " residency is unavailable while the backend stops"
 	default:
-		return ModelUnknown, "DwarfStar residency is unavailable"
+		return ModelUnknown, application + " residency is unavailable"
 	}
 }
 

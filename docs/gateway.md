@@ -1,7 +1,7 @@
 # Native inference gateway
 
 Paracetamol's gateway is the normal shared API entry point for managed text
-inference. It presents verified llama.cpp and DwarfStar models on one port,
+inference. It presents verified llama.cpp, DwarfStar, and Gufo models on one port,
 loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
@@ -13,17 +13,18 @@ extra selection:
 ./paracetamol run gateway
 ```
 
-Automatic discovery considers llama.cpp and DwarfStar, then includes an
+Automatic discovery considers llama.cpp, DwarfStar, and Gufo, then includes an
 application only when its image is built and it contributes at least one
 compatible receipt-verified model. Any explicit `-a` or `--application`
 options replace discovery and are strict: a missing image or model fails
 startup. Use one for an exact single-application endpoint or repeat it to
-demand both applications:
+demand several applications:
 
 ```bash
 ./paracetamol run gateway -a llama-cpp
 ./paracetamol run gateway -a dwarfstar
 ./paracetamol run gateway -a llama-cpp -a dwarfstar
+./paracetamol run gateway -a llama-cpp -a gufo
 ```
 
 ## Configuration
@@ -212,7 +213,9 @@ Flash-Next's ROCm streaming path is restricted to Strix Halo. Automatic
 selection resolves the exact render nodes through KFD topology, and the
 container independently checks the detected profile. An unknown profile does
 not advertise a restricted model. Vulkan remains available as the explicit
-Flash-Next fallback.
+Flash-Next fallback. Gufo requires exactly one Strix Halo render node and
+exposes its own `-gufo` model ID. It shares the four verified Flash-Next files
+with llama.cpp, not that engine's settings or numerical implementation.
 
 The snapshot remains fixed for the process lifetime. Installing, replacing,
 or verifying content does not change a running gateway: restart it. This makes
@@ -223,11 +226,12 @@ fingerprint for the exact snapshot.
 ## Scheduling and lifecycle
 
 llama.cpp models share one private router allocation. DwarfStar v1 exposes its
-single reviewed non-DSpark preset as a separate allocation. The first Chat
+single reviewed non-DSpark preset as a separate allocation. Gufo has a third
+allocation for its one reviewed Flash-Next preset at 256K. The first Chat
 Completions request starts the required application in a constrained,
 Paracetamol-owned container with an ephemeral loopback host port. That port is
 never the public interface. Once started, the container's stdout and stderr are
-followed in the foreground terminal with a `llama-cpp |` or `dwarfstar |`
+followed in the foreground terminal with a `llama-cpp |`, `dwarfstar |`, or `gufo |`
 prefix. The log follower changes with the allocation and is joined during
 backend stop, so it cannot outlive the gateway-owned container.
 
@@ -245,7 +249,7 @@ from compatible clients. Invalid values are ignored, and the gateway never
 fingerprints messages or other request content to infer a session.
 
 Requests compatible with the active allocation run concurrently, subject to
-the backend's own slots; DwarfStar is limited to one active request. A request
+the backend's own slots. DwarfStar and Gufo each allow one active request. A request
 for another allocation enters the bounded FIFO queue. Once existing requests
 finish, the scheduler removes the current backend, starts the requested one,
 waits for its readiness endpoint, and forwards the original request. The
@@ -275,7 +279,9 @@ dense model's policy.
 Backends retain the normal rootless, read-only, capability-free runtime
 policy, exact GPU device set, application data mount, and read-only content
 mount. They publish only an ephemeral `127.0.0.1` port. The gateway never
-guesses render nodes and DwarfStar still requires exactly one GPU.
+guesses render nodes. DwarfStar and Gufo each require exactly one GPU.
+Gufo receives exact read-only GGUF file mounts, preventing automatic discovery
+of an unverified sibling projector or draft model.
 
 The backend publication is explicitly
 `127.0.0.1::CONTAINER_PORT`, where the empty host-port field asks Podman for
@@ -438,7 +444,10 @@ that invocation intentionally form one launch-level correlation group.
 
 - DwarfStar uses the reviewed direct model only; DSpark remains a direct-server
   and benchmark option.
-- The gateway owns one resource pool and does not keep llama.cpp and DwarfStar
+- Gufo serves one managed Flash-Next preset, without speculation, disk cache,
+  or other upstream model families. Its RAM snapshot budget is 28 GiB and
+  its reasoning default is medium. Requests can select off, medium, or xhigh.
+- The gateway owns one resource pool and never keeps two application backends
   resident together.
 - It adds no manual unload operation or gateway idle timer. Allocation switches
   and foreground shutdown retain their existing lifecycle, while llama.cpp's
