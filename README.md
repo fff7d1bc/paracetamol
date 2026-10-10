@@ -14,7 +14,8 @@ The supported AMD targets cover RDNA 4 discrete GPUs and the two current Ryzen
 AI families. The 32 GB Radeon AI PRO R9700, RX 9070 XT, RX 9070, and RX 9070
 GRE use `gfx1201`. The RX 9060 XT and RX 9060 use `gfx1200`. Ryzen AI Max,
 also known as Strix Halo, uses `gfx1151`. Ryzen AI 300, also known as Strix
-Point, uses `gfx1150`. Builds and runtime checks cover all four architectures.
+Point, uses `gfx1150`. The general applications cover all four architectures.
+Gufo is restricted to Strix Halo.
 The project is still pre-release, and work on the hardware acceptance matrix
 is ongoing.
 
@@ -25,8 +26,9 @@ Paracetamol currently manages these applications and services.
   port 8080, with selectable ROCm and Vulkan backends
 - DwarfStar as an experimental, high-memory DeepSeek V4 Flash server and CLI
   on port 8000
-- Paracetamol's lazy gateway for the verified llama.cpp and DwarfStar
-  inventory through one OpenAI-compatible API on port 7455
+- Gufo as a source-built Flash-Next server for Strix Halo on port 8080
+- Paracetamol's lazy gateway for verified llama.cpp, DwarfStar, and Gufo models
+  through one OpenAI-compatible API on port 7455
 
 ## Hardware exercised so far
 
@@ -133,7 +135,7 @@ recipe.
 ./paracetamol content install
 ```
 
-`build all` builds ComfyUI, llama.cpp, and the experimental DwarfStar image.
+`build all` builds ComfyUI, llama.cpp, DwarfStar, and Gufo images.
 Build one application instead when that is all you need. Models range from
 hundreds of MiB to more than 100 GiB, so inspect a dry run before a large
 installation.
@@ -287,6 +289,25 @@ the Llama 3.3 terms.
   --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
 ```
 
+### Gufo
+
+Gufo is a separate, locally compiled inference engine for Strix Halo. The
+managed variant serves Unsloth Qwen3.8 Flash-Next Dynamic Q4_K_XL at 256K
+context. It reuses the verified GGUF shards already installed for llama.cpp.
+
+```bash
+./paracetamol build gufo
+./paracetamol content install gufo qwen3.8-flash-next
+./paracetamol run gateway -a llama-cpp -a gufo
+```
+
+Choose `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gufo` in Pi or Maki.
+The suffix distinguishes it from the llama.cpp variant of the same weights.
+The dense Qwen3.8 27B Q8 MTP model remains the default. Gufo has different
+internal arithmetic, so sharing the GGUF does not imply identical output.
+See the [Gufo guide](docs/guides/applications.md#gufo) for memory requirements,
+reasoning controls, and limitations.
+
 ### DwarfStar
 
 DwarfStar serves the pinned DeepSeek V4 Flash 0731 Q2 imatrix model. It uses
@@ -383,13 +404,13 @@ Both take precedence over configuration values.
 selects loopback for that invocation. Supply both options to change a remote
 publication.
 
-Automatic discovery includes DwarfStar when its image and compatible verified
-model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
-dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
+Automatic discovery includes each engine whose image and compatible verified
+model are present. Use `-a llama-cpp`, `-a dwarfstar`, or `-a gufo` for a
+single-engine gateway, or repeat `-a` to select several. The first request
 lazily starts the matching private backend. Its container output then appears
 in the gateway terminal.
 
-Only one backend application stays resident. A request for the other
+Only one backend application stays resident. A request for another
 application drains active work, stops the current backend, and starts the new
 one. Queued requests remain FIFO. llama.cpp keeps one model loaded by default
 because its router limit counts models without considering their memory use.
@@ -435,8 +456,8 @@ url = "http://gpu-host.local:7455/v1"
 Both managed clients perform a bounded `/v1/models` probe and generate only
 the reviewed models that this gateway instance actually advertises. They also
 require the versioned Paracetamol gateway marker, so another service on the
-configured port is rejected before its response is trusted. Direct llama.cpp
-and DwarfStar servers are still available for diagnostics, benchmarks, and
+configured port is rejected before its response is trusted. Direct llama.cpp,
+DwarfStar, and Gufo servers are still available for diagnostics and
 engine-specific API work. See the
 [application guide](docs/guides/applications.md#inference-gateway) and
 [gateway design](docs/gateway.md).
@@ -618,7 +639,7 @@ The complete [documentation index](docs/README.md) includes user guides,
 maintainer references, research snapshots, and source-of-truth pointers.
 
 - [Applications](docs/guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, managed models, APIs, Pi, Maki, and multi-GPU
+  DwarfStar, Gufo, managed models, APIs, Pi, Maki, and multi-GPU
   workloads.
 - [Content](docs/guides/content.md) covers recipes, exact bundles, licenses,
   verification, resumable downloads, mirrors, imports, and workflows.

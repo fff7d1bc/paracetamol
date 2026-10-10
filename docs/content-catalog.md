@@ -438,6 +438,15 @@ selector merely because one machine has enough memory for it.
 
 ## Add a bundle
 
+Gufo bundles may reuse the existing verified Flash-Next artifacts from the
+`llama-models` target. Their `gufo_presets` records own a distinct model ID,
+context and output limits, RAM snapshot budget, and off/medium/xhigh reasoning
+capabilities. Do not copy model files or create duplicate artifact records to
+select another engine. Gufo currently permits one reviewed model, on Strix
+Halo only. New Gufo models need engine and gateway acceptance, not a local
+pack that bypasses those limits. Native sampling and templates are pinned
+with Gufo source rather than the llama.cpp template or sampling patches.
+
 A bundle connects content to a user-visible capability:
 
 ```json

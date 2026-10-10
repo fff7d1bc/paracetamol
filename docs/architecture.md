@@ -302,6 +302,18 @@ does not authenticate the case outcomes and is not a signed attestation.
 
 ## Image layout
 
+Gufo is a native, source-built application alongside llama.cpp and DwarfStar.
+Its builder uses the shared `native-rocm-sdk`, and its final image starts from
+the same tagged minimal ROCm runtime, without PyTorch or a second HIP runtime.
+Gufo compiles only for `gfx1151`. Both the host and entrypoint enforce that
+restriction. Its reviewed server preset reuses existing verified Flash-Next
+artifacts but owns separate runtime policy and a distinct API model ID.
+Only exact bundle files are mounted read-only, avoiding Gufo's automatic
+discovery of unverified sibling files. Application state remains isolated in
+`apps/gufo`. The gateway schedules Gufo as a single-model allocation and
+refuses catalog expansion to multiple Gufo presets until allocation identity
+can express that distinction safely.
+
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
 Every application build ensures and tags this prerequisite as
@@ -676,6 +688,8 @@ apps/
     home/ cache/ models.ini
   dwarfstar/
     home/
+  gufo/
+    home/
   acceptance/
     results/                         checkpointed JSON and Markdown summaries
   agent-evaluation/
@@ -798,7 +812,7 @@ reasons; the reviewed template maps clients' unavoidable generic off value to
 Muse low without changing other model families.
 
 `internal/textmodel/` derives backend-neutral model capabilities from the
-application-specific llama.cpp and DwarfStar preset collections. The catalog
+application-specific llama.cpp, DwarfStar, and Gufo preset collections. The catalog
 therefore remains the only owner of public model IDs, starting context, output
 limits, agent-tool eligibility, and reasoning choices.
 

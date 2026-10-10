@@ -14,6 +14,7 @@ type Backend string
 const (
 	BackendLlamaCPP  Backend = "llama-cpp"
 	BackendDwarfStar Backend = "dwarfstar"
+	BackendGufo      Backend = "gufo"
 )
 
 type Model struct {
@@ -31,7 +32,7 @@ type Model struct {
 }
 
 func All(managed catalog.Catalog) ([]Model, error) {
-	byID := make(map[string]Model, len(managed.LlamaPresets)+len(managed.DwarfStarPresets))
+	byID := make(map[string]Model, len(managed.LlamaPresets)+len(managed.DwarfStarPresets)+len(managed.GufoPresets))
 	for id, preset := range managed.LlamaPresets {
 		byID[id] = Model{
 			ID: id, Backend: BackendLlamaCPP, Bundle: preset.Bundle,
@@ -52,6 +53,16 @@ func All(managed catalog.Catalog) ([]Model, error) {
 			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
 			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
 		}
+	}
+	for id, preset := range managed.GufoPresets {
+		if _, duplicate := byID[id]; duplicate {
+			return nil, fmt.Errorf("text model identifier %q is ambiguous", id)
+		}
+		byID[id] = Model{ID: id, Backend: BackendGufo, Bundle: preset.Bundle,
+			Context: preset.DefaultContext, MaxOutputTokens: preset.MaxOutputTokens,
+			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
+			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
+			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff}
 	}
 	identifiers := make([]string, 0, len(byID))
 	for id := range byID {

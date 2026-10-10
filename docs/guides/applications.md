@@ -1337,6 +1337,78 @@ On Strix Halo and Strix Point the entrypoint enables unified-memory policy and
 non-mmap model loading. RDNA 4 discrete GPUs use normal automatic layer
 placement.
 
+## Gufo
+
+Gufo is a separate native inference engine, compiled locally from pinned
+`gufo-org/gufo` source against Paracetamol's shared ROCm runtime. No upstream
+Gufo image, prebuilt engine binary, or host installer is used. This managed
+path supports one `gfx1151` Strix Halo GPU and the Unsloth Flash-Next Dynamic
+Q4_K_XL model. Other Gufo architectures and model families are not exposed.
+
+```bash
+./paracetamol build gufo
+./paracetamol content install gufo qwen3.8-flash-next
+./paracetamol content list models --application gufo --details
+./paracetamol run gateway -a llama-cpp -a gufo
+```
+
+The installer reuses the same four verified GGUF shards as llama.cpp. Existing
+valid receipts need no download or rehash. The content stays under
+`content/llama-cpp/models/`, while Gufo's private state belongs in `apps/gufo/`.
+Only the exact bundle files are mounted into its container. License acceptance
+and the pinned repack's `NOASSERTION` acknowledgment still apply to a new install.
+
+Select `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gufo` in Pi, Maki,
+or an HTTP request. The unsuffixed ID still selects llama.cpp. Automatic
+gateway discovery includes Gufo once its image and compatible verified model
+exist. If your configuration explicitly selects applications, add `gufo` to
+that list or override it with `-a`. Only one engine stays resident, so moving
+between Gufo and llama.cpp reloads the backend. Dense Qwen3.8 27B Q8 MTP
+remains the preferred default when available.
+
+The preset uses a 262,144-token ceiling, one session, a 28 GiB RAM snapshot
+budget, and a default output cap of 16,384 tokens. Speculation and disk cache
+are disabled. This is a high-memory path tested on a 128 GB machine, not a
+32 GB GPU preset. Memory use grows with context and snapshot reuse.
+
+Reasoning is request-selectable as `none` (off), `medium` (default), or
+`xhigh`. Both managed clients expose those choices. Gufo preserves thinking
+history and resolves sampling after the request's thinking mode is known.
+Its pinned defaults are temperature 1, top-p 0.95, top-k 20, and presence
+penalty 0 when thinking, or 0.7, 0.8, 20, and 1.5 when off. Both modes use
+min-p 0 and repeat penalty 1. Explicit client sampling values take precedence.
+These are Gufo's native defaults, not the llama.cpp sampling-policy patch.
+
+On the tested Maki 0.4.8, interactive mode honors these choices but `--print`
+sent off even when `always_thinking` requested another level. Use Pi or an
+explicit HTTP request for headless reasoning-level comparisons until that
+client behavior is fixed. Paracetamol does not override the client's explicit
+off request to hide it.
+
+Gufo retains F16 KV caches but uses different internal kernels and precision
+choices, including F16 matrix paths. Reusing a quantized GGUF does not make it
+numerically equivalent to llama.cpp. Protocol and retrieval acceptance are not
+broad quality parity claims. See [hardware acceptance](../hardware-acceptance.md)
+for measured results and memory observations.
+
+For direct diagnostics, without the gateway:
+
+```bash
+./paracetamol run gufo server --reasoning medium
+./paracetamol run gufo server --context 8192 --cache-ram-bytes 4294967296
+./paracetamol logs gufo
+./paracetamol stop gufo
+./paracetamol acceptance --application gufo --accept-license --non-interactive
+```
+
+Direct publication defaults to `127.0.0.1:8080` and supports IPv4 only.
+Use the gateway for IPv6 or Bearer authentication. Gateway-owned containers
+always publish to an ephemeral loopback port, so their internal port 8080
+does not collide with a host service. Gateway settings come from the managed
+preset, not from flags passed to a separate direct server. `shell gufo` is
+available for runtime diagnostics. There is no managed CPU mode, multi-GPU
+mode, arbitrary upstream argument passthrough, or automatic model download.
+
 ## DwarfStar
 
 DwarfStar is the deliberately narrow path for DeepSeek V4 Flash. Paracetamol
