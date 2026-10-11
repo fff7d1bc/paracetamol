@@ -21,7 +21,7 @@ import (
 	"paracetamol/internal/process"
 )
 
-const ResultSchema = "paracetamol.coding-agent-evaluation.v4"
+const ResultSchema = "paracetamol.coding-agent-evaluation.v5"
 
 type HiddenTest struct {
 	Resource    string `json:"resource"`
@@ -96,10 +96,12 @@ type TaskResult struct {
 }
 
 type ModelResult struct {
-	Identifier string `json:"identifier"`
-	Context    int64  `json:"context"`
-	Thinking   string `json:"thinking"`
-	Backend    string `json:"backend"`
+	Identifier     string         `json:"identifier"`
+	Context        int64          `json:"context"`
+	Thinking       string         `json:"thinking"`
+	Backend        string         `json:"backend"`
+	SamplingPolicy string         `json:"sampling_policy,omitempty"`
+	Sampling       map[string]any `json:"sampling,omitempty"`
 }
 
 type Result struct {

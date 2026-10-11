@@ -61,6 +61,28 @@ func TestRegistryIncludesOnlyReceiptVerifiedModels(t *testing.T) {
 	if changed.Fingerprint == registry.Fingerprint {
 		t.Fatal("model policy change did not alter the inventory fingerprint")
 	}
+	managed.SamplingPolicies = map[string]catalog.SamplingPolicy{"fixture-policy": {ID: "fixture-policy", Thinking: map[string]any{"temperature": 1.0}, NonThinking: map[string]any{"temperature": 0.7}}}
+	withSampling := managed.LlamaPresets["fixture"]
+	withSampling.SamplingPolicy = "fixture-policy"
+	managed.LlamaPresets["fixture"] = withSampling
+	frozen, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed.SamplingPolicies["fixture-policy"].Thinking["temperature"] = 0.5
+	changedSampling, _, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm")
+	if err != nil || changedSampling.Fingerprint == frozen.Fingerprint {
+		t.Fatalf("sampling values did not change fingerprint: %v", err)
+	}
+	model, _ := frozen.Lookup("fixture")
+	if model.samplingDefaults.Thinking["temperature"] != 1.0 {
+		t.Fatal("catalog mutation changed frozen gateway policy")
+	}
+	model.samplingDefaults.Thinking["temperature"] = 99
+	lookup, _ := frozen.Lookup("fixture")
+	if lookup.samplingDefaults.Thinking["temperature"] != 1.0 {
+		t.Fatal("lookup can mutate frozen gateway policy")
+	}
 	managed.LlamaPresets["fixture"] = catalog.LlamaPreset{ID: "fixture", Bundle: "bundle", Artifact: "model", DefaultContext: 8192, Backends: []string{"vulkan"}}
 	if _, diagnostics, err := BuildRegistry(managed, root, []string{"llama-cpp"}, "cpu", nil, "rocm"); err == nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Reason, "backend rocm") {
 		t.Fatalf("backend restriction err=%v diagnostics=%#v", err, diagnostics)

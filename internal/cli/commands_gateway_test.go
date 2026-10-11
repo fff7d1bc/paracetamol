@@ -460,6 +460,21 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	}
 }
 
+func TestGatewayControlMetadataNamesInjectedDefaults(t *testing.T) {
+	got := gatewayControlMetadata(gateway.RequestControls{
+		SamplingPolicy: "qwen-policy", SamplingMode: "non_thinking",
+		Sampling: []gateway.ObservedControl{
+			{Name: "temperature", Source: gateway.ControlClient, Provided: true, Value: "0"},
+			{Name: "top_p", Source: gateway.ControlGatewayDefault, Value: "0.8"},
+		},
+	})
+	for _, want := range []string{"qwen-policy / non_thinking", "temperature=0", "top_p=0.8 (gateway)"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("metadata lacks %q: %s", want, got)
+		}
+	}
+}
+
 func floatPointer(value float64) *float64 { return &value }
 
 func TestGatewayTimingAndCachePresentation(t *testing.T) {

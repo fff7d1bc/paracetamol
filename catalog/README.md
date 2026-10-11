@@ -24,8 +24,8 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   rendered workflow by the matching ComfyUI frontend. Closely related
   variants may additionally pin an allowlisted deterministic renderer and its
   rendered hash.
-- `llama_sampling_policies` owns validated thinking and non-thinking sampler
-  defaults that the managed server selects after resolving a request's native
+- `sampling_policies` owns validated thinking and non-thinking sampler
+  defaults that the gateway selects after resolving a request's native
   reasoning mode. Presets reference these policies instead of duplicating
   numeric tuples or encoding them in Jinja.
 - `llama_presets` connects one llama.cpp bundle and target GGUF artifact to a
@@ -51,8 +51,10 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
 - `gufo_presets` owns Gufo's serving limits, RAM snapshot budget, and native
   reasoning capabilities. Its bundle reuses existing `llama-models` GGUF
   artifacts and receipts without a second physical copy. The distinct model
-  ID selects the engine. Sampling and templates belong to pinned Gufo source,
-  not `llama_sampling_policies`.
+  ID selects the engine. Its `sampling_policy` references the same shared
+  collection as llama.cpp. Gufo templates still belong to pinned Gufo source.
+- `dwarfstar_presets` may also reference a `sampling_policy`. The current
+  DeepSeek preset does not, so its request body remains unchanged.
 
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination

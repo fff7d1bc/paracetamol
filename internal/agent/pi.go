@@ -33,6 +33,10 @@ type PiPlan struct {
 }
 
 func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Model, apiKey string) ([]byte, error) {
+	return piConfig(managed, endpoint, selected, apiKey, "")
+}
+
+func piConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Model, apiKey, fixedThinking string) ([]byte, error) {
 	if apiKey != "" {
 		if err := config.ValidateGatewayKey(apiKey); err != nil {
 			return nil, err
@@ -45,7 +49,11 @@ func PiConfig(managed catalog.Catalog, endpoint string, selected []textmodel.Mod
 			"input": []string{"text"}, "contextWindow": model.Context,
 			"maxTokens": model.MaxOutputTokens, "cost": zeroCost(),
 		}
-		if sampling := ClientSampling(managed, model.ID); len(sampling) > 0 {
+		sampling := ClientSampling(managed, model.ID)
+		if fixedThinking != "" && model.SamplingPolicy != "" {
+			sampling = managed.SamplingPolicies[model.SamplingPolicy].Defaults(fixedThinking != "off")
+		}
+		if len(sampling) > 0 {
 			entry["samplingParams"] = sampling
 		}
 		if model.ReasoningControl != "" {
@@ -106,10 +114,27 @@ func CreatePiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gat
 	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, nil, true, apiKey)
 }
 
-// CreatePiPlanForModels is the deterministic benchmark seam. Normal sessions
-// must discover the live gateway inventory instead of supplying it themselves.
-func CreatePiPlanForModels(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, advertised []string) (PiPlan, error) {
-	return createPiPlan(ctx, managed, projectRoot, gatewayURL, arguments, runtime, advertised, false, "")
+// CreateEvaluationPiPlan pins one model and thinking selection for a direct
+// backend benchmark. Normal sessions discover the gateway and never bake a
+// thinking-dependent sampling tuple into Pi's model configuration.
+func CreateEvaluationPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, endpoint string, arguments []string, runtime PiRuntime, identifier, thinking string) (PiPlan, error) {
+	models, err := AgentModels(managed, []string{identifier})
+	if err != nil {
+		return PiPlan{}, err
+	}
+	if len(models) != 1 || !contains(textmodel.ReasoningLevels(models[0]), thinking) {
+		return PiPlan{}, fmt.Errorf("evaluation requires one known model and a supported thinking selection")
+	}
+	// The fixed choice travels with its sampler tuple. Do not rely on a caller
+	// remembering to override createPiPlan's normal interactive default.
+	arguments = append([]string{"--provider", ProviderID, "--model", identifier, "--thinking", thinking}, arguments...)
+	plan, err := createPiPlan(ctx, managed, projectRoot, endpoint, arguments, runtime, []string{identifier}, false, "")
+	if err != nil {
+		return PiPlan{}, err
+	}
+	plan.Config, err = piConfig(managed, plan.Endpoint, models, "", thinking)
+	plan.DefaultThinking = thinking
+	return plan, err
 }
 
 func createPiPlan(ctx context.Context, managed catalog.Catalog, projectRoot, gatewayURL string, arguments []string, runtime PiRuntime, advertised []string, discover bool, apiKey string) (PiPlan, error) {

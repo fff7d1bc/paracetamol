@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -25,8 +26,10 @@ type Model struct {
 	ReasoningLevels  []string          `json:"reasoning_levels,omitempty"`
 	ReasoningDefault string            `json:"reasoning_default,omitempty"`
 	ReasoningOff     bool              `json:"reasoning_off,omitempty"`
+	SamplingPolicy   string            `json:"sampling_policy,omitempty"`
 	Backend          textmodel.Backend `json:"-"`
 	Bundle           string            `json:"-"`
+	samplingDefaults catalog.SamplingPolicy
 }
 
 type Diagnostic struct {
@@ -152,6 +155,14 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 			Context: candidate.Context, MaxOutputTokens: candidate.MaxOutputTokens, AgentTools: candidate.AgentTools,
 			ReasoningControl: candidate.ReasoningControl, ReasoningLevels: append([]string(nil), candidate.ReasoningLevels...),
 			ReasoningDefault: candidate.ReasoningDefault, ReasoningOff: candidate.ReasoningOff,
+			SamplingPolicy: candidate.SamplingPolicy,
+		}
+		if candidate.SamplingPolicy != "" {
+			policy, ok := managed.SamplingPolicies[candidate.SamplingPolicy]
+			if !ok {
+				return Registry{}, nil, nil, fmt.Errorf("text model %s references unknown sampling policy %s", candidate.ID, candidate.SamplingPolicy)
+			}
+			model.samplingDefaults = catalog.SamplingPolicy{ID: policy.ID, Thinking: policy.Defaults(true), NonThinking: policy.Defaults(false)}
 		}
 		if _, duplicate := registry.byID[model.ID]; duplicate {
 			return Registry{}, nil, nil, fmt.Errorf("gateway model identifier %q is ambiguous", model.ID)
@@ -167,6 +178,13 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 			model.ID, model.Application, model.Bundle, model.Context, model.MaxOutputTokens,
 			model.AgentTools, model.ReasoningControl, strings.Join(model.ReasoningLevels, "\x1f"),
 			model.ReasoningDefault, model.ReasoningOff)
+		// Policy values, not just their name, are part of the frozen serving
+		// condition. JSON orders these numeric string-keyed maps deterministically.
+		encoded, err := json.Marshal(model.samplingDefaults)
+		if err != nil {
+			return Registry{}, nil, nil, fmt.Errorf("encode sampling policy for %s: %w", model.ID, err)
+		}
+		fmt.Fprintf(hash, "%s\x00%s\x00", model.SamplingPolicy, encoded)
 		bundle := managed.Bundles[model.Bundle]
 		for _, artifactID := range bundle.Artifacts {
 			artifact := managed.Artifacts[artifactID]
@@ -180,6 +198,8 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 func (registry Registry) Lookup(identifier string) (Model, bool) {
 	model, ok := registry.byID[identifier]
 	model.ReasoningLevels = append([]string(nil), model.ReasoningLevels...)
+	model.samplingDefaults.Thinking = model.samplingDefaults.Defaults(true)
+	model.samplingDefaults.NonThinking = model.samplingDefaults.Defaults(false)
 	return model, ok
 }
 

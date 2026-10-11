@@ -280,7 +280,6 @@ protected behavior is fixed.
 | Patch | Protected behavior and scope | Removal gate |
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
-| `reasoning-controls.patch` | Adds validated model-preset sampling defaults selected after thinking mode is resolved, with explicit request fields taking precedence. Upstream owns direct OpenAI-compatible effort parsing and aliases the native Qwen `reasoning_effort` and Muse `reasoning_strength` names; model-specific fallback behavior stays in the reviewed template rather than this server patch. | Upstream exposes an equivalent data-driven per-mode sampling-default mechanism with explicit-request precedence. |
 | `router-disconnect.patch` | Carries [PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`. Stops the child HTTP connection when its proxy closes and uses one response-wait deadline across wakeups. Includes the upstream non-streaming disconnect regression. | Upstream passes both streaming and non-streaming disconnects through the router and gateway. Observe the child slot becoming idle, not just a successful follow-up request. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
@@ -304,6 +303,15 @@ The October 1 delivery adds router disconnect propagation as the fourteenth
 patch, without changing inference arithmetic or defaults. Its
 [acceptance record](hardware-acceptance.md#fedora-44-strix-halo-router-cancellation-2026-10-01)
 distinguishes child-slot cancellation from follow-up request recovery.
+
+The October 11 delivery removes `reasoning-controls.patch` and advances the
+same source pin to image `r49`, leaving thirteen patches. This is an ownership
+move, not an upstream replacement. The Go gateway now applies the catalog's
+per-thinking-mode defaults across engines, preserving explicit request values.
+Direct engine endpoints intentionally use native defaults. Direct benchmarks
+send their selected catalog tuple explicitly. On future upgrades, verify that
+the gateway's reasoning resolver still agrees with each engine and template,
+including off, omitted controls, nested booleans, and named effort levels.
 
 The rebases preserve upstream's new GLM pooled-cache bookkeeping, graph
 allocation dependencies and matrix source-precision parameter. GLM's pooled

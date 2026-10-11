@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -29,7 +28,6 @@ type LlamaOptions struct {
 	Jinja                        bool
 	ReasoningPreserve            bool
 	ChatTemplate                 string
-	SamplingDefaults             map[string]any
 	ProfileFlashAttention        map[string]string
 	ProfileKVCache               map[string]string
 	ProfileModelLoad             map[string]string
@@ -121,15 +119,6 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	command = env(command, "PARACETAMOL_LLAMA_JINJA", boolInt(options.Jinja))
 	command = env(command, "PARACETAMOL_LLAMA_REASONING_PRESERVE", boolInt(options.ReasoningPreserve))
 	command = env(command, "PARACETAMOL_LLAMA_CHAT_TEMPLATE", options.ChatTemplate)
-	sampling := ""
-	if len(options.SamplingDefaults) > 0 {
-		encoded, err := json.Marshal(options.SamplingDefaults)
-		if err != nil {
-			return nil, fmt.Errorf("encode sampling defaults: %w", err)
-		}
-		sampling = string(encoded)
-	}
-	command = env(command, "PARACETAMOL_LLAMA_SAMPLING_DEFAULTS", sampling)
 	command = env(command, "PARACETAMOL_LISTEN", containerListen(options.Listen))
 	command = env(command, "PARACETAMOL_HOST_LISTEN", options.Listen)
 	command = env(command, "PARACETAMOL_PORT", options.Port)

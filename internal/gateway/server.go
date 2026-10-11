@@ -23,7 +23,7 @@ import (
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v5"
+	StatusSchema    = "paracetamol.gateway-status.v6"
 	IdentityHeader  = "X-Paracetamol-Gateway"
 	IdentityValue   = "paracetamol.gateway.v1"
 )
@@ -239,6 +239,11 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	record.Model, record.Application = model.ID, model.Application
+	body, err = applySamplingDefaults(body, model, &record.Controls)
+	if err != nil {
+		reject(http.StatusBadRequest, OutcomeRejected, "invalid_request_error", "invalid_reasoning_controls", err.Error())
+		return
+	}
 	logLine(server.log, "gateway | request %s start session=%s model=%s application=%s peer=%s stream=%t %s",
 		record.ID, firstNonEmptyLog(record.SessionID, "none"), model.ID, model.Application, firstNonEmptyLog(record.Peer, "unknown"), record.Stream, controlsLogSummary(record.Controls))
 	waitStarted := time.Now()

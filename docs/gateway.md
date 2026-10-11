@@ -252,9 +252,10 @@ Requests compatible with the active allocation run concurrently, subject to
 the backend's own slots. DwarfStar and Gufo each allow one active request. A request
 for another allocation enters the bounded FIFO queue. Once existing requests
 finish, the scheduler removes the current backend, starts the requested one,
-waits for its readiness endpoint, and forwards the original request. The
-gateway preserves the request body—including unknown fields—and streams SSE
-responses without aggregation.
+waits for its readiness endpoint, and forwards the request. The gateway fills
+missing sampling fields only for models with a reviewed catalog policy, as
+described below. Messages, tools, and unknown fields retain their values.
+SSE responses stream without aggregation.
 
 The body limit is 16 MiB and the waiting queue holds at most 64 requests.
 Client cancellation removes a queued request or propagates to the upstream
@@ -273,6 +274,50 @@ memory headroom does not mean it can coexist with the dense Q8 model. Switching
 between them uses the existing idle-child eviction. Flash-Next's allocation
 opt-out is local to its child process, so switching back does not alter the
 dense model's policy.
+
+## Model-aware sampling defaults
+
+The gateway is the shared sampling-policy boundary for Pi, Maki, curl, and
+other HTTP clients. Each reviewed Qwen preset references a catalog policy.
+There is no model-name guessing and no universal Qwen tuple applied to other
+families. Models without a policy keep their original request bytes.
+
+For a policy-bearing model, the gateway resolves thinking from the request,
+or from the model's managed default when no control is sent. It then fills
+only missing or JSON-null `temperature`, `top_p`, `top_k`, `min_p`,
+`presence_penalty`, and `repeat_penalty` fields declared by that policy.
+Explicit values win independently, including zero. Invalid explicit sampler
+values are left for the engine to reject, not repaired by the gateway.
+
+Use top-level `"reasoning_effort":"none"` for off, or a native level listed
+by the model. Qwen3.6 also accepts its normal boolean
+`chat_template_kwargs.enable_thinking` toggle. Both Qwen families accept that
+boolean and supported nested `reasoning_effort` values. For Gufo, the native
+`thinking.type` and `chat_template_kwargs.thinking_mode` controls are also
+recognized. No client-specific workaround is involved.
+
+Malformed or conflicting thinking controls return HTTP 400 before a backend
+starts. For example, `reasoning_effort: medium` combined with
+`enable_thinking: false` is ambiguous and is rejected. Put `none` at the top
+level, not inside `chat_template_kwargs.reasoning_effort`. Duplicate fields
+in the request or its reasoning-control objects are also rejected. The
+gateway does not rewrite reasoning levels or templates.
+
+The existing reviewed tuples are preserved. Flash-Next on llama.cpp uses
+thinking min-p 0.05, while its Gufo variant uses 0. Both retain their own
+tested policy. Moving policy ownership does not make the engines numerically
+equivalent or change a model's default reasoning level.
+
+`status gateway --requests N` shows the selected policy and thinking mode,
+plus whether each sampler came from the client or the gateway. The startup
+inventory fingerprint includes policy values. Restart the gateway after a
+catalog policy change. No engine rebuild is needed for a sampler-only change.
+
+Direct `run llama-cpp server` and `run gufo server` endpoints bypass this
+policy. They use native engine defaults unless the caller supplies settings.
+The old llama.cpp sampling patch has been removed, with no compatibility
+flag. Use the gateway for shared managed defaults. Direct benchmark runners
+send and record the catalog tuple explicitly for their fixed reasoning mode.
 
 ## Ownership and security
 
@@ -327,7 +372,7 @@ Use the human status client for the versioned endpoint:
 ./paracetamol status gateway --requests 10
 ```
 
-The v5 status schema reports the frozen applications, active allocation,
+The v6 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
 exact per-model residency. Every model reports its catalog-configured context.
 For a resident llama.cpp allocation, the gateway performs a bounded read-only
@@ -403,9 +448,12 @@ additional token total. The record also
 distinguishes explicit client values for `temperature`, `top_p`, `top_k`,
 `min_p`, `presence_penalty`, `repeat_penalty`, `reasoning_effort`,
 `reasoning_strength`, and the reviewed `chat_template_kwargs` reasoning fields
-from null or absent fields delegated to managed/backend defaults. Conflicting
-or malformed control values are diagnostic metadata only: the gateway neither
-rejects nor rewrites an otherwise valid request.
+from `gateway-default` values and null or absent fields still delegated to
+backend defaults. `provided` records whether the client included a field,
+even when it was null and received a gateway default. A managed sampling
+policy also records `sampling_policy` and `sampling_mode`. Reasoning validation
+applies only to policy-bearing models. For other models, observed malformed
+or conflicting controls remain diagnostic metadata rather than enforcement.
 
 The ledger and aggregates are process-local and never retain prompts, messages,
 tools, arbitrary request fields, complete request/response bodies, response

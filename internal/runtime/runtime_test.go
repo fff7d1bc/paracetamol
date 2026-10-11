@@ -141,6 +141,27 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 	}
 }
 
+func TestLlamaRuntimeDoesNotOwnGatewaySamplingDefaults(t *testing.T) {
+	managed := catalog.Catalog{
+		Artifacts:        map[string]catalog.Artifact{"model": {Destination: "model.gguf"}},
+		LlamaPresets:     map[string]catalog.LlamaPreset{"qwen": {ID: "qwen", Artifact: "model", DefaultContext: 4096, SamplingPolicy: "policy"}},
+		SamplingPolicies: map[string]catalog.SamplingPolicy{"policy": {Thinking: map[string]any{"temperature": 1}, NonThinking: map[string]any{"temperature": .7}}},
+	}
+	contents, err := RenderRouterModels(managed, "rocm", "cpu", []string{"qwen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := LlamaCommand(LlamaOptions{Image: "image", Profile: "cpu", Mode: "server", DataDir: "/data", Backend: "rocm", ManagedModel: "model.gguf", Listen: "127.0.0.1", Port: 8080}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{contents, strings.Join(command, " ")} {
+		if strings.Contains(strings.ToLower(value), "sampling") || strings.Contains(value, "temperature") {
+			t.Fatalf("engine retained a gateway sampling option: %s", value)
+		}
+	}
+}
+
 func TestLlamaCPUCLIIsOfflineAndHasNoGPUDevices(t *testing.T) {
 	prompt := "hello"
 	command, err := LlamaCommand(LlamaOptions{

@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -105,14 +104,6 @@ func RenderRouterModels(managed catalog.Catalog, backend, profile string, identi
 		if preset.ChatTemplate != "" {
 			section = append(section, "jinja = true", "chat-template-file = /usr/local/share/paracetamol/llama-chat-templates/"+preset.ChatTemplate+".jinja")
 		}
-		if preset.SamplingPolicy != "" {
-			policy := managed.SamplingPolicies[preset.SamplingPolicy]
-			encoded, encodeErr := orderedSamplingJSON(policy)
-			if encodeErr != nil {
-				return "", encodeErr
-			}
-			section = append(section, "sampling-defaults-by-reasoning = "+encoded)
-		}
 		for _, profile := range platform.ProfileIDs() {
 			if value := preset.FlashAttention[profile]; value != "" {
 				section = append(section, "paracetamol-flash-attn-"+profile+" = "+value)
@@ -139,17 +130,6 @@ func RenderRouterModels(managed catalog.Catalog, backend, profile string, identi
 		sections = append(sections, append(section, "load-on-startup = false", "")...)
 	}
 	return strings.Join(sections, "\n"), nil
-}
-
-func orderedSamplingJSON(policy catalog.SamplingPolicy) (string, error) {
-	// encoding/json orders string-keyed maps, keeping the generated router file
-	// deterministic without coupling request policy to a template renderer.
-	encoded, err := jsonMarshal(map[string]any{"non_thinking": policy.NonThinking, "thinking": policy.Thinking})
-	return string(encoded), err
-}
-
-var jsonMarshal = func(value any) ([]byte, error) {
-	return json.Marshal(value)
 }
 
 func WriteRouter(dataRoot, contents string) (string, error) {

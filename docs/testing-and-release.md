@@ -317,8 +317,9 @@ application switch. Confirm `status gateway` derives llama.cpp child residency
 from a read-only private `/models` probe without `reload`, filters foreign
 models and router arguments, and reports bounded fixed diagnostics on malformed
 or unavailable responses. Send Pi-, Maki-, and OpenCode-shaped reasoning and
-sampler payloads, then use `status gateway --requests N` to verify that explicit
-controls, wait/upstream/total timing, lifetime/model aggregates, validated
+sampler payloads, then use `status gateway --requests N` to verify that client
+and gateway-default values, selected policy/mode, wait/upstream/total timing,
+lifetime/model aggregates, validated
 session grouping, and available input/output/cached/reasoning tokens are
 credible while prompts, tools, authorization, response content, invalid
 session values, and forwarded peer headers are absent. Confirm the private
@@ -327,6 +328,17 @@ fragmented SSE, client disconnect,
 and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |`, `llama-cpp |`, `dwarfstar |`, or `gufo |` prefix.
+
+For sampling-policy changes, test every catalog-backed Qwen mode with missing,
+null, partial, and explicit-zero sampler fields. Invalid or conflicting
+thinking controls must return HTTP 400 before allocation. Unknown fields,
+tools, messages, and large integer values must survive normalization. Models
+without a policy must remain byte-preserving. Inspect llama.cpp's verbose
+generation settings on real requests, not only gateway logs. For Gufo, also
+compare seeded requests with injected versus fully explicit tuples. Keep the
+two Flash-Next thinking min-p policies distinct. Direct benchmarks must send
+and record the same catalog tuple now that engine startup carries no sampling
+patch or option.
 
 For llama.cpp cancellation, cover both streaming and non-streaming requests
 through the native router and through the gateway. Wait until a child slot
@@ -410,7 +422,7 @@ After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every
 Qwen3.8 preset must use Pi's `openai` thinking format with off mapped to
 `none`. Run one live representative of each distinct template path. Thinking
-off must produce no reasoning block and must select the server's non-thinking
+off must produce no reasoning block and must select the gateway's non-thinking
 sampling defaults; a TUI status line saying `thinking off` is not evidence of
 either behavior.
 
@@ -456,7 +468,7 @@ Changes to the llama.cpp share report require direct and router tests. Confirm
 that `status llama-cpp` reports the running image ID, source labels, resolved
 profile, exact PID 1 command, and redacted authentication state. In router
 mode, confirm that no model selection lists the mounted preset identifiers and
-that `--model PRESET` reports its context, reasoning and sampling policy,
+that `--model PRESET` reports its context, reasoning and sampling ownership,
 profile-specific cache and Flash Attention choices, and backend-specific draft
 depth. Start with `auto` on target hardware so the report proves it shows the
 resolved profile rather than merely echoing the request.

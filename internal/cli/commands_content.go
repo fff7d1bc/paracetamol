@@ -798,7 +798,7 @@ func (app *App) printGufoModelInventory(managed catalog.Catalog, dataRoot string
 				{"Model", content.ArtifactPath(dataRoot, managed.Artifacts[preset.Artifact])},
 				{"Storage", "shared verified GGUFs with llama.cpp, no duplicate download"},
 				{"Context", fmt.Sprint(preset.DefaultContext)}, {"Reasoning", "off, medium (default), xhigh"},
-				{"Sampling", "server-side thinking/non-thinking defaults"}, {"RAM cache bytes", fmt.Sprint(preset.CacheRAMBytes)},
+				{"Sampling", modelSamplingPolicy(preset.SamplingPolicy)}, {"RAM cache bytes", fmt.Sprint(preset.CacheRAMBytes)},
 				{"Speculation", "off"}, {"Install", identity.Command("content", "install", "gufo", "qwen3.8-flash-next")},
 			})
 		}
@@ -879,7 +879,7 @@ func (app *App) printLlamaModelDetails(managed catalog.Catalog, models []modelin
 				{"Backends", llamaBackendPolicy(preset)},
 				{"Context policy", llamaContextPolicy(preset)}, {"Template", llamaTemplatePolicy(preset)},
 				{"Speculation", llamaSpeculationPolicy(preset)}, {"Reasoning", llamaInventoryReasoningPolicy(preset)},
-				{"Sampling", llamaSamplingPolicy(preset)}, {"Flash Attention", llamaProfilePolicy(preset.FlashAttention)},
+				{"Sampling", modelSamplingPolicy(preset.SamplingPolicy)}, {"Flash Attention", llamaProfilePolicy(preset.FlashAttention)},
 				{"K/V cache", llamaProfilePolicy(preset.KVCache)}, {"Model load", llamaModelLoadInventoryPolicy(preset.ModelLoad)},
 			})
 		}
@@ -1060,11 +1060,11 @@ func llamaInventoryReasoningPolicy(preset catalog.LlamaPreset) string {
 	return fmt.Sprintf("%s; %s; default %s", preset.ReasoningControl, strings.Join(levels, ", "), preset.ReasoningDefault)
 }
 
-func llamaSamplingPolicy(preset catalog.LlamaPreset) string {
-	if preset.SamplingPolicy == "" {
-		return "request or llama.cpp default"
+func modelSamplingPolicy(policy string) string {
+	if policy == "" {
+		return "request or native engine defaults"
 	}
-	return "catalog " + preset.SamplingPolicy + " (thinking/non-thinking)"
+	return "gateway policy " + policy + " (thinking/non-thinking)"
 }
 
 func llamaProfilePolicy(policy map[string]string) string {

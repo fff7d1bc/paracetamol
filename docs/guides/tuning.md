@@ -336,7 +336,10 @@ deterministic synthetic Go repository prompt at approximately 4K, 32K, 64K,
 and 120K tokens, then issues three seeded 512-token requests per depth and
 prompt size. Each request starts a fresh single-slot server, so no candidate
 inherits a prompt cache. The model's reviewed sampling policy and selected
-native reasoning condition remain fixed. The resulting 96 requests can take
+native reasoning condition remain fixed. The direct benchmark sends the
+resolved catalog sampling tuple in every request rather than relying on
+engine defaults. Result schema v3 records that tuple as `request_sampling`.
+The resulting 96 requests can take
 hours; use `--draft-depth`, `--context-depth`, `--repetitions`, and
 `--generation-tokens` for a bounded smoke before the default campaign.
 

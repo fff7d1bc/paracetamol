@@ -785,6 +785,9 @@ func gatewayControlMetadata(controls gateway.RequestControls) string {
 	reasoning := explicitGatewayControls(controls.Reasoning)
 	samplers := explicitGatewayControls(controls.Sampling)
 	parts := []string{}
+	if controls.SamplingPolicy != "" {
+		parts = append(parts, controls.SamplingPolicy+" / "+controls.SamplingMode)
+	}
 	if len(reasoning) == 0 {
 		parts = append(parts, "reasoning defaults")
 	} else {
@@ -807,6 +810,8 @@ func explicitGatewayControls(controls []gateway.ObservedControl) []string {
 		switch control.Source {
 		case gateway.ControlClient:
 			result = append(result, control.Name+"="+control.Value)
+		case gateway.ControlGatewayDefault:
+			result = append(result, control.Name+"="+control.Value+" (gateway)")
 		case gateway.ControlInvalid:
 			result = append(result, control.Name+"=invalid")
 		}
