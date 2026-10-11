@@ -387,19 +387,24 @@ when the model's multi-turn template should retain parsed reasoning; it does
 not imply that the model accepts a client-selectable reasoning control.
 Keep this distinction visible in agent metadata and user documentation.
 
-Agent sampling is normally caller policy. `internal/agent/models.go` owns
-the reviewed coding defaults used by generated clients and evaluation
-metadata. A model whose authoritative sampling changes with a server-resolved
-control instead references one entry from the catalog's closed
-`llama_sampling_policies` collection through `sampling_policy`. Direct startup
-and router rendering serialize the selected policy into llama.cpp's dedicated
-`--sampling-defaults-by-reasoning` option, and generated clients omit fields
-that would mask it. The server selects `thinking` or `non_thinking` after
-resolving the request and fills only omitted or null fields. Qwen3.6 uses
-separate dense and sparse policies while its MTP and non-MTP variants share
-their family policy; Qwen3.8 uses one 27B policy. Adding `agent_tools` still
-requires an authoritative upstream sampling audit and an explicit policy
-entry. Do not encode sampling as a bundle variant or Jinja side effect.
+`sampling_policies` owns reusable thinking and non-thinking sampler defaults.
+Presets for any text engine can reference one through `sampling_policy`.
+The gateway snapshots that exact policy with its verified inventory, resolves
+the request's thinking mode, and fills only omitted or null sampler fields.
+It rejects conflicting reasoning selectors before scheduling. Policy fields
+are a closed numeric allowlist with range checks, not arbitrary request
+overrides. Direct engine startup and router INI files do not carry the policy.
+
+Qwen3.6 uses separate dense and sparse tuples. Its MTP and non-MTP variants
+share their family policy, as do Qwen3.8's dense variants. Flash-Next has
+separate llama.cpp and Gufo policies to preserve their reviewed thinking
+min-p values of 0.05 and 0. Generated clients omit static tuples for these
+models so every request can select its own thinking mode. Direct benchmark
+runners send the selected tuple explicitly from the same catalog.
+`internal/agent/models.go` retains static client defaults for unrelated
+families. Adding `agent_tools` still requires an authoritative sampling audit.
+Do not encode sampling as a bundle variant, client-name heuristic, or Jinja
+side effect. See [gateway sampling](gateway.md#model-aware-sampling-defaults).
 
 For a split GGUF, put every shard in the same bundle and reference the first
 `00001-of-N` shard from the preset. Preset inspection validates the complete
@@ -444,8 +449,9 @@ context and output limits, RAM snapshot budget, and off/medium/xhigh reasoning
 capabilities. Do not copy model files or create duplicate artifact records to
 select another engine. Gufo currently permits one reviewed model, on Strix
 Halo only. New Gufo models need engine and gateway acceptance, not a local
-pack that bypasses those limits. Native sampling and templates are pinned
-with Gufo source rather than the llama.cpp template or sampling patches.
+pack that bypasses those limits. Templates are pinned with Gufo source.
+The Gufo preset's gateway sampling policy currently matches its native
+defaults but is maintained explicitly in the catalog.
 
 A bundle connects content to a user-visible capability:
 

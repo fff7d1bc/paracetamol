@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/url"
 	"os"
@@ -18,7 +19,7 @@ import (
 	"paracetamol/internal/platform"
 )
 
-const SchemaVersion = 27
+const SchemaVersion = 28
 
 const (
 	LlamaModelLoadResident               = "resident"
@@ -120,6 +121,15 @@ type SamplingPolicy struct {
 	NonThinking map[string]any
 }
 
+// Defaults returns a request-owned copy. Catalog policy must never become a
+// mutable request map or drift after the gateway freezes its inventory.
+func (policy SamplingPolicy) Defaults(thinking bool) map[string]any {
+	if thinking {
+		return maps.Clone(policy.Thinking)
+	}
+	return maps.Clone(policy.NonThinking)
+}
+
 type LlamaPreset struct {
 	ID                           string
 	Bundle                       string
@@ -157,6 +167,7 @@ type DwarfStarPreset struct {
 	ReasoningLevels  []string
 	ReasoningDefault string
 	ReasoningOff     bool
+	SamplingPolicy   string
 }
 
 // Gufo reuses verified GGUF artifacts without duplicating their storage or
@@ -173,6 +184,7 @@ type GufoPreset struct {
 	ReasoningLevels  []string `json:"reasoning_levels"`
 	ReasoningDefault string   `json:"reasoning_default"`
 	ReasoningOff     bool     `json:"reasoning_off"`
+	SamplingPolicy   string   `json:"sampling_policy"`
 }
 
 func (preset LlamaPreset) DraftTokensForBackend(backend string) int64 {
@@ -254,7 +266,7 @@ type document struct {
 	Bundles          map[string]json.RawMessage `json:"bundles"`
 	Workflows        map[string]json.RawMessage `json:"workflows"`
 	Benchmarks       map[string]json.RawMessage `json:"benchmarks"`
-	SamplingPolicies map[string]json.RawMessage `json:"llama_sampling_policies"`
+	SamplingPolicies map[string]json.RawMessage `json:"sampling_policies"`
 	LlamaPresets     map[string]json.RawMessage `json:"llama_presets"`
 	DwarfStarPresets map[string]json.RawMessage `json:"dwarfstar_presets"`
 	GufoPresets      map[string]json.RawMessage `json:"gufo_presets"`
@@ -394,6 +406,7 @@ type rawDwarfStarPreset struct {
 	ReasoningLevels  []string `json:"reasoning_levels"`
 	ReasoningDefault string   `json:"reasoning_default"`
 	ReasoningOff     bool     `json:"reasoning_off"`
+	SamplingPolicy   string   `json:"sampling_policy"`
 }
 
 func Load(file string) (Catalog, error) {
@@ -782,6 +795,20 @@ func loadSamplingPolicy(id string, value json.RawMessage) (SamplingPolicy, error
 			if !ok || math.IsNaN(number) || math.IsInf(number, 0) {
 				return SamplingPolicy{}, fmt.Errorf("sampling policy %s %s.%s must be numeric", id, mode, key)
 			}
+			valid := true
+			switch key {
+			case "temperature":
+				valid = number >= 0
+			case "top_p", "min_p":
+				valid = number >= 0 && number <= 1
+			case "top_k":
+				valid = number >= 0 && number <= math.MaxInt32 && math.Trunc(number) == number
+			case "repeat_penalty":
+				valid = number > 0
+			}
+			if !valid {
+				return SamplingPolicy{}, fmt.Errorf("sampling policy %s %s.%s is out of range", id, mode, key)
+			}
 		}
 	}
 	return SamplingPolicy{ID: id, Thinking: raw.Thinking, NonThinking: raw.NonThinking}, nil
@@ -942,6 +969,7 @@ func loadDwarfStarPreset(id string, value json.RawMessage) (DwarfStarPreset, err
 		AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl,
 		ReasoningLevels:  append([]string(nil), raw.ReasoningLevels...),
 		ReasoningDefault: raw.ReasoningDefault, ReasoningOff: raw.ReasoningOff,
+		SamplingPolicy: raw.SamplingPolicy,
 	}, nil
 }
 
@@ -1021,6 +1049,11 @@ func (catalog Catalog) validateRelationships() error {
 		}
 	}
 	for id, preset := range catalog.DwarfStarPresets {
+		if preset.SamplingPolicy != "" {
+			if _, ok := catalog.SamplingPolicies[preset.SamplingPolicy]; !ok {
+				return fmt.Errorf("DwarfStar preset %s references unknown sampling policy %s", id, preset.SamplingPolicy)
+			}
+		}
 		if _, duplicate := catalog.LlamaPresets[id]; duplicate {
 			return fmt.Errorf("text model identifier %s is shared by llama.cpp and DwarfStar", id)
 		}
@@ -1034,6 +1067,11 @@ func (catalog Catalog) validateRelationships() error {
 		}
 	}
 	for id, preset := range catalog.GufoPresets {
+		if preset.SamplingPolicy != "" {
+			if _, ok := catalog.SamplingPolicies[preset.SamplingPolicy]; !ok {
+				return fmt.Errorf("Gufo preset %s references unknown sampling policy %s", id, preset.SamplingPolicy)
+			}
+		}
 		if _, duplicate := catalog.LlamaPresets[id]; duplicate {
 			return fmt.Errorf("text model identifier %s is shared by Gufo and llama.cpp", id)
 		}

@@ -61,6 +61,7 @@ type speculativeDefinition struct {
 	ChatTemplate         string                      `json:"chat_template"`
 	SamplingPolicy       string                      `json:"sampling_policy"`
 	SamplingDefaults     json.RawMessage             `json:"sampling_defaults,omitempty"`
+	RequestSampling      map[string]any              `json:"request_sampling,omitempty"`
 	FlashPolicy          []speculativeProfileSetting `json:"flash_policy"`
 	KVCachePolicy        []speculativeProfileSetting `json:"kv_cache_policy"`
 	DraftProbabilityMin  float64                     `json:"draft_probability_min"`
@@ -304,6 +305,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		}
 	}
 	samplingDefaults := map[string]any{}
+	requestSampling := managed.SamplingPolicies[preset.SamplingPolicy].Defaults(nativeReasoning != "off")
 	var samplingJSON json.RawMessage
 	if preset.SamplingPolicy != "" {
 		policy := managed.SamplingPolicies[preset.SamplingPolicy]
@@ -336,7 +338,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		if *disableGraphs {
 			environment = append(environment, "GGML_CUDA_DISABLE_GRAPHS=1")
 		}
-		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, SamplingDefaults: samplingDefaults, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, AllowedProfiles: preset.BackendProfiles[*backend], RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
+		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, AllowedProfiles: preset.BackendProfiles[*backend], RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
 		if err != nil {
 			return err
 		}
@@ -382,7 +384,8 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		Thinking: speculativeThinking{Client: level, Native: nativeReasoning}, Jinja: preset.Jinja,
 		ReasoningPreserve: preset.ReasoningPreserve, ReasoningControl: preset.ReasoningControl,
 		ChatTemplate: preset.ChatTemplate, SamplingPolicy: preset.SamplingPolicy, SamplingDefaults: samplingJSON,
-		FlashPolicy: profileSettings(flashPolicy), KVCachePolicy: profileSettings(kvPolicy), DraftProbabilityMin: *draftProbability,
+		RequestSampling: requestSampling,
+		FlashPolicy:     profileSettings(flashPolicy), KVCachePolicy: profileSettings(kvPolicy), DraftProbabilityMin: *draftProbability,
 		DraftBackendSampling: *draftSampling, NgramSimple: *ngram, GraphOptimization: *graphOptimization,
 		DisableGraphs: *disableGraphs, Poll: *poll, NoHost: *noHost, FlashAttention: *flash,
 		CacheTypeK: *cacheK, CacheTypeV: *cacheV, BatchSize: *batch, UBatchSize: *ubatch,
@@ -438,6 +441,11 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		var metrics benchmark.SpeculativeMetrics
 		if startErr == nil {
 			payload := map[string]any{"model": *presetID, "messages": benchmark.SpeculativeMessages(contextDepth, requestSeed), "max_tokens": *generation, "seed": requestSeed, "stream": false}
+			// Native benchmark endpoints bypass the gateway. Resolve the same
+			// catalog tuple explicitly for this fixed-mode measurement.
+			for key, value := range requestSampling {
+				payload[key] = value
+			}
 			if nativeReasoning == "off" {
 				payload["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
 			} else if nativeReasoning != "on" {

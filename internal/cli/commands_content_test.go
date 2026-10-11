@@ -101,7 +101,7 @@ func TestContentModelInventoryIncludesAliasesDwarfStarAndDetailedPolicy(t *testi
 	}
 	for _, expected := range []string{
 		"llama.cpp models", "qwen-base, qwen-mtp", "DwarfStar models", "deepseek-mtp", "Managed preset details",
-		"Default context", "131072 tokens", "Sampling", "catalog qwen-policy", "content install deepseek-mtp", "run dwarfstar server --dspark",
+		"Default context", "131072 tokens", "Sampling", "gateway policy qwen-policy", "content install deepseek-mtp", "run dwarfstar server --dspark",
 	} {
 		if !bytes.Contains(stdout.Bytes(), []byte(expected)) {
 			t.Fatalf("inventory lacks %q:\n%s", expected, stdout.String())

@@ -18,7 +18,6 @@ context_override="${PARACETAMOL_LLAMA_CONTEXT_OVERRIDE:-}"
 jinja="${PARACETAMOL_LLAMA_JINJA:-0}"
 reasoning_preserve="${PARACETAMOL_LLAMA_REASONING_PRESERVE:-0}"
 chat_template="${PARACETAMOL_LLAMA_CHAT_TEMPLATE:-}"
-sampling_defaults="${PARACETAMOL_LLAMA_SAMPLING_DEFAULTS:-}"
 flash_attn_rdna4="${PARACETAMOL_LLAMA_FLASH_ATTN_RDNA4:-}"
 flash_attn_strix_halo="${PARACETAMOL_LLAMA_FLASH_ATTN_STRIX_HALO:-}"
 flash_attn_strix_point="${PARACETAMOL_LLAMA_FLASH_ATTN_STRIX_POINT:-}"
@@ -186,11 +185,6 @@ if [[ "$router" == 0 && -n "$chat_template" ]]; then
     [[ -f "$chat_template_path" && -r "$chat_template_path" ]] ||
         die "managed llama.cpp chat template is not a readable regular file: $chat_template_path"
     model_policy_args+=(--jinja --chat-template-file "$chat_template_path")
-fi
-if [[ "$mode" == server && -n "$sampling_defaults" ]]; then
-    model_policy_args+=(
-        --sampling-defaults-by-reasoning "$sampling_defaults"
-    )
 fi
 if [[ "$router" == 0 && -n "$speculative_type" ]]; then
     speculative_args+=(

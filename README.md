@@ -354,8 +354,13 @@ A running llama.cpp server can also print a pasteable configuration report.
 
 The model selector identifies a managed direct preset or chooses one configured
 router preset. The report includes the immutable image and source identities,
-resolved hardware, model policy, sampling defaults, and exact running llama.cpp
+resolved hardware, model policy, sampling ownership, and exact running llama.cpp
 command without printing API-key values or host secret paths.
+
+For Qwen, the gateway fills missing sampling settings according to the
+request's thinking mode. Explicit client values still win. This applies to
+Pi, Maki, and raw HTTP clients using that endpoint. Direct engine endpoints
+use native defaults. See [sampling policy](docs/gateway.md#model-aware-sampling-defaults).
 
 Override the profile only when testing or diagnosing.
 

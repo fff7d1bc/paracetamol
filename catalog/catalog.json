@@ -1,5 +1,5 @@
 {
-  "schema_version": 27,
+  "schema_version": 28,
   "gufo_presets": {
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gufo": {
       "bundle": "gufo-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
@@ -11,7 +11,8 @@
       "reasoning_control": "effort",
       "reasoning_levels": ["medium", "xhigh"],
       "reasoning_default": "medium",
-      "reasoning_off": true
+      "reasoning_off": true,
+      "sampling_policy": "qwen3.8-flash-next-gufo"
     }
   },
   "agreements": {
@@ -2600,7 +2601,25 @@
       "rendered_sha256": "437ede7b094b12fc5dccd4faae2b1904d7013365fbd62f94b46409b86a15e579"
     }
   },
-  "llama_sampling_policies": {
+  "sampling_policies": {
+    "qwen3.8-flash-next-gufo": {
+      "thinking": {
+        "temperature": 1.0,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 0.0,
+        "repeat_penalty": 1.0
+      },
+      "non_thinking": {
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+        "repeat_penalty": 1.0
+      }
+    },
     "qwen3.6-27b": {
       "thinking": {
         "temperature": 1.0,

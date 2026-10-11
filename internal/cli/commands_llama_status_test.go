@@ -141,6 +141,23 @@ func TestLlamaStatusReportsExplicitReasoningHistoryPolicy(t *testing.T) {
 	}
 }
 
+func TestLlamaStatusSeparatesNativeAndGatewaySampling(t *testing.T) {
+	preset := catalog.LlamaPreset{ID: "qwen", SamplingPolicy: "qwen-policy"}
+	for _, section := range []map[string]string{nil, {"model": "/content/models/model.gguf"}} {
+		rows, err := llamaModelStatusRows(catalog.Catalog{}, &preset, section, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values := map[string]string{}
+		for _, row := range rows {
+			values[row[0]] = row[1]
+		}
+		if values["Sampling"] != "request values or llama.cpp defaults" || values["Gateway sampling"] != "qwen-policy (only through the gateway)" || values["Thinking sampling"] != "" {
+			t.Fatalf("direct server falsely claimed gateway defaults: %v", values)
+		}
+	}
+}
+
 func TestDirectLlamaPresetIgnoresBackendIncompatibleMatch(t *testing.T) {
 	managed := catalog.Catalog{
 		Artifacts: map[string]catalog.Artifact{

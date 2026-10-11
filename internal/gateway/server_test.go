@@ -63,8 +63,8 @@ func requireGatewayIdentity(t *testing.T, response *http.Response) {
 	}
 }
 
-func TestGatewayStatusSchemaIsVersionFive(t *testing.T) {
-	if StatusSchema != "paracetamol.gateway-status.v5" {
+func TestGatewayStatusSchemaIsVersionSix(t *testing.T) {
+	if StatusSchema != "paracetamol.gateway-status.v6" {
 		t.Fatalf("status schema=%q", StatusSchema)
 	}
 }

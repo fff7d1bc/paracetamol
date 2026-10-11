@@ -69,9 +69,9 @@ deleted. Remove a local patch only after identifying the equivalent upstream
 change in the proposed pin or proving that its protected behavior no longer
 exists. In particular, review llama.cpp's HIP APU host-buffer patch against
 upstream PR 25863, its replacement discussion and the removal gate in
-`upgrading.md`. Review `reasoning-controls.patch` against upstream
-per-thinking-mode sampling defaults on every llama.cpp update. Native effort
-parsing already belongs to upstream.
+`upgrading.md`. Recheck native effort parsing and template behavior against
+the gateway's thinking-mode resolver on every engine update. Sampling policy
+now belongs to the Go gateway, not a llama.cpp source patch.
 
 ### 4. Report and recommend
 

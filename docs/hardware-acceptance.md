@@ -26,6 +26,60 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo gateway sampling ownership (2026-10-11)
+
+**PASS for the reviewed Qwen paths.** The gateway now supplies missing or
+null sampler fields from the model's catalog policy. Explicit client values,
+including zero, remain untouched. The existing tuples, GGUFs, templates,
+reasoning defaults, F16 KV cache and inference arithmetic are unchanged.
+Gufo keeps its reviewed thinking min-p of 0, while llama.cpp Flash-Next keeps
+0.05. Direct native-engine endpoints no longer receive gateway policy.
+
+The controller revision is the commit adding this record. The llama.cpp pin
+remains `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`. Removing only
+`reasoning-controls.patch` leaves thirteen source patches and produces
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-2090f60-r49`, image
+`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`.
+Gufo retains source `665fc182445dc2685f2a9b2b4314aa7d92a858c2` and image
+`d6a3385df7cc9dcef94ad589bf3176430d16f01f68be9d9ef603d026c32ee179`.
+The acceptance host runs Fedora 44, kernel `7.1.7-200.fc44.x86_64`, `gfx1151`,
+128 GB LPDDR5X-8000, with unchanged balanced power policy and ROCm 10.0.
+
+The HTTP matrix covers dense Qwen3.8 Q8 and Q4 MTP, Qwen3.6 dense and sparse
+MTP, and Flash-Next UD-Q4_K_XL on both llama.cpp and Gufo. All passed omitted
+controls, off, nested off and their supported positive reasoning levels.
+Missing, null and explicit-zero samplers behaved as intended. The llama.cpp
+verbose response confirmed the actual six generation settings. Gufo's seeded
+outputs matched between gateway-filled and fully explicit tuples at off,
+medium and xhigh. Small answer checks passed, with no reasoning output in
+off mode. Conflicting selectors returned HTTP 400 before inference.
+
+Six sandboxed Pi 1.0.2 sessions completed read-tool round trips and returned
+the exact fixture value, covering off, medium and xhigh on dense Q8 and Gufo.
+Two Maki 0.4.8 headless sessions also completed tool round trips, one per
+engine. They are off-mode checks, not named-reasoning acceptance for Maki's
+known headless limitation. The gateway ledger records the selected policy,
+mode and client-versus-gateway provenance without retaining prompt bodies.
+The final host implementation passed another dense-Q8 and Gufo HTTP matrix.
+
+Model context ceilings remained 256K, except dense Q4 at 128K. These were
+short request and client checks at those configured ceilings, not populated
+long-context probes or a performance comparison. There is no new numerical
+or general coding-quality claim.
+
+The rebuilt image passed dependency checks and model-free CPU router startup
+on loopback. Inspection found a read-only root and no CPU-mode GPU devices.
+Direct speculative and coding-evaluation dry runs passed with the retired
+engine option absent. Host checks, static build, race tests and catalog
+validation passed. No new entries appeared in the test-window kernel log.
+All test gateways and containers were stopped. Other GPU architectures are
+**N/P** for this run because acceptance hardware was not available.
+
+Evidence is retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261011-gateway-sampling/`.
+It includes exact probes, responses, client transcripts, status snapshots,
+build and runtime logs, helper source, the retired patch and delivered diff.
+
 ### Fedora 44 Strix Halo managed Gufo integration (2026-10-10)
 
 **PASS for the reviewed Flash-Next path.** Gufo is now a separate source-built

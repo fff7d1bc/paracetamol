@@ -28,8 +28,10 @@ transcripts, generated patches, timing, or host-specific result JSON to the
 source tree. A curated result summary may be added to an appropriate research
 or hardware-acceptance record when it states the exact suite fingerprint,
 model artifact, runtime, harness, context, repetitions, and hardware.
-Result schema v2 records the reasoning control, client-facing selection, and
-native model value instead of the synthetic token budget used by v1. There is
+Current result schema v5 records the client thinking selection and the exact
+sampling tuple sent by the direct evaluation client, together with its
+catalog policy ID when one applies. Older records retain their original
+schemas and must not be relabeled. There is
 no current comparative quality baseline: the earlier result set was retired
 on 2026-08-17 after model templates, reasoning defaults, sampling ownership,
 and harness integrations changed. New comparisons must start from fresh
@@ -94,8 +96,9 @@ For every task and repetition the runner:
    dependency environment or package installer preparation.
 6. Runs Pi noninteractively with no saved session, extensions, skills, or
    prompt templates. The normal Paracetamol model catalog still owns endpoint,
-   context metadata, output allowance, and sampling policy; Qwen3.8's selected
-   mode is resolved by the server and recorded in the result metadata.
+   context metadata, output allowance, and sampling policy. Unlike normal
+   gateway-backed sessions, this fixed-mode evaluation sends its resolved
+   catalog sampler tuple explicitly to the direct backend and records it.
 7. Preserves the complete worktree diff and structured Pi transcript.
 8. Copies the worktree into a grading directory, restores pinned dependency
    and fixture-instruction files, runs ordinary tests, adds the hash-verified
@@ -141,15 +144,18 @@ because replacing those would test a synthetic configuration. Start with one
 attempt per task, then run three fresh repetitions for finalists. Do not tune
 the prompt or hidden grader after seeing a new model's answer.
 
-Qwen3.6 and Qwen3.8 sampling follows the selected mode. Pi omits static
-sampling for both families: the managed server supplies Qwen3.6's dense or
-sparse thinking tuple, Qwen3.8's thinking tuple for low, medium, and xhigh, or
-the shared non-thinking tuple for off. The evaluation result records the
-effective values. Qwen3.6's temperature-0.6 precise-coding recommendation is
+Qwen3.6 and Qwen3.8 sampling follows the selected mode. In normal Pi sessions,
+the gateway supplies Qwen3.6's dense or sparse thinking tuple, Qwen3.8's
+thinking tuple for low, medium, and xhigh, or the shared non-thinking tuple
+for off. This direct evaluation path configures Pi with that same tuple for
+its one fixed model and mode. It must never reuse that static configuration
+for a normal session where the user can change thinking levels. The
+evaluation result records the sent values. Qwen3.6's temperature-0.6
+precise-coding recommendation is
 an explicit experimental override, not the managed default. Off remains an
 explicitly labelled within-family condition rather than a semantically
 matched cross-model level. Maki remains outside the fixed comparison because
-it is a different harness, even though it receives the same server-side Qwen
+it is a different harness, even though it receives the same gateway-side Qwen
 sampling defaults.
 
 Use a 45-minute wall-clock ceiling for each future model-evaluation attempt.

@@ -146,6 +146,15 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 	if err != nil {
 		return err
 	}
+	models, err := agent.AgentModels(managed, []string{model})
+	if err != nil || len(models) != 1 {
+		return controlerr.New("coding evaluation requires exactly one managed agent model")
+	}
+	samplingPolicy := models[0].SamplingPolicy
+	sampling := agent.ClientSampling(managed, model)
+	if samplingPolicy != "" {
+		sampling = managed.SamplingPolicies[samplingPolicy].Defaults(level != "off")
+	}
 	server, containerName, err := app.agentEvaluationServer(managed, dataRoot, profile, *backend, selectedNodes, port, *contextSize, *presetID, *dwarfstar)
 	if err != nil {
 		return err
@@ -229,7 +238,7 @@ func (app *App) benchmarkAgent(args []string) (returned error) {
 			prepared[fmt.Sprintf("%s-%d", task.Identifier, repetition)] = attempt
 		}
 	}
-	result := evaluation.Result{Schema: evaluation.ResultSchema, Suite: suite.Identifier, SuiteFingerprint: suite.Fingerprint, RunID: runID, Status: "running", StartedAt: benchmark.Timestamp(), Model: evaluation.ModelResult{Identifier: model, Context: *contextSize, Thinking: level, Backend: *backend}, Harness: "Pi", Tasks: []evaluation.TaskResult{}}
+	result := evaluation.Result{Schema: evaluation.ResultSchema, Suite: suite.Identifier, SuiteFingerprint: suite.Fingerprint, RunID: runID, Status: "running", StartedAt: benchmark.Timestamp(), Model: evaluation.ModelResult{Identifier: model, Context: *contextSize, Thinking: level, Backend: *backend, SamplingPolicy: samplingPolicy, Sampling: sampling}, Harness: "Pi", Tasks: []evaluation.TaskResult{}}
 	if err := benchmark.WriteNewCheckpoint(resultPath, result); err != nil {
 		return err
 	}
@@ -322,19 +331,15 @@ func (app *App) agentEvaluationServer(managed catalog.Catalog, dataRoot, profile
 	if preset.DraftArtifact != "" {
 		options.ManagedDraft = managed.Artifacts[preset.DraftArtifact].Destination
 	}
-	if preset.SamplingPolicy != "" {
-		policy := managed.SamplingPolicies[preset.SamplingPolicy]
-		options.SamplingDefaults = map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
-	}
 	command, err := runtime.LlamaCommand(options, volume)
 	application, _ := config.ApplicationByID("llama-cpp")
 	return command, application.ContainerName, err
 }
 
 func (app *App) runEvaluationPi(managed catalog.Catalog, piRuntime agent.PiRuntime, dataRoot string, port int, task evaluation.Task, attempt evaluation.Attempt, model, thinking string, environment map[string]string, evaluationRoot string) (evaluation.HarnessResult, error) {
-	arguments := []string{"--provider", agent.ProviderID, "--model", model, "--thinking", thinking, "--print", "--mode", "json", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--tools", "read,bash,edit,write", task.Prompt}
+	arguments := []string{"--print", "--mode", "json", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--tools", "read,bash,edit,write", task.Prompt}
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/v1", port)
-	plan, err := agent.CreatePiPlanForModels(app.Context, managed, app.Root, endpoint, arguments, piRuntime, []string{model})
+	plan, err := agent.CreateEvaluationPiPlan(app.Context, managed, app.Root, endpoint, arguments, piRuntime, model, thinking)
 	if err != nil {
 		return evaluation.HarnessResult{}, err
 	}

@@ -291,7 +291,7 @@ func TestPiManagedExtensionsAndRuntimeEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := CreatePiPlanForModels(context.Background(), managed, projectRoot(t), "http://127.0.0.1:7455/v1", nil, PiRuntime{Root: "/reviewed/runtime", Node: "/node", Entrypoint: "/pi"}, []string{RecommendedModel})
+	plan, err := CreateEvaluationPiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:7455/v1", nil, PiRuntime{Root: "/reviewed/runtime", Node: "/node", Entrypoint: "/pi"}, RecommendedModel, "medium")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,6 +29,7 @@ type Model struct {
 	ReasoningLevels  []string
 	ReasoningDefault string
 	ReasoningOff     bool
+	SamplingPolicy   string
 }
 
 func All(managed catalog.Catalog) ([]Model, error) {
@@ -40,6 +41,7 @@ func All(managed catalog.Catalog) ([]Model, error) {
 			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
 			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
 			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
+			SamplingPolicy: preset.SamplingPolicy,
 		}
 	}
 	for id, preset := range managed.DwarfStarPresets {
@@ -52,6 +54,7 @@ func All(managed catalog.Catalog) ([]Model, error) {
 			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
 			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
 			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
+			SamplingPolicy: preset.SamplingPolicy,
 		}
 	}
 	for id, preset := range managed.GufoPresets {
@@ -62,7 +65,8 @@ func All(managed catalog.Catalog) ([]Model, error) {
 			Context: preset.DefaultContext, MaxOutputTokens: preset.MaxOutputTokens,
 			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
 			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
-			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff}
+			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
+			SamplingPolicy: preset.SamplingPolicy}
 	}
 	identifiers := make([]string, 0, len(byID))
 	for id := range byID {

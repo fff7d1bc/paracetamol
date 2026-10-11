@@ -729,10 +729,6 @@ func (app *App) runLlama(mode string, args []string) error {
 		options.ProfileKVCache = preset.KVCache
 		options.ProfileModelLoad = preset.ModelLoad
 		options.AllowedProfiles = preset.BackendProfiles[*backend]
-		if preset.SamplingPolicy != "" {
-			policy := managed.SamplingPolicies[preset.SamplingPolicy]
-			options.SamplingDefaults = map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
-		}
 		if *contextSize == -1 {
 			options.Context = preset.DefaultContext
 		}

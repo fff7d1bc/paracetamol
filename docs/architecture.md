@@ -110,7 +110,7 @@ linked files fail closed.
 
 The typed controller schemas introduced at that boundary are hardware
 acceptance v2, ComfyUI benchmark/result-suite v2, llama.cpp benchmark/backend
-comparison v2, speculative-depth sweep v2, and coding-agent evaluation v4.
+comparison v2, speculative-depth sweep v3, and coding-agent evaluation v5.
 Resume decodes these with unknown-field rejection and validates their bound
 definitions and managed paths before trusting progress. Older files remain
 readable records, not resumable state.
@@ -736,7 +736,7 @@ destination roots are therefore required not to overlap.
 
 ## Catalog and workflow trust chain
 
-`catalog/catalog.json` is schema version 26. The loader in
+`catalog/catalog.json` is schema version 28. The loader in
 `internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.
@@ -940,13 +940,16 @@ request settings remain higher-precedence caller policy. Qwen3.6 and Qwen3.8
 are deliberately different because their official samplers depend on
 reasoning mode, and sparse Qwen3.6 has a distinct thinking policy. The catalog
 owns validated, reusable thinking and non-thinking policies and each
-applicable preset references one. Direct startup and router rendering pass the
-resolved data through a dedicated llama.cpp option that remains separate from
-Jinja. The patched server resolves thinking and fills only omitted or null
-sampling fields. Pi, Maki, and direct Chat Completions therefore share one
-mode-aware policy without separate model processes or duplicated client
-configuration. Evaluation metadata reads the same catalog policy when
-recording the resolved tuple.
+applicable preset references one through `sampling_policy`. The Go gateway
+freezes the policy with its inventory, resolves thinking before scheduling,
+and fills only omitted or null sampler fields. Explicit client values win.
+Ambiguous reasoning controls fail before backend allocation. Pi, Maki, and
+raw Chat Completions through the gateway therefore share one policy across
+engines without duplicated client configuration or a llama.cpp source patch.
+Templates and engine-native reasoning remain backend-owned. Direct engine
+endpoints use native defaults. Direct benchmarks explicitly send and record
+the selected catalog tuple. Gufo's Flash-Next policy preserves its reviewed
+min-p 0 rather than inheriting llama.cpp's thinking min-p 0.05.
 
 Pi recognizes package and configuration commands only when the command is its
 first argument. The launcher classifies `install`, `remove`, `uninstall`,
@@ -988,7 +991,7 @@ Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
 to a declared level; models marked `requires_thinking` clamp off upward before
 the fragment is selected. Explicit numeric budgets remain separate sampler
 ceilings and are not decoded into model-native labels. The schema does not
-carry per-model sampling parameters; those retain Paracetamol's server-side
+carry per-model sampling parameters; those retain Paracetamol's gateway-side
 mode-aware defaults and normal per-request override precedence.
 
 DwarfStar appears in that same provider only when the gateway exposes it. The

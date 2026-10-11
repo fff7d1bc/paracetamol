@@ -40,9 +40,10 @@ const (
 type ControlSource string
 
 const (
-	ControlClient  ControlSource = "client"
-	ControlDefault ControlSource = "managed-or-backend-default"
-	ControlInvalid ControlSource = "invalid"
+	ControlClient         ControlSource = "client"
+	ControlDefault        ControlSource = "managed-or-backend-default"
+	ControlGatewayDefault ControlSource = "gateway-default"
+	ControlInvalid        ControlSource = "invalid"
 )
 
 type ObservedControl struct {
@@ -53,9 +54,11 @@ type ObservedControl struct {
 }
 
 type RequestControls struct {
-	Reasoning   []ObservedControl `json:"reasoning"`
-	Sampling    []ObservedControl `json:"sampling"`
-	Diagnostics []string          `json:"diagnostics,omitempty"`
+	SamplingPolicy string            `json:"sampling_policy,omitempty"`
+	SamplingMode   string            `json:"sampling_mode,omitempty"`
+	Reasoning      []ObservedControl `json:"reasoning"`
+	Sampling       []ObservedControl `json:"sampling"`
+	Diagnostics    []string          `json:"diagnostics,omitempty"`
 }
 
 type RequestTiming struct {
@@ -397,6 +400,9 @@ func controlsLogSummary(controls RequestControls) string {
 	if len(parts) == 0 {
 		parts = append(parts, "reasoning=defaults")
 	}
+	if controls.SamplingPolicy != "" {
+		parts = append(parts, "sampling-policy="+controls.SamplingPolicy, "sampling-mode="+controls.SamplingMode)
+	}
 	samplers := controlValues(controls.Sampling)
 	if len(samplers) == 0 {
 		parts = append(parts, "samplers=defaults")
@@ -422,6 +428,8 @@ func controlValues(controls []ObservedControl) []string {
 	for _, control := range controls {
 		if control.Source == ControlClient {
 			values = append(values, control.Name+"="+control.Value)
+		} else if control.Source == ControlGatewayDefault {
+			values = append(values, control.Name+"="+control.Value+"(gateway)")
 		}
 	}
 	return values

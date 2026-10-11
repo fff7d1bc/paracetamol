@@ -374,7 +374,7 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 
 func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, section, environment, runtimeReport map[string]string) ([][2]string, error) {
 	profile := runtimeReport["profile"]
-	modelPath, contextValue, template, reasoningHistory, speculativeType, draftTokens, flashAttention, kvCache, modelLoad, sampling := "", runtimeReport["context"], "", "", "", "0", "", "", "", ""
+	modelPath, contextValue, template, reasoningHistory, speculativeType, draftTokens, flashAttention, kvCache, modelLoad := "", runtimeReport["context"], "", "", "", "0", "", "", ""
 	if section != nil {
 		modelPath = section["model"]
 		if contextValue == "" {
@@ -391,7 +391,6 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		speculativeType, draftTokens = section["spec-type"], firstNonEmpty(section["spec-draft-n-max"], "0")
 		flashAttention, kvCache = section["paracetamol-flash-attn-"+profile], section["paracetamol-kv-cache-"+profile]
 		modelLoad = section["paracetamol-model-load-"+profile]
-		sampling = section["sampling-defaults-by-reasoning"]
 	} else {
 		modelPath = environment["PARACETAMOL_LLAMA_MODEL"]
 		if value := environment["PARACETAMOL_LLAMA_CHAT_TEMPLATE"]; value != "" {
@@ -406,7 +405,6 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		key := strings.ToUpper(strings.ReplaceAll(profile, "-", "_"))
 		flashAttention, kvCache = environment["PARACETAMOL_LLAMA_FLASH_ATTN_"+key], environment["PARACETAMOL_LLAMA_KV_CACHE_"+key]
 		modelLoad = environment["PARACETAMOL_LLAMA_MODEL_LOAD_"+key]
-		sampling = environment["PARACETAMOL_LLAMA_SAMPLING_DEFAULTS"]
 	}
 	rows := make([][2]string, 0, 20)
 	contextPolicy, reasoning := "model metadata", "not catalog-managed"
@@ -457,8 +455,11 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 			[2]string{"RAM prompt archive", "disabled, live-prefix reuse retained"},
 			[2]string{"Slots", "1, non-unified KV"})
 	}
-	samplingRows, err := llamaSamplingRows(managed, preset, sampling)
-	return append(rows, samplingRows...), err
+	rows = append(rows, [2]string{"Sampling", "request values or llama.cpp defaults"})
+	if preset != nil && preset.SamplingPolicy != "" {
+		rows = append(rows, [2]string{"Gateway sampling", preset.SamplingPolicy + " (only through the gateway)"})
+	}
+	return rows, nil
 }
 
 func llamaModelLoadStatus(policy, profile string) string {
@@ -490,35 +491,6 @@ func llamaReasoningPolicy(preset catalog.LlamaPreset) string {
 		levels = append([]string{"off"}, levels...)
 	}
 	return fmt.Sprintf("%s; %s; default %s", preset.ReasoningControl, strings.Join(levels, ", "), preset.ReasoningDefault)
-}
-
-func llamaSamplingRows(managed catalog.Catalog, preset *catalog.LlamaPreset, raw string) ([][2]string, error) {
-	var modes map[string]map[string]any
-	if raw != "" {
-		if err := json.Unmarshal([]byte(raw), &modes); err != nil {
-			return nil, controlerr.New("running llama.cpp sampling policy is invalid")
-		}
-	} else if preset != nil && preset.SamplingPolicy != "" {
-		policy := managed.SamplingPolicies[preset.SamplingPolicy]
-		modes = map[string]map[string]any{"thinking": policy.Thinking, "non_thinking": policy.NonThinking}
-	} else {
-		return [][2]string{{"Sampling", "request values or llama.cpp defaults"}}, nil
-	}
-	fields := [][2]string{{"temperature", "temp"}, {"top_p", "top-p"}, {"top_k", "top-k"}, {"min_p", "min-p"}, {"presence_penalty", "presence"}, {"repeat_penalty", "repeat"}}
-	rows := make([][2]string, 0, 3)
-	for _, mode := range [][2]string{{"thinking", "Thinking sampling"}, {"non_thinking", "Off sampling"}} {
-		values := modes[mode[0]]
-		parts := make([]string, 0, len(fields))
-		for _, field := range fields {
-			value, ok := values[field[0]]
-			if !ok {
-				return nil, controlerr.New("running llama.cpp sampling policy is invalid")
-			}
-			parts = append(parts, fmt.Sprintf("%s %v", field[1], value))
-		}
-		rows = append(rows, [2]string{mode[1], strings.Join(parts, ", ")})
-	}
-	return append(rows, [2]string{"Precedence", "explicit request values override these defaults"}), nil
 }
 
 func llamaReproductionCommand(environment, runtimeReport map[string]string, preset *catalog.LlamaPreset) []string {

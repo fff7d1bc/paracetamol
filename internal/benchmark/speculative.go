@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const SpeculativeSchema = "paracetamol.llama-speculative-depth-sweep.v2"
+const SpeculativeSchema = "paracetamol.llama-speculative-depth-sweep.v3"
 
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)

@@ -144,10 +144,11 @@ exact model configuration:
 ```
 
 This reports the live image, resolved GPU profile, GGUF provenance, context,
-template, reasoning and sampling policies, MTP or DFlash depth, cache and
+template, reasoning and sampling ownership, MTP or DFlash depth, cache and
 Flash Attention choices, model-load policy, and the exact running llama.cpp
-command. Explicit request sampling values remain authoritative over the
-reported server defaults.
+command. Gateway sampling policy is identified separately from native engine
+defaults. Inspect `status gateway --requests N` for the values actually
+supplied on a request.
 
 For the Muse Glimmer comparison:
 
@@ -381,13 +382,14 @@ high level. Upstream `xhigh` adds a short system steering instruction asking
 for careful validation and alternatives, while `medium` adds no reasoning
 instruction. The prompt addition itself is small; the practical risk is the
 much longer reasoning it can trigger.
-`reasoning_effort: none` disables thinking. The managed server resolves that
+`reasoning_effort: none` disables thinking. The gateway resolves that
 mode before applying sampling defaults. Low, medium, and xhigh use the official
 thinking policy: temperature 1.0, top-p 0.95, top-k 20, min-p 0, presence
 penalty 0, and repeat penalty 1. Off uses Qwen's non-thinking policy:
 temperature 0.7, top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, and repeat
-penalty 1. Explicit request sampling fields override the corresponding server
-defaults.
+penalty 1. Explicit request sampling fields override the corresponding gateway
+defaults. Direct llama.cpp endpoints bypass this policy and use native engine
+defaults unless the request supplies values.
 
 The pinned
 [official Qwen3.8 model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md)
@@ -469,8 +471,9 @@ preset:
 Paracetamol presets do not store a general system prompt or persona. Ordinary
 task sampling belongs in the caller because it can change without changing the
 model's safe runtime setup. Qwen3.6 and Qwen3.8 are deliberate model-policy
-exceptions: their server presets select official model- and mode-specific
-defaults after resolving each Chat Completions request. Send a `system`
+exceptions. Their gateway presets select model- and mode-specific defaults
+for each Chat Completions request. Direct engine endpoints do not apply that
+catalog policy. Send a `system`
 message and any sampling overrides in the OpenAI-compatible request, and send
 the complete message history when the conversation should continue:
 
@@ -756,7 +759,7 @@ These are defaults, not locks. Pi per-request sampling parameters, another
 agent's provider options, and raw API fields can override them.
 
 Qwen3.6 and Qwen3.8 are mode-dependent rather than static. Pi omits their
-sampling tuples so the managed llama.cpp server can supply the official family
+sampling tuples so the gateway can supply the official family
 policy after resolving thinking. Explicit numeric request values still take
 precedence.
 
@@ -765,7 +768,7 @@ thinking uses 1.5, and all three use the shared non-thinking tuple when off.
 Qwen3.6's separate temperature-0.6 precise-coding recommendation remains an
 explicit task override rather than a default inferred from the client name.
 Maki's native named selector carries the model's reasoning control but no
-sampling tuple, so the server also supplies its mode-aware policy. Explicit
+sampling tuple, so the gateway also supplies its mode-aware policy. Explicit
 sampling remains higher precedence field by field in every client.
 
 `bin/pi` delegates to `./paracetamol agent run pi` and executes the exact Pi release
@@ -1373,11 +1376,15 @@ are disabled. This is a high-memory path tested on a 128 GB machine, not a
 
 Reasoning is request-selectable as `none` (off), `medium` (default), or
 `xhigh`. Both managed clients expose those choices. Gufo preserves thinking
-history and resolves sampling after the request's thinking mode is known.
-Its pinned defaults are temperature 1, top-p 0.95, top-k 20, and presence
+history. The gateway selects the Gufo preset's catalog sampling policy after
+the request's thinking mode is known. Its defaults are temperature 1,
+top-p 0.95, top-k 20, and presence
 penalty 0 when thinking, or 0.7, 0.8, 20, and 1.5 when off. Both modes use
 min-p 0 and repeat penalty 1. Explicit client sampling values take precedence.
-These are Gufo's native defaults, not the llama.cpp sampling-policy patch.
+These values match pinned Gufo's native defaults. Flash-Next through
+llama.cpp deliberately retains its previously tested thinking min-p 0.05.
+The shared gateway supplies both policies without an engine source patch.
+Direct engine endpoints bypass gateway policy.
 
 On the tested Maki 0.4.8, interactive mode honors these choices but `--print`
 sent off even when `always_thinking` requested another level. Use Pi or an
