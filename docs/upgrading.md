@@ -341,6 +341,36 @@ managed Flash-Next model with the normal direct-reader ROCm policy and all
 three QSA graph, kernel and cache switches enabled. It is not an image-build
 or CPU-startup substitute for inference acceptance.
 
+The October 14 screen at
+`529ac893e754e95a50469b2122f5efe28dfc08a0` remains **held**. A `gfx1151`-only
+HIP graph-recapture workaround passes the state gate, and the retained QSA
+decode kernel needs canonical key ordering with upstream's now-unordered
+selection. Both corrections are archived experiments, not production patches.
+The corrected partial port is still about 28% slower in 32K retrieval wall
+time than `r49`. Keep the remaining optimization removal gates intact and
+read the [screen record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-screen-2026-10-14)
+before restarting the larger acceptance matrix.
+
+The reviewed upstream pin includes the
+[F16 attention race fix](https://github.com/ggml-org/llama.cpp/pull/30103),
+[RDNA 3.5 MMQ tile tuning](https://github.com/ggml-org/llama.cpp/pull/28195),
+[chunked GDN kernel](https://github.com/ggml-org/llama.cpp/pull/29353) and
+[Vulkan AMD iGPU checkpoint-read fix](https://github.com/ggml-org/llama.cpp/pull/30049).
+Their presence is a reason to finish the rebase, not evidence that the entire
+new build is faster. The GDN implementation uses compensated BF16 terms with
+F32 state, rather than the retired private BF16 shadow-weight mode. It still
+requires numerical and model-level acceptance.
+
+Open PRs reviewed on October 14 do not justify adding another patch now.
+[HIP sparse attention](https://github.com/ggml-org/llama.cpp/pull/30370), at
+`1ad19e56872d60cbee26c442a449bee7f0ba8fa9`, dispatches on GCN, not Strix Halo.
+The updated [Vulkan KV layout proposal](https://github.com/ggml-org/llama.cpp/pull/27703),
+at `3fdbb7132e8ed37fa785e5c74b870b5b01cf969a`, is worth tracking, but does not
+replace our narrowed F16 path without a new backend comparison.
+[MMQ copy vectorization](https://github.com/ggml-org/llama.cpp/pull/30493)
+and [vectorized RMS norm](https://github.com/ggml-org/llama.cpp/pull/29720)
+remain watch candidates rather than established end-to-end Strix Halo wins.
+
 The October 6 isolation follow-up changes the interpretation of the refresh
 hold. Unpatched `d7a695ef679138c13d86359b84c1731d36213d32` passes with
 resident embeddings. Adding only the explicit reader reproduces the logit
@@ -355,12 +385,16 @@ The upstream review also distinguishes closed proposals from merged fixes.
 [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863) and
 [PR 28136](https://github.com/ggml-org/llama.cpp/pull/28136) were closed without
 merging. The newer direct-reader proposal,
-[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030), remains open, as
-do [QSA gather](https://github.com/ggml-org/llama.cpp/pull/28213),
-[pooled QSA keys](https://github.com/ggml-org/llama.cpp/pull/28699) and
-[Flash-Next MTP](https://github.com/ggml-org/llama.cpp/pull/28243).
-These statuses were checked on September 30. None is grounds to remove an
-existing guard or enable Flash-Next MTP in this refresh.
+[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030), was also closed
+without merging. Its replacement,
+[PR 29599](https://github.com/ggml-org/llama.cpp/pull/29599), provides
+mmap prefetching, not the buffered explicit-read policy accepted on this host.
+[QSA gather](https://github.com/ggml-org/llama.cpp/pull/28213) is closed without
+merging, while [pooled QSA keys](https://github.com/ggml-org/llama.cpp/pull/28699)
+remains open. These statuses were checked on October 14. Neither a closed
+proposal nor a similarly named upstream feature is grounds to remove a guard
+without checking equivalent behavior. The newer Flash-Next MTP merge is
+covered below and does not enable MTP in the managed preset.
 The [refresh acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-source-refresh-2026-09-30)
 contains the paired ROCm/Vulkan measurements, populated-context checks and
 hardware-coverage limits.

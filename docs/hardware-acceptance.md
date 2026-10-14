@@ -26,6 +26,101 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp refresh screen (2026-10-14)
+
+**HOLD the production update.** Upstream
+`529ac893e754e95a50469b2122f5efe28dfc08a0` builds and can pass the bounded
+Flash-Next state checks with reviewed experimental corrections. However,
+the corrected partial port takes about 28% longer than production on the
+32K retrieval probe. The production pin remains
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, image `r49`. No experimental
+patch, new arithmetic mode, sampler change or model update is enabled.
+
+This run follows the host owner's system upgrade and reboot. The acceptance host is still
+Fedora 44, `gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0, now with kernel
+`7.2.10-200.fc44.x86_64`. The 112 GiB GPU allowance, balanced platform profile
+and CPU EPP were left alone. No packages, kernel parameters, memory limits,
+power settings or system services were changed. The GPU doctor and existing
+tiny-model acceptance passed. The Python GPU probe emitted two split-lock
+notices, a pattern also recorded before the host upgrade. The subsequent
+llama.cpp inference runs produced no new kernel warnings.
+
+The first experiment repeats the October 6 isolation at the new upstream
+pin. The direct-reader-only build still fails clear/restore, with logit NMSE
+0.00787 to 0.01324. Recreating the HIP executable on graph recapture clears
+the bounded test. Ordinary graph replay stays enabled. Narrowing this
+workaround to `gfx1151` also passes the full state fixture with NMSE 0.
+The old experimental workaround build passes on the new kernel too. This
+does not identify the underlying HIP or llama.cpp defect, and it is not
+evidence that unpatched upstream with resident embeddings is broken.
+
+A second issue appeared when porting the existing selected-key attention
+kernels onto upstream's new pooled-cache graph. Operator comparisons passed,
+but restored whole-model logits differed even with HIP graphs disabled.
+Disabling only the selected-key path restored exact agreement. Upstream's
+unordered top-k output exposed an ordering dependency in the ported decode
+kernel. Canonically sorting and deduplicating IDs before splitting attention
+restored NMSE 0 for ordinary restore, causal-mode restore and clear/restore.
+A new order-invariance test fails both decode cases before that correction
+and passes afterward. The corrected build passes 100 GPU operator cases
+against CPU references, including the order tests and selected FP64 oracles.
+The unsupported maskless ratio-4 case is rejected as intended. Native
+allocation-isolation and all 50 reader/dequantizer/EOF checks also pass.
+
+The performance comparison uses the same four managed Unsloth Flash-Next
+UD-Q4_K_XL shards, direct buffered embedding reads, ROCm, F16 K/V, no MTP,
+one slot and one serial client. The context ceiling is 262144, but the
+populated prompts are only 3667 and 32167 tokens. Each size has two cold
+requests per build, with all six retrieval values correct and zero cached
+prompt tokens. Requests explicitly send the catalog's medium-thinking
+sampling tuple, overriding temperature to zero and setting seed 42.
+
+| Build | 3667-token mean HTTP wall time | 32167-token mean HTTP wall time | 32K prompt tokens/s |
+| --- | ---: | ---: | ---: |
+| Production `2090f60-r49`, full accepted patch set | 14.59 s | 51.82 s | 767.73 |
+| New base, seven safety/compatibility patches, upstream attention | 16.20 s | 79.98 s | 465.14 |
+| New base, retained GDN and selected-key kernels, canonical ID order | 16.33 s | 66.20 s | 574.82 |
+
+A return-to-production control then repeats both cold 32K requests at
+51.32 seconds mean wall time and 778.61 prompt tokens/s. This reproduces the
+original baseline after the candidate runs rather than relying on an older
+kernel's measurements.
+
+Prompt throughput is total processed prompt tokens divided by total prompt
+processing time, not a sum of request rates. Model loading is outside HTTP
+timings. A separate three-request, fixed-256-output-token shallow probe is
+effectively flat at 21.09 versus 21.23 aggregate output tokens per HTTP wall
+second for production and the corrected candidate. Those deliberately
+truncated generations are a timing screen, not completed-code quality tests.
+
+The partial port does not contain the private compact selection graph,
+prepared-key cache or pipeline fusions. Upstream has its own new pooled-cache
+implementation, but this screen does not prove that it replaces every
+downstream optimization at equivalent cost. The observed gap cannot be
+attributed to one upstream commit or to the kernel upgrade. Do not promote
+the candidate by weakening the state gate or silently dropping the remaining
+optimizations. Populated near-256K, dense-model MTP, router/client and Vulkan
+acceptance remain outstanding for an eventual rebase. Other GPU architectures
+are **N/P** for this screen.
+
+The unchanged production dense Qwen3.8 Q8 MTP preset also passed a final
+post-reboot check at its 256K ceiling. Off, low, medium and xhigh, a longer
+off-mode prompt, nested tool arguments and tool replay, SSE and the Responses
+endpoint all passed. This is a small protocol check of production, not
+acceptance of the new candidate. All test containers were stopped afterward.
+
+The controller source for this run is `24cff7f`. Production image ID is
+`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`.
+The seven-patch image is
+`c932c89217b64eba2f891054594b34cef5ba91d46c47f601a607bc4f25554c20`,
+and the corrected candidate with order tests is
+`83ba16072c1d774754b9907d8d4bea8d8ecb5c77cbae04196badd0e76b436865`.
+These are isolated locally built experiments, not managed image tags. Private
+evidence is retained under
+`apps/acceptance/results/20261014-llama-refresh/` on the acceptance host, including the exact
+candidate patches, image recipes, source snapshot, fixtures, requests,
+responses, runtime/build logs and checksum manifest.
+
 ### Gufo retirement (2026-10-14)
 
 Gufo is no longer a managed application. Its build target, runtime, model ID,
