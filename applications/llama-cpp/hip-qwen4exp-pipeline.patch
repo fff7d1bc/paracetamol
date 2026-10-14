@@ -1,3 +1,32 @@
+Precision-preserving Qwen4exp pipeline and Q8 scheduling adapted from the
+MIT-licensed halo-box/strix-llama.cpp snapshot
+7a9196dad8b13b70fb3420886aadaf98fc09b849. The retired private graph patch
+contributed the scoped Q8 prefetch and small MoE tiles now collected here.
+No shadow weights, BF16/F16 matrix mode or residual downcast is included.
+
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index bb026ad98..c3d79037f 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -454,6 +454,9 @@ extern "C" {
+     enum ggml_op_hint {
+         GGML_HINT_NONE             = 0,
+         GGML_HINT_SRC0_IS_HADAMARD = 1,
++        // Downstream opt-in. Other models/backends keep their ordinary matvec.
++        GGML_HINT_QWEN4EXP_Q8_DECODE = 2,
++        GGML_HINT_SMALL_MOE_TILES   = 3,
+     };
+ 
+     // model file types
+@@ -1491,7 +1494,7 @@ extern "C" {
+             enum ggml_prec       prec),
+         "use ggml_prec_set_acc() instead");
+ 
+-    // change the hint of a matrix multiplication
++    // change the hint of a direct or indirect matrix multiplication
+     GGML_API void ggml_mul_mat_set_hint(
+             struct ggml_tensor * a,
+             enum ggml_op_hint    hint);
 diff --git a/ggml/src/ggml-cuda/conv-tail.cuh b/ggml/src/ggml-cuda/conv-tail.cuh
 new file mode 100644
 index 000000000..3d13229d3
@@ -336,24 +365,63 @@ index 000000000..e5e3b6a62
 +void ggml_cuda_gdn_conv_write_tail(ggml_backend_cuda_context & ctx, const ggml_cuda_gdn_conv_match & m);
 +void ggml_cuda_gdn_conv_direct(ggml_backend_cuda_context & ctx, const ggml_cuda_gdn_conv_match & m);
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index c8f252fb9..48b023a4c 100644
+index 4514f275e..727da256b 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -45,6 +45,10 @@
+@@ -32,6 +32,7 @@
+ #include "ggml-cuda/mmf.cuh"
+ #include "ggml-cuda/mmq.cuh"
+ #include "ggml-cuda/mmvf.cuh"
++#include "ggml-cuda/qwen4exp-mmv.cuh"
+ #include "ggml-cuda/mmvq.cuh"
+ #include "ggml-cuda/moe-weighted-reduction.cuh"
+ #include "ggml-cuda/norm.cuh"
+@@ -42,6 +43,12 @@
+ #include "ggml-cuda/pool2d.cuh"
+ #include "ggml-cuda/pool1d.cuh"
  #include "ggml-cuda/quantize.cuh"
- #if defined(GGML_USE_HIP)
- #include "ggml-cuda/qsa-score.cuh"
++#if defined(GGML_USE_HIP)
 +#include "ggml-cuda/gdn-conv.cuh"
 +#include "ggml-cuda/ple-conv.cuh"
 +#include "ggml-cuda/qwen4exp-hc.cuh"
 +#include "ggml-cuda/norm-gated.cuh"
- #endif
++#endif
  #include "ggml-cuda/rope.cuh"
  #include "ggml-cuda/roll.cuh"
-@@ -3586,6 +3590,65 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+ #include "ggml-cuda/scale.cuh"
+@@ -1950,6 +1957,10 @@ static bool ggml_cuda_match_shared_expert(const ggml_cgraph * graph, int routed_
+ static void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst) {
+     GGML_TENSOR_BINARY_OP_LOCALS
+ 
++#if defined(GGML_USE_HIP)
++    if (ggml_cuda_qwen4exp_q8_matvec(ctx, src0, src1, dst)) return;
++#endif
++
+     if (ggml_cuda_op_mul_mat_use_fwht(dst) && ggml_cuda_op_fwht(ctx, src1, dst)) {
+         return;
+     }
+@@ -3665,6 +3676,16 @@ static bool ggml_cuda_can_fuse(const struct ggml_cgraph *                cgraph,
+     return false;
+ }
+ 
++#if defined(GGML_USE_HIP)
++static bool qsa_fusion_enabled(const ggml_backend_cuda_context * ctx, const char * flag) {
++    const char * graph = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
++    const char * score = getenv(flag);
++    return graph && strcmp(graph, "1") == 0 && (!score || strcmp(score, "0") != 0) &&
++        ggml_cuda_info().devices[ctx->device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151;
++}
++
++#endif
++
+ // try and fuse nodes and return the number of nodes to skip
+ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, int i) {
+ 
+@@ -3674,6 +3695,68 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+ 
      ggml_tensor * node = cgraph->nodes[i];
  
- #if defined(GGML_USE_HIP)
++#if defined(GGML_USE_HIP)
 +    if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_MMV_GROUP") && node->op == GGML_OP_MUL_MAT) {
 +        ggml_tensor * nodes[4];
 +        int outputs[4], count = 0, end = i;
@@ -413,13 +481,16 @@ index c8f252fb9..48b023a4c 100644
 +            return 1;
 +        }
 +    }
-     if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_QSA_POOL")) {
-         ggml_cuda_get_rows_mean4_match pool;
-         if (ggml_cuda_match_get_rows_mean4(cgraph, i, pool)) {
-@@ -4698,6 +4761,52 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
-     if (!disable_fusion) {
-         // add alloc deps for performance positive fusions. This may increase the overall compute buffer size.
- #if defined(GGML_USE_HIP)
++#endif
++
+     if (node->op == GGML_OP_MUL_MAT_ID && cuda_ctx->stream_context().concurrent_events.empty() &&
+             ggml_cuda_match_shared_expert(cgraph, i, i + 3) &&
+             ggml_cuda_should_fuse_mul_mat_vec_q(cgraph->nodes[i + 2]->src[1])) {
+@@ -4823,6 +4906,54 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+                 break;
+             }
+         }
++#if defined(GGML_USE_HIP)
 +        if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_NARROW_NORM")) for (int i = 0; i < cgraph->n_nodes; ++i) {
 +            ggml_cuda_norm_gated_match norm;
 +            int skip = ggml_cuda_norm_gated_match_at(cgraph, i, norm);
@@ -466,11 +537,12 @@ index c8f252fb9..48b023a4c 100644
 +                }
 +            }
 +        }
-         if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_QSA_POOL")) for (int i=0;i<cgraph->n_nodes;++i) {
-             ggml_cuda_get_rows_mean4_match pool;
-             if (ggml_cuda_match_get_rows_mean4(cgraph, i, pool)) {
++#endif
+         for (int i = 0; i < cgraph->n_nodes; ++i) {
+             ggml_cuda_moe_weighted_reduction_match match;
+             if (ggml_cuda_match_moe_weighted_reduction(cgraph, i, match)) {
 diff --git a/ggml/src/ggml-cuda/mmid.cu b/ggml/src/ggml-cuda/mmid.cu
-index 0b222e63a..7e9beed95 100644
+index 12ae14ce9..b0f2714d9 100644
 --- a/ggml/src/ggml-cuda/mmid.cu
 +++ b/ggml/src/ggml-cuda/mmid.cu
 @@ -1,5 +1,77 @@
@@ -568,22 +640,13 @@ index 74c2db433..46133c98c 100644
          const int32_t * ids, int32_t * ids_src1, int32_t * ids_dst, int32_t * expert_bounds,
          int n_experts, int n_tokens, int n_expert_used, int nchannels_y, int si1, int sis1, bool write_inverse, cudaStream_t stream);
 diff --git a/ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh b/ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh
-index 180b2d937..c452da606 100644
+index ead3825d2..d7f4af490 100644
 --- a/ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh
 +++ b/ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh
-@@ -82,12 +82,20 @@ static constexpr __host__ __device__ ggml_cuda_mmq_config ggml_cuda_mmq_get_conf
-     CASE(GGML_TYPE_Q8_0, 256, 2, 128, 128, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, true);
-     CASE(GGML_TYPE_Q8_0, 128, 2,  64,  16, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-     CASE(GGML_TYPE_Q8_0, 128, 2,  64,  32, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-+#if defined(GGML_CUDA_MMQ_QWEN4EXP)
-+    CASE(GGML_TYPE_Q8_0, 128, 2,  64,  48, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-+#else
-     CASE(GGML_TYPE_Q8_0, 256, 2, 128,  48, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-+#endif
-     CASE(GGML_TYPE_Q8_0, 256, 2, 128,  64, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-     CASE(GGML_TYPE_Q8_0, 256, 2, 128,  80, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
+@@ -87,7 +87,11 @@ static constexpr __host__ __device__ ggml_cuda_mmq_config ggml_cuda_mmq_get_conf
+     CASE(GGML_TYPE_Q8_0, 128, 2,  64,  80, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
      CASE(GGML_TYPE_Q8_0, 256, 2, 128,  96, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
-     CASE(GGML_TYPE_Q8_0, 256, 2, 128, 112, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
+     CASE(GGML_TYPE_Q8_0, 128, 2,  64, 112, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
 +#if defined(GGML_CUDA_MMQ_QWEN4EXP)
 +    CASE(GGML_TYPE_Q8_0, 256, 2,  64, 128, GGML_CUDA_MMQ_SRAM_LAYOUT_Q8_0, MMQ_ITER_K, false, false);
 +#else
@@ -593,16 +656,16 @@ index 180b2d937..c452da606 100644
  // ---------------------------------------------------------------------------------------------
  
 diff --git a/ggml/src/ggml-cuda/mmq-vec-dot.cuh b/ggml/src/ggml-cuda/mmq-vec-dot.cuh
-index 4ca6542d8..d5b684782 100644
+index a75dd046e..47a99005c 100644
 --- a/ggml/src/ggml-cuda/mmq-vec-dot.cuh
 +++ b/ggml/src/ggml-cuda/mmq-vec-dot.cuh
 @@ -151,8 +151,18 @@ static __device__ __forceinline__ void ggml_cuda_mmq_vec_dot_q8_0_q8_1_mma(
-     constexpr int sram_stride   = ggml_cuda_mmq_get_sram_stride(type, J, fallback);
-     constexpr int rows_per_warp = ggml_cuda_mmq_get_rows_per_warp(type, J, fallback);
+     constexpr int sram_stride   = ggml_cuda_mmq_get_sram_stride(type, J, fallback, GGML_PREC_Q8);
+     constexpr int rows_per_warp = ggml_cuda_mmq_get_rows_per_warp(type, J, fallback, GGML_PREC_Q8);
      constexpr int ntx           = rows_per_warp/tile_C::I; // Number of x minitiles per warp.
 +#if defined(GGML_CUDA_MMQ_QWEN4EXP)
-+    constexpr int I             = ggml_cuda_mmq_get_I(type, J, fallback);
-+    constexpr int nwarps        = ggml_cuda_mmq_get_nthreads(type, J, fallback) / ggml_cuda_get_physical_warp_size();
++    constexpr int I             = ggml_cuda_mmq_get_I(type, J, fallback, GGML_PREC_Q8);
++    constexpr int nwarps        = ggml_cuda_mmq_get_nthreads(type, J, fallback, GGML_PREC_Q8) / ggml_cuda_get_physical_warp_size();
 +    constexpr bool split_j      = type == GGML_TYPE_Q8_0 && J == 128 && !fallback && I == 64 && nwarps == 8;
 +#else
 +    constexpr bool split_j      = false;
@@ -642,27 +705,29 @@ index 4ca6542d8..d5b684782 100644
  template <ggml_type type, int J, bool fallback> static __device__ __forceinline__ void ggml_cuda_mmq_vec_dot_q8_1_q8_1_mma(
          const int * __restrict__ x, const int * __restrict__ y, float * __restrict__ sum, const int k00) {
  #if defined(AMD_MFMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
-@@ -1237,4 +1246,3 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
+@@ -1234,4 +1243,3 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
          }
      }
  }
 -
 diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
-index 8bc1ca33a..076def9b9 100644
+index 46efdfe0f..e2073da70 100644
 --- a/ggml/src/ggml-cuda/mmq.cu
 +++ b/ggml/src/ggml-cuda/mmq.cu
-@@ -6,6 +6,7 @@
+@@ -5,6 +5,9 @@
+ 
  #include <cstdint>
  
- bool ggml_cuda_mmq_small_moe(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream);
++bool ggml_cuda_mmq_small_moe(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream);
 +bool ggml_cuda_mmq_qwen_q8(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream);
- 
++
  static void ggml_cuda_mul_mat_q_switch_type(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream, const ggml_prec prec_src1) {
      switch (args.type_x) {
-@@ -226,6 +227,12 @@ void ggml_cuda_mul_mat_q(
+         case GGML_TYPE_Q1_0:
+@@ -269,6 +272,12 @@ void ggml_cuda_mul_mat_q(
              ne02, ne12, s02, s12, s2,
              ne03, ne13, s03, s13, s3,
-             ne1, ne1};
+             ne1, J_best};
 +        if (ggml_get_op_params_i32(dst, 1) == GGML_HINT_QWEN4EXP_Q8_DECODE &&
 +                ggml_get_op_params_i32(dst, 0) == GGML_PREC_DEFAULT &&
 +                ggml_get_op_params_i32(dst, 3) == GGML_PREC_DEFAULT &&
@@ -672,7 +737,7 @@ index 8bc1ca33a..076def9b9 100644
          ggml_cuda_mul_mat_q_switch_type(ctx, args, stream, prec_src1);
          return;
      }
-@@ -251,8 +258,13 @@ void ggml_cuda_mul_mat_q(
+@@ -294,8 +303,13 @@ void ggml_cuda_mul_mat_q(
          const int si1  = ids->nb[1] / ggml_element_size(ids);
          const int sis1 = nb12 / nb11;
  
@@ -688,19 +753,30 @@ index 8bc1ca33a..076def9b9 100644
          CUDA_CHECK(cudaGetLastError());
      }
  
+@@ -349,6 +363,10 @@ void ggml_cuda_mul_mat_q(
+         ne03, ne13, s03, s13, s3,
+         ne12, J_best};
+ 
++    if (ggml_get_op_params_i32(dst, 1) == GGML_HINT_SMALL_MOE_TILES && prec_src1 == GGML_PREC_Q8 &&
++            ggml_cuda_mmq_small_moe(ctx, args, stream)) {
++        return;
++    }
+     ggml_cuda_mul_mat_q_switch_type(ctx, args, stream, prec_src1);
+ }
+ 
 diff --git a/ggml/src/ggml-cuda/mmq.cuh b/ggml/src/ggml-cuda/mmq.cuh
-index 0cd31d916..dc46b7646 100644
+index 33449f905..8e77d2ed3 100644
 --- a/ggml/src/ggml-cuda/mmq.cuh
 +++ b/ggml/src/ggml-cuda/mmq.cuh
-@@ -489,18 +489,29 @@ static __device__ __forceinline__ void ggml_cuda_mmq_write_back_mma(
+@@ -481,18 +481,29 @@ static __device__ __forceinline__ void ggml_cuda_mmq_write_back_mma(
  
-     constexpr int rows_per_warp = ggml_cuda_mmq_get_rows_per_warp(type, J, fallback);
+     constexpr int rows_per_warp = ggml_cuda_mmq_get_rows_per_warp(type, J, fallback, prec_src1);
      constexpr int ntx           = rows_per_warp/tile_C::I; // Number of x minitiles per warp.
 -
 -    const int i0 = (threadIdx.y / ntx) * (ntx*tile_C::I);
 +#if defined(GGML_CUDA_MMQ_QWEN4EXP)
-+    constexpr int nwarps        = ggml_cuda_mmq_get_nthreads(type, J, fallback) / ggml_cuda_get_physical_warp_size();
-+    constexpr int I             = ggml_cuda_mmq_get_I(type, J, fallback);
++    constexpr int nwarps        = ggml_cuda_mmq_get_nthreads(type, J, fallback, prec_src1) / ggml_cuda_get_physical_warp_size();
++    constexpr int I             = ggml_cuda_mmq_get_I(type, J, fallback, prec_src1);
 +    // The private I64/J128 tile assigns four warps to each half of J.
 +    // This must match vec_dot's ownership as well as the smaller row tile.
 +    constexpr bool split_j      = type == GGML_TYPE_Q8_0 && J == 128 && !fallback && I == 64 && nwarps == 8;
@@ -726,18 +802,18 @@ index 0cd31d916..dc46b7646 100644
  
                  if (j > j_max) {
                      continue;
-@@ -877,7 +888,9 @@ static constexpr __device__ ggml_cuda_mmq_write_back_t ggml_cuda_mmq_get_write_b
+@@ -869,7 +880,9 @@ static constexpr __device__ ggml_cuda_mmq_write_back_t ggml_cuda_mmq_get_write_b
  
  // ---------------------------------------------------------------------------------------------
  
--template <ggml_type type, int J, bool fallback, bool fixup, ggml_prec prec_src1 = GGML_PREC_Q8>
+-template <ggml_type type, int J, bool fallback, bool fixup, ggml_prec prec_src1>
 +#include "qwen4exp-mmq-prefetch.cuh"
 +
-+template <ggml_type type, int J, bool fallback, bool fixup, ggml_prec prec_src1 = GGML_PREC_Q8, bool prefetch = false>
++template <ggml_type type, int J, bool fallback, bool fixup, ggml_prec prec_src1, bool prefetch = false>
  static __device__ __forceinline__ void mul_mat_q_process_tile(
          const char * __restrict__ x, const int offset_x, const int * __restrict__ y,
          const int * __restrict__ ids_dst, float * __restrict__ dst, float * __restrict__ tmp_fixup,
-@@ -913,6 +926,89 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
+@@ -905,6 +918,89 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
  
      constexpr int sz = sizeof(block_q8_1_mmq) / sizeof(int);
  
@@ -827,16 +903,16 @@ index 0cd31d916..dc46b7646 100644
      for (int kb0 = kb0_start; kb0 < kb0_stop; kb0 += blocks_per_iter) {
          load_tiles(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
          {
-@@ -958,7 +1054,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
+@@ -950,7 +1046,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
  
  // The mul_mat_q kernel implements "stream-k" work partitioning as described in https://arxiv.org/abs/2301.03598
  
--template <ggml_type type, int J, bool fallback, ggml_prec prec_src1 = GGML_PREC_Q8>
-+template <ggml_type type, int J, bool fallback, ggml_prec prec_src1 = GGML_PREC_Q8, bool prefetch = false>
+-template <ggml_type type, int J, bool fallback, ggml_prec prec_src1>
++template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool prefetch = false>
  __launch_bounds__(ggml_cuda_mmq_get_nthreads(type, J, fallback, prec_src1), ggml_cuda_mmq_get_occupancy(type, J, fallback, prec_src1))
  static __global__ void mul_mat_q(
          const char * __restrict__ x, const int * __restrict__ y, const int32_t * __restrict__ ids_dst,
-@@ -1061,7 +1157,7 @@ static __global__ void mul_mat_q(
+@@ -1053,7 +1149,7 @@ static __global__ void mul_mat_q(
          const int offset_x = fastdiv(wt, sample_ratio)*stride_sample_x + fastdiv(zt, channel_ratio)*stride_channel_x + it*I*stride_row_x;
  
          constexpr bool fixup = false;
@@ -845,7 +921,7 @@ index 0cd31d916..dc46b7646 100644
              (x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
               stride_row_x, ncols_y, stride_col_dst,
               tile_x_max_i, tile_y_max_j, 0, blocks_per_ne00.z);
-@@ -1155,7 +1251,7 @@ static __global__ void mul_mat_q(
+@@ -1147,7 +1243,7 @@ static __global__ void mul_mat_q(
          const int offset_x = fastdiv(wt, sample_ratio)*stride_sample_x + fastdiv(zt, channel_ratio)*stride_channel_x + it*I*stride_row_x;
  
          constexpr bool fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
@@ -854,7 +930,7 @@ index 0cd31d916..dc46b7646 100644
              (x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
               stride_row_x, ncols_y, stride_col_dst,
               tile_x_max_i, tile_y_max_j, kb0_start, kb0_stop);
-@@ -1239,7 +1335,7 @@ static __global__ void mul_mat_q(
+@@ -1231,7 +1327,7 @@ static __global__ void mul_mat_q(
      const int offset_x = fastdiv(wt, sample_ratio)*stride_sample_x + fastdiv(zt, channel_ratio)*stride_channel_x + it*I*stride_row_x;
  
      constexpr bool fixup = true; // Last index writes its data to fixup buffer to avoid data races with other blocks.
@@ -863,16 +939,16 @@ index 0cd31d916..dc46b7646 100644
          (x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
           stride_row_x, ncols_y, stride_col_dst,
           tile_x_max_i, tile_y_max_j, kb0_start, kb0_stop);
-@@ -1400,7 +1496,7 @@ static size_t mmq_get_nbytes_shared(const ggml_cuda_mmq_config & config, const i
+@@ -1392,7 +1488,7 @@ static size_t mmq_get_nbytes_shared(const ggml_cuda_mmq_config & config, const i
      return nbs_ids + nbs_x + GGML_PAD(nbs_y, config.nthreads*sizeof(int));
  }
  
--template <ggml_type type, int J, bool fallback, ggml_prec prec_src1 = GGML_PREC_Q8>
-+template <ggml_type type, int J, bool fallback, ggml_prec prec_src1 = GGML_PREC_Q8, bool prefetch = false>
+-template <ggml_type type, int J, bool fallback, ggml_prec prec_src1>
++template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool prefetch = false>
  static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream) {
      const int id = ggml_cuda_get_device();
      const int cc = ggml_cuda_info().devices[id].cc;
-@@ -1414,8 +1510,8 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+@@ -1406,8 +1502,8 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
  
      const dim3 block_dims(warp_size, nwarps, 1);
  
@@ -883,7 +959,7 @@ index 0cd31d916..dc46b7646 100644
  
      const int nty  = (args.nrows_x   + config.I - 1) / config.I;
      const int ntx  = (args.ncols_max + config.J - 1) / config.J;
-@@ -1435,7 +1531,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+@@ -1427,7 +1523,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
      const uint3 sample_ratio_fd    = init_fastdiv_values(sample_ratio);
  
      if (!config.stream_k) {
@@ -892,7 +968,7 @@ index 0cd31d916..dc46b7646 100644
              (args.x, args.y, args.ids_dst, args.expert_bounds, args.dst, nullptr, args.y_scale,
               blocks_per_ne00_fd, args.nrows_x, args.ncols_dst, args.stride_row_x, args.ncols_y, args.nrows_dst,
               channel_ratio_fd, nchannels_y_fd, args.stride_channel_x, args.stride_channel_y, args.stride_channel_dst,
-@@ -1464,7 +1560,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+@@ -1456,7 +1552,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
      const dim3 block_nums_fixup(block_nums_stream_k.x, config.I/warp_size, 1);
      const dim3 block_dims_fixup(block_dims.x, block_dims.y/2, block_dims.z);
  
@@ -1700,10 +1776,10 @@ index 000000000..4de509dfa
 +void qwen_hc_combine_norm(ggml_backend_cuda_context & ctx, const qwen_hc_match & match);
 diff --git a/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cu b/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cu
 new file mode 100644
-index 000000000..8a3619375
+index 000000000..e40d43b44
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cu
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,26 @@
 +// Private static kernel instantiations. Do not define this for the ordinary
 +// MMQ translation units: the smaller Q8 tiles belong only to hinted Qwen4exp.
 +#define GGML_CUDA_MMQ_QWEN4EXP
@@ -1718,13 +1794,9 @@ index 000000000..8a3619375
 +            device.cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
 +    // Keep upstream's query-column selection. Only this translation unit uses
 +    // the fork's smaller row tiles, paired with its register-prefetched loads.
-+    int best = 0, tiles = INT_MAX;
-+    for (int j = 8; j <= 128 && tiles > 1; j += 8) {
-+        const auto config = ggml_cuda_mmq_get_config(a.type_x, j, false, device.cc);
-+        if (config.type == GGML_TYPE_COUNT || mmq_get_nbytes_shared(config, device.cc) > device.smpbo) continue;
-+        const int count = (a.ncols_opt + config.J - 1) / config.J;
-+        if (count < tiles) { best = j; tiles = count; }
-+    }
++    const int best = a.J_best;
++    const auto config = ggml_cuda_mmq_get_config(a.type_x, best, false, device.cc, GGML_PREC_Q8);
++    if (config.type == GGML_TYPE_COUNT || mmq_get_nbytes_shared(config, device.cc) > device.smpbo) return false;
 +    if (best == 48) launch_mul_mat_q<GGML_TYPE_Q8_0, 48, false, GGML_PREC_Q8, true>(ctx, a, stream);
 +    else if (best == 128) launch_mul_mat_q<GGML_TYPE_Q8_0, 128, false, GGML_PREC_Q8, true>(ctx, a, stream);
 +    else return false;
@@ -1736,7 +1808,7 @@ index 000000000..8a3619375
 +}
 diff --git a/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cuh b/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cuh
 new file mode 100644
-index 000000000..bd242c9d5
+index 000000000..3bdf70580
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-mmq-prefetch.cuh
 @@ -0,0 +1,99 @@
@@ -1750,8 +1822,8 @@ index 000000000..bd242c9d5
 +template <ggml_type type, int J, bool fallback> struct ggml_cuda_mmq_x_regs_q8_0 {
 +    // Only instantiated for RDNA3.5 (wave32) device code; the host pass needs constant sizes.
 +    static constexpr int warp_size       = WARP_SIZE;
-+    static constexpr int nwarps          = ggml_cuda_mmq_get_nthreads(type, J, fallback) / warp_size;
-+    static constexpr int I               = ggml_cuda_mmq_get_I(type, J, fallback);
++    static constexpr int nwarps          = ggml_cuda_mmq_get_nthreads(type, J, fallback, GGML_PREC_Q8) / warp_size;
++    static constexpr int I               = ggml_cuda_mmq_get_I(type, J, fallback, GGML_PREC_Q8);
 +    static constexpr int threads_per_row = 32;
 +    static constexpr int nrows           = warp_size / threads_per_row;
 +    static constexpr int rows_per_step   = nrows*nwarps;
@@ -1807,7 +1879,7 @@ index 000000000..bd242c9d5
 +template <ggml_type type, int J, bool fallback> static __device__ __forceinline__ void ggml_cuda_mmq_store_tiles_q8_0_regs(
 +        const ggml_cuda_mmq_x_regs_q8_0<type, J, fallback> & r, int * __restrict__ x_tile, const int i_max) {
 +    using R = ggml_cuda_mmq_x_regs_q8_0<type, J, fallback>;
-+    constexpr int sram_stride = ggml_cuda_mmq_get_sram_stride(type, J, fallback);
++    constexpr int sram_stride = ggml_cuda_mmq_get_sram_stride(type, J, fallback, GGML_PREC_Q8);
 +
 +    int   * x_qs = (int   *)  x_tile;
 +    float * x_df = (float *) (x_tile + 2*MMQ_TILE_NE_K);
@@ -1840,11 +1912,12 @@ index 000000000..bd242c9d5
 +    }
 +}
 diff --git a/ggml/src/ggml-cuda/qwen4exp-mmq.cu b/ggml/src/ggml-cuda/qwen4exp-mmq.cu
-index 6104e805b..c0c542bc1 100644
---- a/ggml/src/ggml-cuda/qwen4exp-mmq.cu
+new file mode 100644
+index 000000000..afe88c077
+--- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-mmq.cu
-@@ -1,4 +1,112 @@
- #include "mmq.cuh"
+@@ -0,0 +1,141 @@
++#include "mmq.cuh"
 +#if defined(GGML_USE_HIP)
 +// Compact routed tiles from halo-box/strix-llama.cpp at 7a9196d (MIT).
 +// Keep the upstream dot product and tile geometry, only skip empty expert tiles.
@@ -1878,7 +1951,7 @@ index 6104e805b..c0c542bc1 100644
 +}
 +
 +template <ggml_type type, int J, bool fallback>
-+__launch_bounds__(ggml_cuda_mmq_get_nthreads(type, J, fallback), ggml_cuda_mmq_get_occupancy(type, J, fallback))
++__launch_bounds__(ggml_cuda_mmq_get_nthreads(type, J, fallback, GGML_PREC_Q8), ggml_cuda_mmq_get_occupancy(type, J, fallback, GGML_PREC_Q8))
 +static __global__ void mul_mat_q_routed_compact(
 +        const char * __restrict__ x, const int * __restrict__ y, const int32_t * __restrict__ ids_dst,
 +        const int32_t * __restrict__ expert_bounds, const uint32_t * __restrict__ descriptors,
@@ -1887,8 +1960,8 @@ index 6104e805b..c0c542bc1 100644
 +        const uint3 channel_ratio, const int stride_channel_x,
 +        const uint3 sample_ratio, const int stride_sample_x) {
 +    constexpr int warp_size = ggml_cuda_get_physical_warp_size();
-+    constexpr int nwarps    = ggml_cuda_mmq_get_nthreads(type, J, fallback) / warp_size;
-+    constexpr int I         = ggml_cuda_mmq_get_I(type, J, fallback);
++    constexpr int nwarps    = ggml_cuda_mmq_get_nthreads(type, J, fallback, GGML_PREC_Q8) / warp_size;
++    constexpr int I         = ggml_cuda_mmq_get_I(type, J, fallback, GGML_PREC_Q8);
 +
 +    const int wt = blockIdx.z;
 +    const int it = blockIdx.x;
@@ -1927,7 +2000,7 @@ index 6104e805b..c0c542bc1 100644
 +        const float * y_scale_tile = y_scale ? y_scale + col_low + jt * J : nullptr;
 +
 +        constexpr bool fixup = false;
-+        mul_mat_q_process_tile<type, J, fallback, fixup>
++        mul_mat_q_process_tile<type, J, fallback, fixup, GGML_PREC_Q8>
 +            (x, offset_x, y + offset_y, ids_dst_shared, dst + it * I, nullptr, y_scale_tile,
 +             stride_row_x, ncols_y, stride_col_dst,
 +             tile_x_max_i, tile_y_max_j, 0, blocks_per_ne00.z);
@@ -1938,7 +2011,7 @@ index 6104e805b..c0c542bc1 100644
 +static void qwen_compact_mmq(ggml_backend_cuda_context & ctx, const mmq_args & a, cudaStream_t stream) {
 +    static_assert((QWEN_MMQ_MAX_ROUTED_COLS - 1) / J <= UINT16_MAX, "packed tile index must fit");
 +    const int cc = ggml_cuda_info().devices[ctx.device].cc;
-+    const auto config = ggml_cuda_mmq_get_config(type, J, false, cc);
++    const auto config = ggml_cuda_mmq_get_config(type, J, false, cc, GGML_PREC_Q8);
 +    const int max_desc = (a.ncols_dst + J - 1) / J + a.nchannels_y;
 +    ggml_cuda_pool_alloc<uint32_t> descriptors(ctx.pool(), max_desc);
 +    build_mmq_routed_descriptors<J><<<1, MMQ_ROUTED_MAX_EXPERTS, 0, stream>>>(
@@ -1953,13 +2026,15 @@ index 6104e805b..c0c542bc1 100644
 +    CUDA_CHECK(cudaGetLastError());
 +}
 +#endif
- 
- // The Strix fork favors smaller row tiles for these expert types. Use the
- // existing upstream J32/I64 kernels instead of changing global tile tables.
-@@ -8,6 +116,19 @@ bool ggml_cuda_mmq_small_moe(ggml_backend_cuda_context & ctx, const mmq_args & a
-     const char * enabled = getenv("PARACETAMOL_QWEN4EXP_MMQ_TILES");
-     if ((enabled && strcmp(enabled, "0") == 0) || !a.ids_dst || a.nrows_x % 128 || a.ncols_max < 256 ||
-             ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
++
++// The Strix fork favors smaller row tiles for these expert types. Use the
++// existing upstream J32/I64 kernels instead of changing global tile tables.
++// Only explicitly hinted Qwen4exp operations reach this optional path.
++bool ggml_cuda_mmq_small_moe(ggml_backend_cuda_context & ctx, const mmq_args & a, cudaStream_t stream) {
++#if defined(GGML_USE_HIP)
++    const char * enabled = getenv("PARACETAMOL_QWEN4EXP_MMQ_TILES");
++    if ((enabled && strcmp(enabled, "0") == 0) || !a.ids_dst || a.nrows_x % 128 || a.ncols_max < 256 ||
++            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
 +    const char * compact = getenv("PARACETAMOL_QWEN4EXP_MMQ_COMPACT");
 +    // The packed descriptor reserves 16 bits for the column-tile index.
 +    // Bound even the worst case where one expert receives every routed row.
@@ -1973,18 +2048,49 @@ index 6104e805b..c0c542bc1 100644
 +            default: break;
 +        }
 +    }
-     switch (a.type_x) {
-         case GGML_TYPE_Q4_K: launch_mul_mat_q<GGML_TYPE_Q4_K, 32, false>(ctx, a, stream); return true;
-         case GGML_TYPE_Q5_1: launch_mul_mat_q<GGML_TYPE_Q5_1, 32, false>(ctx, a, stream); return true;
++    switch (a.type_x) {
++        case GGML_TYPE_Q4_K: launch_mul_mat_q<GGML_TYPE_Q4_K, 32, false, GGML_PREC_Q8>(ctx, a, stream); return true;
++        case GGML_TYPE_Q5_1: launch_mul_mat_q<GGML_TYPE_Q5_1, 32, false, GGML_PREC_Q8>(ctx, a, stream); return true;
++        default: break;
++    }
++#else
++    GGML_UNUSED(ctx); GGML_UNUSED(a); GGML_UNUSED(stream);
++#endif
++    return false;
++}
 diff --git a/ggml/src/ggml-cuda/qwen4exp-mmv.cu b/ggml/src/ggml-cuda/qwen4exp-mmv.cu
-index 1183af5e7..88b572ce3 100644
---- a/ggml/src/ggml-cuda/qwen4exp-mmv.cu
+new file mode 100644
+index 000000000..88b572ce3
+--- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-mmv.cu
-@@ -25,12 +25,30 @@ static __device__ __forceinline__ void qwen_q8_load(qwen_q8_chunk<Prefetch> & c,
-     }
- }
- 
--template<int Waves, int Prefetch>
+@@ -0,0 +1,185 @@
++// Q8-only extraction from halo-box/strix-llama.cpp, MIT,
++// 7a9196dad8b13b70fb3420886aadaf98fc09b849. No BF16 shadow weights or residuals.
++#include "qwen4exp-mmv.cuh"
++#include "vecdotq.cuh"
++#if defined(GGML_USE_HIP)
++
++template<int Prefetch>
++struct qwen_q8_chunk {
++    int qs[Prefetch][VDR_Q8_0_Q8_1_MMVQ];
++    half d[Prefetch];
++};
++
++template<int Prefetch>
++static __device__ __forceinline__ void qwen_q8_load(qwen_q8_chunk<Prefetch> & c,
++        const block_q8_0 * __restrict__ weights, int first, int offset, int blocks) {
++    constexpr int step = VDR_Q8_0_Q8_1_MMVQ*32/QI8_0;
++#pragma unroll
++    for (int i=0;i<Prefetch;++i) {
++        const int block=first+i*step;
++        if (block<blocks) {
++#pragma unroll
++            for (int j=0;j<VDR_Q8_0_Q8_1_MMVQ;++j) c.qs[i][j]=get_int_b2(weights[block].qs,offset+j);
++            c.d[i]=weights[block].d;
++        }
++    }
++}
++
 +struct qwen_q8_group_args {
 +    struct segment {
 +        const block_q8_0 * weights;
@@ -1996,9 +2102,8 @@ index 1183af5e7..88b572ce3 100644
 +};
 +
 +template<int Waves, int Prefetch, bool Grouped = false>
- static __global__ __launch_bounds__(Waves*32,1) void qwen_q8_matvec(
-         const block_q8_0 * __restrict__ weights, const float * __restrict__ input,
--        float * __restrict__ output, int cols, int rows, size_t row_stride) {
++static __global__ __launch_bounds__(Waves*32,1) void qwen_q8_matvec(
++        const block_q8_0 * __restrict__ weights, const float * __restrict__ input,
 +        float * __restrict__ output, int cols, int rows, size_t row_stride, qwen_q8_group_args group) {
 +    int block_index = blockIdx.x;
 +    if constexpr (Grouped) {
@@ -2008,28 +2113,69 @@ index 1183af5e7..88b572ce3 100644
 +        weights = seg.weights; output = seg.output; rows = seg.rows; row_stride = seg.stride;
 +        block_index -= seg.first;
 +    }
-     const int lane=threadIdx.x, tid=threadIdx.y*32+lane;
--    const int row=blockIdx.x*Waves+threadIdx.y;
++    const int lane=threadIdx.x, tid=threadIdx.y*32+lane;
 +    const int row=block_index*Waves+threadIdx.y;
-     const int blocks=cols/QK8_0;
-     constexpr int vdr=VDR_Q8_0_Q8_1_MMVQ, step=vdr*32/QI8_0;
-     const int first=lane/(QI8_0/vdr), offset=vdr*(lane%(QI8_0/vdr));
-@@ -79,8 +97,8 @@ static __global__ __launch_bounds__(Waves*32,1) void qwen_q8_matvec(
-     if (lane==0) output[row]=sum;
- }
- 
--bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
--        const ggml_tensor * w, const ggml_tensor * x, ggml_tensor * dst) {
++    const int blocks=cols/QK8_0;
++    constexpr int vdr=VDR_Q8_0_Q8_1_MMVQ, step=vdr*32/QI8_0;
++    const int first=lane/(QI8_0/vdr), offset=vdr*(lane%(QI8_0/vdr));
++    // Incomplete final row groups must still reach the shared-memory barrier.
++    const auto * w=weights+size_t(row<rows ? row : rows-1)*row_stride;
++    qwen_q8_chunk<Prefetch> current;
++    qwen_q8_load(current,w,first,offset,blocks);
++    extern __shared__ char storage[];
++    auto * activation=(block_q8_1 *)storage;
++    for (int i=tid;i<4*blocks;i+=Waves*32) {
++        const int block=i/4, part=i%4;
++        const auto * packed_input = (const float4 *)(input + block*32 + part*8);
++        const float4 low = packed_input[0], high = packed_input[1];
++        const float values[8] = { low.x, low.y, low.z, low.w, high.x, high.y, high.z, high.w };
++        float maximum=fabsf(values[0]);
++#pragma unroll
++        for (int j=1;j<8;++j) maximum=fmaxf(maximum,fabsf(values[j]));
++        maximum=fmaxf(maximum,__shfl_xor_sync(0xffffffff,maximum,1,32));
++        maximum=fmaxf(maximum,__shfl_xor_sync(0xffffffff,maximum,2,32));
++        const float d=maximum/127.0f;
++        unsigned q[8];
++#pragma unroll
++        for (int j=0;j<8;++j) q[j]=unsigned(int(maximum==0.0f ? 0 : int8_t(roundf(values[j]/d))))&255;
++        auto * packed=(unsigned *)activation[block].qs;
++        packed[2*part]=q[0]|(q[1]<<8)|(q[2]<<16)|(q[3]<<24);
++        packed[2*part+1]=q[4]|(q[5]<<8)|(q[6]<<16)|(q[7]<<24);
++        if (part==0) activation[block].ds=make_half2(d,0.0f); // Q8_0 dot ignores the sum component.
++    }
++    __syncthreads();
++    if (row>=rows) return;
++    float sum=0;
++    for (int b=first;b<blocks;b+=Prefetch*step) {
++        qwen_q8_chunk<Prefetch> next;
++        if (b+Prefetch*step<blocks) qwen_q8_load(next,w,b+Prefetch*step,offset,blocks);
++#pragma unroll
++        for (int i=0;i<Prefetch;++i) if (b+i*step<blocks) {
++            const auto * a=activation+b+i*step;
++            int packed[vdr];
++#pragma unroll
++            for (int j=0;j<vdr;++j) packed[j]=get_int_b4(a->qs,offset+j);
++            sum+=vec_dot_q8_0_q8_1_impl<float,vdr>(current.qs[i],packed,current.d[i],__low2half(a->ds));
++        }
++        if (b+Prefetch*step<blocks) current=next;
++    }
++    sum=warp_reduce_sum<32>(sum);
++    if (lane==0) output[row]=sum;
++}
++
 +bool ggml_cuda_qwen4exp_q8_supported(ggml_backend_cuda_context & ctx,
 +        const ggml_tensor * w, const ggml_tensor * x, const ggml_tensor * dst) {
-     const char * enabled=getenv("PARACETAMOL_QWEN4EXP_Q8_MMV");
-     if ((enabled && strcmp(enabled,"0")==0) ||
-             ggml_get_op_params_i32(dst,1)!=GGML_HINT_QWEN4EXP_Q8_DECODE ||
-@@ -92,12 +110,19 @@ bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
-             dst->ne[1]!=1 || dst->ne[2]!=1 || dst->ne[3]!=1 ||
-             w->ne[0]!=x->ne[0] || dst->ne[0]!=w->ne[1] ||
-             w->ne[0]%32 || w->ne[0]<32 || w->ne[0]>14336 || w->ne[1]<1 || w->ne[1]>INT_MAX ||
--            ggml_get_op_params_i32(dst,0)!=GGML_PREC_DEFAULT) return false;
++    const char * enabled=getenv("PARACETAMOL_QWEN4EXP_Q8_MMV");
++    if ((enabled && strcmp(enabled,"0")==0) ||
++            ggml_get_op_params_i32(dst,1)!=GGML_HINT_QWEN4EXP_Q8_DECODE ||
++            ggml_cuda_info().devices[ctx.device].cc!=GGML_CUDA_CC_OFFSET_AMD+0x1151 ||
++            w->type!=GGML_TYPE_Q8_0 || x->type!=GGML_TYPE_F32 || dst->type!=GGML_TYPE_F32 ||
++            !ggml_is_contiguous(w) || !ggml_is_contiguous(x) || !ggml_is_contiguous(dst) ||
++            uintptr_t(x->data) % alignof(float4) != 0 ||
++            w->ne[2]!=1 || w->ne[3]!=1 || x->ne[1]!=1 || x->ne[2]!=1 || x->ne[3]!=1 ||
++            dst->ne[1]!=1 || dst->ne[2]!=1 || dst->ne[3]!=1 ||
++            w->ne[0]!=x->ne[0] || dst->ne[0]!=w->ne[1] ||
++            w->ne[0]%32 || w->ne[0]<32 || w->ne[0]>14336 || w->ne[1]<1 || w->ne[1]>INT_MAX ||
 +            ggml_get_op_params_i32(dst,0)!=GGML_PREC_DEFAULT ||
 +            ggml_get_op_params_i32(dst,3)!=GGML_PREC_DEFAULT) return false;
 +    return true;
@@ -2038,19 +2184,27 @@ index 1183af5e7..88b572ce3 100644
 +bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
 +        const ggml_tensor * w, const ggml_tensor * x, ggml_tensor * dst) {
 +    if (!ggml_cuda_qwen4exp_q8_supported(ctx, w, x, dst)) return false;
-     const int cols=w->ne[0], rows=w->ne[1];
-     const size_t shared=(cols/32)*sizeof(block_q8_1);
-     auto launch=[&](auto kernel,int waves) {
-         kernel<<<dim3((rows+waves-1)/waves),dim3(32,waves),shared,ctx.stream()>>>(
--            (const block_q8_0 *)w->data,(const float *)x->data,(float *)dst->data,cols,rows,w->nb[1]/sizeof(block_q8_0));
++    const int cols=w->ne[0], rows=w->ne[1];
++    const size_t shared=(cols/32)*sizeof(block_q8_1);
++    auto launch=[&](auto kernel,int waves) {
++        kernel<<<dim3((rows+waves-1)/waves),dim3(32,waves),shared,ctx.stream()>>>(
 +            (const block_q8_0 *)w->data,(const float *)x->data,(float *)dst->data,cols,rows,w->nb[1]/sizeof(block_q8_0),qwen_q8_group_args{});
-     };
-     int waves = 16;
-     while (waves > 4 && (rows + waves - 1)/waves < 2*ggml_cuda_info().devices[ctx.device].nsm) waves /= 2;
-@@ -114,4 +139,47 @@ bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
-     CUDA_CHECK(cudaGetLastError());
-     return true;
- }
++    };
++    int waves = 16;
++    while (waves > 4 && (rows + waves - 1)/waves < 2*ggml_cuda_info().devices[ctx.device].nsm) waves /= 2;
++    constexpr int step = VDR_Q8_0_Q8_1_MMVQ*32/QI8_0;
++    const bool long_rows = cols/32 >= 16*step && rows <= 1024;
++    if (waves == 16) launch(qwen_q8_matvec<16,2>,16);
++    else if (waves == 8) {
++        if (long_rows) launch(qwen_q8_matvec<8,8>,8);
++        else launch(qwen_q8_matvec<8,2>,8);
++    } else {
++        if (long_rows) launch(qwen_q8_matvec<4,8>,4);
++        else launch(qwen_q8_matvec<4,2>,4);
++    }
++    CUDA_CHECK(cudaGetLastError());
++    return true;
++}
 +
 +// The fork's grouped matvec launch, reusing our already-tested Q8 kernel.
 +// Every segment retains its own output and the same per-row dot product.
@@ -2094,24 +2248,38 @@ index 1183af5e7..88b572ce3 100644
 +    }
 +    CUDA_CHECK(cudaGetLastError());
 +}
- #endif
++#endif
 diff --git a/ggml/src/ggml-cuda/qwen4exp-mmv.cuh b/ggml/src/ggml-cuda/qwen4exp-mmv.cuh
-index f134d00ae..3d85b3b83 100644
---- a/ggml/src/ggml-cuda/qwen4exp-mmv.cuh
+new file mode 100644
+index 000000000..3d85b3b83
+--- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-mmv.cuh
-@@ -1,4 +1,7 @@
- #pragma once
- #include "common.cuh"
+@@ -0,0 +1,7 @@
++#pragma once
++#include "common.cuh"
 +bool ggml_cuda_qwen4exp_q8_supported(ggml_backend_cuda_context & ctx,
 +    const ggml_tensor * weights, const ggml_tensor * input, const ggml_tensor * output);
 +void ggml_cuda_qwen4exp_q8_group(ggml_backend_cuda_context & ctx, ggml_tensor * const * nodes, int count);
- bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
-     const ggml_tensor * weights, const ggml_tensor * input, ggml_tensor * output);
++bool ggml_cuda_qwen4exp_q8_matvec(ggml_backend_cuda_context & ctx,
++    const ggml_tensor * weights, const ggml_tensor * input, ggml_tensor * output);
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index 48106f652..4eebd36b6 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -3389,7 +3389,7 @@ void ggml_mul_mat_set_prec(
+ void ggml_mul_mat_set_hint(
+         struct ggml_tensor * a,
+         enum ggml_op_hint    hint) {
+-    GGML_ASSERT(a->op == GGML_OP_MUL_MAT);
++    GGML_ASSERT(a->op == GGML_OP_MUL_MAT || a->op == GGML_OP_MUL_MAT_ID);
+ 
+     const int32_t hint_i32 = (int32_t) hint;
+ 
 diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
-index 857e87f24..eec56d540 100644
+index c83be9dd2..b6b9a99eb 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -287,9 +287,22 @@ ggml_tensor * llama_model_qwen4exp::graph::build_hc_mix(
+@@ -326,9 +326,22 @@ ggml_tensor * llama_model_qwen4exp::graph::build_hc_mix(
      // grouped RMSNorm: reduce over one stream, then scale all streams with the [n_embd, hc] gamma
      // the converter folded each gamma to (1 + w)
      ggml_tensor * xn = ggml_mul(ctx0, ggml_rms_norm(ctx0, x, hparams.f_norm_rms_eps), w_norm);
@@ -2134,7 +2302,7 @@ index 857e87f24..eec56d540 100644
      ggml_tensor * lo = build_lora_mm(w_down, xn);
      lo = ggml_silu(ctx0, ggml_scale(ctx0, lo, 1.0f / (float) hc));
      ggml_tensor * gate = build_lora_mm(w_up, lo);
-@@ -320,7 +333,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_hc_mix(
+@@ -359,7 +372,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_hc_mix(
      }
      cb(mixed, "hc_mixed", il);
  
@@ -2143,25 +2311,33 @@ index 857e87f24..eec56d540 100644
          *inject = build_lora_mm(w_inject, xn);
          cb(*inject, "hc_inject", il);
      }
-@@ -467,12 +480,16 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
-     if (fast && std::string(fast)=="1") {
-         for (int i=0;i<ggml_graph_n_nodes(gf);++i) {
-             auto * node=ggml_graph_node(gf,i);
+@@ -520,6 +533,25 @@ llama_model_qwen4exp::graph::graph(const llama_model & model, const llm_graph_pa
+     cur = build_lora_mm(model.output, cur, model.output_s);
+     cb(cur, "result_output", -1);
+     res->t_logits = cur;
++    ggml_build_forward_expand(gf, cur);
++    const char * fast = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
++    if (fast && std::string(fast)=="1") {
++        for (int i=0;i<ggml_graph_n_nodes(gf);++i) {
++            auto * node=ggml_graph_node(gf,i);
 +            if (node->op == GGML_OP_RMS_NORM && node->ne[0] <= 256) {
 +                ggml_set_name(node, "qwen4exp_narrow_norm");
 +            }
-             if (node->op==GGML_OP_MUL_MAT && node->src[0]->type==GGML_TYPE_Q8_0 &&
-                     node->op_params[1]==GGML_HINT_NONE) {
-                 ggml_mul_mat_set_hint(node,GGML_HINT_QWEN4EXP_Q8_DECODE);
-             }
-             if (node->op == GGML_OP_MUL_MAT_ID && node->op_params[1] == GGML_HINT_NONE &&
--                    (node->src[0]->type == GGML_TYPE_Q4_K || node->src[0]->type == GGML_TYPE_Q5_1)) {
++            if (node->op==GGML_OP_MUL_MAT && node->src[0]->type==GGML_TYPE_Q8_0 &&
++                    node->op_params[1]==GGML_HINT_NONE) {
++                ggml_mul_mat_set_hint(node,GGML_HINT_QWEN4EXP_Q8_DECODE);
++            }
++            if (node->op == GGML_OP_MUL_MAT_ID && node->op_params[1] == GGML_HINT_NONE &&
 +                    (node->src[0]->type == GGML_TYPE_Q4_K || node->src[0]->type == GGML_TYPE_Q5_1 ||
 +                     node->src[0]->type == GGML_TYPE_Q8_0)) {
-                 ggml_mul_mat_set_hint(node, GGML_HINT_SMALL_MOE_TILES);
-             }
-         }
-@@ -1166,13 +1183,24 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn_linear(
++                ggml_mul_mat_set_hint(node, GGML_HINT_SMALL_MOE_TILES);
++            }
++        }
++    }
+ }
+ 
+ llama_model_qwen4exp::graph_mtp::graph_mtp(const llama_model & model, const llm_graph_params & params) :
+@@ -1051,13 +1083,24 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn_linear(
      beta = ggml_reshape_4d(ctx0, beta, 1, num_v_heads, n_seq_tokens, n_seqs);
      cb(beta, "beta", il);
  
@@ -2189,7 +2365,7 @@ index 857e87f24..eec56d540 100644
      ggml_tensor * alpha_biased   = ggml_add(ctx0, alpha, model.layers[il].ssm_dt);
      ggml_tensor * alpha_softplus = ggml_softplus(ctx0, alpha_biased);
      cb(alpha_softplus, "a_softplus", il);
-@@ -1193,6 +1221,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn_linear(
+@@ -1078,6 +1121,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn_linear(
  
      ggml_tensor * conv_input = build_conv_state_at(inp, conv_states_all, qkv_mixed,
              conv_kernel_size - 1, conv_channels, il);
@@ -2197,7 +2373,7 @@ index 857e87f24..eec56d540 100644
  
      ggml_tensor * state = build_rs(inp, ssm_states_all, hparams.n_embd_s(), n_seqs);
      state = ggml_reshape_4d(ctx0, state, head_v_dim, head_v_dim, num_v_heads, n_seqs);
-@@ -1566,6 +1595,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_ple(
+@@ -1449,6 +1493,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_ple(
      ggml_tensor * padded = build_conv_state_at(inp, inp->mctx->get_p_l(il),
              ggml_reshape_3d(ctx0, normalized, hc_dim, n_seq_tokens, n_seqs),
              hist, hc_dim, il);
@@ -2206,13 +2382,14 @@ index 857e87f24..eec56d540 100644
      ggml_tensor * conv_out = nullptr;
      for (int64_t k = 0; k < kern; ++k) {
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 315dcf336..a989148af 100644
+index 7886d6e9b..eb53aa056 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -9124,9 +9124,237 @@ struct test_falcon : public test_llm {
+@@ -9565,6 +9565,348 @@ struct test_falcon : public test_llm {
+ };
  
- #include "../src/models/qwen4exp-qsa.h"
  
++
 +struct test_qwen_narrow_norm : public test_case {
 +    int cols, rows;
 +    bool gated, strided, extra_reader;
@@ -2441,18 +2618,18 @@ index 315dcf336..a989148af 100644
 +    }
 +};
 +
- struct test_qwen_moe_tiles : public test_mul_mat_id {
--    test_qwen_moe_tiles(ggml_type type, int rows, int tokens, bool broadcast)
--        : test_mul_mat_id(type, GGML_TYPE_F32, 8, 2, broadcast, rows, tokens, 256) {}
++struct test_qwen_moe_tiles : public test_mul_mat_id {
 +    test_qwen_moe_tiles(ggml_type type, int rows, int tokens, bool broadcast, int experts = 8, int used = 2)
 +        : test_mul_mat_id(type, GGML_TYPE_F32, experts, used, broadcast, rows, tokens, 256) {}
-     std::string op_desc(ggml_tensor *) override { return "QWEN_MOE_TILES"; }
-     bool run_whole_graph() override { return true; }
-     ggml_tensor * build_graph(ggml_context * ctx) override {
-@@ -9136,6 +9364,76 @@ struct test_qwen_moe_tiles : public test_mul_mat_id {
-     }
- };
- 
++    std::string op_desc(ggml_tensor *) override { return "QWEN_MOE_TILES"; }
++    bool run_whole_graph() override { return true; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * out = test_mul_mat_id::build_graph(ctx);
++        ggml_mul_mat_set_hint(out, GGML_HINT_SMALL_MOE_TILES);
++        return out;
++    }
++};
++
 +struct test_qwen_moe_reduce : public test_mul_mat_id {
 +    bool scaled;
 +    test_qwen_moe_reduce(int rows, int tokens, bool scaled)
@@ -2523,14 +2700,44 @@ index 315dcf336..a989148af 100644
 +    }
 +};
 +
- struct test_qwen_q8_matvec : public test_case {
-     int cols, rows, queries;
-     bool zero;
-@@ -11524,13 +11822,57 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
-     for (int blocks : {2, 65, 513, 8192, 65535}) {
-         for (bool tail : {false, true}) test_cases.emplace_back(new test_qsa_prepared(blocks, tail));
++struct test_qwen_q8_matvec : public test_case {
++    int cols, rows, queries;
++    bool zero;
++    ggml_tensor * input=nullptr;
++    test_qwen_q8_matvec(int cols,int rows,int queries=1,bool zero=false) : cols(cols),rows(rows),queries(queries),zero(zero) {}
++    std::string op_desc(ggml_tensor *) override {return "QWEN_Q8_MMV";}
++    std::string vars() override {return VARS_TO_STR4(cols,rows,queries,zero);}
++    bool run_whole_graph() override {return true;}
++    double max_nmse_err() override {return 0;}
++    double err(const float * actual,const float *,size_t n) override {
++        for (size_t i=0;i<n;++i) if (actual[i]!=0.0f) return INFINITY;
++        return 0;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * w=ggml_new_tensor_2d(ctx,GGML_TYPE_Q8_0,cols,rows);
++        input=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,cols,queries);
++        auto * original=ggml_mul_mat(ctx,w,input);
++        auto * fast=ggml_mul_mat(ctx,w,input);
++        ggml_mul_mat_set_hint(fast,GGML_HINT_QWEN4EXP_Q8_DECODE);
++        return ggml_sub(ctx,fast,original);
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_case::initialize_tensors(ctx);
++        if (zero) {
++            std::vector<float> values(ggml_nelements(input),0);
++            ggml_backend_tensor_set(input,values.data(),0,ggml_nbytes(input));
++        }
++    }
++};
++
++
+ struct test_qsa_prefill : public test_case {
+     const int dim, queries, keys, selected, streams, ratio;
+     const bool interleaved, poison;
+@@ -12092,6 +12434,74 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         test_cases.emplace_back(new test_qsa_order(513, selected));
+         test_cases.emplace_back(new test_qsa_prefill(513, 4096, selected, true, true));
      }
--    for (auto type : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_1 }) {
 +    for (int tokens : {1, 255, 256, 257, 512, 2048}) {
 +        test_cases.emplace_back(new test_qwen_gdn_conv(512, tokens, 3));
 +    }
@@ -2565,12 +2772,12 @@ index 315dcf336..a989148af 100644
 +    for (auto type : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0 }) {
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, true, 512, 10));
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false, 512, 10));
-         test_cases.emplace_back(new test_qwen_moe_tiles(type, 512, 513, true));
-         test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false));
-         test_cases.emplace_back(new test_qwen_moe_tiles(type, 129, 513, true));
-         test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 8, true));
-     }
-     test_cases.emplace_back(new test_qwen_q8_matvec(32,1));
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 512, 513, true));
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false));
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 129, 513, true));
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 8, true));
++    }
++    test_cases.emplace_back(new test_qwen_q8_matvec(32,1));
 +    for (int cols : {320, 2560, 10240}) {
 +        for (int count : {2, 3, 4}) test_cases.emplace_back(new test_qwen_q8_group(cols, count));
 +    }
@@ -2582,13 +2789,14 @@ index 315dcf336..a989148af 100644
 +        test_cases.emplace_back(new test_qwen_moe_reduce(2560, 1, scaled));
 +        test_cases.emplace_back(new test_qwen_moe_reduce(129, 17, scaled));
 +    }
-     test_cases.emplace_back(new test_qwen_q8_matvec(320,17));
-     test_cases.emplace_back(new test_qwen_q8_matvec(2560,10240));
-     test_cases.emplace_back(new test_qwen_q8_matvec(2560,768));
-@@ -11539,6 +11881,15 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
-     test_cases.emplace_back(new test_qwen_q8_matvec(14336,257));
-     test_cases.emplace_back(new test_qwen_q8_matvec(10240,320,1,true));
-     test_cases.emplace_back(new test_qwen_q8_matvec(2560,320,2));
++    test_cases.emplace_back(new test_qwen_q8_matvec(320,17));
++    test_cases.emplace_back(new test_qwen_q8_matvec(2560,10240));
++    test_cases.emplace_back(new test_qwen_q8_matvec(2560,768));
++    test_cases.emplace_back(new test_qwen_q8_matvec(8192,768));
++    test_cases.emplace_back(new test_qwen_q8_matvec(10240,320));
++    test_cases.emplace_back(new test_qwen_q8_matvec(14336,257));
++    test_cases.emplace_back(new test_qwen_q8_matvec(10240,320,1,true));
++    test_cases.emplace_back(new test_qwen_q8_matvec(2560,320,2));
 +    for (int queries : {32, 48, 49, 127, 128, 129, 512, 2048}) {
 +        test_cases.emplace_back(new test_qwen_q8_matvec(2560,768,queries));
 +    }
@@ -2598,6 +2806,6 @@ index 315dcf336..a989148af 100644
 +    test_cases.emplace_back(new test_qwen_q8_matvec(2560,257,512));
 +    test_cases.emplace_back(new test_qwen_q8_matvec(320,128,129));
 +    test_cases.emplace_back(new test_qwen_q8_matvec(2560,128,512,true));
-     test_cases.emplace_back(new test_qsa_pool(GGML_TYPE_F16,3,1));
-     test_cases.emplace_back(new test_qsa_pool(GGML_TYPE_F16,32768,1));
-     test_cases.emplace_back(new test_qsa_pool(GGML_TYPE_F32,513,2));
+     test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
+     test_cases.emplace_back(new test_qsa_prefill(256, 4096, 2048, true, true));
+     test_cases.emplace_back(new test_qsa_prefill(513, 4096, 2051, true, true));

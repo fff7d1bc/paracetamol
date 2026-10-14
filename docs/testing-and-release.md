@@ -593,6 +593,21 @@ a faster unrelated architecture merely because it is convenient.
 
 Do not treat one successful tiny workflow as acceptance of every model family.
 
+For the quantized on-device state-copy correction, run upstream's
+`test-llama-context` with `--test '^(baseline|cp_d|cp_d_s)$'` on a small managed
+model. Repeat with both cache types set to `f16`, `q8_0` and `q4_0`. Require
+three passed cases and zero skipped cases for each run. The `baseline` case
+is a prerequisite, not an optional control. Filtering it out can produce a
+successful exit with the device-copy test skipped. This optional-cache test
+does not change the managed presets' F16 policy.
+
+Compile `applications/llama-cpp/test-topk-moe-lifetime.cpp` in the matching
+builder when changing the HIP top-k MoE boundary patch. Run it on the selected
+GPU with the same confinement as the state fixture below. It needs no model
+and checks allocation-lifetime callbacks for eight terminal or partial-suffix
+graphs. Zero callbacks is a failure, not a passing skipped fusion. Follow it
+with upstream's `test-backend-ops -b ROCm0 -o TOPK_MOE` numerical cases.
+
 #### Fast Flash-Next state screen
 
 Before a large llama.cpp refresh matrix, run
@@ -622,7 +637,8 @@ env -u GGML_CUDA_ENABLE_UNIFIED_MEMORY /opt/probe/test-qwen4exp-state \
   --no-host --fit off
 ```
 
-Set the three QSA switches to `1` when testing the accepted compact-graph
+Set `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1` and
+`PARACETAMOL_QWEN4EXP_QSA_GRAPH=1` when testing the accepted compact-graph
 stack. Leave them unset for upstream attention. The fixture prints those
 switches and the graph-disable overrides rather than requiring downstream
 features, so it can also test unpatched upstream.

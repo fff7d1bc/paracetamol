@@ -1,0 +1,27 @@
+Local gfx1151 HIP graph-recapture correction. Reinstantiate only after a
+changed capture, retaining ordinary graph replay. The direct-reader Qwen4exp
+restore fixture fails before this correction and passes afterward. Other
+architectures retain the upstream executable-update path.
+
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -2774,6 +2774,18 @@ static bool ggml_cuda_graph_update_required(ggml_backend_cuda_context * cuda_ctx
+ static void ggml_cuda_graph_update_executable(ggml_backend_cuda_context * cuda_ctx, const void * graph_key) {
+     ggml_cuda_graph * graph = cuda_ctx->cuda_graph(graph_key);
+ 
++#if defined(GGML_USE_HIP)
++    if (ggml_cuda_info().devices[cuda_ctx->device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151) {
++        // A recaptured graph needs a fresh executable on gfx1151. Updating it
++        // can replay stale state after a Qwen4exp clear/restore. Ordinary
++        // unchanged graph replay remains enabled.
++        CUDA_CHECK(cudaGraphExecDestroy(graph->instance));
++        graph->instance = nullptr;
++        CUDA_CHECK(cudaGraphInstantiate(&graph->instance, graph->graph, NULL, NULL, 0));
++        return;
++    }
++#endif
++
+ #if CUDART_VERSION >= 12000
+     cudaGraphExecUpdateResultInfo result_info;
+     cudaError_t stat = cudaGraphExecUpdate(graph->instance, graph->graph, &result_info);

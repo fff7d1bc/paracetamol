@@ -1,8 +1,7 @@
 diff --git a/common/arg.cpp b/common/arg.cpp
-index 43052d5..76809a9 100644
 --- a/common/arg.cpp
 +++ b/common/arg.cpp
-@@ -1304,6 +1304,17 @@ bool common_params_parse(int argc, char ** argv, common_params & params, llama_e
+@@ -1310,6 +1310,17 @@ bool common_params_parse(int argc, char ** argv, common_params & params, llama_e
              exit(0);
          }
          params.lr.init();
@@ -20,7 +19,7 @@ index 43052d5..76809a9 100644
      } catch (const std::invalid_argument & ex) {
          fprintf(stderr, "%s\n", ex.what());
          ctx_arg.params = params_org;
-@@ -2430,6 +2441,13 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+@@ -2436,6 +2447,13 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
              params.no_host = true;
          }
      ).set_env("LLAMA_ARG_NO_HOST"));
@@ -35,13 +34,13 @@ index 43052d5..76809a9 100644
          {"-ctk", "--cache-type-k"}, "TYPE",
          string_format(
 diff --git a/common/common.h b/common/common.h
-index 63d0bad..bcaba87 100644
 --- a/common/common.h
 +++ b/common/common.h
-@@ -581,5 +581,6 @@ struct common_params {
+@@ -588,6 +588,7 @@ struct common_params {
      bool no_op_offload     = false; // globally disable offload host tensor operations to device
      bool no_extra_bufts    = false; // disable extra buffer types (used for weight repacking)
      bool no_host           = false; // bypass host buffer allowing extra buffers to be used
 +    bool no_unified_memory = false; // opt out of inherited CUDA/HIP managed allocation at process startup
+     bool load_mtp          = false; // load MTP/NextN layers
  
      bool single_turn       = false; // single turn chat conversation

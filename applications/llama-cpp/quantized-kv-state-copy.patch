@@ -1,0 +1,59 @@
+From 0e3dbf0f23cf0ba00832a0697909e9eb8b214caf Mon Sep 17 00:00:00 2001
+From: Hongqiang Wang <wangh@qti.qualcomm.com>
+Date: Tue, 13 Oct 2026 09:48:03 -0700
+Subject: [PATCH] llama : fix on-device state copy sizes for quantized KV
+ caches
+
+The on-device sequence state copies (LLAMA_STATE_SEQ_FLAGS_ON_DEVICE) computed
+their element count as size / ggml_element_size(). For a quantized type such as
+q8_0 or q4_0 that is the number of blocks, not elements, so only part of each
+range was copied: the restored state was wrong, or the copy crashed.
+
+Compute the count as size / ggml_type_size() * ggml_blck_size() for the save,
+the restore and the copy between differently chunked ranges, and assert that
+each range covers whole blocks.
+---
+ src/llama-context.cpp | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 9ee64b566..a1205bb99 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -3090,7 +3090,9 @@ public:
+         for (const auto & winfo : winfos) {
+             auto * buft = ggml_backend_buffer_get_type(winfo.tensor->buffer);
+ 
+-            const int64_t n = winfo.size/ggml_element_size(winfo.tensor);
++            // number of elements, not blocks: a quantized type stores ggml_blck_size() elements per ggml_type_size() bytes
++            GGML_ASSERT(winfo.size % ggml_type_size(winfo.tensor->type) == 0);
++            const int64_t n = winfo.size/ggml_type_size(winfo.tensor->type)*ggml_blck_size(winfo.tensor->type);
+ 
+             auto & mbuf = mbufs_new[buft];
+ 
+@@ -3221,7 +3223,9 @@ public:
+         for (const auto & rinfo : rinfos) {
+             auto * buft = ggml_backend_buffer_get_type(rinfo.tensor->buffer);
+ 
+-            const int64_t n = rinfo.size/ggml_element_size(rinfo.tensor);
++            // number of elements, not blocks: a quantized type stores ggml_blck_size() elements per ggml_type_size() bytes
++            GGML_ASSERT(rinfo.size % ggml_type_size(rinfo.tensor->type) == 0);
++            const int64_t n = rinfo.size/ggml_type_size(rinfo.tensor->type)*ggml_blck_size(rinfo.tensor->type);
+ 
+             auto & mbuf = mbufs_new[buft];
+ 
+@@ -3288,8 +3292,9 @@ public:
+ 
+                 const size_t n_copy = std::min(src_size - src_off, dst_size - dst_off);
+ 
+-                const size_t   el   = ggml_element_size(src_t);
+-                const int64_t n_el = (int64_t) (n_copy / el);
++                // number of elements, not blocks (see above)
++                GGML_ASSERT(n_copy % ggml_type_size(src_t->type) == 0);
++                const int64_t n_el = (int64_t) (n_copy / ggml_type_size(src_t->type) * ggml_blck_size(src_t->type));
+ 
+                 auto * src_v = ggml_view_1d(ctx_scratch, src_t, n_el, src_off);
+                 ggml_backend_view_init(src_v);
+-- 
+2.53.0
+
