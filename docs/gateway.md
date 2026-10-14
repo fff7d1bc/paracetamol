@@ -1,7 +1,7 @@
 # Native inference gateway
 
 Paracetamol's gateway is the normal shared API entry point for managed text
-inference. It presents verified llama.cpp, DwarfStar, and Gufo models on one port,
+inference. It presents verified llama.cpp and DwarfStar models on one port,
 loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
@@ -13,18 +13,17 @@ extra selection:
 ./paracetamol run gateway
 ```
 
-Automatic discovery considers llama.cpp, DwarfStar, and Gufo, then includes an
+Automatic discovery considers llama.cpp and DwarfStar, then includes an
 application only when its image is built and it contributes at least one
 compatible receipt-verified model. Any explicit `-a` or `--application`
 options replace discovery and are strict: a missing image or model fails
 startup. Use one for an exact single-application endpoint or repeat it to
-demand several applications:
+demand both applications:
 
 ```bash
 ./paracetamol run gateway -a llama-cpp
 ./paracetamol run gateway -a dwarfstar
 ./paracetamol run gateway -a llama-cpp -a dwarfstar
-./paracetamol run gateway -a llama-cpp -a gufo
 ```
 
 ## Configuration
@@ -213,9 +212,7 @@ Flash-Next's ROCm streaming path is restricted to Strix Halo. Automatic
 selection resolves the exact render nodes through KFD topology, and the
 container independently checks the detected profile. An unknown profile does
 not advertise a restricted model. Vulkan remains available as the explicit
-Flash-Next fallback. Gufo requires exactly one Strix Halo render node and
-exposes its own `-gufo` model ID. It shares the four verified Flash-Next files
-with llama.cpp, not that engine's settings or numerical implementation.
+Flash-Next fallback.
 
 The snapshot remains fixed for the process lifetime. Installing, replacing,
 or verifying content does not change a running gateway: restart it. This makes
@@ -226,12 +223,11 @@ fingerprint for the exact snapshot.
 ## Scheduling and lifecycle
 
 llama.cpp models share one private router allocation. DwarfStar v1 exposes its
-single reviewed non-DSpark preset as a separate allocation. Gufo has a third
-allocation for its one reviewed Flash-Next preset at 256K. The first Chat
+single reviewed non-DSpark preset as a separate allocation. The first Chat
 Completions request starts the required application in a constrained,
 Paracetamol-owned container with an ephemeral loopback host port. That port is
 never the public interface. Once started, the container's stdout and stderr are
-followed in the foreground terminal with a `llama-cpp |`, `dwarfstar |`, or `gufo |`
+followed in the foreground terminal with a `llama-cpp |` or `dwarfstar |`
 prefix. The log follower changes with the allocation and is joined during
 backend stop, so it cannot outlive the gateway-owned container.
 
@@ -249,7 +245,7 @@ from compatible clients. Invalid values are ignored, and the gateway never
 fingerprints messages or other request content to infer a session.
 
 Requests compatible with the active allocation run concurrently, subject to
-the backend's own slots. DwarfStar and Gufo each allow one active request. A request
+the backend's own slots. DwarfStar allows one active request. A request
 for another allocation enters the bounded FIFO queue. Once existing requests
 finish, the scheduler removes the current backend, starts the requested one,
 waits for its readiness endpoint, and forwards the request. The gateway fills
@@ -292,9 +288,8 @@ values are left for the engine to reject, not repaired by the gateway.
 Use top-level `"reasoning_effort":"none"` for off, or a native level listed
 by the model. Qwen3.6 also accepts its normal boolean
 `chat_template_kwargs.enable_thinking` toggle. Both Qwen families accept that
-boolean and supported nested `reasoning_effort` values. For Gufo, the native
-`thinking.type` and `chat_template_kwargs.thinking_mode` controls are also
-recognized. No client-specific workaround is involved.
+boolean and supported nested `reasoning_effort` values.
+No client-specific workaround is involved.
 
 Malformed or conflicting thinking controls return HTTP 400 before a backend
 starts. For example, `reasoning_effort: medium` combined with
@@ -304,17 +299,16 @@ in the request or its reasoning-control objects are also rejected. The
 gateway does not rewrite reasoning levels or templates.
 
 The existing reviewed tuples are preserved. Flash-Next on llama.cpp uses
-thinking min-p 0.05, while its Gufo variant uses 0. Both retain their own
-tested policy. Moving policy ownership does not make the engines numerically
-equivalent or change a model's default reasoning level.
+thinking min-p 0.05. Moving policy ownership does not change a model's
+default reasoning level.
 
 `status gateway --requests N` shows the selected policy and thinking mode,
 plus whether each sampler came from the client or the gateway. The startup
 inventory fingerprint includes policy values. Restart the gateway after a
 catalog policy change. No engine rebuild is needed for a sampler-only change.
 
-Direct `run llama-cpp server` and `run gufo server` endpoints bypass this
-policy. They use native engine defaults unless the caller supplies settings.
+Direct engine endpoints bypass this policy. They use native engine defaults
+unless the caller supplies settings.
 The old llama.cpp sampling patch has been removed, with no compatibility
 flag. Use the gateway for shared managed defaults. Direct benchmark runners
 send and record the catalog tuple explicitly for their fixed reasoning mode.
@@ -324,9 +318,7 @@ send and record the catalog tuple explicitly for their fixed reasoning mode.
 Backends retain the normal rootless, read-only, capability-free runtime
 policy, exact GPU device set, application data mount, and read-only content
 mount. They publish only an ephemeral `127.0.0.1` port. The gateway never
-guesses render nodes. DwarfStar and Gufo each require exactly one GPU.
-Gufo receives exact read-only GGUF file mounts, preventing automatic discovery
-of an unverified sibling projector or draft model.
+guesses render nodes and DwarfStar still requires exactly one GPU.
 
 The backend publication is explicitly
 `127.0.0.1::CONTAINER_PORT`, where the empty host-port field asks Podman for
@@ -492,10 +484,7 @@ that invocation intentionally form one launch-level correlation group.
 
 - DwarfStar uses the reviewed direct model only; DSpark remains a direct-server
   and benchmark option.
-- Gufo serves one managed Flash-Next preset, without speculation, disk cache,
-  or other upstream model families. Its RAM snapshot budget is 28 GiB and
-  its reasoning default is medium. Requests can select off, medium, or xhigh.
-- The gateway owns one resource pool and never keeps two application backends
+- The gateway owns one resource pool and does not keep llama.cpp and DwarfStar
   resident together.
 - It adds no manual unload operation or gateway idle timer. Allocation switches
   and foreground shutdown retain their existing lifecycle, while llama.cpp's

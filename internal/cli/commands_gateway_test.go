@@ -29,6 +29,18 @@ func TestRunHelpIncludesGateway(t *testing.T) {
 	}
 }
 
+func TestRetiredGatewayApplicationRejectedBeforeHostProbes(t *testing.T) {
+	runner := &commandRunner{}
+	app, _, _ := testApp(t, runner)
+	err := app.runGateway([]string{"-a", "gufo"})
+	if err == nil || !strings.Contains(err.Error(), "gateway application must be one of llama-cpp, dwarfstar") {
+		t.Fatalf("retired application error=%v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("invalid application reached host probes: %v", runner.commands)
+	}
+}
+
 func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
 	if err := app.runGateway([]string{"--help"}); !errors.Is(err, flag.ErrHelp) {

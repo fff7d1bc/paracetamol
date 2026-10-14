@@ -7,7 +7,7 @@ then choose a user guide or maintainer reference below.
 ## User guides
 
 - [Applications](guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, Gufo, managed models, APIs, coding-agent clients, and multi-GPU runs.
+  DwarfStar, managed models, APIs, coding-agent clients, and multi-GPU runs.
 - [Content](guides/content.md) covers recipes, exact bundles, licensing,
   verification, resumable downloads, mirrors, imports, and workflows.
 - [Operations](guides/operations.md) covers hardware acceptance, builds,
@@ -28,7 +28,6 @@ built-in guide:
 ./paracetamol guide comfyui
 ./paracetamol guide llama-cpp
 ./paracetamol guide dwarfstar
-./paracetamol guide gufo
 ```
 
 Command-specific `--help` output remains the authoritative interface
@@ -79,8 +78,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
    bash -n applications/comfyui/entrypoint.sh \
      applications/llama-cpp/entrypoint.sh \
-     applications/dwarfstar/entrypoint.sh \
-     applications/gufo/entrypoint.sh
+     applications/dwarfstar/entrypoint.sh
    find catalog -type f -name '*.json' -print0 | \
      xargs -0 -n1 python3 -m json.tool >/dev/null
    git diff --check

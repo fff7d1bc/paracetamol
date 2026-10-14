@@ -396,9 +396,8 @@ are a closed numeric allowlist with range checks, not arbitrary request
 overrides. Direct engine startup and router INI files do not carry the policy.
 
 Qwen3.6 uses separate dense and sparse tuples. Its MTP and non-MTP variants
-share their family policy, as do Qwen3.8's dense variants. Flash-Next has
-separate llama.cpp and Gufo policies to preserve their reviewed thinking
-min-p values of 0.05 and 0. Generated clients omit static tuples for these
+share their family policy, as do Qwen3.8's dense variants. Flash-Next uses
+thinking min-p 0.05. Generated clients omit static tuples for these
 models so every request can select its own thinking mode. Direct benchmark
 runners send the selected tuple explicitly from the same catalog.
 `internal/agent/models.go` retains static client defaults for unrelated
@@ -442,16 +441,6 @@ may be useful on more than one GPU class, so do not create a hardware-named
 selector merely because one machine has enough memory for it.
 
 ## Add a bundle
-
-Gufo bundles may reuse the existing verified Flash-Next artifacts from the
-`llama-models` target. Their `gufo_presets` records own a distinct model ID,
-context and output limits, RAM snapshot budget, and off/medium/xhigh reasoning
-capabilities. Do not copy model files or create duplicate artifact records to
-select another engine. Gufo currently permits one reviewed model, on Strix
-Halo only. New Gufo models need engine and gateway acceptance, not a local
-pack that bypasses those limits. Templates are pinned with Gufo source.
-The Gufo preset's gateway sampling policy currently matches its native
-defaults but is maintained explicitly in the catalog.
 
 A bundle connects content to a user-visible capability:
 

@@ -28,16 +28,6 @@ func TestPlanBuildsOnlyDependencyClosure(t *testing.T) {
 	}
 }
 
-func TestGufoBuildUsesSharedRuntimeWithoutPyTorch(t *testing.T) {
-	steps, err := Plan(Request{ProjectRoot: "/src", Targets: []application.BuildID{application.BuildGufo}, PipCache: "/cache", VolumeSuffix: ":rw"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(steps) != 2 || steps[0].Unit.ID != application.BuildRuntime || steps[1].Unit.ID != application.BuildGufo {
-		t.Fatalf("unexpected Gufo closure: %#v", steps)
-	}
-}
-
 func TestPlanNoLayerCacheTouchesOnlySelectedUnit(t *testing.T) {
 	steps, err := Plan(Request{ProjectRoot: "/src", Targets: []application.BuildID{application.BuildComfyUI}, PipCache: "/cache", VolumeSuffix: ":rw", NoLayerCache: true})
 	if err != nil {

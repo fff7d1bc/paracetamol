@@ -19,7 +19,7 @@ import (
 	"paracetamol/internal/platform"
 )
 
-const SchemaVersion = 28
+const SchemaVersion = 29
 
 const (
 	LlamaModelLoadResident               = "resident"
@@ -37,7 +37,7 @@ var (
 var selectorGroups = map[string]bool{
 	"all": true, "comfyui": true, "qwen": true, "wan": true,
 	"ltx": true, "ltx-camera": true, "hunyuan": true, "krea": true,
-	"llama": true, "dwarfstar": true, "gufo": true,
+	"llama": true, "dwarfstar": true,
 }
 
 type License struct {
@@ -170,23 +170,6 @@ type DwarfStarPreset struct {
 	SamplingPolicy   string
 }
 
-// Gufo reuses verified GGUF artifacts without duplicating their storage or
-// receipts. Its serving policy is separate from any llama.cpp preset.
-type GufoPreset struct {
-	ID               string   `json:"-"`
-	Bundle           string   `json:"bundle"`
-	Artifact         string   `json:"artifact"`
-	DefaultContext   int64    `json:"default_context"`
-	MaxOutputTokens  int64    `json:"max_output_tokens"`
-	CacheRAMBytes    int64    `json:"cache_ram_bytes"`
-	AgentTools       bool     `json:"agent_tools"`
-	ReasoningControl string   `json:"reasoning_control"`
-	ReasoningLevels  []string `json:"reasoning_levels"`
-	ReasoningDefault string   `json:"reasoning_default"`
-	ReasoningOff     bool     `json:"reasoning_off"`
-	SamplingPolicy   string   `json:"sampling_policy"`
-}
-
 func (preset LlamaPreset) DraftTokensForBackend(backend string) int64 {
 	if value, ok := preset.DraftTokensByBackend[backend]; ok {
 		return value
@@ -228,7 +211,6 @@ type Catalog struct {
 	SamplingPolicies map[string]SamplingPolicy
 	LlamaPresets     map[string]LlamaPreset
 	DwarfStarPresets map[string]DwarfStarPreset
-	GufoPresets      map[string]GufoPreset
 }
 
 func (catalog Catalog) BundleSize(bundle Bundle) int64 {
@@ -269,7 +251,6 @@ type document struct {
 	SamplingPolicies map[string]json.RawMessage `json:"sampling_policies"`
 	LlamaPresets     map[string]json.RawMessage `json:"llama_presets"`
 	DwarfStarPresets map[string]json.RawMessage `json:"dwarfstar_presets"`
-	GufoPresets      map[string]json.RawMessage `json:"gufo_presets"`
 }
 
 type rawAgreement struct {
@@ -421,7 +402,7 @@ func Load(file string) (Catalog, error) {
 	if raw.SchemaVersion != SchemaVersion {
 		return Catalog{}, fmt.Errorf("unsupported catalog schema %d", raw.SchemaVersion)
 	}
-	collections := []map[string]json.RawMessage{raw.Agreements, raw.Artifacts, raw.ArchiveGroups, raw.Bundles, raw.Workflows, raw.Benchmarks, raw.SamplingPolicies, raw.LlamaPresets, raw.DwarfStarPresets, raw.GufoPresets}
+	collections := []map[string]json.RawMessage{raw.Agreements, raw.Artifacts, raw.ArchiveGroups, raw.Bundles, raw.Workflows, raw.Benchmarks, raw.SamplingPolicies, raw.LlamaPresets, raw.DwarfStarPresets}
 	for _, collection := range collections {
 		if collection == nil {
 			return Catalog{}, fmt.Errorf("catalog collections must be objects")
@@ -432,7 +413,6 @@ func Load(file string) (Catalog, error) {
 		Bundles: make(map[string]Bundle), Workflows: make(map[string]Workflow),
 		Benchmarks: make(map[string]Benchmark), SamplingPolicies: make(map[string]SamplingPolicy),
 		LlamaPresets: make(map[string]LlamaPreset), DwarfStarPresets: make(map[string]DwarfStarPreset),
-		GufoPresets: make(map[string]GufoPreset),
 	}
 	for id, value := range raw.Agreements {
 		if err := validIdentifier(id, "agreement"); err != nil {
@@ -507,13 +487,6 @@ func Load(file string) (Catalog, error) {
 			return Catalog{}, err
 		}
 		catalog.DwarfStarPresets[id] = preset
-	}
-	for id, value := range raw.GufoPresets {
-		preset, err := loadGufoPreset(id, value)
-		if err != nil {
-			return Catalog{}, err
-		}
-		catalog.GufoPresets[id] = preset
 	}
 	if err := catalog.validateRelationships(); err != nil {
 		return Catalog{}, err
@@ -1066,55 +1039,7 @@ func (catalog Catalog) validateRelationships() error {
 			return fmt.Errorf("DwarfStar preset %s references an invalid DSpark bundle", id)
 		}
 	}
-	for id, preset := range catalog.GufoPresets {
-		if preset.SamplingPolicy != "" {
-			if _, ok := catalog.SamplingPolicies[preset.SamplingPolicy]; !ok {
-				return fmt.Errorf("Gufo preset %s references unknown sampling policy %s", id, preset.SamplingPolicy)
-			}
-		}
-		if _, duplicate := catalog.LlamaPresets[id]; duplicate {
-			return fmt.Errorf("text model identifier %s is shared by Gufo and llama.cpp", id)
-		}
-		if _, duplicate := catalog.DwarfStarPresets[id]; duplicate {
-			return fmt.Errorf("text model identifier %s is shared by Gufo and DwarfStar", id)
-		}
-		bundle, ok := catalog.Bundles[preset.Bundle]
-		if !ok || bundle.Application != "gufo" || bundle.Workflow != "" {
-			return fmt.Errorf("Gufo preset %s references an invalid bundle", id)
-		}
-		artifact, ok := catalog.Artifacts[preset.Artifact]
-		if !ok || !contains(bundle.Artifacts, preset.Artifact) {
-			return fmt.Errorf("Gufo preset %s references an invalid model artifact", id)
-		}
-		for _, artifactID := range bundle.Artifacts {
-			shard := catalog.Artifacts[artifactID]
-			if shard.Target != "llama-models" || path.Dir(shard.Destination) != path.Dir(artifact.Destination) || !strings.HasSuffix(shard.Destination, ".gguf") {
-				return fmt.Errorf("Gufo preset %s requires GGUF shards in one shared model directory", id)
-			}
-		}
-	}
 	return nil
-}
-
-func loadGufoPreset(id string, value json.RawMessage) (GufoPreset, error) {
-	if err := validIdentifier(id, "Gufo preset"); err != nil {
-		return GufoPreset{}, err
-	}
-	var preset GufoPreset
-	if err := decodeStrict(value, &preset); err != nil {
-		return GufoPreset{}, fmt.Errorf("Gufo preset %s: %w", id, err)
-	}
-	preset.ID = id
-	if preset.DefaultContext < 4096 || preset.DefaultContext > 262144 || preset.DefaultContext%1024 != 0 || preset.MaxOutputTokens < 1 || preset.MaxOutputTokens >= preset.DefaultContext {
-		return GufoPreset{}, fmt.Errorf("Gufo preset %s has invalid context or output limits", id)
-	}
-	if preset.CacheRAMBytes < 0 || preset.CacheRAMBytes > 32<<30 {
-		return GufoPreset{}, fmt.Errorf("Gufo preset %s has invalid RAM cache budget", id)
-	}
-	if preset.ReasoningControl != "effort" || !preset.ReasoningOff || preset.ReasoningDefault != "medium" || len(preset.ReasoningLevels) != 2 || preset.ReasoningLevels[0] != "medium" || preset.ReasoningLevels[1] != "xhigh" {
-		return GufoPreset{}, fmt.Errorf("Gufo preset %s requires Qwen medium/xhigh reasoning with off support", id)
-	}
-	return preset, nil
 }
 
 func validIdentifier(value, field string) error {

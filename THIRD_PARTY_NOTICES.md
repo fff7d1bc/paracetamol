@@ -102,15 +102,6 @@ revisions recorded in `catalog/catalog.json`.
   optional DSpark support GGUF comes from the same MIT-licensed repository at
   revision `86bb38ce2ba7a98ab0e550359fec5f48859dc723` and is independently pinned
   by exact size and SHA-256.
-- Gufo 0.11.0 is built locally from the MIT-licensed `gufo-org/gufo`
-  repository at commit `665fc182445dc2685f2a9b2b4314aa7d92a858c2`.
-  Its upstream install retains the license and third-party notices under
-  `/usr/local/share/licenses/gufo`. Those notices cover incorporated ggml, DwarfStar,
-  tokenizer, template, and other components. Paracetamol uses no upstream
-  Gufo image or downloaded engine binary. HIP kernels are compiled for
-  `gfx1151` with the shared pinned ROCm 10 toolchain. Runtime libraries come
-  from the same minimal ROCm image and Ubuntu packages. Model weights remain
-  separately verified catalog downloads with their own license metadata.
 - Pi Coding Agent 1.0.2 is installed on explicit request from the
   MIT-licensed `@earendil-works/pi-coding-agent` npm package. Paracetamol pins
   the package and its transitive npm tree with registry integrity values in

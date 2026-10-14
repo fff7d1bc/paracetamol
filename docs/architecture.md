@@ -302,18 +302,6 @@ does not authenticate the case outcomes and is not a signed attestation.
 
 ## Image layout
 
-Gufo is a native, source-built application alongside llama.cpp and DwarfStar.
-Its builder uses the shared `native-rocm-sdk`, and its final image starts from
-the same tagged minimal ROCm runtime, without PyTorch or a second HIP runtime.
-Gufo compiles only for `gfx1151`. Both the host and entrypoint enforce that
-restriction. Its reviewed server preset reuses existing verified Flash-Next
-artifacts but owns separate runtime policy and a distinct API model ID.
-Only exact bundle files are mounted read-only, avoiding Gufo's automatic
-discovery of unverified sibling files. Application state remains isolated in
-`apps/gufo`. The gateway schedules Gufo as a single-model allocation and
-refuses catalog expansion to multiple Gufo presets until allocation identity
-can express that distinction safely.
-
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
 Every application build ensures and tags this prerequisite as
@@ -688,8 +676,6 @@ apps/
     home/ cache/ models.ini
   dwarfstar/
     home/
-  gufo/
-    home/
   acceptance/
     results/                         checkpointed JSON and Markdown summaries
   agent-evaluation/
@@ -736,7 +722,7 @@ destination roots are therefore required not to overlap.
 
 ## Catalog and workflow trust chain
 
-`catalog/catalog.json` is schema version 28. The loader in
+`catalog/catalog.json` is schema version 29. The loader in
 `internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.
@@ -812,7 +798,7 @@ reasons; the reviewed template maps clients' unavoidable generic off value to
 Muse low without changing other model families.
 
 `internal/textmodel/` derives backend-neutral model capabilities from the
-application-specific llama.cpp, DwarfStar, and Gufo preset collections. The catalog
+application-specific llama.cpp and DwarfStar preset collections. The catalog
 therefore remains the only owner of public model IDs, starting context, output
 limits, agent-tool eligibility, and reasoning choices.
 
@@ -948,8 +934,7 @@ raw Chat Completions through the gateway therefore share one policy across
 engines without duplicated client configuration or a llama.cpp source patch.
 Templates and engine-native reasoning remain backend-owned. Direct engine
 endpoints use native defaults. Direct benchmarks explicitly send and record
-the selected catalog tuple. Gufo's Flash-Next policy preserves its reviewed
-min-p 0 rather than inheriting llama.cpp's thinking min-p 0.05.
+the selected catalog tuple.
 
 Pi recognizes package and configuration commands only when the command is its
 first argument. The launcher classifies `install`, `remove`, `uninstall`,

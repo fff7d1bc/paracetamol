@@ -21,8 +21,8 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 53 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 5 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 || len(loaded.GufoPresets) != 1 {
-		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d gufo_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets), len(loaded.GufoPresets))
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
+		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {

@@ -17,7 +17,6 @@ const (
 	ComfyUI   ID = "comfyui"
 	LlamaCPP  ID = "llama-cpp"
 	DwarfStar ID = "dwarfstar"
-	Gufo      ID = "gufo"
 
 	BuildRuntime      BuildID = "runtime"
 	BuildPyTorchBase  BuildID = "pytorch-base"
@@ -25,7 +24,6 @@ const (
 	BuildComfyUI      BuildID = "comfyui"
 	BuildLlamaCPP     BuildID = "llama-cpp"
 	BuildDwarfStar    BuildID = "dwarfstar"
-	BuildGufo         BuildID = "gufo"
 )
 
 type Action struct {
@@ -93,15 +91,6 @@ var specs = []Spec{
 		AfterBuild:   []Action{{Arguments: []string{"content", "install", "dwarfstar", "flash-0731-q2-imatrix"}, Description: "install the reviewed high-memory model"}},
 		AfterContent: []Action{{Arguments: []string{"run", "dwarfstar", "server"}, Description: "start the model server"}},
 	},
-	{
-		ID: string(Gufo), DisplayName: "Gufo",
-		Summary:       "Strix Halo Flash-Next inference with a native OpenAI-compatible server",
-		Image:         identity.Image("gufo-ubuntu26.04-rocm10.0-665fc18-r1"),
-		ContainerName: identity.Container("gufo"), Build: BuildGufo, Port: 8080,
-		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server"}, Shell: true, Logs: true,
-		AfterBuild:   []Action{{Arguments: []string{"content", "install", "gufo", "qwen3.8-flash-next"}, Description: "install or reuse the reviewed Flash-Next GGUFs"}},
-		AfterContent: []Action{{Arguments: []string{"run", "gufo", "server"}, Description: "start the direct model server"}},
-	},
 }
 
 var units = []BuildUnit{
@@ -111,7 +100,6 @@ var units = []BuildUnit{
 	{ID: BuildComfyUI, DisplayName: "ComfyUI", Target: "comfyui", Image: specs[0].Image, Prerequisites: []BuildID{BuildPyTorchBase}, Application: string(ComfyUI)},
 	{ID: BuildLlamaCPP, DisplayName: "llama.cpp", Target: "llama-cpp", Image: specs[1].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(LlamaCPP)},
 	{ID: BuildDwarfStar, DisplayName: "DwarfStar", Target: "dwarfstar", Image: specs[2].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(DwarfStar)},
-	{ID: BuildGufo, DisplayName: "Gufo", Target: "gufo", Image: specs[3].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(Gufo)},
 }
 
 func All() []Spec {

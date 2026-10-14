@@ -116,7 +116,7 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 		if isJSONNull(raw) || json.Unmarshal(raw, &value) != nil {
 			return fmt.Errorf("reasoning_effort must be a supported string")
 		}
-		if (topLevel || model.Backend == textmodel.BackendDwarfStar) && (value == "none" || (value == "off" && model.Backend == textmodel.BackendGufo)) {
+		if (topLevel || model.Backend == textmodel.BackendDwarfStar) && value == "none" {
 			return selectMode(false)
 		}
 		levels := model.ReasoningLevels
@@ -142,8 +142,8 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 			return false, err
 		}
 	}
-	if raw := object["thinking"]; raw != nil && (model.Backend == textmodel.BackendGufo || model.Backend == textmodel.BackendDwarfStar) {
-		if model.Backend == textmodel.BackendDwarfStar && (bytes.Equal(bytes.TrimSpace(raw), []byte("true")) || bytes.Equal(bytes.TrimSpace(raw), []byte("false"))) {
+	if raw := object["thinking"]; raw != nil && model.Backend == textmodel.BackendDwarfStar {
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("true")) || bytes.Equal(bytes.TrimSpace(raw), []byte("false")) {
 			if err := selectBool(raw); err != nil {
 				return false, err
 			}
@@ -173,24 +173,6 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 		}
 		if err := selectEffort(kwargs["reasoning_effort"], false); err != nil {
 			return false, err
-		}
-		if raw := kwargs["thinking_mode"]; raw != nil && model.Backend == textmodel.BackendGufo {
-			var mode string
-			if json.Unmarshal(raw, &mode) != nil || isJSONNull(raw) {
-				return false, fmt.Errorf("chat_template_kwargs.thinking_mode must be a supported string")
-			}
-			switch mode {
-			case "auto":
-			case "thinking", "on":
-				err = selectMode(true)
-			case "chat", "off", "none":
-				err = selectMode(false)
-			default:
-				err = fmt.Errorf("Unsupported chat_template_kwargs.thinking_mode")
-			}
-			if err != nil {
-				return false, err
-			}
 		}
 	}
 	return thinking, nil

@@ -34,7 +34,7 @@ import (
 
 func (app *App) commandBuild(args []string) error {
 	set := app.flags("build", "Usage: "+identity.Command("build", "[TARGET]", "[--no-layer-cache | --no-cache]", "[--image TAG]"))
-	set.Argument("TARGET", "all, runtime, pytorch-base, content-tools, comfyui, llama-cpp, dwarfstar, or gufo")
+	set.Argument("TARGET", "all, runtime, pytorch-base, content-tools, comfyui, llama-cpp, or dwarfstar")
 	noLayerCache := set.Bool("no-layer-cache", false, "rebuild selected image layers")
 	noCache := set.Bool("no-cache", false, "cold-build selected images and prerequisites")
 	image := set.String("image", "", "override the selected image tag")
@@ -66,7 +66,6 @@ func (app *App) commandBuild(args []string) error {
 			application.BuildComfyUI,
 			application.BuildLlamaCPP,
 			application.BuildDwarfStar,
-			application.BuildGufo,
 		}
 	}
 	if *image != "" && target == "all" {
@@ -181,7 +180,7 @@ func (app *App) guidedBuildTarget() (string, error) {
 
 func (app *App) commandGuide(args []string) error {
 	set := app.flags("guide", usage("guide", "[APPLICATION]"))
-	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gufo; omit to list all")
+	set.Argument("APPLICATION", "comfyui, llama-cpp, or dwarfstar; omit to list all")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -233,7 +232,7 @@ func (app *App) commandGuide(args []string) error {
 
 func (app *App) commandStatus(args []string) error {
 	set := app.flags("status", usage("status", "[APPLICATION]", "[OPTIONS]"))
-	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, gufo, or gateway; omit for the host dashboard")
+	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gateway; omit for the host dashboard")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
@@ -446,18 +445,6 @@ func (app *App) commandRun(args []string) error {
 	switch application {
 	case "gateway":
 		return app.runGateway(args[1:])
-	case "gufo":
-		if groupHelpRequested(args[1:]) || len(args) == 1 {
-			app.writeGroupHelp(usage("run", "gufo", "server", "[OPTIONS]"), [2]string{"server", "serve the reviewed Flash-Next model on Strix Halo"})
-			if len(args) == 1 {
-				return controlerr.Usage("choose Gufo mode server")
-			}
-			return nil
-		}
-		if args[1] != "server" {
-			return controlerr.Usage("Gufo supports only server mode")
-		}
-		return app.runGufo(args[2:])
 	case "comfyui":
 		return app.runComfyUI(args[1:])
 	case "llama-cpp":

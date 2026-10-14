@@ -39,7 +39,7 @@ func samplingModels(t *testing.T) []Model {
 func samplingModel(t *testing.T, backend textmodel.Backend) Model {
 	t.Helper()
 	for _, model := range samplingModels(t) {
-		if model.Backend == backend && (strings.Contains(model.ID, "qwen3.8-27b-mtp-ud-q8") || backend == textmodel.BackendGufo) {
+		if model.Backend == backend && strings.Contains(model.ID, "qwen3.8-27b-mtp-ud-q8") {
 			return model
 		}
 	}
@@ -106,7 +106,7 @@ func TestSamplingDefaultsEveryManagedModelAndMode(t *testing.T) {
 			}
 		})
 	}
-	if len(policies) != 5 {
+	if len(policies) != 4 {
 		t.Fatalf("tested policies=%v", policies)
 	}
 }
@@ -155,7 +155,7 @@ func TestSamplingExplicitValuesNullsAndUnrelatedPayload(t *testing.T) {
 }
 
 func TestSamplingThinkingControls(t *testing.T) {
-	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP, textmodel.BackendGufo} {
+	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP} {
 		model := samplingModel(t, backend)
 		for _, test := range []struct {
 			fields string
@@ -174,17 +174,10 @@ func TestSamplingThinkingControls(t *testing.T) {
 			}
 		}
 	}
-	gufo := samplingModel(t, textmodel.BackendGufo)
-	for _, field := range []string{`"thinking":{"type":"disabled"}`, `"reasoning_effort":"off"`, `"chat_template_kwargs":{"thinking_mode":"chat"}`} {
-		_, controls, err := normalizedSampling(t, `{"model":"fixture",`+field+`}`, gufo)
-		if err != nil || controls.SamplingMode != "non_thinking" {
-			t.Fatalf("Gufo %s: %+v %v", field, controls, err)
-		}
-	}
 }
 
 func TestSamplingRejectsAmbiguousOrInvalidReasoning(t *testing.T) {
-	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP, textmodel.BackendGufo} {
+	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP} {
 		model := samplingModel(t, backend)
 		for _, fields := range []string{
 			`"reasoning_effort":"none","chat_template_kwargs":{"enable_thinking":true}`,
@@ -208,17 +201,6 @@ func TestSamplingRejectsAmbiguousOrInvalidReasoning(t *testing.T) {
 			}
 		}
 	}
-	gufo := samplingModel(t, textmodel.BackendGufo)
-	for _, fields := range []string{
-		`"thinking":{"type":"disabled"},"reasoning_effort":"medium"`,
-		`"chat_template_kwargs":{"thinking_mode":"chat","enable_thinking":true}`,
-		`"chat_template_kwargs":{"thinking_mode":"secret-invalid-mode"}`,
-		`"thinking":{"type":"adaptive"}`,
-	} {
-		if _, _, err := normalizedSampling(t, `{"model":"fixture",`+fields+`}`, gufo); err == nil {
-			t.Fatalf("Gufo accepted %s", fields)
-		}
-	}
 }
 
 func TestDwarfStarNativeThinkingControlsWhenPolicyIsDeclared(t *testing.T) {
@@ -239,7 +221,7 @@ func TestDwarfStarNativeThinkingControlsWhenPolicyIsDeclared(t *testing.T) {
 }
 
 func TestGatewayForwardsDefaultsAndRecordsTheirProvenance(t *testing.T) {
-	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP, textmodel.BackendGufo} {
+	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP} {
 		t.Run(string(backend), func(t *testing.T) {
 			requests := make(chan []byte, 2)
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

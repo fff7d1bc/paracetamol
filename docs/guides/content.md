@@ -324,10 +324,9 @@ paths but does not hash hundreds of GiB, so its download total is worst-case.
 
 For an in-place catalog destination rename, move only the exact managed GGUFs
 to a separate mirror. Leave application state, staging, and local experiments
-in the active data directory. Reinstall the affected managed GGUF bundles
-from that mirror, check that they are ready, and remove only empty
+in the active data directory. Reinstall the affected llama.cpp and DwarfStar
+bundles from that mirror, check that they are ready, and remove only empty
 retired model directories afterward.
-Gufo and llama.cpp share the Flash-Next files, so migrate that set only once.
 
 ## Local content packs
 

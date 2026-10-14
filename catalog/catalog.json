@@ -1,20 +1,5 @@
 {
-  "schema_version": 28,
-  "gufo_presets": {
-    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gufo": {
-      "bundle": "gufo-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
-      "artifact": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
-      "default_context": 262144,
-      "max_output_tokens": 16384,
-      "cache_ram_bytes": 30064771072,
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": ["medium", "xhigh"],
-      "reasoning_default": "medium",
-      "reasoning_off": true,
-      "sampling_policy": "qwen3.8-flash-next-gufo"
-    }
-  },
+  "schema_version": 29,
   "agreements": {
     "ltx-2-community-license": {
       "name": "LTX-2 Community License",
@@ -2025,17 +2010,6 @@
         "llama"
       ]
     },
-    "gufo-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
-      "description": "Unsloth Flash-Next Dynamic Q4_K_XL for Gufo on Strix Halo, shared with llama.cpp",
-      "application": "gufo",
-      "artifacts": [
-        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
-        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
-        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
-        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4"
-      ],
-      "groups": ["all", "gufo"]
-    },
     "llama-ggml-org-gemma4-31b-it-q8-0-mtp": {
       "description": "Gemma 4 31B IT Q8_0 llama.cpp model with Q8_0 MTP draft",
       "application": "llama-cpp",
@@ -2602,24 +2576,6 @@
     }
   },
   "sampling_policies": {
-    "qwen3.8-flash-next-gufo": {
-      "thinking": {
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 0.0,
-        "repeat_penalty": 1.0
-      },
-      "non_thinking": {
-        "temperature": 0.7,
-        "top_p": 0.8,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 1.5,
-        "repeat_penalty": 1.0
-      }
-    },
     "qwen3.6-27b": {
       "thinking": {
         "temperature": 1.0,

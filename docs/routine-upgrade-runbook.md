@@ -41,7 +41,7 @@ Check primary upstream sources for:
 - AMD ROCm/PyTorch packages and all supported device extras;
 - content download tooling;
 - ComfyUI, ComfyUI-GGUF, and rgthree-comfy;
-- llama.cpp, DwarfStar, and Gufo with their native build toolchains at the project
+- llama.cpp and DwarfStar with their native build toolchains at the project
   ROCm version; and
 - important pinned application dependencies and security advisories.
 

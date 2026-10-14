@@ -27,9 +27,6 @@ workloads across the maintained application paths:
 - DwarfStar DeepSeek V4 Flash with a 4096-token context and a bounded
   no-thinking reply. It runs by default on Strix Halo and is opt-in on other
   profiles because its model alone is about 80.76 GiB.
-- Gufo Flash-Next with a short no-thinking HTTP reply at its 256K ceiling,
-  on Strix Halo only. This needs the high-memory managed model and does not
-  replace populated long-context acceptance.
 
 All automated workloads finish before the visual review pass begins, so you
 can start the suite and walk away. When it is done, each generated image or
@@ -41,7 +38,6 @@ Limit a diagnostic run with a repeatable `--application`:
 ```bash
 ./paracetamol acceptance --application llama-cpp
 ./paracetamol acceptance --application dwarfstar
-./paracetamol acceptance --application gufo
 ```
 
 If images or exact content bundles are missing, inspect the dry-run plan first.
