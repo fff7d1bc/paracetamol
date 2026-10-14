@@ -63,7 +63,7 @@ func TestSamplingPoliciesPreserveReviewedEngineDifferences(t *testing.T) {
 			}
 		}
 	}
-	for _, application := range []string{"llama-cpp", "gufo", "dwarfstar"} {
+	for _, application := range []string{"llama-cpp", "dwarfstar"} {
 		t.Run(application+" unknown reference", func(t *testing.T) {
 			copy, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
 			if err != nil {
@@ -75,11 +75,6 @@ func TestSamplingPoliciesPreserveReviewedEngineDifferences(t *testing.T) {
 					preset.SamplingPolicy = "missing"
 					copy.LlamaPresets[id] = preset
 					break
-				}
-			case "gufo":
-				for id, preset := range copy.GufoPresets {
-					preset.SamplingPolicy = "missing"
-					copy.GufoPresets[id] = preset
 				}
 			case "dwarfstar":
 				for id, preset := range copy.DwarfStarPresets {

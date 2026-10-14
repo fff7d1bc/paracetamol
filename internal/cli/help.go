@@ -93,7 +93,6 @@ var commandExampleArguments = map[string][][]string{
 		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--prompt", "Hello"},
 	},
 	"run dwarfstar server":            {{"run", "dwarfstar", "server"}, {"run", "dwarfstar", "server", "--dspark"}},
-	"run gufo server":                 {{"run", "gufo", "server"}, {"run", "gufo", "server", "--reasoning", "off"}, {"run", "gateway", "-a", "gufo"}},
 	"run dwarfstar cli":               {{"run", "dwarfstar", "cli"}, {"run", "dwarfstar", "cli", "--no-thinking", "--prompt", "Say hello"}},
 	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp", "-a", "dwarfstar"}, {"run", "gateway", "--port", "18080"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},

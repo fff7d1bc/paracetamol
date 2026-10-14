@@ -88,7 +88,7 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 	modelProfile := platform.ModelProfile(profile, renderNodes)
 	selected := make(map[string]bool, len(applications))
 	for _, application := range applications {
-		if application != string(textmodel.BackendLlamaCPP) && application != string(textmodel.BackendDwarfStar) && application != string(textmodel.BackendGufo) {
+		if application != string(textmodel.BackendLlamaCPP) && application != string(textmodel.BackendDwarfStar) {
 			return Registry{}, nil, nil, fmt.Errorf("gateway does not support application %q", application)
 		}
 		if selected[application] {
@@ -113,10 +113,6 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 	for _, candidate := range models {
 		application := string(candidate.Backend)
 		if !selected[application] {
-			continue
-		}
-		if candidate.Backend == textmodel.BackendGufo && (modelProfile != "strix-halo" || len(renderNodes) != 1) {
-			diagnostics = append(diagnostics, Diagnostic{Application: application, Model: candidate.ID, Reason: "requires Strix Halo and exactly one GPU render node"})
 			continue
 		}
 		if candidate.Backend == textmodel.BackendDwarfStar && (profile == "cpu" || len(renderNodes) != 1) {

@@ -49,7 +49,7 @@ func (app *App) commandCleanup(args []string) error {
 	}
 	set := app.flags("cleanup "+scope, synopsis)
 	if scope == "containers" || scope == "images" {
-		set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, gufo, or all (default)")
+		set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or all (default)")
 	}
 	yes := set.Bool("yes", false, "confirm the complete plan")
 	nonInteractive := set.Bool("non-interactive", false, "never prompt; require --yes for a non-empty plan")

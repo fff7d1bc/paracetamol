@@ -21,7 +21,7 @@ func TestRepositoryModelsHaveUniqueBackendNeutralIdentities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) != len(managed.LlamaPresets)+len(managed.DwarfStarPresets)+len(managed.GufoPresets) {
+	if len(models) != len(managed.LlamaPresets)+len(managed.DwarfStarPresets) {
 		t.Fatalf("models=%d", len(models))
 	}
 	last := ""

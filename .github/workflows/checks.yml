@@ -60,8 +60,7 @@ jobs:
           bash -n paracetamol bin/paracetamol bin/pi bin/maki \
             applications/comfyui/entrypoint.sh \
             applications/llama-cpp/entrypoint.sh \
-            applications/dwarfstar/entrypoint.sh \
-            applications/gufo/entrypoint.sh
+            applications/dwarfstar/entrypoint.sh
 
       - name: Validate catalog JSON
         run: |

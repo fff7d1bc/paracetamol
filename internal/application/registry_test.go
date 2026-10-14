@@ -2,6 +2,25 @@ package application
 
 import "testing"
 
+func TestManagedApplicationSet(t *testing.T) {
+	want := []string{"comfyui", "llama-cpp", "dwarfstar"}
+	got := All()
+	if len(got) != len(want) {
+		t.Fatalf("applications=%v", got)
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("application[%d]=%s, want %s", i, got[i].ID, id)
+		}
+	}
+	if _, ok := ByID("gufo"); ok {
+		t.Fatal("retired application is still registered")
+	}
+	if _, ok := BuildUnitByID("gufo"); ok {
+		t.Fatal("retired application is still buildable")
+	}
+}
+
 func TestRegistryAndBuildClosure(t *testing.T) {
 	if err := Validate(); err != nil {
 		t.Fatal(err)

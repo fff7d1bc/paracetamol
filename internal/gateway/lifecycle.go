@@ -28,7 +28,6 @@ const (
 var gatewayContainerNames = map[Allocation]string{
 	AllocationLlamaCPP:  identity.Container("gateway-llama-cpp"),
 	AllocationDwarfStar: identity.Container("gateway-dwarfstar"),
-	AllocationGufo:      identity.Container("gateway-gufo"),
 }
 
 type LifecycleOptions struct {
@@ -83,15 +82,13 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 		options.Log = os.Stderr
 	}
 	options.Log = atomicLogWriter(options.Log)
-	llamaModels, dwarfModels, gufoModels := 0, 0, 0
+	llamaModels, dwarfModels := 0, 0
 	for _, model := range options.Registry.Models {
 		switch model.Backend {
 		case "llama-cpp":
 			llamaModels++
 		case "dwarfstar":
 			dwarfModels++
-		case "gufo":
-			gufoModels++
 		}
 	}
 	if llamaModels > 0 && options.RouterPreset == "" {
@@ -102,12 +99,6 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	// until allocations encode a DwarfStar model identity.
 	if dwarfModels > 1 {
 		return nil, fmt.Errorf("gateway supports exactly one DwarfStar preset")
-	}
-	// Like DwarfStar, the managed Gufo process serves one reviewed model.
-	// Refuse silent misrouting if the catalog expands before model-keyed
-	// allocations are implemented.
-	if gufoModels > 1 {
-		return nil, fmt.Errorf("gateway supports exactly one Gufo preset")
 	}
 	return &ContainerLifecycle{
 		options: options,
@@ -274,29 +265,6 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 			DynamicHostPort: true,
 		}, lifecycle.options.VolumeSuffix)
 		return command, application.Port, "/v1/models", err
-	case AllocationGufo:
-		for _, model := range lifecycle.options.Registry.Models {
-			if model.Backend != "gufo" {
-				continue
-			}
-			preset := lifecycle.options.Catalog.GufoPresets[model.ID]
-			artifact := lifecycle.options.Catalog.Artifacts[preset.Artifact]
-			var modelFiles []string
-			for _, id := range lifecycle.options.Catalog.Bundles[preset.Bundle].Artifacts {
-				modelFiles = append(modelFiles, content.ArtifactPath(lifecycle.options.DataRoot, lifecycle.options.Catalog.Artifacts[id]))
-			}
-			command, err := runtime.GufoCommand(runtime.GufoOptions{
-				ModelFiles: modelFiles,
-				Image:      application.Image, DataDir: lifecycle.options.DataRoot, ModelID: model.ID,
-				Model: content.ArtifactPath(lifecycle.options.DataRoot, artifact), RenderNodes: lifecycle.options.RenderNodes,
-				Profile: lifecycle.options.Profile, Listen: "127.0.0.1", Port: application.Port,
-				Context: preset.DefaultContext, OutputTokens: preset.MaxOutputTokens, CacheRAMBytes: preset.CacheRAMBytes,
-				Reasoning: preset.ReasoningDefault, Detach: true, Unconfined: lifecycle.options.Unconfined,
-				ContainerName: name, ContainerRole: GatewayBackendRole, DynamicHostPort: true,
-			}, lifecycle.options.VolumeSuffix)
-			return command, application.Port, "/ready", err
-		}
-		return nil, 0, "", fmt.Errorf("gateway registry has no Gufo model")
 	default:
 		return nil, 0, "", fmt.Errorf("unknown gateway allocation %q", allocation)
 	}

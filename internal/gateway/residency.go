@@ -57,7 +57,7 @@ func (server *Server) modelStatus(ctx context.Context, scheduler SchedulerStatus
 		return models
 	}
 	switch scheduler.Allocation {
-	case AllocationDwarfStar, AllocationGufo:
+	case AllocationDwarfStar:
 		state, diagnostic := singleModelState(scheduler.State, string(scheduler.Allocation))
 		for index := range models {
 			if string(server.registry.Models[index].Backend) == string(scheduler.Allocation) {

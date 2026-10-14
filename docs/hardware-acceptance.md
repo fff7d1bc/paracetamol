@@ -26,6 +26,33 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Gufo retirement (2026-10-14)
+
+Gufo is no longer a managed application. Its build target, runtime, model ID,
+recipe, and engine-specific sampling policy have been removed without aliases.
+The shared Unsloth Flash-Next GGUFs, llama.cpp preset, and gateway sampling
+mechanism are unchanged. Existing images, application state, verification
+receipts, and experiment results are not deleted. An explicit `gufo`
+application selection in a user's configuration must be removed.
+
+This is a scope decision, not a finding that Gufo has no performance advantage.
+The October 11 Pi comparison used two small Go fixes, medium and xhigh,
+one attempt per condition, identical explicit sampling and the same GGUFs.
+Gufo decoded about 28% faster, but the medium pair finished only 2.1% sooner
+overall. The xhigh pair finished 31.4% sooner, with an important qualification.
+All eight attempts passed the frozen graders, but review found an unrequested
+retry limit in Gufo's xhigh EINTR fix. A separate boundary test failed that
+patch and passed the other three EINTR patches. Its time is not time to an
+approved fix, and this small sample does not establish an engine quality gap.
+
+Generation accounted for roughly 94% of wall time. Populated prompts peaked
+at 7K to 36K tokens despite a 256K ceiling, so these are not full-context
+throughput measurements. The measured benefit did not justify maintaining a
+second Flash-Next engine for the current workload. The earlier acceptance
+records below are historical, not descriptions of today's supported engines.
+Private evidence remains under
+`apps/agent-evaluation/experiments/20261011-gufo-llamacpp-pi/` on the acceptance host.
+
 ### Fedora 44 Strix Halo gateway sampling ownership (2026-10-11)
 
 **PASS for the reviewed Qwen paths.** The gateway now supplies missing or

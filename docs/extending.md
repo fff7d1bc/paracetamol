@@ -174,14 +174,6 @@ allow callers to override launcher-owned networking, paths, or security.
 
 ### 5. Add content
 
-Gufo demonstrates cross-engine reuse of exact verified artifacts. Its bundle
-references the existing Flash-Next shards under `llama-models`, while
-`gufo_presets` supplies a separate model ID and serving policy. There is no
-second receipt or file copy. The runtime mounts only those bundle files.
-The gateway currently rejects multiple Gufo presets because one process
-serves one model. Supporting more requires model-keyed allocation ownership,
-not simply adding catalog entries that would route to the wrong weights.
-
 If the application needs a native repository tree, add a tree manifest and
 bundle as described in [content-catalog.md](content-catalog.md). Runtime model
 paths must match the manifest destination exactly.
