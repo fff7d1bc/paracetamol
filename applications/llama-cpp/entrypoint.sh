@@ -28,7 +28,6 @@ model_load_strix_halo="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_HALO:-}"
 model_load_strix_point="${PARACETAMOL_LLAMA_MODEL_LOAD_STRIX_POINT:-}"
 qsa_kernel_requested="${PARACETAMOL_QWEN4EXP_QSA_KERNEL:-auto}"
 qsa_graph_requested="${PARACETAMOL_QWEN4EXP_QSA_GRAPH:-auto}"
-qsa_cache_requested="${PARACETAMOL_QWEN4EXP_QSA_CACHE:-auto}"
 allowed_profiles="${PARACETAMOL_LLAMA_ALLOWED_PROFILES:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
@@ -67,10 +66,6 @@ esac
 case "$qsa_graph_requested" in
     auto|0|1) ;;
     *) die "invalid Qwen4exp QSA graph setting '$qsa_graph_requested'" ;;
-esac
-case "$qsa_cache_requested" in
-    auto|0|1) ;;
-    *) die "invalid Qwen4exp QSA cache setting '$qsa_cache_requested'" ;;
 esac
 # This mirrors the host catalog allowlist so neither boundary accepts paths.
 case "$chat_template" in
@@ -164,7 +159,6 @@ unified_memory=0
 vulkan_f16_kv_contiguize=0
 qsa_kernel=0
 qsa_graph=0
-qsa_cache=0
 if [[ "$router" == 0 && -n "$context_override" ]]; then
     model_policy_args+=(--fit off --override-kv "$context_override")
 fi
@@ -329,14 +323,9 @@ export PARACETAMOL_QWEN4EXP_QSA_KERNEL="$qsa_kernel"
 if [[ "$qsa_kernel" == 1 && "$qsa_graph_requested" != 0 ]]; then
     qsa_graph=1
 fi
-# Maskless selection requires the selected-key kernels. Never let an inherited
+# Compact selection requires the selected-key kernels. Never let an inherited
 # opt-in enable the graph on CPU, Vulkan, or another GPU architecture.
 export PARACETAMOL_QWEN4EXP_QSA_GRAPH="$qsa_graph"
-if [[ "$qsa_graph" == 1 && "$qsa_cache_requested" != 0 ]]; then
-    qsa_cache=1
-fi
-# Derived keys share the compact graph's scope and invalidation contract.
-export PARACETAMOL_QWEN4EXP_QSA_CACHE="$qsa_cache"
 
 if [[ -n "$allowed_profiles" ]]; then
     [[ "$allowed_profiles" =~ ^(rdna4|strix-halo|strix-point)(,(rdna4|strix-halo|strix-point))*$ ]] ||
@@ -407,9 +396,6 @@ if [[ "$qsa_kernel" == 1 ]]; then
     printf '  Qwen4exp QSA:  selected-key HIP kernels available (F16 K/V)\n'
     if [[ "$qsa_graph" == 1 ]]; then
         printf '  Qwen4exp graph: compact selection and scoped fusions available\n'
-    fi
-    if [[ "$qsa_cache" == 1 ]]; then
-        printf '  Qwen4exp cache: incremental F32 prepared keys available\n'
     fi
 fi
 if ((gpu_count > 1)); then

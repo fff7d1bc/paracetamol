@@ -71,7 +71,7 @@ int main(int argc, char ** argv) {
         }
         args.push_back(nullptr);
         for (const char * key : {"PARACETAMOL_QWEN4EXP_QSA_GRAPH", "PARACETAMOL_QWEN4EXP_QSA_KERNEL",
-                                "PARACETAMOL_QWEN4EXP_QSA_CACHE", "GGML_CUDA_DISABLE_GRAPHS",
+                                "GGML_CUDA_DISABLE_GRAPHS",
                                 "LLAMA_GRAPH_REUSE_DISABLE"}) {
             const char * value = std::getenv(key);
             std::printf("%s=%s\n", key, value ? value : "unset");
@@ -97,8 +97,8 @@ int main(int argc, char ** argv) {
         std::printf("state test mode=%s load_seconds=%.3f\n", smoke ? "smoke" : "full",
                     std::chrono::duration<double>(loaded - start).count());
         for (int pos = 0; pos < 4096; pos += 2048) decode(ctx, pos, 2048);
-        decode(ctx, 4096, 1); // first sparse decode seeds derived keys
-        decode(ctx, 4097, 1); // the next append uses them
+        decode(ctx, 4096, 1); // exercise sparse decode after the populated prefix
+        decode(ctx, 4097, 1); // reuse the graph and upstream pooled-key state
         std::vector<uint8_t> state(llama_state_seq_get_size(ctx, 0));
         require(llama_state_seq_get_data(ctx, state.data(), state.size(), 0) == state.size(), "save failed");
         const auto expected = decode(ctx, 4098, 1);

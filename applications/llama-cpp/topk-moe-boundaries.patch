@@ -1,0 +1,64 @@
+Top-k MoE fusion boundary corrections. The inclusive allocation-lifetime
+endpoint derives from halo-box/strix-llama.cpp commit
+f6ade7dc76c400067c2918b4132fede4198615cf (MIT). Local bounds checks also
+cover a terminal or partially present normalization suffix. No kernel math
+or fusion eligibility is widened. test-topk-moe-lifetime.cpp checks the
+reported lifetime endpoints without model inference.
+
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index 727da256b..4945316f0 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -3169,7 +3169,7 @@ static bool ggml_cuda_topk_moe_fusion(const struct ggml_cgraph * cgraph, int nod
+ 
+         args.norm = true;
+         for (const ggml_op op : norm_ops) {
+-            if (nodes[node_idx]->op == op && nodes[node_idx]->src[0] == nodes[node_idx - 1]) {
++            if (node_idx < n_nodes && nodes[node_idx]->op == op && nodes[node_idx]->src[0] == nodes[node_idx - 1]) {
+                 node_idx++;
+             } else {
+                 args.norm = false;
+@@ -3178,14 +3178,14 @@ static bool ggml_cuda_topk_moe_fusion(const struct ggml_cgraph * cgraph, int nod
+         }
+ 
+         // DIV <- CLAMP, RESHAPE
+-        if (nodes[node_idx]->op != GGML_OP_DIV || nodes[node_idx]->src[1] != nodes[node_idx - 1] ||
++        if (node_idx >= n_nodes || nodes[node_idx]->op != GGML_OP_DIV || nodes[node_idx]->src[1] != nodes[node_idx - 1] ||
+             nodes[node_idx]->src[0] != nodes[node_idx - 3]) {
+             args.norm = false;
+             return true;
+         }
+         node_idx++;
+ 
+-        if (nodes[node_idx]->op != GGML_OP_RESHAPE || nodes[node_idx]->src[0] != nodes[node_idx - 1]) {
++        if (node_idx >= n_nodes || nodes[node_idx]->op != GGML_OP_RESHAPE || nodes[node_idx]->src[0] != nodes[node_idx - 1]) {
+             args.norm = false;
+             return true;
+         }
+@@ -3193,7 +3193,7 @@ static bool ggml_cuda_topk_moe_fusion(const struct ggml_cgraph * cgraph, int nod
+         node_idx++;
+     }
+ 
+-    if (nodes[node_idx]->op == GGML_OP_SCALE && nodes[node_idx]->src[0] == nodes[node_idx - 1]) {
++    if (node_idx < n_nodes && nodes[node_idx]->op == GGML_OP_SCALE && nodes[node_idx]->src[0] == nodes[node_idx - 1]) {
+         args.scale = true;
+     }
+ 
+@@ -4870,7 +4870,7 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+     const bool disable_fusion = ggml_cuda_fusion_disabled();
+ 
+     auto add_alloc_deps = [&](size_t start, size_t last_node) {
+-
++        // last_node is the inclusive index of the final group node.
+         for (size_t i = start; i < last_node; ++i) {
+             params->add_alloc_dep(params->user_data, cgraph->nodes[i], cgraph->nodes[last_node]);
+ 
+@@ -5016,7 +5016,7 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+                         if (ggml_can_fuse_subgraph(cgraph, i, ops.size(), ops.data(), out_nodes, 2) &&
+                                 ggml_cuda_should_use_topk_moe(node, logits, weights, ids)) {
+ 
+-                            add_alloc_deps(i, i + ops.size());
++                            add_alloc_deps(i, i + ops.size() - 1);
+                             i += ops.size() - 1;
+                         }
+                     }

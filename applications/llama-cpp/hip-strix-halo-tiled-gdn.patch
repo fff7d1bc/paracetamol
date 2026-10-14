@@ -8,13 +8,13 @@ operator cases for tile tails, layouts, grouped heads and recurrent snapshots.
 No model, cache precision, allocation policy or single-token decode change.
 
 diff --git a/ggml/src/ggml-cuda/gated_delta_net.cu b/ggml/src/ggml-cuda/gated_delta_net.cu
-index 1b431a7..e8ea34c 100644
+index ae2374cbc..6cee2ccc3 100644
 --- a/ggml/src/ggml-cuda/gated_delta_net.cu
 +++ b/ggml/src/ggml-cuda/gated_delta_net.cu
-@@ -1,5 +1,34 @@
- #include "gated_delta_net.cuh"
- #include "ggml-cuda/common.cuh"
-+
+@@ -4,6 +4,40 @@
+ 
+ #include <cstdint>
+ 
 +#if defined(GGML_USE_HIP) && (defined(RDNA3) || defined(RDNA4))
 +template <int mask>
 +static __device__ __forceinline__ float gdn_dpp_row_xmask(const float x) {
@@ -43,10 +43,16 @@ index 1b431a7..e8ea34c 100644
 +#endif
 +    return warp_reduce_sum<width>(x);
 +}
++static bool gdn_use_strix_halo_tiled(int device, bool kda, int64_t s_v, int64_t heads, int64_t sequences, int64_t tokens) {
++    return !kda && ggml_cuda_info().devices[device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151 &&
++        s_v == 128 && heads == 48 && sequences == 1 && tokens >= 16 && tokens <= 32768;
++}
++
++
+ constexpr int gdn_cols_per_warp = 4;
  
- template <int S_v, bool KDA, bool keep_rs_t>
- __global__ void __launch_bounds__((ggml_cuda_get_physical_warp_size() < S_v ? ggml_cuda_get_physical_warp_size() : S_v) * 4, 2)
-@@ -166,6 +195,171 @@ gated_delta_net_cuda(const float * q,
+ template <int S_v, bool KDA, bool keep_rs_t, int cols_per_warp = gdn_cols_per_warp>
+@@ -178,6 +212,171 @@ gated_delta_net_cuda(const float * q,
      }
  }
  
@@ -218,14 +224,13 @@ index 1b431a7..e8ea34c 100644
  template <bool KDA, bool keep_rs_t>
  static void launch_gated_delta_net(
          const float * q_d, const float * k_d, const float * v_d,
-@@ -186,6 +380,21 @@ static void launch_gated_delta_net(
+@@ -205,6 +404,20 @@ static void launch_gated_delta_net(
+ 
      const uint3 neqk1_magic = init_fastdiv_values(neqk1);
      const uint3 rq3_magic   = init_fastdiv_values(rq3);
- 
 +    if constexpr (!KDA) {
-+        const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
 +        // Keep untested architectures on the existing kernel.
-+        if (cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151 && S_v == 128 && H == 48 && n_seqs == 1 && n_tokens >= 16 && n_tokens <= 32768) {
++        if (gdn_use_strix_halo_tiled(ggml_cuda_get_device(), KDA, S_v, H, n_seqs, n_tokens)) {
 +            const dim3 tiled_grid(H, n_seqs, 2);
 +            const dim3 tiled_block(warp_size, 8, 1);
 +            const ggml_cuda_kernel_launch_params tiled_params(tiled_grid, tiled_block, 0, stream);
@@ -237,13 +242,26 @@ index 1b431a7..e8ea34c 100644
 +        }
 +    }
 +
+ 
      const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(grid_dims, block_dims, 0, stream);
      switch (S_v) {
-         case 16:
+@@ -356,6 +569,11 @@ static void ggml_cuda_op_gated_delta_net_impl(
+     {
+         ggml_cuda_gdn_mma_args args = ggml_cuda_gdn_mma_args_from_tensor(dst);
+         args.state_out = state_d;
++        // Keep the accepted F32 tile for its exact Strix Halo geometry.
++        // Other shapes retain upstream's chunked MMA selection.
++        if (gdn_use_strix_halo_tiled(ctx.device, kda, S_v, H, n_seqs, n_tokens)) {
++            args.eligible = false;
++        }
+         if (ggml_cuda_gdn_mma_launch(ctx.device, args, stream)) {
+             return;
+         }
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 0d7a7ed81..55f4fdb84 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10996,6 +10996,16 @@
+@@ -11919,6 +11919,16 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      test_cases.emplace_back(new test_moe_reduce(2048, 15, 40, false, true));
      test_cases.emplace_back(new test_moe_reduce(2048, 16, 32, false, true));
  

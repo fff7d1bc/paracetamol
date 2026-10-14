@@ -7,7 +7,7 @@ ARG ROCM_VERSION=10.0.0
 ARG TORCH_VERSION=2.13.0
 ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2
-ARG LLAMA_CPP_COMMIT=2090f60f0b60b67b3bcc96573c6e68a0c33f30c7
+ARG LLAMA_CPP_COMMIT=23deec025587a58469bdf0120313ff88a1ddcc7b
 ARG DWARFSTAR_COMMIT=0aaea5a238fb41a35106a551e73c8409dfb751ac
 
 FROM ${UBUNTU_IMAGE} AS content-tools
@@ -268,20 +268,22 @@ COPY applications/llama-cpp/vulkan-f16-kv-contiguize.patch \
     /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch
 COPY applications/llama-cpp/hip-strix-halo-tiled-gdn.patch \
     /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch
+COPY applications/llama-cpp/hip-strix-halo-graph-recapture.patch \
+    /opt/paracetamol/llama-hip-strix-halo-graph-recapture.patch
 COPY applications/llama-cpp/qwen4exp-direct-reader.patch \
     /opt/paracetamol/llama-qwen4exp-direct-reader.patch
-COPY applications/llama-cpp/qwen4exp-qsa-gather.patch \
-    /opt/paracetamol/llama-qwen4exp-qsa-gather.patch
 COPY applications/llama-cpp/hip-qwen4exp-qsa-kernels.patch \
     /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch
 COPY applications/llama-cpp/hip-qwen4exp-graph-optimizations.patch \
     /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch
-COPY applications/llama-cpp/hip-qwen4exp-prepared-key-cache.patch \
-    /opt/paracetamol/llama-hip-qwen4exp-prepared-key-cache.patch
 COPY applications/llama-cpp/hip-qwen4exp-pipeline.patch \
     /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch
-COPY applications/llama-cpp/hip-qwen4exp-selection.patch \
-    /opt/paracetamol/llama-hip-qwen4exp-selection.patch
+COPY applications/llama-cpp/quantized-kv-state-copy.patch \
+    /opt/paracetamol/llama-quantized-kv-state-copy.patch
+COPY applications/llama-cpp/server-stream-keepalive.patch \
+    /opt/paracetamol/llama-server-stream-keepalive.patch
+COPY applications/llama-cpp/topk-moe-boundaries.patch \
+    /opt/paracetamol/llama-topk-moe-boundaries.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
@@ -298,24 +300,26 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-quantized-kv-flash-attention.patch && \
     git apply --check /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch && \
     git apply /opt/paracetamol/llama-vulkan-f16-kv-contiguize.patch && \
-    git apply --check /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
-    git apply /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
     git apply --check /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
     git apply /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
-    git apply --check /opt/paracetamol/llama-qwen4exp-qsa-gather.patch && \
-    git apply /opt/paracetamol/llama-qwen4exp-qsa-gather.patch && \
-    git apply --check /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch && \
-    git apply /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch && \
     git apply --check /opt/paracetamol/llama-process-allocation-policy.patch && \
     git apply /opt/paracetamol/llama-process-allocation-policy.patch && \
-    git apply --check /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
-    git apply /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
-    git apply --check /opt/paracetamol/llama-hip-qwen4exp-prepared-key-cache.patch && \
-    git apply /opt/paracetamol/llama-hip-qwen4exp-prepared-key-cache.patch && \
+    git apply --check /opt/paracetamol/llama-hip-strix-halo-graph-recapture.patch && \
+    git apply /opt/paracetamol/llama-hip-strix-halo-graph-recapture.patch && \
+    git apply --check /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
+    git apply /opt/paracetamol/llama-hip-strix-halo-tiled-gdn.patch && \
+    git apply --check /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch && \
+    git apply /opt/paracetamol/llama-hip-qwen4exp-qsa-kernels.patch && \
     git apply --check /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch && \
-    git apply --check /opt/paracetamol/llama-hip-qwen4exp-selection.patch && \
-    git apply /opt/paracetamol/llama-hip-qwen4exp-selection.patch && \
+    git apply --check /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
+    git apply /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
+    git apply --check /opt/paracetamol/llama-quantized-kv-state-copy.patch && \
+    git apply /opt/paracetamol/llama-quantized-kv-state-copy.patch && \
+    git apply --check /opt/paracetamol/llama-server-stream-keepalive.patch && \
+    git apply /opt/paracetamol/llama-server-stream-keepalive.patch && \
+    git apply --check /opt/paracetamol/llama-topk-moe-boundaries.patch && \
+    git apply /opt/paracetamol/llama-topk-moe-boundaries.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -351,11 +355,6 @@ RUN git init . && \
 
 COPY applications/llama-cpp/test-native-policy.cpp /opt/paracetamol/test-llama-native-policy.cpp
 RUN c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
-        tests/test-qwen4exp-qsa-prefix.cpp -o /tmp/test-qwen4exp-qsa-prefix && \
-    /tmp/test-qwen4exp-qsa-prefix && \
-    c++ -O2 -std=c++17 tests/test-qwen4exp-key-cache.cpp -o /tmp/test-qwen4exp-key-cache && \
-    /tmp/test-qwen4exp-key-cache && \
-    c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
         /opt/paracetamol/test-llama-native-policy.cpp \
         -L/opt/llama-install/lib -Wl,-rpath,/opt/llama-install/lib \
         -lllama-common -lllama -lggml -lggml-base -pthread \
@@ -407,7 +406,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,router-disconnect,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,hip-strix-halo-tiled-gdn,qwen4exp-direct-reader,qwen4exp-qsa-gather,hip-qwen4exp-qsa-kernels,process-allocation-policy,hip-qwen4exp-graph-optimizations,hip-qwen4exp-prepared-key-cache,hip-qwen4exp-pipeline,hip-qwen4exp-selection" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,router-disconnect,quantized-kv-flash-attention,vulkan-f16-kv-contiguize,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

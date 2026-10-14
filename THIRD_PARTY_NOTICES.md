@@ -29,7 +29,7 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`. The license is installed
+  commit `23deec025587a58469bdf0120313ff88a1ddcc7b`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally with RPC and remote UI
   assets disabled. It applies the narrowly scoped host-buffer correction from
@@ -41,6 +41,18 @@ revisions recorded in `catalog/catalog.json`.
   from llama.cpp PR 29707 at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`,
   also under MIT. It closes the child connection when the proxy request ends
   and bounds the response queue's wait across unrelated wakeups.
+  The quantized on-device KV-state copy correction comes from upstream
+  PR 30541 at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`, also under MIT.
+  It counts tensor elements rather than quantization blocks when copying
+  saved sequence state. Managed presets still use F16 KV.
+  The successful-stream connection reuse correction and its regression test
+  come from PR 30492 at `221c0b2e6c815b32b2d629a1830ad04502807ecb`, under MIT.
+  Failed writes still terminate the response.
+  The top-k MoE allocation-lifetime endpoint correction derives from the
+  MIT-licensed Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`.
+  Local bounds checks also protect terminal and partial normalization groups.
+  A local gfx1151 correction reinstantiates HIP executable graphs after a
+  changed capture, while retaining ordinary unchanged graph replay.
   The HIP build also carries the tiled F32 gated-delta-net prefill kernel
   from Piotr Wilkin's MIT-licensed llama.cpp fork at commit
   `964c6f2f0b66008243883298f3f535bc99f5998c`. Paracetamol restricts its dispatch
@@ -51,24 +63,23 @@ revisions recorded in `catalog/catalog.json`.
   Paracetamol omits its Gemma4 hooks and rejects an unavailable explicit reader
   instead of falling back to mmap. A separate local startup option lets one
   model process opt out of inherited CUDA/HIP managed allocation without
-  changing the router parent's policy. The Qwen4exp sparse-attention decode
-  path also carries llama.cpp PR 28213 at
-  `beed2f78ac42cf16710b763e6f3ba20665c6d233`, under MIT.
+  changing the router parent's policy.
   The gfx1151 selected-key Qwen4exp attention kernels are adapted from the
   MIT-licensed `halo-box/strix-llama.cpp` snapshot
   `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Paracetamol narrows their
   dispatch to the accepted F16 shape and leaves other models on the existing
   attention path.
-  A follow-up patch adapts the same fork's compact whole-block QSA selection,
-  ordered F32 score and pooling fusions, and Q8 matvec prefetch. Its small MoE
-  tiles use existing upstream kernels rather than the fork's global tile
-  table changes. These additions remain limited to explicitly opted-in
-  Qwen4exp graphs and exact `gfx1151` dispatch. The fork's BF16 shadow weights,
+  Local canonical sorting and deduplication keep selected-key attention
+  independent of upstream top-k output order. A smaller local graph patch
+  intersects those IDs with upstream's causal mask, reusing upstream pooled
+  keys and visibility filtering. It replaces the former private prefix,
+  derived-key-cache and selection machinery. The separate generic QSA gather
+  patch is retired in favor of the backend attention paths.
+  The scoped Q8 matvec prefetch and small MoE tiles remain in the pipeline
+  extraction. They use existing upstream quantized kernels rather than the
+  fork's global tile table changes. Dispatch stays limited to reviewed
+  Qwen4exp graphs on exact `gfx1151`. The fork's BF16 shadow weights,
   residual downcasts, and physical-cell pooled-key cache are not included.
-  A local derived-key cache follows the reuse idea with explicit successful-batch
-  publication and conservative invalidation on memory mutation or restore.
-  It retains the original F32 preparation graph and does not change saved-state
-  formats or F16 KV precision.
   The pipeline extraction adapts the same snapshot's direct convolutions,
   grouped Q8 decode launches, compact expert routing, vectorized reduction,
   narrow normalization and register-prefetched Q8 matrix tiles. Its combined
@@ -77,12 +88,6 @@ revisions recorded in `catalog/catalog.json`.
   dot product and preserves the public residual labels used by control vectors
   and imatrix. This patch does not include the separate BF16 or
   F16 matrix experiments, shadow weights or reduced-precision residuals.
-  The selection extraction adapts the same fork's fused expansion of selected
-  QSA blocks into physical cells. It retains the reference's integer and F32
-  arithmetic, narrows dispatch to the reviewed graph and hardware, and
-  preserves auxiliary outputs and allocation lifetimes. A local equivalent
-  singleton-set check reduces CPU prefix-validation overhead without caching
-  or weakening sequence-ownership checks.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `0aaea5a238fb41a35106a551e73c8409dfb751ac`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

@@ -10,15 +10,17 @@ prefill, poisoned masked cells, and short-query decode, including duplicate
 IDs and FP64 oracle comparisons.
 
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 224bdef..d4101ac 100644
+index c37ba9471..bb026ad98 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
-@@ -2512,6 +2512,13 @@ extern "C" {
+@@ -2517,6 +2517,15 @@ extern "C" {
              struct ggml_tensor * a,
              struct ggml_tensor * sinks);
  
-+    // Optional selected-key hint. The mask remains authoritative for backends
-+    // that do not consume this hint.
++    // Selected key IDs [n_selected, n_query, 1, n_stream]. With a mask this is an
++    // optional hint and the mask remains authoritative. Without a mask the IDs
++    // define visibility, invalid IDs are ignored, and duplicates count once.
++    // Backends without selected-key support must decline the maskless operation.
 +    GGML_API void ggml_flash_attn_ext_add_top_k(
 +            struct ggml_tensor * a,
 +            struct ggml_tensor * top_k,
@@ -27,9 +29,63 @@ index 224bdef..d4101ac 100644
      // TODO: needs to be adapted to ggml_flash_attn_ext
      GGML_API struct ggml_tensor * ggml_flash_attn_back(
             struct ggml_context * ctx,
-
+diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
+index c7e7c47a7..84ba15374 100644
+--- a/ggml/src/ggml-cpu/ops.cpp
++++ b/ggml/src/ggml-cpu/ops.cpp
+@@ -11,6 +11,7 @@
+ #include <algorithm>
+ #include <cfloat>
+ #include <cmath>
++#include <vector>
+ 
+ // ggml_compute_forward_dup
+ 
+@@ -8853,6 +8854,11 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+     const ggml_tensor * mask  = dst->src[3];
+     const ggml_tensor * sinks = dst->src[4];
+ 
++    // With no dense mask, selected IDs define visibility. Deduplicate them so
++    // a repeated ID cannot change the softmax weight. This is also the fallback
++    // for accelerators which do not implement selected-key attention.
++    const ggml_tensor * ids = mask ? nullptr : dst->src[5];
++
+     GGML_TENSOR_LOCALS(int64_t, neq, q,   ne)
+     GGML_TENSOR_LOCALS(size_t,  nbq, q,   nb)
+     GGML_TENSOR_LOCALS(int64_t, nek, k,   ne)
+@@ -8963,7 +8969,18 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+         // loop over n_kv and n_head_kv
+         // ref: https://arxiv.org/pdf/2112.05682.pdf
+ 
+-        for (int64_t ic = ic_start; ic < ic_end; ++ic) {
++        std::vector<int32_t> selected;
++        if (ids) {
++            const auto * row = (const int32_t *) ((const char *) ids->data + iq1*ids->nb[1] + iq3*ids->nb[3]);
++            for (int64_t i = 0; i < ids->ne[0]; ++i) {
++                if (row[i] >= ic_start && row[i] < ic_end) selected.push_back(row[i]);
++            }
++            std::sort(selected.begin(), selected.end());
++            selected.erase(std::unique(selected.begin(), selected.end()), selected.end());
++        }
++        const int64_t count = ids ? (int64_t) selected.size() : ic_end - ic_start;
++        for (int64_t i = 0; i < count; ++i) {
++            const int64_t ic = ids ? selected[i] : ic_start + i;
+             const float mv = mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
+             if (mv == -INFINITY) {
+                 continue;
+@@ -9543,7 +9560,9 @@ static void ggml_compute_forward_flash_attn_ext_f16(
+         const int64_t dr = (nr + nchunk - 1) / nchunk;
+ 
+         static constexpr int64_t Q_TILE_SZ  = ggml_fa_tile_config::Q;
+-        bool use_tiled = !use_ref &&
++        // Selected-key hints may hide uninitialized KV rows. The tiled path
++        // can multiply their NaNs by zero, unlike the scalar masked reference.
++        bool use_tiled = !use_ref && !dst->src[5] &&
+                                (q->type == GGML_TYPE_F32 &&
+                                 kv_is_f32_or_f16 &&
+                                 k->type == v->type &&
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index 9b6e011..ecb0464 100644
+index 429f800c5..562062bf4 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
 @@ -4,6 +4,11 @@
@@ -44,7 +100,7 @@ index 9b6e011..ecb0464 100644
  
  #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
  // one list per group of ncols1 queries: a column is selected if any query of the group can see it
-@@ -753,6 +758,21 @@ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * d
+@@ -767,6 +772,22 @@ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * d
  
  void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
      ggml_cuda_set_device(ctx.device);
@@ -53,23 +109,39 @@ index 9b6e011..ecb0464 100644
 +    // kernels. Preserve the ordinary Flash Attention path for other models.
 +    const char * qsa_kernel = std::getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
 +    if (!qsa_kernel || qsa_kernel[0] != '0' || qsa_kernel[1] != '\0') {
-+        if (ggml_cuda_flash_attn_ext_qsa_decode_supported(ctx, dst)) {
++        if (ggml_cuda_flash_attn_ext_qsa_decode_supported(ctx.device, dst)) {
 +            ggml_cuda_flash_attn_ext_qsa_decode(ctx, dst);
 +            return;
 +        }
-+        if (ggml_cuda_flash_attn_ext_qsa_prefill_supported(ctx, dst)) {
++        if (ggml_cuda_flash_attn_ext_qsa_prefill_supported(ctx.device, dst)) {
 +            ggml_cuda_flash_attn_ext_qsa_prefill(ctx, dst);
 +            return;
 +        }
 +    }
 +#endif
++    GGML_ASSERT(!dst->src[5] || dst->src[3]); // maskless IDs must never fall through to dense attention
      switch (ggml_cuda_get_best_fattn_kernel(ggml_cuda_get_device(), dst)) {
          case BEST_FATTN_KERNEL_NONE:
              GGML_ABORT("fatal error");
-
+@@ -783,5 +804,15 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
+ }
+ 
+ bool ggml_cuda_flash_attn_ext_supported(int device, const ggml_tensor * dst) {
++    if (dst->src[5] && !dst->src[3]) {
++#if defined(GGML_USE_HIP)
++        const char * enabled = std::getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
++        if (!enabled || enabled[0] != '0' || enabled[1] != '\0') {
++            return ggml_cuda_flash_attn_ext_qsa_decode_supported(device, dst) ||
++                   ggml_cuda_flash_attn_ext_qsa_prefill_supported(device, dst);
++        }
++#endif
++        return false;
++    }
+     return ggml_cuda_get_best_fattn_kernel(device, dst) != BEST_FATTN_KERNEL_NONE;
+ }
 diff --git a/ggml/src/ggml-cuda/qsa-decode-wmma.cuh b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
 new file mode 100644
-index 0000000..63af09d
+index 000000000..63af09d3a
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
 @@ -0,0 +1,121 @@
@@ -194,13 +266,12 @@ index 0000000..63af09d
 +    }
 +#endif
 +}
-
 diff --git a/ggml/src/ggml-cuda/qsa-decode.cu b/ggml/src/ggml-cuda/qsa-decode.cu
 new file mode 100644
-index 0000000..1cfce8a
+index 000000000..d9c385d84
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode.cu
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,174 @@
 +#include "qsa-decode.cuh"
 +#if defined(GGML_USE_HIP)
 +#include "qsa-decode-wmma.cuh"
@@ -281,11 +352,10 @@ index 0000000..1cfce8a
 +    out[size_t(row)*256 + d] = sum > 0.0f ? value/sum : 0.0f;
 +}
 +
-+bool ggml_cuda_flash_attn_ext_qsa_decode_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst) {
-+    if (ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) { return false; }
++bool ggml_cuda_flash_attn_ext_qsa_decode_supported(int device, const ggml_tensor * dst) {
++    if (ggml_cuda_info().devices[device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) { return false; }
 +    const auto * q = dst->src[0], * k = dst->src[1], * v = dst->src[2], * m = dst->src[3], * ids = dst->src[5];
-+    // Keep the existing mask authoritative; maskless block selection is not ported.
-+    if (!q || !k || !v || !m || !ids || dst->src[4] || dst->src[6] || dst->src[7] || ggml_get_op_params_i32(dst, 4) != 0) { return false; }
++    if (!q || !k || !v || !ids || dst->src[4] || dst->src[6] || dst->src[7] || ggml_get_op_params_i32(dst, 4) != 0) { return false; }
 +    float bias, cap;
 +    memcpy(&bias, (const char *) dst->op_params + 4, 4);
 +    memcpy(&cap, (const char *) dst->op_params + 8, 4);
@@ -298,28 +368,45 @@ index 0000000..1cfce8a
 +        q->nb[0] != 4 || k->nb[0] != 2 || v->nb[0] != 2 || ids->nb[0] != 4 ||
 +        ids->ne[0] < 1 || ids->ne[0] > 2560 || ids->ne[1] < q->ne[1] || ids->ne[2] != 1 || ids->ne[3] != 1 ||
 +        !ggml_is_contiguous(dst)) { return false; }
-+    return m->type == GGML_TYPE_F16 && m->nb[0] == 2 && m->ne[0] >= k->ne[1] &&
-+           m->ne[1] >= q->ne[1] && m->ne[2] == 1 && m->ne[3] == 1;
++    return !m || (m->type == GGML_TYPE_F16 && m->nb[0] == 2 && m->ne[0] >= k->ne[1] &&
++           m->ne[1] >= q->ne[1] && m->ne[2] == 1 && m->ne[3] == 1);
 +}
 +
++// Upstream top-k may return an unordered selection. Canonicalize before
++// splitting attention, otherwise identical selected sets can change the F16
++// softmax tile grouping across restore/replay. The duplicate winner must also
++// be deterministic, not whichever atomic insertion happens to win a race.
 +static __global__ void qsa_decode_unique_ids(const char * input, size_t stride, int * output, int count, int keys) {
-+    __shared__ int seen[8192];
++    __shared__ int ordered[4096];
 +    const int tid=threadIdx.x, row=blockIdx.x;
-+    for (int i=tid;i<8192;i+=blockDim.x) seen[i]=-1;
-+    __syncthreads();
++    int width=1;
++    while (width<count) width*=2;
 +    const auto * src=reinterpret_cast<const int *>(input+size_t(row)*stride);
-+    int * dst=output+size_t(row)*count;
-+    for (int j=tid;j<count;j+=blockDim.x) {
-+        const int key=src[j];
-+        dst[j]=-1;
-+        if (key<0 || key>=keys) continue;
-+        unsigned slot=(unsigned(key)*2654435761u)&8191u;
-+        while (true) {
-+            const int old=atomicCAS(seen+slot,-1,key);
-+            if (old==-1) { dst[j]=key; break; }
-+            if (old==key) break;
-+            slot=(slot+1)&8191u;
++    for (int i=tid;i<width;i+=blockDim.x) {
++        const int key=i<count ? src[i] : -1;
++        ordered[i]=key>=0 && key<keys ? key : INT_MAX;
++    }
++    __syncthreads();
++    for (int span=2;span<=width;span*=2) {
++        for (int step=span/2;step>0;step/=2) {
++            for (int i=tid;i<width;i+=blockDim.x) {
++                const int peer=i^step;
++                if (peer>i) {
++                    const int left=ordered[i], right=ordered[peer];
++                    const bool ascending=(i&span)==0;
++                    if (ascending ? left>right : left<right) {
++                        ordered[i]=right;
++                        ordered[peer]=left;
++                    }
++                }
++            }
++            __syncthreads();
 +        }
++    }
++    int * dst=output+size_t(row)*count;
++    for (int i=tid;i<count;i+=blockDim.x) {
++        const int key=ordered[i];
++        dst[i]=key!=INT_MAX && (i==0 || ordered[i-1]!=key) ? key : -1;
 +    }
 +}
 +
@@ -359,10 +446,9 @@ index 0000000..1cfce8a
 +}
 +
 +#endif
-
 diff --git a/ggml/src/ggml-cuda/qsa-decode.cuh b/ggml/src/ggml-cuda/qsa-decode.cuh
 new file mode 100644
-index 0000000..1c25629
+index 000000000..c3778cccd
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode.cuh
 @@ -0,0 +1,7 @@
@@ -371,15 +457,14 @@ index 0000000..1c25629
 +// the per-query decode kernels take 1..512 queries; larger ubatches go to qsa_prefill. Up to 512 queries the
 +// per-query gathers cost less than qsa_prefill's pack of the whole K/V cache, which grows with the depth
 +#define QSA_DECODE_MAX_QUERIES 512
-+bool ggml_cuda_flash_attn_ext_qsa_decode_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst);
++bool ggml_cuda_flash_attn_ext_qsa_decode_supported(int device, const ggml_tensor * dst);
 +void ggml_cuda_flash_attn_ext_qsa_decode(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
-
 diff --git a/ggml/src/ggml-cuda/qsa-prefill.cu b/ggml/src/ggml-cuda/qsa-prefill.cu
 new file mode 100644
-index 0000000..ce08c4c
+index 000000000..01b737444
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-prefill.cu
-@@ -0,0 +1,494 @@
+@@ -0,0 +1,511 @@
 +#include "qsa-prefill.cuh"
 +#if defined(GGML_USE_HIP)
 +#include "common.cuh"
@@ -396,10 +481,12 @@ index 0000000..ce08c4c
 +static __device__ __forceinline__ uint16_t qsa3_f2h(const float f) { return __builtin_bit_cast(uint16_t, (_Float16) f); }
 +static __device__ __forceinline__ float qsa3_h2f(const uint16_t h) { return (float) __builtin_bit_cast(_Float16, h); }
 +
-+// union builder, kernel A: per query row, check that the (validity-transformed) row is non-decreasing; if not, rank-sort it into srow[q] and set sflag[q]. Sentinel 0x7FFFFFFF for invalid (-1 / >= nk) entries.
++// Upstream top-k is unordered. Canonicalize each visible row before the union
++// merge without quadratic rank sorting on every prefill query. Already sorted
++// rows still bypass the sort. Invalid entries sort after all cache indices.
 +#define QSA3_SENT 0x7FFFFFFF
 +__global__ __launch_bounds__(256) void qsa3_rows_kernel(
-+        const int * __restrict__ ids, const size_t i1, const int ns, const int nk, int * __restrict__ srow, int * __restrict__ sflag,
++        const int * __restrict__ ids, const size_t i1, const int ns, const int nk, const int width, int * __restrict__ srow, int * __restrict__ sflag,
 +        const char * mask, size_t m1) {
 +    extern __shared__ int ent[];
 +    __shared__ int unsorted;
@@ -417,18 +504,32 @@ index 0000000..ce08c4c
 +        ent[j] = visible ? key : QSA3_SENT;
 +        if (valid && !visible) { atomicOr(&unsorted, 1); }
 +    }
++    for (int j = ns + tid; j < width; j += 256) { ent[j] = QSA3_SENT; }
 +    __syncthreads();
 +    for (int j = tid; j + 1 < ns; j += 256) {
 +        if (ent[j] > ent[j+1]) { atomicOr(&unsorted, 1); }
 +    }
 +    __syncthreads();
 +    if (unsorted) {
++        for (int span = 2; span <= width; span *= 2) {
++            for (int step = span / 2; step > 0; step /= 2) {
++                for (int j = tid; j < width; j += 256) {
++                    const int peer = j ^ step;
++                    if (peer > j) {
++                        const int left = ent[j], right = ent[peer];
++                        const bool ascending = (j & span) == 0;
++                        if (ascending ? left > right : left < right) {
++                            ent[j] = right;
++                            ent[peer] = left;
++                        }
++                    }
++                }
++                __syncthreads();
++            }
++        }
 +        int * dst = srow + (size_t) q * ns;
 +        for (int j = tid; j < ns; j += 256) {
-+            const int e = ent[j];
-+            int rank = 0;
-+            for (int k = 0; k < ns; ++k) { const int f = ent[k]; rank += (f < e) || (f == e && k < j); }
-+            dst[rank] = e;
++            dst[j] = ent[j];
 +        }
 +    }
 +    if (tid == 0) { sflag[q] = unsorted; }
@@ -799,13 +900,12 @@ index 0000000..ce08c4c
 +#endif
 +}
 +
-+bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst) {
++bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(int device, const ggml_tensor * dst) {
 +    const auto * q=dst->src[0], * k=dst->src[1], * v=dst->src[2], * m=dst->src[3], * ids=dst->src[5];
-+    if (!q || !k || !v || !m || !ids || dst->src[4] || ggml_get_op_params_i32(dst, 4) != 0 ||
-+            ggml_cuda_info().devices[ctx.device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
++    if (!q || !k || !v || !ids || dst->src[4] || ggml_get_op_params_i32(dst, 4) != 0 ||
++            ggml_cuda_info().devices[device].cc != GGML_CUDA_CC_OFFSET_AMD + 0x1151) return false;
 +    float bias, softcap; memcpy(&bias, (const char *) dst->op_params+4, 4); memcpy(&softcap, (const char *) dst->op_params+8, 4);
-+    // Keep the existing mask authoritative; maskless block selection is not ported.
-+    if (m->type!=GGML_TYPE_F16 || m->nb[0]!=2 || m->ne[0]<k->ne[1] || m->ne[1]<q->ne[1] || m->ne[2]!=1 || m->ne[3]!=1) return false;
++    if (m && (m->type!=GGML_TYPE_F16 || m->nb[0]!=2 || m->ne[0]<k->ne[1] || m->ne[1]<q->ne[1] || m->ne[2]!=1 || m->ne[3]!=1)) return false;
 +    return bias==0 && softcap==0 && q->type==GGML_TYPE_F32 && k->type==GGML_TYPE_F16 && v->type==GGML_TYPE_F16 &&
 +        dst->type==GGML_TYPE_F32 && ids->type==GGML_TYPE_I32 &&
 +        q->ne[0]==256 && k->ne[0]==256 && v->ne[0]==256 && q->ne[1]>=128 && q->ne[1]<=INT_MAX &&
@@ -857,8 +957,10 @@ index 0000000..ce08c4c
 +    ggml_cuda_pool_alloc<int>      srow(ctx.pool(), (size_t) n_q * ns);
 +    ggml_cuda_pool_alloc<int>      sflag(ctx.pool(), (size_t) n_q);
 +    {
-+        const ggml_cuda_kernel_launch_params launch(dim3(n_q), dim3(256), (size_t) ns * sizeof(int), ctx.stream());
-+        ggml_cuda_kernel_launch(qsa3_rows_kernel, launch, (const int *) ids->data, ids->nb[1], ns, nk, srow.get(), sflag.get(), m ? (const char *)m->data : nullptr, m ? m->nb[1] : 0);
++        int width = 1;
++        while (width < ns) { width *= 2; }
++        const ggml_cuda_kernel_launch_params launch(dim3(n_q), dim3(256), (size_t) width * sizeof(int), ctx.stream());
++        ggml_cuda_kernel_launch(qsa3_rows_kernel, launch, (const int *) ids->data, ids->nb[1], ns, nk, width, srow.get(), sflag.get(), m ? (const char *)m->data : nullptr, m ? m->nb[1] : 0);
 +        CUDA_CHECK(cudaGetLastError());
 +        const ggml_cuda_kernel_launch_params launch2(dim3(ngroups), dim3(QSA3_MERGE_LANES), (size_t) QSA3_G * ns * sizeof(int), ctx.stream());
 +        ggml_cuda_kernel_launch(qsa3_merge_kernel, launch2, (const int *) ids->data, ids->nb[1], n_q, ns, nk,
@@ -874,23 +976,33 @@ index 0000000..ce08c4c
 +}
 +
 +#endif
-
 diff --git a/ggml/src/ggml-cuda/qsa-prefill.cuh b/ggml/src/ggml-cuda/qsa-prefill.cuh
 new file mode 100644
-index 0000000..d9eecc5
+index 000000000..027ff763d
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-prefill.cuh
 @@ -0,0 +1,4 @@
 +#pragma once
 +#include "common.cuh"
-+bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(ggml_backend_cuda_context & ctx, const ggml_tensor * dst);
++bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(int device, const ggml_tensor * dst);
 +void ggml_cuda_flash_attn_ext_qsa_prefill(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
-
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index d51a8780c..402e8a61a 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -15551,6 +15551,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+             }
+         case GGML_OP_FLASH_ATTN_EXT:
+             {
++                if (op->src[5] && !op->src[3]) return false;
+                 bool coopmat2 = device->coopmat2;
+                 uint32_t HSK = op->src[1]->ne[0];
+                 uint32_t HSV = op->src[2]->ne[0];
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
-index a286083..a4382ec 100644
+index 01dc8d05c..48106f652 100644
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
-@@ -5583,6 +5583,20 @@ void ggml_flash_attn_ext_add_sinks(
+@@ -5605,6 +5605,21 @@ void ggml_flash_attn_ext_add_sinks(
      a->src[4] = sinks;
  }
  
@@ -902,6 +1014,7 @@ index a286083..a4382ec 100644
 +    GGML_ASSERT(a->src[5] == NULL);
 +    GGML_ASSERT(top_k->type == GGML_TYPE_I32);
 +    GGML_ASSERT(top_k->ne[1] == a->src[0]->ne[1]);
++    GGML_ASSERT(top_k->ne[2] == 1 && top_k->ne[3] == a->src[0]->ne[3]);
 +    GGML_ASSERT(n_kv_raw >= 0 && n_kv_raw <= a->src[1]->ne[1]);
 +
 +    a->src[5] = top_k;
@@ -911,12 +1024,11 @@ index a286083..a4382ec 100644
  // ggml_flash_attn_back
  
  struct ggml_tensor * ggml_flash_attn_back(
-
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index 65c1e88..ba2371b 100644
+index f69fe63f8..b85cc2d26 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2606,10 +2606,12 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -2860,10 +2860,12 @@ ggml_tensor * llm_graph_context::build_attn_mha(
           ggml_tensor * kq_b,
           ggml_tensor * kq_mask,
           ggml_tensor * sinks,
@@ -933,7 +1045,7 @@ index 65c1e88..ba2371b 100644
      const bool v_trans = v->nb[1] > v->nb[2];
  
      // split the batch into streams if needed
-@@ -2647,6 +2649,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -2904,6 +2906,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
          ggml_flash_attn_ext_add_sinks(cur, sinks);
          GGML_ASSERT(n_kv_max >= 0 && n_kv_max <= INT32_MAX);
          ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
@@ -943,12 +1055,11 @@ index 65c1e88..ba2371b 100644
          ggml_prec_set_acc(cur, GGML_PREC_F32);
  
          if (v_mla) {
-
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index cc41106..ce68832 100644
+index e853a0269..c1f5830c0 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
-@@ -1187,7 +1187,9 @@ struct llm_graph_context {
+@@ -1246,7 +1246,9 @@ struct llm_graph_context {
              ggml_tensor * v_mla,   // [n_embd_head_v_mla, n_embd_head_v, n_head_v]
                  int64_t   n_kv_max,
                    float   kq_scale,
@@ -959,29 +1070,102 @@ index cc41106..ce68832 100644
  
      llm_graph_input_attn_no_cache * build_attn_inp_no_cache() const;
  
-
+diff --git a/src/models/models.h b/src/models/models.h
+index 7ef92eaa6..6d220837c 100644
+--- a/src/models/models.h
++++ b/src/models/models.h
+@@ -2603,7 +2603,8 @@ struct llama_model_qwen4exp : public llama_model_base {
+                     ggml_tensor * sel,
+                         int64_t   n_sel,
+                           float   kq_scale,
+-                            int   il);
++                            int   il,
++                    ggml_tensor * selected_ids);
+ 
+         // the QSA layers share one set of k-pool inputs, see llama_memory_hybrid_idx
+         llm_graph_input_kpool * build_inp_kpool(const llama_memory_hybrid_idx_context * mctx_hyb);
+@@ -2616,7 +2617,8 @@ struct llama_model_qwen4exp : public llama_model_base {
+                     ggml_tensor * inp_pos,
+                     ggml_tensor * kq_mask,
+                             int * sections,
+-                            int   il);
++                            int   il,
++                    ggml_tensor ** selected_ids);
+ 
+         ggml_tensor * build_layer_attn_linear(
+              llm_graph_input_rs * inp,
 diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
-index 2647735..bbf2e2b 100644
+index d6e65e325..c83be9dd2 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -840,7 +840,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+@@ -743,7 +743,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+         ggml_tensor *                           inp_pos,
+         ggml_tensor *                           kq_mask,
+         int *                                   sections,
+-        int                                     il) {
++        int                                     il,
++        ggml_tensor **                          selected_ids) {
+     const llama_kv_cache_context * mctx_idx = mctx_hyb->get_idx();
+ 
+     const int64_t idx_dim = hparams.indexer_head_size;
+@@ -855,6 +856,11 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+     idx_f   = ggml_add(ctx0, ggml_mul(ctx0, ggml_sub(ctx0, idx_f, dump), live), dump);
+     sel_idx = ggml_cast(ctx0, idx_f, GGML_TYPE_I32);
+ 
++    // Reuse the upstream visibility-filtered IDs. Dead selections are >= n_kv
++    // and the selected-key kernels discard them before reading cache data.
++    // Keep the full upstream mask authoritative for every fallback backend.
++    *selected_ids = sel_idx;
++
+     ggml_tensor * sel = ggml_set_rows(ctx0, mask_all, zeros, ggml_reshape_3d(ctx0, sel_idx, n_sel, n_tokens, 1));
+ 
+     GGML_ASSERT(kq_mask->ne[0] == n_kv && kq_mask->ne[1]*kq_mask->ne[2]*kq_mask->ne[3] == n_tokens);
+@@ -876,7 +882,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+         ggml_tensor *             sel,
+         int64_t                   n_sel,
+         float                     kq_scale,
+-        int                       il) {
++        int                       il,
++        ggml_tensor *             selected_ids) {
+     // rotate q/k/v before they reach a quantized cache, as the dense path does. the indexer
+     // has already scored with its own query in build_qsa_sel, so the selection is unaffected.
+     if (inp->self_k_rot) {
+@@ -915,7 +922,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
      ggml_tensor * k = mctx_cur->get_k(ctx0, il);
      ggml_tensor * v = mctx_cur->get_v(ctx0, il);
  
--    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, kq_mask_top_k, nullptr, nullptr, top_k->ne[0], kq_scale, il);
+-    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, sel, nullptr, nullptr, n_sel, kq_scale, il);
 +    const char * qsa_kernel = getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
 +    const bool selected_keys = qsa_kernel && qsa_kernel[0] == '1' && qsa_kernel[1] == '\0';
-+    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, kq_mask_top_k, nullptr, nullptr, top_k->ne[0], kq_scale, il,
-+                                        selected_keys ? top_k : nullptr, 0);
++    ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, sel, nullptr, nullptr, n_sel, kq_scale, il,
++            selected_keys ? selected_ids : nullptr, 0);
      cb(cur, "kqv_out", il);
  
      // the rotation is its own inverse, so undo it on the value side of the output
-
+@@ -940,7 +950,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+     // indexer reads the same block input as q/k/v; no cache or no ratio means dense
+     const bool qsa = inp_kpool != nullptr && hparams.dsv4_compress_ratios[il] > 0;
+ 
+-    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->get_kq_mask(), sections, il) : nullptr;
++    ggml_tensor * selected_ids = nullptr;
++    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->get_kq_mask(), sections, il, &selected_ids) : nullptr;
+ 
+     // Qwen3Next uses a single Q projection that outputs query + gate
+     ggml_tensor * Qcur_full = build_lora_mm(model.layers[il].wq, cur, model.layers[il].wq_s); // [ (n_embd_head * 2) * n_head, n_tokens ]
+@@ -993,7 +1004,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+     const float kq_scale = hparams.f_attention_scale == 0.0f ? 1.0f / sqrtf(float(n_embd_head)) : hparams.f_attention_scale;
+ 
+     if (sel) {
+-        cur = build_attn_qsa(inp, Qcur, Kcur, Vcur, sel, inp_kpool->n_sel, kq_scale, il);
++        cur = build_attn_qsa(inp, Qcur, Kcur, Vcur, sel, inp_kpool->n_sel, kq_scale, il, selected_ids);
+     } else {
+         cur = build_attn(inp,
+                     nullptr, nullptr, nullptr,
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index ceadab2..e8bbe62 100644
+index 55f4fdb84..7886d6e9b 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -8912,6 +8912,105 @@ struct test_falcon : public test_llm {
+@@ -9565,6 +9565,171 @@ struct test_falcon : public test_llm {
  };
  
  
@@ -1084,20 +1268,103 @@ index ceadab2..e8bbe62 100644
 +    }
 +};
 +
++// Upstream top-k may reorder an identical selected set. Both graphs must
++// produce exactly the same result, not merely stay near a CPU tolerance.
++struct test_qsa_order : public test_qsa_prefill {
++    ggml_tensor * reordered = nullptr;
++    test_qsa_order(int queries, int selected)
++        : test_qsa_prefill(queries, 4096, selected, true, true) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_ORDER"; }
++    double max_nmse_err() override { return 0; }
++    double err(const float * actual, const float * cpu, size_t n) override {
++        for (size_t i=0;i<n;++i) {
++            if (actual[i]!=0.0f || cpu[i]!=0.0f) return INFINITY;
++        }
++        return 0;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * original = test_qsa_prefill::build_graph(ctx);
++        reordered = ggml_new_tensor_4d(ctx, GGML_TYPE_I32, selected, queries, 1, 1);
++        auto * again = ggml_flash_attn_ext(ctx,q,k,v,mask,1.0f/sqrtf(dim),0.0f,0.0f);
++        ggml_flash_attn_ext_add_top_k(again,reordered,0);
++        ggml_prec_set_acc(again,GGML_PREC_F32);
++        return ggml_sub(ctx,original,again);
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_qsa_prefill::initialize_tensors(ctx);
++        std::vector<int32_t> picks(ggml_nelements(ids));
++        ggml_backend_tensor_get(ids,picks.data(),0,ggml_nbytes(ids));
++        for (int q=0;q<queries;++q) {
++            std::reverse(picks.begin()+q*selected,picks.begin()+(q+1)*selected);
++        }
++        ggml_backend_tensor_set(reordered,picks.data(),0,ggml_nbytes(reordered));
++    }
++};
++
++// Maskless selected attention is compared against the same FP64 oracle as the
++// masked path. The unused mask is only an independent visibility oracle.
++struct test_qsa_maskless : public test_qsa_decode {
++    const bool empty;
++    test_qsa_maskless(int q, int keys, int selected, bool empty=false, int ratio=12)
++        : test_qsa_decode(q, keys, selected, true, ratio, false), empty(empty) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_MASKLESS"; }
++    std::string vars() override { return test_qsa_decode::vars()+",empty="+std::to_string(empty); }
++    double err(const float * actual, const float * cpu, size_t n) override {
++        if (!empty) return test_qsa_decode::err(actual, cpu, n);
++        // NMSE of an all-zero oracle is undefined. Require exact finite zeros.
++        for (size_t i=0;i<n;++i) if (actual[i]!=0.0f || cpu[i]!=0.0f) return 1.0;
++        return 0.0;
++    }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        auto * out = test_qsa_decode::build_graph(ctx);
++        out->src[3] = nullptr;
++        return out;
++    }
++    void initialize_tensors(ggml_context * ctx) override {
++        test_qsa_decode::initialize_tensors(ctx);
++        std::vector<int32_t> picks(ggml_nelements(ids), -1);
++        std::vector<ggml_fp16_t> masks(ggml_nelements(mask),ggml_fp32_to_fp16(-INFINITY));
++        for (int q=0;q<queries;++q) for (int j=0;j<selected;++j) {
++            const int key=empty ? -1 : j%7==0 ? keys+1 : j%5==0 ? -1 : j%3==0 ? 2 : 4+(j*13+q*7)%(keys-8);
++            picks[q*selected+j]=key;
++            if (key>=0 && key<keys) masks[q*keys+key]=ggml_fp32_to_fp16(0.f);
++        }
++        ggml_backend_tensor_set(ids,picks.data(),0,ggml_nbytes(ids));
++        ggml_backend_tensor_set(mask,masks.data(),0,ggml_nbytes(mask));
++    }
++};
++
  // ###########################################
  // ## Section 3: GGML Op Test Instantiation ##
  // ###########################################
-@@ -10880,6 +10979,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
-     test_cases.emplace_back(new test_flash_attn_ext(256, 256, 4, {4, 1},  4096, 512, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
-     test_cases.emplace_back(new test_flash_attn_ext(256, 256, 2, {12, 1}, 4096, 512, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+@@ -11919,6 +12084,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     test_cases.emplace_back(new test_moe_reduce(2048, 15, 40, false, true));
+     test_cases.emplace_back(new test_moe_reduce(2048, 16, 32, false, true));
  
-+    // CPU computes the full masked reference; gfx1151 HIP uses selected-key QSA.
++    // Selected-key paths retain an independent full-mask CPU reference.
++    for (int queries : {1, 16, 513}) {
++        test_cases.emplace_back(new test_qsa_order(queries, 2051));
++    }
++    for (int selected : {1, 255, 256, 257, 2048, 2560}) {
++        test_cases.emplace_back(new test_qsa_order(513, selected));
++        test_cases.emplace_back(new test_qsa_prefill(513, 4096, selected, true, true));
++    }
 +    test_cases.emplace_back(new test_qsa_prefill(128, 2048, 512));
 +    test_cases.emplace_back(new test_qsa_prefill(256, 4096, 2048, true, true));
++    test_cases.emplace_back(new test_qsa_prefill(513, 4096, 2051, true, true));
++    test_cases.emplace_back(new test_qsa_prefill(1024, 4096, 2048));
 +    test_cases.emplace_back(new test_qsa_decode(2, 4096, 2048, true));
 +    test_cases.emplace_back(new test_qsa_decode(16, 4096, 2048, false, 12, true));
 +    test_cases.emplace_back(new test_qsa_decode(1, 16384, 2048));
++    test_cases.emplace_back(new test_qsa_decode(2, 4096, 2048, false, 4));
++    test_cases.emplace_back(new test_qsa_decode(2, 4096, 2048, false, 12, false, false));
++    for (int queries : {1, 16, 128, 513}) {
++        test_cases.emplace_back(new test_qsa_maskless(queries, 4096, 2051));
++    }
++    test_cases.emplace_back(new test_qsa_maskless(1, 4096, 2051, true));
++    test_cases.emplace_back(new test_qsa_maskless(513, 4096, 2051, true));
++    test_cases.emplace_back(new test_qsa_maskless(2, 4096, 2051, false, 4));
 +
-     // dense-allocated (non-view) quant K/V at batch >= 64, in cache and native layouts
-     test_cases.emplace_back(new test_flash_attn_ext(64, 64, 4, {1, 1}, 512, 75, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 2, 1, 3}, false));
-     test_cases.emplace_back(new test_flash_attn_ext(64, 64, 4, {4, 1}, 512, 75, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q8_0, {0, 2, 1, 3}, false));
+     for (int nt : {15, 16, 17, 31, 32, 127, 512, 1024}) {
+         for (bool permuted : {false, true}) {
+             for (int snapshots : {1, 4}) {

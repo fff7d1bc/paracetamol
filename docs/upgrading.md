@@ -283,85 +283,78 @@ protected behavior is fixed.
 | `router-disconnect.patch` | Carries [PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`. Stops the child HTTP connection when its proxy closes and uses one response-wait deadline across wakeups. Includes the upstream non-streaming disconnect regression. | Upstream passes both streaming and non-streaming disconnects through the router and gateway. Observe the child slot becoming idle, not just a successful follow-up request. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
+| `hip-strix-halo-graph-recapture.patch` | Reinstantiates the HIP executable after a changed capture on exact `gfx1151`, retaining ordinary graph replay. This corrects the populated direct-reader clear/restore failure isolated during the October source screens. Other architectures retain upstream executable updates. | The unpatched upstream path passes populated ordinary, causal-transition and clear/restore logit checks with the managed reader, followed by long-context and older-model checks. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
 | `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
-| `qwen4exp-qsa-gather.patch` | Carries the single-token QSA K/V gather path from [PR 28213](https://github.com/ggml-org/llama.cpp/pull/28213) at `beed2f78ac42cf16710b763e6f3ba20665c6d233`. It attends to selected cells rather than scanning the full masked cache once depth exceeds four times the selected width. Prefill and multi-token/MTP verification retain the old path. `QWEN4EXP_QSA_GATHER=0` is a process-local escape hatch. | An upstream equivalent passes correct long-context output, prefix reuse, cancellation, and paired decode timing on the applicable backends without a short-context regression. |
-| `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. The mask remains authoritative on fallback backends. A container-level `PARACETAMOL_QWEN4EXP_QSA_KERNEL=0` override disables it. | Upstream provides equivalent selected-key attention with the operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
+| `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. Canonical sorting and deduplication make attention independent of upstream top-k ordering. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. A container-level value of `0` disables it. | Upstream provides equivalent selected-key attention with the order-invariance and numerical operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
-| `hip-qwen4exp-graph-optimizations.patch` | Builds on the selected-key patch with compact whole-block selection, 512-query scorer strips, ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and existing small-tile MoE kernels. The graph requires a unique scalar prefix, supported F16 geometry and `PARACETAMOL_QWEN4EXP_QSA_GRAPH=1`. HIP dispatch remains exact `gfx1151`. Unsupported cache layouts retain the original graph, while maskless selected attention has a tested CPU fallback. The entrypoint enables this only with the Strix Halo ROCm kernel policy. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` restores the `r40` path. | Upstream equivalents retain block-selection and FP64 attention oracles, fusion alias/lifetime guards, prefix eligibility checks, near-256K retrieval and prefix reuse, and the older-model/backend regression screens. Never silently replace these with BF16 shadow weights or a new persistent derived-cache policy. |
-| `hip-qwen4exp-prepared-key-cache.patch` | Reuses F32 pooled, normalized and rotated indexer keys only for successful single-token Qwen4exp appends. F16 raw keys remain authoritative. All memory mutations, restore, failed evaluation and unsupported layouts invalidate derived state. Prefills retain the original graph. The first decode rebuilds and seeds derived storage. The entrypoint enables `PARACETAMOL_QWEN4EXP_QSA_CACHE=1` only with the accepted Strix Halo ROCm compact graph. Setting it to `0` restores recomputation. | An upstream equivalent preserves the exact preparation tests, successful-ubatch publication, mutation/restore invalidation, long-context retrieval, interruption recovery and same-image on/off measurements. Derived keys must not silently enter the saved-state format or change KV precision. |
+| `hip-qwen4exp-graph-optimizations.patch` | Intersects upstream's visibility-filtered selected IDs with its shared causal/sequence mask, avoiding a dense per-layer selection mask. Uses upstream pooled-cache state rather than a private prefix or derived-key cache. Requires supported single-stream F16 geometry and both QSA switches. CPU fallback honors the intersection, and unsupported accelerators decline it. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` disables this and the scoped pipeline fusions. | Upstream equivalents pass the independent selected-mask oracle, unsupported-layout fallback, populated state restore, near-256K retrieval and prefix reuse, and older-model/backend checks. Never silently substitute a private reduced-precision matrix path or persistent derived cache. |
 | `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
-| `hip-qwen4exp-selection.patch` | Fuses the private Qwen4exp 512-block selection graph on exact `gfx1151`, preserving integer/F32 arithmetic, tail cells, auxiliary outputs and allocation lifetimes. Replaces per-cell sequence population counts with equivalent singleton-set equality in compact-prefix validation. | An upstream equivalent passes selection oracles, real sliced-tail layouts, extra-reader fallback, every sequence-bit pair, populated-context retrieval and state/backend regressions. No arithmetic downcast or weaker prefix eligibility belongs here. |
+| `quantized-kv-state-copy.patch` | Carries [PR 30541](https://github.com/ggml-org/llama.cpp/pull/30541) at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`. Counts tensor elements rather than quantization blocks for on-device sequence save, restore and scattered range copies. Protects optional quantized-cache use without changing F16 presets. | Upstream contains the equivalent correction and its `test-llama-context` device-copy and scatter cases pass with F16, Q8_0 and Q4_0 caches. |
+| `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
+| `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 
-The September 30 source refresh pins
-`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193 upstream commits after the
-previous `7ab4ee7` pin. All 13 existing downstream patches remain necessary
-under the removal gates above. Eight apply unchanged. The QSA gather, compact graph,
-prepared-key cache, pipeline and selection patches are rebased.
+The October 14 refresh pins
+`23deec025587a58469bdf0120313ff88a1ddcc7b`, 345 upstream commits after
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, and uses image `r50`.
+The fourteen-patch stack replaces the earlier partial rebase. Its
+[screen record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-screen-2026-10-14)
+remains useful evidence of why a successful short request was insufficient.
+The [final-image record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-upstream-update-2026-10-14)
+keeps the performance qualification explicit. The default dense Q8 MTP
+control is effectively unchanged, as is Flash-Next's cold 247K request.
+Flash-Next's warm decode is about 12.3% slower in the paired screen. This is
+a maintenance and correctness update, not a universal speed improvement.
 
-The October 1 delivery adds router disconnect propagation as the fourteenth
-patch, without changing inference arithmetic or defaults. Its
-[acceptance record](hardware-acceptance.md#fedora-44-strix-halo-router-cancellation-2026-10-01)
-distinguishes child-slot cancellation from follow-up request recovery.
+Upstream now owns Qwen4exp pooled-key state and visibility filtering through
+[PR 29751](https://github.com/ggml-org/llama.cpp/pull/29751), with reduced
+indexer workspace from [PR 29825](https://github.com/ggml-org/llama.cpp/pull/29825).
+The private prepared-key cache, prefix eligibility machinery and selection
+fusion are retired. The replacement compact patch only removes redundant
+mask materialization around upstream's selection. The former generic QSA
+gather is also retired. ROCm uses the retained selected-key kernels, while
+Vulkan uses its upstream sparse-attention path from
+[PR 28105](https://github.com/ggml-org/llama.cpp/pull/28105), reached through
+the new graph's selected-width hint. These are behavior replacements, not
+claims that the old proposals themselves were merged.
 
-The October 11 delivery removes `reasoning-controls.patch` and advances the
-same source pin to image `r49`, leaving thirteen patches. This is an ownership
-move, not an upstream replacement. The Go gateway now applies the catalog's
-per-thinking-mode defaults across engines, preserving explicit request values.
-Direct engine endpoints intentionally use native defaults. Direct benchmarks
-send their selected catalog tuple explicitly. On future upgrades, verify that
-the gateway's reasoning resolver still agrees with each engine and template,
-including off, omitted controls, nested booleans, and named effort levels.
+Canonical ID ordering is required with upstream's unordered top-k output.
+Keep the negative-control order tests, independent mask-intersection tests,
+and populated restore checks when rebasing these kernels. The scoped Q8
+prefetch and small MoE tiles now live in the pipeline patch. Their private
+instantiations explicitly retain Q8 activation precision and honor upstream
+precision overrides. No retired BF16/F16 shadow-matrix mode is restored.
 
-The rebases preserve upstream's new GLM pooled-cache bookkeeping, graph
-allocation dependencies and matrix source-precision parameter. GLM's pooled
-cache is not a replacement for the Qwen4exp derived-key cache. The private
-Qwen Q8 prefetch instantiations explicitly retain Q8 activation precision and
-leave upstream's other matrix paths alone. This does not reintroduce the
-retired mixed-arithmetic experiment.
+`applications/llama-cpp/test-qwen4exp-state.cpp` remains the hardware state
+gate. It populates more than 4K tokens, decodes, switches causal mode and
+compares full logits after restore and clear. Run its
+[fast screen](testing-and-release.md#fast-flash-next-state-screen) before the
+larger matrix, then the full fixture. Compile against the matching patched
+source and libraries and enable both QSA kernel and graph switches. There is
+no private QSA cache switch or cache-lifecycle test to maintain now.
 
-The grouped-matrix override test also follows the new upstream API. MMQ now
-accepts undefined, Q8 or Q4 source precision and rejects the former F32 test
-value. The fixture uses an explicit supported Q8 override to keep checking
-that the private shortcut defers to upstream. This is a test-input update,
-not a change to the model's computation or KV cache.
-
-Upstream no longer reserves graph buffers on causal-attention changes. The
-compact Qwen4exp graph still changes shape when it falls back to non-causal
-attention, so its patch retains a narrowly scoped reserve on that transition.
-`applications/llama-cpp/test-qwen4exp-state.cpp` is a hardware acceptance
-fixture for this boundary. It populates more than 4K tokens, seeds derived
-keys, switches causal mode and checks logits after restore and clear. Its
-`--state-smoke` variant isolates clear/restore without a causal transition or
-speculative decoding. Run that
-[fast state screen](testing-and-release.md#fast-flash-next-state-screen)
-before the larger update matrix. Compile
-it against the matching patched source and libraries, then run it on the
-managed Flash-Next model with the normal direct-reader ROCm policy and all
-three QSA graph, kernel and cache switches enabled. It is not an image-build
-or CPU-startup substitute for inference acceptance.
-
-The October 14 screen at
-`529ac893e754e95a50469b2122f5efe28dfc08a0` remains **held**. A `gfx1151`-only
-HIP graph-recapture workaround passes the state gate, and the retained QSA
-decode kernel needs canonical key ordering with upstream's now-unordered
-selection. Both corrections are archived experiments, not production patches.
-The corrected partial port is still about 28% slower in 32K retrieval wall
-time than `r49`. Keep the remaining optimization removal gates intact and
-read the [screen record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-screen-2026-10-14)
-before restarting the larger acceptance matrix.
+Sampling policy remains at the Go gateway boundary, moved there in image
+`r49`. It applies the catalog's per-thinking-mode defaults and preserves
+explicit request values. Direct engine endpoints intentionally use native
+defaults, so direct benchmarks send their selected catalog tuple explicitly.
+Verify the gateway's resolver against native parsing and templates for off,
+omitted controls, nested booleans and named effort levels. Router cancellation
+acceptance must observe the child slot becoming idle, not merely a successful
+follow-up request.
 
 The reviewed upstream pin includes the
 [F16 attention race fix](https://github.com/ggml-org/llama.cpp/pull/30103),
 [RDNA 3.5 MMQ tile tuning](https://github.com/ggml-org/llama.cpp/pull/28195),
 [chunked GDN kernel](https://github.com/ggml-org/llama.cpp/pull/29353) and
 [Vulkan AMD iGPU checkpoint-read fix](https://github.com/ggml-org/llama.cpp/pull/30049).
-Their presence is a reason to finish the rebase, not evidence that the entire
-new build is faster. The GDN implementation uses compensated BF16 terms with
+Their presence alone is not evidence that the entire new build is faster.
+The GDN implementation uses compensated BF16 terms with
 F32 state, rather than the retired private BF16 shadow-weight mode. It still
 requires numerical and model-level acceptance.
 
-Open PRs reviewed on October 14 do not justify adding another patch now.
+The additional open PRs selected on October 14 are the small quantized-state
+copy and successful-stream connection reuse corrections in the ledger.
+Other reviewed proposals remain deferred.
 [HIP sparse attention](https://github.com/ggml-org/llama.cpp/pull/30370), at
 `1ad19e56872d60cbee26c442a449bee7f0ba8fa9`, dispatches on GCN, not Strix Halo.
 The updated [Vulkan KV layout proposal](https://github.com/ggml-org/llama.cpp/pull/27703),
@@ -371,15 +364,23 @@ replace our narrowed F16 path without a new backend comparison.
 and [vectorized RMS norm](https://github.com/ggml-org/llama.cpp/pull/29720)
 remain watch candidates rather than established end-to-end Strix Halo wins.
 
+The Strix fork was also reviewed at
+`deb5e2f50f79b812f5b957321c7b511c054043e0`. Its allocation-boundary fix is
+retained above. Newer mixed-matrix paths, incremental-cache machinery and
+Flash-Next MTP-specific fusions are not imported. A decode HC-mix fusion at
+`389d446be5fd2babf97d2d98b3cdf39c4742a5fc` is a possible separate experiment,
+not a measured gain for this update. Its supporting kernels and numerical
+assumptions need their own review rather than copying the dispatch change.
+
 The October 6 isolation follow-up changes the interpretation of the refresh
 hold. Unpatched `d7a695ef679138c13d86359b84c1731d36213d32` passes with
 resident embeddings. Adding only the explicit reader reproduces the logit
 failure, while recreating HIP executable graphs on recapture clears the
 bounded test without disabling ordinary replay. This is a reader/runtime
 interaction, not evidence that MTP or every new upstream build is broken.
-The candidate workaround remains experimental. Follow the
+The resulting narrowed workaround is now listed in the patch ledger. The
 [isolation record](hardware-acceptance.md#fedora-44-strix-halo-flash-next-state-isolation-2026-10-06)
-and complete the remaining acceptance before changing the production pin.
+preserves the original controls and limits of that diagnosis.
 
 The upstream review also distinguishes closed proposals from merged fixes.
 [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863) and
@@ -395,25 +396,25 @@ remains open. These statuses were checked on October 14. Neither a closed
 proposal nor a similarly named upstream feature is grounds to remove a guard
 without checking equivalent behavior. The newer Flash-Next MTP merge is
 covered below and does not enable MTP in the managed preset.
-The [refresh acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-source-refresh-2026-09-30)
+The [current refresh acceptance record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-upstream-update-2026-10-14)
 contains the paired ROCm/Vulkan measurements, populated-context checks and
 hardware-coverage limits.
 
 The October 4 refresh attempt at `46847e61582097979f539595d893d83d8e1d1af1`
-is **held**, not the current production pin. Upstream replaced the QSA
+was **held** and is not the current production pin. Upstream replaced the QSA
 cache/indexer implementation and reduced indexer-score workspace. The
-rebased candidate fails the populated clear-and-restore logit gate even
+rebased candidate failed the populated clear-and-restore logit gate even
 with upstream attention. Model-free operator tests and short API success
 are insufficient to accept it. The
 [native-engine trial record](hardware-acceptance.md#fedora-44-strix-halo-native-engine-trials-2026-10-04)
-preserves the failure, diagnostics and private source archive for the next
-attempt. Do not drop downstream safeguards or silently disable all graphs
+preserves the failure, diagnostics and private source archive.
+Do not drop downstream safeguards or silently disable all graphs
 to make this refresh pass.
 
 The October 6 retry at `6753a033f058fbf778d282556ed9b16c78de7c71`
-is also **held**. It includes the newer pooled-cache scatter and graph-shape
-fixes, but the eight-patch screening build still changes logits after
-clear-and-restore with HIP graphs enabled. Disabling graphs passes the
+was also **held**. It included the newer pooled-cache scatter and graph-shape
+fixes, but the eight-patch screening build still changed logits after
+clear-and-restore with HIP graphs enabled. Disabling graphs passed the
 fixture and remains a diagnostic, not an accepted workaround. See the
 [retry record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-retry-2026-10-06).
 
@@ -429,9 +430,16 @@ of current mainline compatibility.
 
 The candidate self-contained Q8 head has a corrected draft-layer compression
 ratio in its GGUF metadata. Header inspection is not inference acceptance.
-Resolve the runtime restore failure before downloading and accepting that
-draft, measuring MTP at populated context, or changing the catalog. The
-existing target GGUFs do not need a new pin or download for this refresh.
+The source refresh does not accept that draft or enable Flash-Next MTP.
+It still needs a separate content review, populated-context correctness and
+paired performance test. The existing target GGUFs need no new download.
+
+#### Earlier extraction provenance
+
+The following `r40` through `r48` notes describe earlier implementations and
+their evidence. The current patch ledger above is authoritative. In particular,
+the private prepared-key cache, prefix checks and selection controls described
+below were removed in `r50` and must not be added to current deployments.
 
 The `r44` selection patch builds on the four earlier extractions. The graph
 already selected whole blocks, but its ordinary gather, sort, cast and
@@ -518,8 +526,8 @@ default changes. The matched Strix Halo test uses the same image with the
 gather path enabled and disabled; see the
 [hardware record](hardware-acceptance.md#fedora-44-strix-halo-flash-next-qsa-gather-2026-09-25).
 The larger direct-reader rewrite in
-[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030) is still under
-active review and changes lazy-read semantics beyond this model. The pooled
+[PR 29030](https://github.com/ggml-org/llama.cpp/pull/29030) was then under
+active review and changed lazy-read semantics beyond this model. The pooled
 QSA key cache in [PR 28699](https://github.com/ggml-org/llama.cpp/pull/28699)
 changes persistent inference state. Neither is included in `r39`, and
 Flash-Next MTP remains disabled.

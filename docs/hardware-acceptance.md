@@ -26,15 +26,182 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Fedora 44 Strix Halo llama.cpp upstream update (2026-10-14)
+
+**PASS on Strix Halo, with a measured performance tradeoff.** The default
+dense Q8 MTP control is effectively unchanged. Flash-Next's cold 247K request
+is unchanged, but its warm decode is about 12.3% slower. This update accepts
+the newer upstream base and correctness fixes, not an across-the-board speedup.
+
+This update advances llama.cpp by 345 upstream commits to
+`23deec025587a58469bdf0120313ff88a1ddcc7b`. The controller revision is the
+commit adding this record. The final fourteen-patch source tree is
+`c6d3b98410741a5f95033e109ce4734d73b9f7e6`, verified against the actual cold
+builder, not just an experimental source checkout. The image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-23deec0-r50`, ID
+`1107526be13744cd1ab08ad91f149298d2319c7099ffcf29570b34a762bd72e7`.
+
+The acceptance host runs Fedora 44, kernel `7.2.10-200.fc44.x86_64`, `gfx1151`,
+128 GB LPDDR5X-8000 and ROCm 10.0. The 112 GiB GPU allowance, balanced
+platform profile and CPU EPP are unchanged. No host packages, kernel options,
+memory limits, power policy or services were reconfigured. GGUFs, catalog
+pins, templates, gateway samplers, the dense Q8 MTP default and F16 KV caches
+are unchanged. Flash-Next remains non-MTP.
+
+The earlier partial rebase below did not retain enough of the accepted
+pipeline. This update restores the scoped F32 fusions and Q8 scheduling,
+corrects selected-ID ordering and replaces the private prepared-key cache
+and selection machinery with upstream's pooled-cache state. Three obsolete
+patch files are removed. The new compact selection patch only avoids a
+redundant mask, with an independent visibility-intersection oracle.
+
+There is no private BF16/F16 shadow-matrix mode. Upstream's chunked GDN uses
+compensated BF16 products and F32 state, which is a different algorithm and
+was included in numerical and model-level checks. The ledger in
+[upgrading](upgrading.md#upgrade-llamacpp) records each remaining patch and
+its removal gate.
+
+The final image passes the following completed checks.
+
+- Cold managed build for all four compiled GPU targets, runtime `pip check`,
+  native library closure and absence of the SDK/source and PyTorch payload.
+  CPU router startup retains loopback-only private networking, read-only
+  root, dropped capabilities, no-new-privileges and no GPU devices.
+  Tiny-model CLI inference exits successfully on CPU, ROCm and Vulkan.
+- Five chat/grammar/argument tests, allocation-policy isolation and all 50
+  explicit-reader dequantizer/EOF checks.
+- 654 supported ROCm QSA, Qwen pipeline, GDN and top-k MoE numerical cases.
+  Three deliberately unsupported geometries are rejected, not counted as
+  passes. The full Flash-Next restore, causal-transition and clear/restore
+  fixture has logit NMSE 0.
+- All 309 selected generic flash-attention cases pass on each of ROCm and
+  Vulkan, covering F16, Q8_0 and Q4_0 caches with matched head sizes 64, 128
+  and 256. Each cache type executes multi-query cases as well as decode.
+- Quantized-cache device save/restore and scattered copies pass all three
+  enabled context tests with each of F16, Q8_0 and Q4_0. The unpatched control
+  passes F16 but produces incorrect Q8/Q4 logits or a CPU-side scatter crash.
+  A filter that initially skipped tests is retained as failed test setup,
+  not accepted evidence.
+- The streaming keep-alive fix passes three SSE/health rounds on the same
+  raw TCP socket without reconnect. The unpatched control closes that socket.
+  Eight MoE allocation-lifetime cases execute real optimizer callbacks and
+  pass. The negative control reports invalid lifetime endpoints and crashes
+  on a terminal normalization suffix.
+- Flash-Next passes 247K retrieval, cached continuations, off/low/medium/xhigh,
+  tool-call replay, SSE and Responses on ROCm and Vulkan. ROCm also passes
+  explicit cache and direct-cancellation follow-up checks.
+- The default dense Qwen3.8 Q8 MTP preset recovers the same six values at
+  247K, then passes cached continuations and the full protocol/cache/cancel
+  suite. Its initial request takes 1766.40 seconds, including 1747.34 seconds
+  of prefill. The 227-token answer accepts 168 of 174 drafted tokens. These
+  are actual MTP counters, not an inference from the preset's name.
+- Dense Q8 MTP also passes the protocol suite on Vulkan. Dense Q4 MTP and
+  both dense and sparse Qwen3.6 MTP variants pass on ROCm. Muse Glimmer
+  DFlash at its 256K ceiling passes thinking-off, a reasoning answer and tool
+  replay, accepting 72 of 240 drafted tokens in the 93-token reasoning answer.
+  Those short Muse requests do not populate its context ceiling.
+- Gateway lazy startup, frozen inventory and dense-to-Flash-Next-to-dense
+  switching pass with the final image. Backend publication remains on an
+  ephemeral loopback port. Omitted, null and explicit-zero sampling values,
+  thinking controls and provenance agree with the catalog. Conflicting
+  selectors return HTTP 400. All 18 streaming/non-streaming cancellation
+  trials observe the child slot returning to idle within 0.63 seconds.
+- Real Pi and Maki sandbox runs read the fixture with their file tool and
+  execute `printf` with their shell tool, then return both actual results.
+  Pi explicitly runs with thinking off and reports no reasoning tokens.
+  Maki uses its normal selected-model controls in this probe. These are
+  tool-protocol checks, not comparative coding-quality benchmarks.
+- The public `acceptance` command passes with the final image, GPU/device
+  diagnostics and the managed Qwen3 0.6B ROCm smoke. Local `make check`,
+  `make test`, `make static`, forced normal build and race checks pass,
+  along with Python compilation, shell syntax, catalog JSON and diff checks.
+
+The paired Flash-Next measurement uses the same four Unsloth UD-Q4_K_XL
+shards, explicit buffered embedding reads, F16 K/V, no MTP, one ROCm slot,
+one serial client and a 262144-token ceiling. Both builds run on the same
+kernel. A fixed 143-file Go/Markdown corpus supplies a 247165-token prompt
+with six dispersed retrieval values. Both recover all six. Requests send
+the catalog's medium-thinking sampler tuple with temperature zero and seed
+42. Model load is excluded. Cold means no reused KV prefix, not a flushed OS
+page cache.
+
+| ROCm build | Cold request wall time | Prompt processing | Warm continuation throughput |
+| --- | ---: | ---: | ---: |
+| Previous `2090f60-r49` | 402.49 s | 391.96 s | 18.98 tokens/s |
+| Updated `23deec0-r50` | 404.91 s | 392.92 s | 16.65 tokens/s |
+
+Cold wall time differs by 0.6% and prompt processing by 0.25%. Warm decode
+is **12.3% slower** in this screen. Warm throughput is 512 generated tokens
+divided by the sum of two HTTP request durations, with 247159 cached prompt
+tokens in both builds. The first continuation, which also processes a larger
+uncached tail, is excluded from that rate. These fixed-256-token continuations
+are deliberately truncated timing probes, not completed coding tasks.
+The result is a maintenance/correctness update, not an across-the-board
+speedup. This small sample does not establish a general quality difference.
+
+The separate shallow HTTP control for the default dense Q8 MTP preset is
+effectively flat at 15.73 versus 15.78 aggregate tokens/s. It uses three
+41-token prompts with no reused prefix and exactly 256 generated tokens per
+request. The request bodies and generated messages match across builds.
+This does not turn the timing probe into a completed-task quality benchmark.
+
+Native dense Q8 **non-MTP** benchmarks also show no meaningful decode change.
+Each row uses `pp512`, `tg128`, batch/microbatch 2048/512, flash attention and
+three repetitions. Deep rows preload 32768 tokens and restore a CPU checkpoint
+between repetitions. They are not on-device state-copy tests. Values below
+are native benchmark means in tokens/s, not concurrent HTTP throughput.
+
+| Backend | KV | Existing depth | Old pp / tg | New pp / tg |
+| --- | --- | ---: | ---: | ---: |
+| ROCm | F16 | 0 | 370.56 / 7.19 | 377.23 / 7.21 |
+| ROCm | F16 | 32768 | 265.41 / 6.78 | 270.44 / 6.77 |
+| ROCm | Q8_0 | 32768 | 261.45 / 6.88 | 266.19 / 6.86 |
+| Vulkan | F16 | 0 | 365.24 / 7.30 | 367.39 / 7.31 |
+| Vulkan | F16 | 32768 | 243.40 / 6.79 | 242.28 / 6.80 |
+| Vulkan | Q8_0 | 32768 | 235.86 / 6.97 | 235.36 / 6.97 |
+
+Decode differences stay within 0.3%. The small prefill differences, including
+roughly 2% on ROCm, are not a reason to advertise a speedup. Quantized-cache
+rows cover an optional path and do not change the F16 defaults.
+
+Final-image Vulkan also recovers all six values at 247K, taking 1151.70
+seconds for the cold request and 1140.15 seconds for prefill. Its managed
+server has four slots with a 262144-token ceiling per slot, checked through
+live properties, but the test still uses one serial client. This is backend
+coverage, not a paired Vulkan speedup claim.
+
+Minimum sampled available host memory during the ROCm long runs is 21.12 GiB
+for the old image and 23.76 GiB for the new one. Those observations do not
+isolate a memory-saving cause. The 4 GiB safety guard never fires. Expected
+CPU crashes from the negative controls appear in the kernel journal. The
+final-image checks have produced no new AMDGPU/SVM faults. One ordinary
+kernel `perf` sampling-rate reduction notice appeared during the native
+benchmarks. The final Python GPU diagnostic emitted the previously recorded
+split-lock notices. Neither required intervention.
+
+The cold build, exact patched source, numerical/state controls, raw requests,
+responses, benchmark JSON, live slot evidence and client transcripts are
+retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261014-llama-update/`,
+with checksums and the delivery diff. The earlier held screen's archive is
+left intact. The acceptance host started idle and is left idle with no gateway or test
+container running. The final image is built and available for normal use.
+
+`gfx1150`, `gfx1200` and `gfx1201` are **N/P for hardware acceptance of this
+update** because representative hardware was unavailable for this run.
+Compilation for those targets is not inference acceptance. Their applicable
+operator, cache, model and isolation gates remain required before claiming
+this update is accepted there.
+
 ### Fedora 44 Strix Halo llama.cpp refresh screen (2026-10-14)
 
-**HOLD the production update.** Upstream
-`529ac893e754e95a50469b2122f5efe28dfc08a0` builds and can pass the bounded
+**Historical HOLD, superseded by the accepted update above.** Upstream
+`529ac893e754e95a50469b2122f5efe28dfc08a0` built and passed the bounded
 Flash-Next state checks with reviewed experimental corrections. However,
-the corrected partial port takes about 28% longer than production on the
-32K retrieval probe. The production pin remains
-`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, image `r49`. No experimental
-patch, new arithmetic mode, sampler change or model update is enabled.
+the corrected partial port took about 28% longer than production on the
+32K retrieval probe. This screen therefore left the production pin at
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, image `r49`, with no experimental
+patch, arithmetic mode, sampler change or model update enabled at that point.
 
 This run follows the host owner's system upgrade and reboot. The acceptance host is still
 Fedora 44, `gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0, now with kernel
