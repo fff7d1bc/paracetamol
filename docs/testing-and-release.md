@@ -70,6 +70,11 @@ artifact:
 make -B build
 ```
 
+The project tests exercise both build recipes with a fake compiler and failed
+file operations. A failure or interruption must return a nonzero status,
+preserve the previous executable and remove the temporary output. Only a
+successful, non-empty build may replace the executable.
+
 The optional native-Linux race pass is appropriate after changes to process,
 signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 

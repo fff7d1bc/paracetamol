@@ -100,19 +100,25 @@ $(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 		printf '%s\n' 'normal builds require CGO; use make static for the pure-Go binary'; \
 		exit 2; \
 	}
-	@temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID).XXXXXX")"; \
-	trap 'rm -f "$$temporary"' EXIT INT TERM HUP; \
+	@set -eu; \
+	temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID).XXXXXX")"; \
+	trap 'rm -f "$$temporary"' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
 	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" "$(GO_PACKAGE)"; \
+	test -s "$$temporary"; \
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(BIN)"; \
 	trap - EXIT INT TERM HUP
 
 $(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
-	@temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID)-static.XXXXXX")"; \
-	trap 'rm -f "$$temporary"' EXIT INT TERM HUP; \
+	@set -eu; \
+	temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID)-static.XXXXXX")"; \
+	trap 'rm -f "$$temporary"' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
 	CGO_ENABLED=0 go build -trimpath -tags 'netgo osusergo' \
 		-ldflags "-s -w -buildid= $(IDENTITY_LDFLAGS)" \
 		-o "$$temporary" "$(GO_PACKAGE)"; \
+	test -s "$$temporary"; \
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(STATIC_BIN)"; \
 	trap - EXIT INT TERM HUP
