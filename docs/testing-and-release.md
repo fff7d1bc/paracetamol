@@ -75,6 +75,12 @@ file operations. A failure or interruption must return a nonzero status,
 preserve the previous executable and remove the temporary output. Only a
 successful, non-empty build may replace the executable.
 
+CI uses Go 1.26.9. The `go 1.26.0` directive in `go.mod` is the language
+compatibility floor, not a recommendation to run the original 1.26.0
+toolchain. Keep host toolchains on a supported security patch release through
+the host's package or configuration management. Normal Make targets use the
+installed toolchain and do not download an update automatically.
+
 The optional native-Linux race pass is appropriate after changes to process,
 signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 
