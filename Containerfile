@@ -282,6 +282,8 @@ COPY applications/llama-cpp/server-stream-keepalive.patch \
     /opt/paracetamol/llama-server-stream-keepalive.patch
 COPY applications/llama-cpp/topk-moe-boundaries.patch \
     /opt/paracetamol/llama-topk-moe-boundaries.patch
+COPY applications/llama-cpp/hip-qwen4exp-decode.patch \
+    /opt/paracetamol/llama-hip-qwen4exp-decode.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
 RUN git init . && \
@@ -316,6 +318,8 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-server-stream-keepalive.patch && \
     git apply --check /opt/paracetamol/llama-topk-moe-boundaries.patch && \
     git apply /opt/paracetamol/llama-topk-moe-boundaries.patch && \
+    git apply --check /opt/paracetamol/llama-hip-qwen4exp-decode.patch && \
+    git apply /opt/paracetamol/llama-hip-qwen4exp-decode.patch && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -402,7 +406,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,router-disconnect,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,router-disconnect,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

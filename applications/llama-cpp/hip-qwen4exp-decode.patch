@@ -1,0 +1,1078 @@
+Precision-preserving Qwen4exp decode fusions for exact gfx1151.
+The GDN chain derives from halo-box/strix-llama.cpp PR 106 at
+9fbe5308fabbc79a53ddee5eadfad74ae0e4710e (MIT), adapted to the current
+upstream eight-lane recurrent reduction and explicit input/output lifetimes.
+The HC gate fold derives from ggml-org/llama.cpp PR 30602 at
+681ae40b5688343dd1a2c6c44b903ba8d5e5ac68 (MIT), integrated into the existing
+norm/injection path rather than displacing that larger prefill fusion.
+
+Dispatch retains F32 arithmetic, exact Qwen4exp geometry and conservative
+consumer, allocation-lifetime and alias checks. Unsupported graphs fall back.
+No weights, KV cache precision, matrix precision or host policy is changed.
+
+diff --git a/ggml/src/ggml-cuda/gated_delta_net.cu b/ggml/src/ggml-cuda/gated_delta_net.cu
+index 6cee2ccc3..7e10149c8 100644
+--- a/ggml/src/ggml-cuda/gated_delta_net.cu
++++ b/ggml/src/ggml-cuda/gated_delta_net.cu
+@@ -3,6 +3,7 @@
+ #include "ggml-cuda/common.cuh"
+ 
+ #include <cstdint>
++#include "unary.cuh"
+ 
+ #if defined(GGML_USE_HIP) && (defined(RDNA3) || defined(RDNA4))
+ template <int mask>
+@@ -609,3 +610,215 @@ void ggml_cuda_op_gated_delta_net_fused_cache(
+         ggml_backend_cuda_context & ctx, ggml_tensor * dst, ggml_cuda_gated_delta_net_fused_cache cache) {
+     ggml_cuda_op_gated_delta_net_impl(ctx, dst, &cache);
+ }
++
++// Qwen4exp single-token decode on gfx1151. Adapt the Strix fork's fusion,
++// but retain this upstream pin's F32 reduction and FMA ordering. Four blocks
++// per value head own disjoint recurrent-state columns. Convolution inputs
++// are read by several blocks, so their output cache may not alias inputs.
++// Normalization is a second kernel because its output can reuse graph inputs.
++
++static __device__ __forceinline__ float gdn_decode_sigmoid(float x) {
++    return 1.0f / (1.0f + expf(-x));
++}
++
++static __device__ __forceinline__ float gdn_decode_softplus(float x) {
++    return (x > 20.0f) ? x : logf(1.0f + expf(x));
++}
++
++template <int S, int D_CONV>
++__global__ void __launch_bounds__(32 * 8, 1) gdn_decode_fused_cuda(const ggml_cuda_gdn_decode_args args) {
++    constexpr int warp_size = 32;
++    constexpr int nwarps    = 8;
++    static_assert(S == 128);
++
++    __shared__ float q_c[S];
++    __shared__ float k_c[S];
++    __shared__ float v_c[S];
++    __shared__ float q_n[S];
++    __shared__ float k_n[S];
++    __shared__ float attn[S];
++    __shared__ float qk_red[8];     // q/k rms norm: the 4+4 per-warp partial sums of the standalone 256-thread block
++
++    const int h      = blockIdx.x;  // value head
++    const int lane   = threadIdx.x;
++    const int warp   = threadIdx.y;
++    const int thread = warp * warp_size + lane;
++    const int hk     = h % args.H_k;  // key/query head (fastmodulo(h_idx, neqk1) in gated_delta_net_cuda)
++
++    // 1. causal conv + SiLU for this head's q, k and v channels; shift the conv state (CPY conv_state_last)
++    for (int element = thread; element < 3 * S; element += warp_size * nwarps) {
++        const int part = element / S;  // 0: q, 1: k, 2: v
++        const int i    = element % S;
++        const int c    = part == 0 ? hk * S : part == 1 ? args.H_k * S + hk * S : 2 * args.H_k * S + h * S;
++        const int ch   = c + i;
++
++        float x[D_CONV];
++        float w[D_CONV];
++#pragma unroll
++        for (int j = 0; j < D_CONV - 1; j++) {
++            x[j] = args.conv_state_in[ch * (D_CONV - 1) + j];
++        }
++        x[D_CONV - 1] = args.qkv[ch * args.qkv_stride];
++#pragma unroll
++        for (int j = 0; j < D_CONV; j++) {
++            w[j] = args.conv_w[ch * D_CONV + j];
++        }
++
++        // ssm_conv_f32: fma chain from 0, then the (zero) bias add, then SiLU
++        float sumf = fmaf(x[0], w[0], 0.0f);
++#pragma unroll
++        for (int j = 1; j < D_CONV; j++) {
++            sumf = fmaf(x[j], w[j], sumf);
++        }
++        sumf += args.conv_bias;
++        const float y = ggml_cuda_op_silu_single(sumf);
++
++        if (part == 0) {
++            q_c[i] = y;
++        } else if (part == 1) {
++            k_c[i] = y;
++        } else {
++            v_c[i] = y;
++        }
++
++        // q/k channels are shared by H_v/H_k value heads: the first one writes the conv state
++        if (blockIdx.z == 0 && (part == 2 || h == hk)) {
++#pragma unroll
++            for (int j = 0; j < D_CONV - 1; j++) {
++                args.conv_state_out[ch * (D_CONV - 1) + j] = x[j + 1];
++            }
++        }
++    }
++    __syncthreads();
++
++    {
++        // rms_norm_f32<256, false>: 128 elements over 128 lanes (4 warps, one element per lane; warps 4..7
++        // of the standalone 256-thread block hold exact zeros that drop out of the tree), the warp
++        // butterfly (xor 16/8/4/2/1), the cross-warp tree ((v0 + v2) + (v1 + v3)), mean = sum / 128,
++        // scale = rsqrtf(mean + eps), dst = scale * x; then scale_f32: dst = mul * dst + add. The standalone
++        // scale_f32 compiles its mul+add to a single FMA (v_fma_f32 in the RDNA3.5 build), so the same
++        // contraction is spelled explicitly here.
++        const int iqk = warp < 4 ? 0 : 1;
++        if (warp < 8) {
++            const float * x    = iqk == 0 ? q_c : k_c;
++            const float   xi   = x[(warp & 3) * warp_size + lane];
++            float         part = fmaf(xi, xi, 0.0f);
++            part               = warp_reduce_sum<warp_size>(part);
++            if (lane == 0) {
++                qk_red[warp] = part;
++            }
++        }
++        __syncthreads();
++        const float total = iqk == 0 ? (qk_red[0] + qk_red[2]) + (qk_red[1] + qk_red[3]) :
++                                       (qk_red[4] + qk_red[6]) + (qk_red[5] + qk_red[7]);
++        const float scale = rsqrtf(total / (float) args.S + args.qk_rms_eps[iqk]);
++        if (warp < 8) {
++            const float * x   = iqk == 0 ? q_c : k_c;
++            float *       y   = iqk == 0 ? q_n : k_n;
++            const int     i   = (warp & 3) * warp_size + lane;
++            const float   rms = scale * x[i];
++            y[i]              = fmaf(args.qk_scale_mul[iqk], rms, args.qk_scale_add[iqk]);
++        }
++    }
++
++    // gate = softplus(alpha + dt_bias) * A, beta = sigmoid(beta): scalar per head, computed by every thread
++    const float alpha_biased = args.alpha[h] + args.dt_bias[h];
++    const float gate         = gdn_decode_softplus(alpha_biased) * args.ssm_a[h];
++    const float beta_val     = gdn_decode_sigmoid(args.beta[h]);
++    const float g_val        = expf(gate);
++    __syncthreads();
++
++    // Match current upstream's four independent 8-lane columns per wave.
++    // The fork's older 32-lane reduction has a different rounding sequence.
++    constexpr int lanes_per_col = 8;
++    constexpr int rows          = S / lanes_per_col;
++    const int     col_base      = blockIdx.z * (nwarps * 4);
++    {
++        const int     local = lane % lanes_per_col;
++        const int     col   = col_base + warp * 4 + lane / lanes_per_col;
++        const float * state_in =
++            args.state_cache + int64_t(args.state_ids[0]) * args.state_row_stride + int64_t(h) * S * S + col * S;
++        float shard[rows], kr[rows], qr[rows];
++#pragma unroll
++        for (int r = 0; r < rows; ++r) {
++            const int j = r * lanes_per_col + local;
++            shard[r]    = state_in[j];
++            kr[r]       = k_n[j];
++            qr[r]       = q_n[j];
++        }
++        float kv = 0.0f;
++#pragma unroll
++        for (int r = 0; r < rows; ++r) {
++            kv += shard[r] * kr[r];
++        }
++        const float sum     = warp_reduce_sum<lanes_per_col>(kv);
++        const float delta   = (v_c[col] - g_val * sum) * beta_val;
++        float       partial = 0.0f;
++#pragma unroll
++        for (int r = 0; r < rows; ++r) {
++            shard[r] = g_val * shard[r] + kr[r] * delta;
++            partial += shard[r] * qr[r];
++        }
++        const float value = warp_reduce_sum<lanes_per_col>(partial);
++        if (local == 0) {
++            attn[col] = value * args.scale;
++        }
++#pragma unroll
++        for (int r = 0; r < rows; ++r) {
++            args.state_out[int64_t(h) * S * S + col * S + r * lanes_per_col + local] = shard[r];
++        }
++    }
++    __syncthreads();
++
++    // 4. pre-norm attention output to the scratch buffer (the weighted rms norm runs as a second kernel: its
++    //    destination may alias inputs of this kernel that other blocks are still reading)
++    if (thread < nwarps * 4) {
++        args.attn_out[(int64_t) h * S + col_base + thread] = attn[col_base + thread];
++    }
++}
++
++// rms_norm_f32<128, true>: per-warp partial sums, then the second-level butterfly of block_reduce over
++// lanes 0..3 (which reduces to (s0 + s2) + (s1 + s3)), times the norm weight
++template <int S>
++__global__ void __launch_bounds__(S, 1) gdn_decode_norm_cuda(const float * attn,
++                                                             const float * norm_w,
++                                                             float *       out,
++                                                             const float   eps) {
++    constexpr int warp_size = 32;
++    static_assert(S == 4 * warp_size);
++    __shared__ float red[4];
++
++    const int h    = blockIdx.x;
++    const int tid  = threadIdx.x;
++    const int warp = tid / warp_size;
++    const int lane = tid % warp_size;
++
++    const float xi   = attn[(int64_t) h * S + tid];
++    const float part = gdn_warp_reduce_sum<warp_size>(fmaf(xi, xi, 0.0f));
++    if (lane == 0) {
++        red[warp] = part;
++    }
++    __syncthreads();
++    const float tmp            = (red[0] + red[2]) + (red[1] + red[3]);
++    const float mean           = tmp / (float) S;
++    const float scale          = rsqrtf(mean + eps);
++    out[(int64_t) h * S + tid] = scale * xi * norm_w[tid];
++}
++
++void ggml_cuda_op_gdn_decode_fused(ggml_backend_cuda_context & ctx, const ggml_cuda_gdn_decode_args & args_in) {
++    GGML_ASSERT(args_in.S == 128 && args_in.d_conv == 4);
++    ggml_cuda_pool_alloc<float> attn(ctx.pool(), args_in.S * args_in.H_v);
++    ggml_cuda_gdn_decode_args   args = args_in;
++    args.attn_out                    = attn.get();
++
++    const dim3                           grid(args.H_v, 1, 4);
++    const dim3                           block(32, 8, 1);
++    const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(grid, block, 0, ctx.stream());
++    ggml_cuda_kernel_launch(gdn_decode_fused_cuda<128, 4>, launch_params, args);
++
++    const dim3                           norm_grid(args.H_v, 1, 1);
++    const dim3                           norm_block(128, 1, 1);
++    const ggml_cuda_kernel_launch_params norm_params =
++        ggml_cuda_kernel_launch_params(norm_grid, norm_block, 0, ctx.stream());
++    ggml_cuda_kernel_launch(gdn_decode_norm_cuda<128>, norm_params, attn.get(), args.norm_w, args.out, args.eps_rms);
++}
+diff --git a/ggml/src/ggml-cuda/gated_delta_net.cuh b/ggml/src/ggml-cuda/gated_delta_net.cuh
+index f9bf43706..ebe91dc38 100644
+--- a/ggml/src/ggml-cuda/gated_delta_net.cuh
++++ b/ggml/src/ggml-cuda/gated_delta_net.cuh
+@@ -1,6 +1,40 @@
+ #include "common.cuh"
+ #include "ggml.h"
+ 
++// Scoped Qwen4exp decode fusion. All strides are in elements.
++struct ggml_cuda_gdn_decode_args {
++    // conv: conv_state_in [d_conv-1, C] (contiguous, per channel), qkv [C] with stride, conv_w [d_conv, C]
++    const float *   conv_state_in;
++    const float *   qkv;
++    int64_t         qkv_stride;
++    const float *   conv_w;
++    float           conv_bias;       // 0.0f (ssm_conv adds a runtime zero when there is no bias)
++    float *         conv_state_out;  // [d_conv-1, C] (contiguous) cache row
++    // gate / beta
++    const float *   alpha;    // [H_v]
++    const float *   dt_bias;  // [H_v]
++    const float *   ssm_a;    // [H_v]
++    const float *   beta;     // [H_v]
++    // Qwen4exp q/k normalization is RMS_NORM followed by SCALE.
++    float           qk_rms_eps[2]   = { 0.0f, 0.0f };
++    float           qk_scale_mul[2] = { 0.0f, 0.0f };
++    float           qk_scale_add[2] = { 0.0f, 0.0f };
++    // recurrence
++    const float *   state_cache;  // [S*S*H_v, n_slots] cache, row = state_ids[0] (transposed per head: [col][row])
++    const int32_t * state_ids;
++    int64_t         state_row_stride;
++    float *         state_out;  // [S, S, H_v] cache row
++    float           scale;      // 1/sqrt(S)
++    // weighted rms norm
++    const float *   norm_w;    // [S]
++    float           eps_rms;
++    float *         out;       // [S, H_v]
++    float *         attn_out;  // [S, H_v] pre-norm scratch (set by the host)
++    int64_t         S, H_k, H_v, d_conv;
++};
++
++void ggml_cuda_op_gdn_decode_fused(ggml_backend_cuda_context & ctx, const ggml_cuda_gdn_decode_args & args);
++
+ // fused-kernel recurrent-state output; strides in elements (per-seq stride is always D, set in-kernel)
+ struct ggml_cuda_gated_delta_net_fused_cache {
+     float * data;        // rollback slot 0
+diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index dd5730f01..903e1e85b 100644
+--- a/ggml/src/ggml-cuda/ggml-cuda.cu
++++ b/ggml/src/ggml-cuda/ggml-cuda.cu
+@@ -2912,7 +2912,7 @@ static bool ggml_cuda_should_fuse_rms_norm_mul_rope(const ggml_tensor * rms_norm
+ // match gated_delta_net + the strided cpy that scatters its state snapshots into the cache
+ // (slot i -> rollback group i, slot 0 newest), so the kernel can write them and skip the cpy.
+ static int ggml_cuda_try_gdn_cache_fusion(
+-        const ggml_cgraph * cgraph, int node_idx, ggml_cuda_gated_delta_net_fused_cache & fused_state_cpy) {
++        const ggml_cgraph * cgraph, int node_idx, ggml_cuda_gated_delta_net_fused_cache & fused_state_cpy, bool aliases = true) {
+     const ggml_tensor * gdn = cgraph->nodes[node_idx];
+     // the kernel skips the snapshot tail, so the gdn output must not be a graph output
+     if (gdn->op != GGML_OP_GATED_DELTA_NET || gdn->type != GGML_TYPE_F32 ||
+@@ -2962,7 +2962,7 @@ static int ggml_cuda_try_gdn_cache_fusion(
+     // dst is the [D, n_seqs, n_written] cache view; require nb[1] == D (the per-seq stride the kernel
+     // assumes). ggml_cpy pins src to the same element count.
+     const std::array<int64_t, GGML_MAX_DIMS> expected_ne = { D, n_seqs, n_written, 1 };
+-    if (dst->op != GGML_OP_VIEW || dst->type != GGML_TYPE_F32 || dst->data == nullptr ||
++    if (dst->op != GGML_OP_VIEW || dst->type != GGML_TYPE_F32 || (aliases && dst->data == nullptr) ||
+         !std::equal(expected_ne.begin(), expected_ne.end(), dst->ne) ||
+         dst->nb[0] != ggml_type_size(GGML_TYPE_F32) || dst->nb[1] != (size_t) ggml_row_size(GGML_TYPE_F32, D)) {
+         return 0;
+@@ -2973,6 +2973,326 @@ static int ggml_cuda_try_gdn_cache_fusion(
+     return skip;
+ }
+ 
++static int ggml_cuda_try_gdn_decode_fusion(const ggml_cgraph *         cgraph,
++                                           int                         node_idx,
++                                           ggml_cuda_gdn_decode_args & args,
++                                           bool                        aliases) {
++    const ggml_tensor * concat = cgraph->nodes[node_idx];
++    if (concat->op != GGML_OP_CONCAT || strcmp(concat->name, "qwen4exp_gdn_history") != 0 ||
++        concat->type != GGML_TYPE_F32 || ggml_get_op_params_i32(concat, 0) != 0) {
++        return 0;
++    }
++    const int64_t d_conv = concat->ne[0];
++    const int64_t C      = concat->ne[1];
++    if (d_conv != 4 || concat->ne[2] != 1 || concat->ne[3] != 1 || !ggml_is_contiguous(concat)) {
++        return 0;
++    }
++    const ggml_tensor * conv_state = concat->src[0];  // [d_conv-1, C, 1]
++    const ggml_tensor * qkv_t      = concat->src[1];  // [1, C, 1]
++    if (conv_state->type != GGML_TYPE_F32 || qkv_t->type != GGML_TYPE_F32 || conv_state->ne[0] != d_conv - 1 ||
++        conv_state->ne[1] != C || conv_state->ne[2] != 1 || !ggml_is_contiguous(conv_state) || qkv_t->ne[0] != 1 ||
++        qkv_t->ne[1] != C || qkv_t->ne[2] != 1 || qkv_t->nb[1] % sizeof(float) != 0) {
++        return 0;
++    }
++
++    // collect the following compute nodes
++    constexpr int n_ops           = 14;
++    const ggml_op expected[n_ops] = {
++        GGML_OP_CPY,      GGML_OP_GET_ROWS, GGML_OP_SSM_CONV, GGML_OP_UNARY, GGML_OP_RMS_NORM,        GGML_OP_RMS_NORM,
++        GGML_OP_ADD,      GGML_OP_UNARY,    GGML_OP_MUL,      GGML_OP_UNARY, GGML_OP_GATED_DELTA_NET, GGML_OP_CPY,
++        GGML_OP_RMS_NORM, GGML_OP_MUL,
++    };
++    const ggml_tensor * n[n_ops];
++    int                 idx[n_ops];
++    int                 found       = 0;
++    int                 last        = node_idx;
++    // Keep each Qwen4exp RMS_NORM + SCALE pair at one logical index. Views
++    // and an optional materialized convolution-state copy widen the range.
++    const ggml_tensor * qk_scale[2] = { nullptr, nullptr };
++    const ggml_tensor * conv_cont   = nullptr;
++    for (int j = node_idx + 1; j < cgraph->n_nodes && found < n_ops;) {
++        const ggml_tensor * t = cgraph->nodes[j];
++        if (ggml_cuda_is_view_or_noop(t)) {
++            ++j;
++            continue;
++        }
++        if (t->type != GGML_TYPE_F32) {
++            return 0;
++        }
++        if (found == 0 && t->op == GGML_OP_CONT && !conv_cont) {
++            conv_cont = t;
++            ++j;
++            continue;
++        }
++        if (found == 4 || found == 5) {
++            const int iqk = found - 4;
++            if (t->op == GGML_OP_RMS_NORM && t->src[1] == nullptr) {
++                int j_scale = j + 1;
++                while (j_scale < cgraph->n_nodes && ggml_cuda_is_view_or_noop(cgraph->nodes[j_scale])) {
++                    ++j_scale;
++                }
++                if (j_scale >= cgraph->n_nodes) {
++                    return 0;
++                }
++                const ggml_tensor * s = cgraph->nodes[j_scale];
++                if (s->op != GGML_OP_SCALE || s->type != GGML_TYPE_F32 || s->src[0] != t || s->src[1] != nullptr ||
++                    !ggml_is_contiguous(s) || !ggml_are_same_shape(s, t)) {
++                    return 0;
++                }
++                qk_scale[iqk] = s;
++                n[found]      = t;
++                idx[found]    = j;
++                last          = j_scale;
++                ++found;
++                j = j_scale + 1;
++                continue;
++            } else {
++                return 0;
++            }
++        } else if (t->op != expected[found]) {
++            return 0;
++        }
++        n[found]   = t;
++        idx[found] = j;
++        last       = j;
++        ++found;
++        ++j;
++    }
++    if (found != n_ops) {
++        return 0;
++    }
++    // intermediates must not be graph outputs
++    if (concat->flags & GGML_TENSOR_FLAG_OUTPUT) {
++        return 0;
++    }
++    for (int k = 0; k < n_ops; ++k) {
++        if (k != 0 && k != 11 && k != 13 && (n[k]->flags & GGML_TENSOR_FLAG_OUTPUT)) {
++            return 0;
++        }
++    }
++    for (int k = 0; k < 2; ++k) {
++        if (qk_scale[k] && (qk_scale[k]->flags & GGML_TENSOR_FLAG_OUTPUT)) {
++            return 0;
++        }
++    }
++
++    const ggml_tensor * cpy_conv = n[0];
++    const ggml_tensor * get_rows = n[1];
++    const ggml_tensor * ssm_conv = n[2];
++    const ggml_tensor * silu     = n[3];
++    const ggml_tensor * l2_q     = n[4];
++    const ggml_tensor * l2_k     = n[5];
++    const ggml_tensor * add      = n[6];
++    const ggml_tensor * softplus = n[7];
++    const ggml_tensor * mul_a    = n[8];
++    const ggml_tensor * sigmoid  = n[9];
++    const ggml_tensor * gdn      = n[10];
++    const ggml_tensor * rms      = n[12];
++    const ggml_tensor * mul_w    = n[13];
++
++    auto is_view_of = [](const ggml_tensor * t, const ggml_tensor * src, size_t offs) {
++        return t == src ? offs == 0 : (t->view_src == src && t->view_offs == offs);
++    };
++
++    // conv state shift: view of the concat (skipping the oldest column) copied into a contiguous cache row
++    {
++        const ggml_tensor * src = cpy_conv->src[0];
++        if (conv_cont) {
++            if (src != conv_cont || !ggml_is_contiguous(conv_cont) ||
++                !ggml_are_same_shape(conv_cont, conv_cont->src[0])) {
++                return 0;
++            }
++            src = conv_cont->src[0];
++        }
++        const ggml_tensor * dst = cpy_conv->src[1];
++        if (!is_view_of(src, concat, sizeof(float)) || src->ne[0] != d_conv - 1 || src->ne[1] != C || src->ne[2] != 1 ||
++            src->nb[1] != concat->nb[1] || dst->type != GGML_TYPE_F32 || (aliases && dst->data == nullptr) ||
++            ggml_nelements(dst) != (d_conv - 1) * C || !ggml_is_contiguous(dst)) {
++            return 0;
++        }
++    }
++
++    // ssm_conv(concat, weight [d_conv, C]) without bias, then silu
++    if (ssm_conv->src[0] != concat || ssm_conv->src[2] != nullptr || ssm_conv->src[1]->type != GGML_TYPE_F32 ||
++        ssm_conv->src[1]->ne[0] != d_conv || ssm_conv->src[1]->ne[1] != C || !ggml_is_contiguous(ssm_conv->src[1]) ||
++        ssm_conv->ne[0] != C || ggml_nelements(ssm_conv) != C || ggml_get_unary_op(silu) != GGML_UNARY_OP_SILU ||
++        silu->src[0] != ssm_conv || !ggml_is_contiguous(silu)) {
++        return 0;
++    }
++
++    // recurrence shapes
++    const ggml_tensor * v_view = gdn->src[2];
++    const int64_t       S      = v_view->ne[0];
++    const int64_t       H_v    = v_view->ne[1];
++    const int64_t       H_k    = l2_q->ne[1];
++    if (S != 128 || H_v != 48 || H_k <= 0 || H_v % H_k != 0 || v_view->ne[2] != 1 || v_view->ne[3] != 1 ||
++        2 * S * H_k + S * H_v != C || ggml_get_op_params_i32(gdn, 0) != 1) {
++        return 0;
++    }
++
++    // q/k/v are views into the silu output: [S, H, 1, 1] with rows of S floats
++    auto qkv_view_ok = [&](const ggml_tensor * t, int64_t H, size_t offs) {
++        return t->view_src == silu && t->view_offs == offs && t->ne[0] == S && t->ne[1] == H && t->ne[2] == 1 &&
++               t->ne[3] == 1 && t->nb[0] == sizeof(float) && t->nb[1] == S * sizeof(float);
++    };
++    if (!qkv_view_ok(l2_q->src[0], H_k, 0) || !qkv_view_ok(l2_k->src[0], H_k, S * H_k * sizeof(float)) ||
++        !qkv_view_ok(v_view, H_v, 2 * S * H_k * sizeof(float)) || !ggml_are_same_shape(l2_q, l2_q->src[0]) ||
++        !ggml_are_same_shape(l2_k, l2_k->src[0]) || !ggml_is_contiguous(l2_q) || !ggml_is_contiguous(l2_k)) {
++        return 0;
++    }
++    float eps_q, eps_k;
++    memcpy(&eps_q, l2_q->op_params, sizeof(float));
++    memcpy(&eps_k, l2_k->op_params, sizeof(float));
++    if (eps_q != eps_k) {
++        return 0;
++    }
++
++    // gate = softplus(alpha + dt_bias) * A, beta = sigmoid(beta): H_v scalars
++    if (ggml_nelements(add) != H_v || add->src[0]->type != GGML_TYPE_F32 || add->src[1]->type != GGML_TYPE_F32 ||
++        ggml_nelements(add->src[0]) != H_v || ggml_nelements(add->src[1]) != H_v || !ggml_is_contiguous(add->src[0]) ||
++        !ggml_is_contiguous(add->src[1]) || ggml_get_unary_op(softplus) != GGML_UNARY_OP_SOFTPLUS ||
++        softplus->src[0] != add || mul_a->src[0] != softplus || mul_a->src[1]->type != GGML_TYPE_F32 ||
++        ggml_nelements(mul_a->src[1]) != H_v || !ggml_is_contiguous(mul_a->src[1]) || ggml_nelements(mul_a) != H_v ||
++        ggml_get_unary_op(sigmoid) != GGML_UNARY_OP_SIGMOID || sigmoid->src[0]->type != GGML_TYPE_F32 ||
++        ggml_nelements(sigmoid->src[0]) != H_v || !ggml_is_contiguous(sigmoid->src[0]) ||
++        ggml_nelements(sigmoid) != H_v) {
++        return 0;
++    }
++
++    // gated_delta_net(q, k, v, gate, beta, state) with the state gathered from the cache by get_rows
++    if (gdn->src[0] != qk_scale[0] || gdn->src[1] != qk_scale[1] || !is_view_of(gdn->src[3], mul_a, 0) ||
++        !is_view_of(gdn->src[4], sigmoid, 0) || gdn->src[3]->ne[0] != 1 || ggml_nelements(gdn->src[3]) != H_v ||
++        ggml_nelements(gdn->src[4]) != H_v || !is_view_of(gdn->src[5], get_rows, 0) ||
++        ggml_nelements(get_rows) != S * S * H_v) {
++        return 0;
++    }
++    {
++        const ggml_tensor * cache = get_rows->src[0];
++        const ggml_tensor * ids   = get_rows->src[1];
++        if (cache->type != GGML_TYPE_F32 || cache->ne[0] != S * S * H_v || cache->nb[0] != sizeof(float) ||
++            cache->nb[1] < S * S * H_v * sizeof(float) || cache->nb[1] % sizeof(float) != 0 ||
++            ids->type != GGML_TYPE_I32 || ggml_nelements(ids) != 1) {
++            return 0;
++        }
++    }
++
++    // new state -> cache (same check as the standalone gated_delta_net + cpy fusion)
++    ggml_cuda_gated_delta_net_fused_cache state_cpy;
++    if (ggml_cuda_try_gdn_cache_fusion(cgraph, idx[10], state_cpy, aliases) != idx[11] - idx[10] ||
++        state_cpy.slot_stride != 0) {
++        return 0;
++    }
++
++    // Weighted RMS norm of the attention output [S, H_v].
++    {
++        const ggml_tensor * x = rms->src[0];
++        if (rms->src[1] != nullptr || x->view_src != gdn || x->view_offs != 0 || x->ne[0] != S || x->ne[1] != H_v ||
++            x->ne[2] != 1 || x->ne[3] != 1 || x->nb[0] != sizeof(float) || x->nb[1] != S * sizeof(float) ||
++            !ggml_are_same_shape(rms, x) || mul_w->src[0] != rms || mul_w->src[1]->type != GGML_TYPE_F32 ||
++            ggml_nelements(mul_w->src[1]) != S || !ggml_is_contiguous(mul_w->src[1]) ||
++            !ggml_are_same_shape(mul_w, rms) || !ggml_is_contiguous(mul_w)) {
++            return 0;
++        }
++    }
++
++    // Recurrent-state columns have independent block ownership. An aligned
++    // cache-row update is safe, but overlapping convolution inputs would race
++    // their readers. Keep all three outputs disjoint and reject other aliases.
++    if (aliases) {
++        const auto * conv_out  = cpy_conv->src[1];
++        const auto * state_out = n[11]->src[1];
++        const auto * cache     = get_rows->src[0];
++        auto         overlaps  = [](const ggml_tensor * a, const ggml_tensor * b) {
++            if (!a->data || !b->data) {
++                return false;
++            }
++            const uintptr_t x = uintptr_t(a->data), y = uintptr_t(b->data);
++            return x <= y ? y - x < ggml_nbytes(a) : x - y < ggml_nbytes(b);
++        };
++        if (overlaps(conv_out, state_out) || overlaps(conv_out, mul_w) || overlaps(state_out, mul_w)) {
++            return 0;
++        }
++        // Check the kernel's actual reads, not metadata edges of destination
++        // views or reshapes. The model exposes the same state allocation
++        // through several such views, none of which is an additional read.
++        for (const auto * src : std::initializer_list<const ggml_tensor *>{
++                 conv_state, qkv_t, ssm_conv->src[1], add->src[0], add->src[1], mul_a->src[1], sigmoid->src[0], cache,
++                 get_rows->src[1], mul_w->src[1] }) {
++            if (overlaps(conv_out, src)) {
++                return 0;
++            }
++            if (overlaps(state_out, src)) {
++                if (src != cache) {
++                    return 0;
++                }
++                const uintptr_t x = uintptr_t(state_out->data), y = uintptr_t(cache->data);
++                const size_t    row = S * S * H_v * sizeof(float), bytes = ggml_nbytes(cache);
++                if (x < y || x - y > bytes || row > bytes - (x - y) || (x - y) % cache->nb[1] != 0) {
++                    return 0;
++                }
++            }
++        }
++        if (overlaps(mul_w, mul_w->src[1])) {
++            return 0;
++        }
++    }
++
++    args.conv_state_in  = (const float *) conv_state->data;
++    args.qkv            = (const float *) qkv_t->data;
++    args.qkv_stride     = qkv_t->nb[1] / sizeof(float);
++    args.conv_w         = (const float *) ssm_conv->src[1]->data;
++    args.conv_bias      = 0.0f;
++    args.conv_state_out = (float *) cpy_conv->src[1]->data;
++    args.alpha          = (const float *) add->src[0]->data;
++    args.dt_bias        = (const float *) add->src[1]->data;
++    args.ssm_a          = (const float *) mul_a->src[1]->data;
++    args.beta           = (const float *) sigmoid->src[0]->data;
++    {
++        args.qk_rms_eps[0]   = ggml_get_op_params_f32(l2_q, 0);
++        args.qk_rms_eps[1]   = ggml_get_op_params_f32(l2_k, 0);
++        args.qk_scale_mul[0] = ggml_get_op_params_f32(qk_scale[0], 0);
++        args.qk_scale_mul[1] = ggml_get_op_params_f32(qk_scale[1], 0);
++        args.qk_scale_add[0] = ggml_get_op_params_f32(qk_scale[0], 1);
++        args.qk_scale_add[1] = ggml_get_op_params_f32(qk_scale[1], 1);
++    }
++    args.state_cache      = (const float *) get_rows->src[0]->data;
++    args.state_ids        = (const int32_t *) get_rows->src[1]->data;
++    args.state_row_stride = get_rows->src[0]->nb[1] / sizeof(float);
++    args.state_out        = state_cpy.data;
++    args.scale            = 1.0f / sqrtf((float) S);
++    args.norm_w           = (const float *) mul_w->src[1]->data;
++    memcpy(&args.eps_rms, rms->op_params, sizeof(float));
++    args.out      = (float *) mul_w->data;
++    args.attn_out = nullptr;
++    args.S        = S;
++    args.H_k      = H_k;
++    args.H_v      = H_v;
++    args.d_conv   = d_conv;
++
++    // Every skipped node except the three outputs must have all of its consumers inside this range.
++    // Include view nodes in the count even though they are not compute nodes.
++    for (int j = node_idx; j <= last; ++j) {
++        if (j == idx[0] || j == idx[11] || j == idx[13]) {
++            continue;
++        }
++        const ggml_tensor * candidate = cgraph->nodes[j];
++        if (candidate->flags & GGML_TENSOR_FLAG_OUTPUT) {
++            return 0;
++        }
++        int internal_uses = 0;
++        for (int k = node_idx; k <= last; ++k) {
++            for (int src = 0; src < GGML_MAX_SRC; ++src) {
++                internal_uses += cgraph->nodes[k]->src[src] == candidate;
++            }
++        }
++        if (internal_uses != ggml_node_get_use_count(cgraph, j)) {
++            return 0;
++        }
++    }
++
++    return last - node_idx;
++}
++
+ // match ssm_scan + the strided cpy that scatters its state snapshots into the cache, so the kernel writes them and skips the cpy
+ static int ggml_cuda_try_ssm_scan_cache_fusion(
+         const ggml_cgraph * cgraph, int node_idx, ggml_cuda_ssm_scan_fused_cache & fused_state_cpy) {
+@@ -3696,6 +4016,14 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+     ggml_tensor * node = cgraph->nodes[i];
+ 
+ #if defined(GGML_USE_HIP)
++    if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_GDN_DECODE") && node->op == GGML_OP_CONCAT) {
++        ggml_cuda_gdn_decode_args args;
++        const int skip = ggml_cuda_try_gdn_decode_fusion(cgraph, i, args, true);
++        if (skip > 0) {
++            ggml_cuda_op_gdn_decode_fused(*cuda_ctx, args);
++            return skip;
++        }
++    }
+     if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_MMV_GROUP") && node->op == GGML_OP_MUL_MAT) {
+         ggml_tensor * nodes[4];
+         int outputs[4], count = 0, end = i;
+@@ -3715,6 +4043,12 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph
+     }
+     if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_HC_NORM")) {
+         qwen_hc_match hc;
++        // Preserve the larger norm/injection fusion. A post-only gate
++        // fusion would consume this range first and lose its prefill benefit.
++        if (int skip = qwen_hc_gate_match_at(cgraph, i, hc, true)) {
++            qwen_hc_combine_norm(*cuda_ctx, hc);
++            return skip;
++        }
+         if (qwen_hc_inject_match_at(cgraph, i, hc, true)) {
+             qwen_hc_combine_norm(*cuda_ctx, hc);
+             return 4;
+@@ -4907,6 +5241,23 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+             }
+         }
+ #if defined(GGML_USE_HIP)
++        if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_GDN_DECODE")) for (int i = 0; i < cgraph->n_nodes; ++i) {
++            ggml_cuda_gdn_decode_args args;
++            const int skip = ggml_cuda_try_gdn_decode_fusion(cgraph, i, args, false);
++            if (!skip) continue;
++            // Keep every external input alive until the final fused output.
++            // Matching must also work before allocation, when tensor data is null.
++            for (int j = i; j <= i + skip; ++j) {
++                for (const auto * input : cgraph->nodes[j]->src) {
++                    if (!input) continue;
++                    bool internal = false;
++                    for (int k = i; k <= i + skip; ++k) internal |= input == cgraph->nodes[k];
++                    if (internal) continue;
++                    auto * root = const_cast<ggml_tensor *>(input->view_src ? input->view_src : input);
++                    params->add_alloc_dep(params->user_data, root, cgraph->nodes[i + skip]);
++                }
++            }
++        }
+         if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_NARROW_NORM")) for (int i = 0; i < cgraph->n_nodes; ++i) {
+             ggml_cuda_norm_gated_match norm;
+             int skip = ggml_cuda_norm_gated_match_at(cgraph, i, norm);
+@@ -4921,6 +5272,11 @@ static void ggml_backend_cuda_graph_optimize(ggml_backend_t backend, ggml_cgraph
+         }
+         if (qsa_fusion_enabled(cuda_ctx, "PARACETAMOL_QWEN4EXP_HC_NORM")) for (int i = 0; i < cgraph->n_nodes; ++i) {
+             qwen_hc_match hc;
++            if (qwen_hc_gate_match_at(cgraph,i,hc,false)) {
++                auto * root = const_cast<ggml_tensor *>(hc.gate->view_src ? hc.gate->view_src : hc.gate);
++                params->add_alloc_dep(params->user_data,root,hc.norm);
++                if (hc.inject) params->add_alloc_dep(params->user_data,root,hc.inject);
++            }
+             if (qwen_hc_inject_match_at(cgraph, i, hc, false)) {
+                 for (const auto * input : std::initializer_list<const ggml_tensor *>{hc.post->src[0], hc.post->src[1],
+                         hc.post->src[2], hc.gamma, hc.post, hc.norm, hc.inject->src[0]}) {
+diff --git a/ggml/src/ggml-cuda/qwen4exp-hc.cu b/ggml/src/ggml-cuda/qwen4exp-hc.cu
+index 3abc19657..4d8b060ba 100644
+--- a/ggml/src/ggml-cuda/qwen4exp-hc.cu
++++ b/ggml/src/ggml-cuda/qwen4exp-hc.cu
+@@ -3,13 +3,14 @@
+ 
+ // Adapt the Strix fork's combined residual/RMS operation to upstream's HC_POST
+ // node. Keep the upstream F32 arithmetic and 1024-thread RMS reduction order.
+-template <int BLOCK>
++template <int BLOCK, bool GATE = false>
+ static __global__ void qwen_hc_norm_kernel(const float * x, const float * residual,
+         const float * weights, const float * gamma, float * post, float * norm,
+-        int embd, int streams, float eps) {
++        int embd, int streams, float eps, float gate_in, float gate_out) {
+     const int stream = blockIdx.x, token = blockIdx.y, tid = threadIdx.x;
+     const int64_t row = (int64_t) token * streams + stream;
+-    const float w = weights[row];
++    float w = weights[row];
++    if constexpr (GATE) w = gate_out * (1.0f / (1.0f + expf(-(gate_in * w))));
+     // Four virtual groups retain exactly the 1024-thread arithmetic tree
+     // with fewer physical threads. Unlike the fork's packed-pair reduction,
+     // this changes scheduling without reordering F32 sums.
+@@ -49,16 +50,18 @@ static __global__ void qwen_hc_norm_kernel(const float * x, const float * residu
+ // F32-only version of the fork's norm/injection fusion. Normalized residual
+ // values retain the original RMS tree. The four dot products use an ordinary
+ // parallel F32 reduction, not a rounded F16/BF16 matrix path.
++template <bool GATE = false>
+ static __global__ void qwen_hc_norm_inject_kernel(const float * x, const float * residual,
+         const float * weights, const float * gamma, const float * projection,
+-        float * post, float * norm, float * inject, int embd, float eps) {
++        float * post, float * norm, float * inject, int embd, float eps, float gate_in, float gate_out) {
+     const int token=blockIdx.x, tid=threadIdx.x;
+     __shared__ float partial[32];
+     __shared__ float dot_partial[4][8];
+     float dot[4]={};
+     for (int stream=0;stream<4;++stream) {
+         const int64_t row=int64_t(token)*4+stream;
+-        const float w=weights[row];
++        float w=weights[row];
++        if constexpr (GATE) w = gate_out * (1.0f / (1.0f + expf(-(gate_in * w))));
+         float values[4][3]={};
+ #pragma unroll
+         for (int group=0;group<4;++group) {
+@@ -139,7 +142,8 @@ bool qwen_hc_match_at(const ggml_cgraph * graph, int i, qwen_hc_match & m, bool
+         if (overlap(post, mul) || overlap(res, mul) ||
+                 (overlap(res, post) && res->data != post->data)) return false;
+     }
+-    m.post = post; m.norm = mul; m.gamma = gamma; m.inject = nullptr;
++    m.post = post; m.norm = mul; m.gamma = gamma; m.inject = nullptr; m.gate = nullptr;
++    m.gate_in = 0.0f; m.gate_out = 0.0f;
+     memcpy(&m.eps, rms->op_params, sizeof(float));
+     return true;
+ }
+@@ -177,26 +181,85 @@ bool qwen_hc_inject_match_at(const ggml_cgraph * graph, int i, qwen_hc_match & m
+     return true;
+ }
+ 
+-void qwen_hc_combine_norm(ggml_backend_cuda_context & ctx, const qwen_hc_match & m) {
++int qwen_hc_gate_match_at(const ggml_cgraph * graph, int i, qwen_hc_match & m, bool aliases) {
++    if (i + 5 >= graph->n_nodes) {
++        return 0;
++    }
++    auto * a   = graph->nodes[i];
++    auto * sig = graph->nodes[i + 1];
++    auto * b   = graph->nodes[i + 2];
++    if (a->op != GGML_OP_SCALE || sig->op != GGML_OP_UNARY || b->op != GGML_OP_SCALE ||
++        ggml_get_unary_op(sig) != GGML_UNARY_OP_SIGMOID || sig->src[0] != a || b->src[0] != sig ||
++        ggml_get_op_params_f32(a, 1) != 0.0f || ggml_get_op_params_f32(b, 1) != 0.0f ||
++        a->src[0]->type != GGML_TYPE_F32 || !ggml_is_contiguous(a->src[0]) || !ggml_are_same_shape(a->src[0], b) ||
++        graph->nodes[i + 3]->src[2] != b) {
++        return 0;
++    }
++    if (!qwen_hc_inject_match_at(graph, i + 3, m, aliases) && !qwen_hc_match_at(graph, i + 3, m, aliases)) {
++        return 0;
++    }
++    for (int j = i; j < i + 3; ++j) {
++        if ((graph->nodes[j]->flags & GGML_TENSOR_FLAG_OUTPUT) || !ggml_node_has_n_uses(graph, j, 1)) {
++            return 0;
++        }
++    }
++    const bool closed = m.inject ?
++                            ggml_can_fuse_subgraph(graph, i,
++                                                   { GGML_OP_SCALE, GGML_OP_UNARY, GGML_OP_SCALE, GGML_OP_DSV4_HC_POST,
++                                                     GGML_OP_RMS_NORM, GGML_OP_MUL, GGML_OP_RESHAPE, GGML_OP_MUL_MAT },
++                                                   { i + 3, i + 5, i + 6, i + 7 }) :
++                            ggml_can_fuse_subgraph(graph, i,
++                                                   { GGML_OP_SCALE, GGML_OP_UNARY, GGML_OP_SCALE, GGML_OP_DSV4_HC_POST,
++                                                     GGML_OP_RMS_NORM, GGML_OP_MUL },
++                                                   { i + 3, i + 5 });
++    if (!closed) {
++        return 0;
++    }
++    if (aliases) {
++        const auto * in = a->src[0];
++        for (const auto * out : { m.post, m.norm, m.inject }) {
++            if (!out) {
++                continue;
++            }
++            const uintptr_t x = uintptr_t(in->data), y = uintptr_t(out->data);
++            if (x <= y ? y - x < ggml_nbytes(in) : x - y < ggml_nbytes(out)) {
++                return 0;
++            }
++        }
++    }
++    m.gate     = a->src[0];
++    m.gate_in  = ggml_get_op_params_f32(a, 0);
++    m.gate_out = ggml_get_op_params_f32(b, 0);
++    return m.inject ? 7 : 5;
++}
++
++template <bool GATE>
++static void qwen_hc_combine_norm_impl(ggml_backend_cuda_context & ctx, const qwen_hc_match & m) {
+     const auto * p = m.post;
++    const auto * weights = GATE ? m.gate : p->src[2];
+     if (m.inject) {
+-        qwen_hc_norm_inject_kernel<<<p->ne[2],256,0,ctx.stream()>>>(
+-            (const float *)p->src[0]->data,(const float *)p->src[1]->data,(const float *)p->src[2]->data,
++        qwen_hc_norm_inject_kernel<GATE><<<p->ne[2],256,0,ctx.stream()>>>(
++            (const float *)p->src[0]->data,(const float *)p->src[1]->data,(const float *)weights->data,
+             (const float *)m.gamma->data,(const float *)m.inject->src[0]->data,
+-            (float *)p->data,(float *)m.norm->data,(float *)m.inject->data,p->ne[0],m.eps);
++            (float *)p->data,(float *)m.norm->data,(float *)m.inject->data,p->ne[0],m.eps,m.gate_in,m.gate_out);
+         CUDA_CHECK(cudaGetLastError());
+         return;
+     }
+     const dim3 blocks(p->ne[1], p->ne[2]);
+     const char * packed = getenv("PARACETAMOL_QWEN4EXP_HC_PACKED");
+     if (!packed || strcmp(packed, "0") != 0) {
+-        qwen_hc_norm_kernel<256><<<blocks, 256, 0, ctx.stream()>>>(
+-            (const float *) p->src[0]->data, (const float *) p->src[1]->data, (const float *) p->src[2]->data,
+-            (const float *) m.gamma->data, (float *) p->data, (float *) m.norm->data, p->ne[0], p->ne[1], m.eps);
++        qwen_hc_norm_kernel<256,GATE><<<blocks, 256, 0, ctx.stream()>>>(
++            (const float *) p->src[0]->data, (const float *) p->src[1]->data, (const float *) weights->data,
++            (const float *) m.gamma->data, (float *) p->data, (float *) m.norm->data, p->ne[0], p->ne[1], m.eps,m.gate_in,m.gate_out);
+     } else {
+-        qwen_hc_norm_kernel<1024><<<blocks, 1024, 0, ctx.stream()>>>(
+-            (const float *) p->src[0]->data, (const float *) p->src[1]->data, (const float *) p->src[2]->data,
+-            (const float *) m.gamma->data, (float *) p->data, (float *) m.norm->data, p->ne[0], p->ne[1], m.eps);
++        qwen_hc_norm_kernel<1024,GATE><<<blocks, 1024, 0, ctx.stream()>>>(
++            (const float *) p->src[0]->data, (const float *) p->src[1]->data, (const float *) weights->data,
++            (const float *) m.gamma->data, (float *) p->data, (float *) m.norm->data, p->ne[0], p->ne[1], m.eps,m.gate_in,m.gate_out);
+     }
+     CUDA_CHECK(cudaGetLastError());
+ }
++
++void qwen_hc_combine_norm(ggml_backend_cuda_context & ctx, const qwen_hc_match & m) {
++    if (m.gate) qwen_hc_combine_norm_impl<true>(ctx,m);
++    else qwen_hc_combine_norm_impl<false>(ctx,m);
++}
+diff --git a/ggml/src/ggml-cuda/qwen4exp-hc.cuh b/ggml/src/ggml-cuda/qwen4exp-hc.cuh
+index 4de509dfa..b457c9e41 100644
+--- a/ggml/src/ggml-cuda/qwen4exp-hc.cuh
++++ b/ggml/src/ggml-cuda/qwen4exp-hc.cuh
+@@ -7,7 +7,10 @@ struct qwen_hc_match {
+     const ggml_tensor * gamma;
+     float eps;
+     ggml_tensor * inject = nullptr;
++    const ggml_tensor * gate = nullptr;
++    float gate_in = 1.0f, gate_out = 1.0f;
+ };
++int qwen_hc_gate_match_at(const ggml_cgraph * graph, int index, qwen_hc_match & match, bool aliases);
+ bool qwen_hc_match_at(const ggml_cgraph * graph, int index, qwen_hc_match & match, bool aliases);
+ bool qwen_hc_inject_match_at(const ggml_cgraph * graph, int index, qwen_hc_match & match, bool aliases);
+ void qwen_hc_combine_norm(ggml_backend_cuda_context & ctx, const qwen_hc_match & match);
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 4a2af2cdb..9ead891ce 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -9666,13 +9666,146 @@ struct test_qwen_ple_conv : public test_case {
+     }
+ };
+ 
++struct test_qwen_gdn_decode : public test_case {
++    int  key_heads, guard;
++    bool materialized, inplace, reshaped;
++
++    // Guards cover exposed intermediates, a non-Qwen graph, an external
++    // reader, a shifted state output and overwritten convolution history.
++    // Each must fall back while still producing the same result. Reshaped
++    // cache roots reproduce the model's metadata views without adding reads.
++    test_qwen_gdn_decode(int key_heads, int guard, bool materialized, bool inplace, bool reshaped) :
++        key_heads(key_heads),
++        guard(guard),
++        materialized(materialized),
++        inplace(inplace),
++        reshaped(reshaped) {}
++
++    std::string op_desc(ggml_tensor *) override { return "QWEN_GDN_DECODE"; }
++
++    std::string vars() override { return VARS_TO_STR5(key_heads, guard, materialized, inplace, reshaped); }
++
++    bool run_whole_graph() override { return true; }
++
++    double max_nmse_err() override { return 0; }
++
++    double err(const float * actual, const float *, size_t n) override {
++        for (size_t i = 0; i < n; ++i) {
++            if (actual[i] != 0.0f) {
++                return INFINITY;
++            }
++        }
++        return 0;
++    }
++
++    void initialize_tensors(ggml_context * ctx) override {
++        for (auto * t = ggml_get_first_tensor(ctx); t; t = ggml_get_next_tensor(ctx, t)) {
++            if (ggml_is_view_op(t->op)) {
++                continue;
++            }
++            if (t->type == GGML_TYPE_I32) {
++                const int32_t zero = 0;
++                ggml_backend_tensor_set(t, &zero, 0, 4);
++            } else if (strcmp(t->name, "ssm_a") == 0) {
++                init_tensor_uniform(t, -2.0f, -0.1f);
++            } else {
++                init_tensor_uniform(t, -0.3f, 0.3f);
++            }
++        }
++    }
++
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        const int S = 128, H = 48, C = S * (2 * key_heads + H), D = S * S * H;
++        auto *    history = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 3, C);
++        auto *    qkv     = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 1, C);
++        auto *    taps    = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 4, C);
++        auto *    cache   = reshaped ? ggml_new_tensor_3d(ctx, GGML_TYPE_F32, S, S * H, 2) :
++                                       ggml_new_tensor_2d(ctx, GGML_TYPE_F32, D, 2);
++        auto *    ids     = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, 1);
++        auto *    alpha   = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, H);
++        auto *    dt      = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, H);
++        auto *    a       = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, H);
++        ggml_set_name(a, "ssm_a");
++        auto * beta   = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, H);
++        auto * normw  = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, S);
++        auto   branch = [&](bool reference) {
++            auto * input_cache = inplace ? ggml_dup(ctx, cache) : cache;
++            if (inplace) {
++                ggml_build_forward_expand(gf, input_cache);
++            }
++            auto * input_history = guard == 5 ? ggml_dup(ctx, history) : history;
++            if (guard == 5) {
++                ggml_build_forward_expand(gf, input_history);
++            }
++            auto * cc = ggml_concat(ctx, input_history, qkv, 0);
++            if (guard != 2) {
++                ggml_set_name(cc, "qwen4exp_gdn_history");
++            }
++            if (reference || guard == 1) {
++                ggml_set_output(cc);
++            }
++            auto * conv_cache = guard == 5 ? input_history : ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 3, C);
++            auto * conv_dst   = ggml_view_2d(ctx, conv_cache, 3, C, 3 * sizeof(float), 0);
++            auto * tail       = ggml_view_2d(ctx, cc, 3, C, cc->nb[1], sizeof(float));
++            if (materialized) {
++                tail = ggml_cont(ctx, tail);
++            }
++            auto * conv_copy = ggml_cpy(ctx, tail, conv_dst);
++            ggml_build_forward_expand(gf, conv_copy);
++            auto * state = ggml_get_rows(ctx, reshaped ? ggml_reshape_2d(ctx, input_cache, D, 2) : input_cache, ids);
++            ggml_build_forward_expand(gf, state);
++            state       = ggml_reshape_4d(ctx, state, S, S, H, 1);
++            auto * silu = ggml_silu(ctx, ggml_ssm_conv(ctx, cc, taps));
++            auto   view = [&](int heads, int start) {
++                return ggml_view_4d(ctx, silu, S, heads, 1, 1, S * sizeof(float), C * sizeof(float), C * sizeof(float),
++                                    start * sizeof(float));
++            };
++            auto norm = [&](ggml_tensor * t) {
++                return ggml_scale(ctx, ggml_rms_norm(ctx, t, 1e-6f / S), 1.0f / sqrtf(S));
++            };
++            auto * q           = norm(view(key_heads, 0));
++            auto * k           = norm(view(key_heads, S * key_heads));
++            auto * v           = view(H, 2 * S * key_heads);
++            auto * g           = ggml_mul(ctx, ggml_softplus(ctx, ggml_add(ctx, alpha, dt)), a);
++            g                  = ggml_reshape_4d(ctx, g, 1, H, 1, 1);
++            auto * b           = ggml_reshape_4d(ctx, ggml_sigmoid(ctx, beta), 1, H, 1, 1);
++            auto * gdn         = ggml_gated_delta_net(ctx, q, k, v, g, b, state, 1);
++            auto * state_cache = inplace ? input_cache : ggml_new_tensor_3d(ctx, GGML_TYPE_F32, D, 1, 1);
++            auto * state_dst   = ggml_view_3d(ctx, state_cache, D, 1, 1, D * sizeof(float), D * sizeof(float),
++                                              guard == 4 ? sizeof(float) : 0);
++            auto * state_src =
++                ggml_view_3d(ctx, gdn, D, 1, 1, D * sizeof(float), D * sizeof(float), S * H * sizeof(float));
++            auto * state_copy = ggml_cpy(ctx, state_src, state_dst);
++            ggml_build_forward_expand(gf, state_copy);
++            auto * attn =
++                ggml_view_4d(ctx, gdn, S, H, 1, 1, S * sizeof(float), S * H * sizeof(float), S * H * sizeof(float), 0);
++            auto *        out   = ggml_mul(ctx, ggml_rms_norm(ctx, attn, 1e-6f), normw);
++            ggml_tensor * extra = nullptr;
++            if (guard == 3) {
++                ggml_build_forward_expand(gf, out);
++                extra = ggml_scale(ctx, cc, 0.5f);
++                ggml_build_forward_expand(gf, extra);
++            }
++            out = ggml_concat(ctx, ggml_reshape_1d(ctx, out, S * H), ggml_reshape_1d(ctx, state_copy, D), 0);
++            if (extra) {
++                out = ggml_concat(ctx, out, ggml_reshape_1d(ctx, extra, 4 * C), 0);
++            }
++            if (guard == 1) {
++                out = ggml_concat(ctx, out, ggml_reshape_1d(ctx, cc, 4 * C), 0);
++            }
++            return ggml_concat(ctx, out, ggml_reshape_1d(ctx, conv_copy, 3 * C), 0);
++        };
++        return ggml_sub(ctx, branch(false), branch(true));
++    }
++};
++
+ struct test_qwen_hc_norm : public test_case {
+     int embd, tokens;
+-    bool extra_reader;
+-    test_qwen_hc_norm(int embd, int tokens, bool extra_reader = false)
+-        : embd(embd), tokens(tokens), extra_reader(extra_reader) {}
+-    std::string op_desc(ggml_tensor *) override { return "QWEN_HC_NORM"; }
+-    std::string vars() override { return VARS_TO_STR3(embd, tokens, extra_reader); }
++    bool extra_reader, gated;
++    test_qwen_hc_norm(int embd, int tokens, bool extra_reader = false, bool gated = false)
++        : embd(embd), tokens(tokens), extra_reader(extra_reader), gated(gated) {}
++    std::string op_desc(ggml_tensor *) override { return gated ? "QWEN_HC_GATE_NORM" : "QWEN_HC_NORM"; }
++    std::string vars() override { return VARS_TO_STR4(embd, tokens, extra_reader, gated); }
+     bool run_whole_graph() override { return true; }
+     double max_nmse_err() override { return 0; }
+     double err(const float * actual, const float *, size_t n) override {
+@@ -9685,7 +9818,8 @@ struct test_qwen_hc_norm : public test_case {
+         auto * weights = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, 4, tokens);
+         auto * gamma = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, embd, 4);
+         auto branch = [&](bool marked) {
+-            auto * post = ggml_dsv4_hc_post(ctx, x, res, weights, nullptr);
++            auto * post_weights = gated ? ggml_scale(ctx, ggml_sigmoid(ctx, ggml_scale(ctx, weights, 0.5f)), 1.7f) : weights;
++            auto * post = ggml_dsv4_hc_post(ctx, x, res, post_weights, nullptr);
+             if (marked) ggml_set_name(post, "qwen4exp_hc_combine");
+             auto * norm = ggml_rms_norm(ctx, post, 1e-6f);
+             auto * result = ggml_mul(ctx, norm, gamma);
+@@ -9704,10 +9838,10 @@ struct test_qwen_hc_norm : public test_case {
+ 
+ struct test_qwen_hc_inject : public test_case {
+     int embd, tokens;
+-    bool extra_reader;
+-    test_qwen_hc_inject(int embd,int tokens,bool extra=false) : embd(embd),tokens(tokens),extra_reader(extra) {}
+-    std::string op_desc(ggml_tensor *) override { return "QWEN_HC_INJECT"; }
+-    std::string vars() override { return VARS_TO_STR3(embd,tokens,extra_reader); }
++    bool extra_reader, gated;
++    test_qwen_hc_inject(int embd,int tokens,bool extra=false,bool gated=false) : embd(embd),tokens(tokens),extra_reader(extra),gated(gated) {}
++    std::string op_desc(ggml_tensor *) override { return gated ? "QWEN_HC_GATE_INJECT" : "QWEN_HC_INJECT"; }
++    std::string vars() override { return VARS_TO_STR4(embd,tokens,extra_reader,gated); }
+     bool run_whole_graph() override { return true; }
+     double max_nmse_err() override { return 1e-10; }
+     double err(const float * a,const float * b,size_t n) override {
+@@ -9726,7 +9860,8 @@ struct test_qwen_hc_inject : public test_case {
+         auto * gamma=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd,4);
+         auto * projection=ggml_new_tensor_2d(ctx,GGML_TYPE_F32,embd*4,4);
+         auto branch=[&](bool marked) {
+-            auto * post=ggml_dsv4_hc_post(ctx,x,res,weights,nullptr);
++            auto * post_weights = gated ? ggml_scale(ctx, ggml_sigmoid(ctx, ggml_scale(ctx, weights, 0.5f)), 1.7f) : weights;
++            auto * post=ggml_dsv4_hc_post(ctx,x,res,post_weights,nullptr);
+             if (marked) ggml_set_name(post,"qwen4exp_hc_combine");
+             auto * rms=ggml_rms_norm(ctx,post,1e-6f);
+             auto * norm=ggml_mul(ctx,rms,gamma);
+@@ -12507,10 +12642,24 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+         for (int tokens : {1, 17, 512}) test_cases.emplace_back(new test_qwen_hc_norm(embd, tokens));
+     }
+     test_cases.emplace_back(new test_qwen_hc_norm(2560, 17, true));
++    for (int tokens : {1,17,512}) {
++        test_cases.emplace_back(new test_qwen_hc_norm(2560,tokens,false,true));
++        test_cases.emplace_back(new test_qwen_hc_norm(2560,tokens,true,true));
++    }
++    for (int keys : {4,8,12,16,48}) {
++        for (int guard : {0,1,2,3,4,5}) for (bool materialized : {false,true}) for (bool inplace : {false,true}) for (bool reshaped : {false,true}) {
++            if (guard == 4 && !inplace) continue;
++            test_cases.emplace_back(new test_qwen_gdn_decode(keys,guard,materialized,inplace,reshaped));
++        }
++    }
+     for (int embd : {1024, 2560, 3072}) {
+         for (int tokens : {255, 256, 513}) test_cases.emplace_back(new test_qwen_hc_inject(embd, tokens));
+     }
+     test_cases.emplace_back(new test_qwen_hc_inject(2560, 256, true));
++    for (int tokens : {255,256,513}) {
++        test_cases.emplace_back(new test_qwen_hc_inject(2560,tokens,false,true));
++        test_cases.emplace_back(new test_qwen_hc_inject(2560,tokens,true,true));
++    }
+     for (int cols : {64, 128, 256}) {
+         for (bool gated : {false, true}) {
+             test_cases.emplace_back(new test_qwen_narrow_norm(cols, 4096, gated));

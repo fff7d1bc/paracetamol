@@ -684,6 +684,16 @@ fails the screen. Load time and test time are printed separately. A passing
 screen is permission to continue acceptance, not evidence of long-context
 quality, speculative correctness or a production-ready source update.
 
+For a separate cross-build logit comparison, repeat the unchanged baseline
+in independent processes first. A fixed sampler seed does not establish
+bit-identical inference across processes. Keep the same teacher-forced
+tokens and compare full-vocabulary vectors, including a real-source input
+rather than only repeated synthetic tokens. If the baseline itself varies,
+record those controls before attributing a mismatch to a candidate. Do not
+relax the within-process save/restore gate above. Isolated operator tests
+against the unfused GPU path and CPU reference remain necessary, and a
+passing retrieval answer alone is not a numerical-equivalence test.
+
 ## Release checklist
 
 Paracetamol does not currently publish prebuilt images, so “release” means a

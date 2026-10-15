@@ -66,6 +66,138 @@ cloud-provider/MCP acceptance, or acceptance on other GPU classes. Test services
 are stopped afterward. Raw local evidence is under ignored
 `build/housekeeping-20261015-hGZkrf/` on the two acceptance hosts.
 
+### Strix Halo Flash-Next decode follow-up (2026-10-15)
+
+**PASS on Strix Halo.** The combined patch gives **about 6% faster decode at
+4K and 32K, and 5% at populated 247K** over the existing optimized build. Prefill is
+effectively unchanged. This is an incremental gain, not the fork's
+whole-branch headline, and introduces no reduced-precision matrix arithmetic.
+
+The baseline is the existing thirteen-patch `e36df60-r51` image, rebuilt on
+The acceptance host as `a8f8f81b515c`, with source tree
+`c22ae0041d26d7380f29169ddaaad9d74f1de818`. The controller starts at `ffc6273`.
+The delivered image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-e36df60-r52`, ID
+`7313e700a594d3dcf43504c86ce8bfc585e8423d5daed77d0884f465e669fc73`.
+Its fourteenth patch combines the two accepted candidates. The source tree
+`43f80efb641e51fe73a0e2398ef00ad19c545a10` is checked against the actual
+cold builder. The controller revision is the commit adding this record.
+The test host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, ROCm 10.0,
+`gfx1151`, 128 GB LPDDR5X-8000, balanced platform policy and
+`balance_performance` CPU EPP. No host configuration or model content changes.
+
+All candidates use the same four Unsloth Dynamic UD-Q4_K_XL shards of
+Qwen3.8-Flash-Next, non-MTP, F16 K/V, the direct embedding reader and the
+existing QSA graph and kernel policy. The server has one 262144-token slot
+and one serial client. Medium requests send the catalog sampler tuple,
+overriding only temperature to zero and seed to 42. Model loading is excluded.
+Cold means no reused KV prefix, not a flushed OS page cache.
+
+Each short screen runs the baseline and candidates in forward then reverse
+order. The retrieval requests contain 3667 or 32167 actual tokens and must
+recover six dispersed exact values. Warm throughput divides 1024 generated
+tokens by the total wall time of four cached requests across the two runs.
+The first continuation of each run reprocesses a larger tail and is excluded.
+The 256-token continuations are intentionally truncated timing probes, not
+completed coding tasks or a quality leaderboard.
+
+The combined comparison runs baseline, candidate, candidate, baseline. Each
+process repeats the short tests and then receives a 247165-token varied
+source archive. All four long requests recover the same six values. The
+cached continuation retains 247159 tokens and processes four uncached tokens.
+
+| Context screen | Baseline HTTP tokens/s | Combined HTTP tokens/s | Gain |
+| --- | ---: | ---: | ---: |
+| Shallow, 41 tokens | 21.49 | 22.74 | 5.8% |
+| 3667 tokens | 21.63 | 22.95 | 6.1% |
+| 32167 tokens | 20.82 | 22.02 | 5.8% |
+| 247165 tokens | 16.63 | 17.47 | 5.1% |
+
+Mean cold prefill is 44.42 versus 44.46 seconds at 32K and 396.11 versus
+396.12 seconds at 247K. Long retrieval answers use slightly different token
+counts, so their complete request times are not treated as an equal-output
+speed comparison. The throughput table uses fixed-length generation instead.
+
+| Independent candidate | 32K baseline / candidate HTTP tokens/s | 32K prefill result | Decision from this screen |
+| --- | ---: | --- | --- |
+| Shared pooled-input view, upstream PR 30613 | 20.82 / 20.87 | About 1% shorter | Wait for upstream, too small to carry separately |
+| Upstream HC post-gate fusion, PR 30602 | 20.82 / 21.15 | About 3.6% longer | Do not carry as-is, it displaces the existing larger fusion |
+| Parallel HC pre-mix scheduling | 20.79 / 20.85 | Effectively unchanged | Do not carry, decode improvement is about 0.3% |
+| Gate folding adapted to the existing HC norm/injection fusion | 20.82 / 21.13 | Effectively unchanged | Included in the combined candidate |
+| Scoped GDN decode-chain fusion | 20.79 / 21.72 | 44.28 / 43.91 seconds | Included in the combined candidate |
+
+The independent GDN candidate also improves shallow HTTP throughput from
+21.54 to 22.57 tokens/s and 4K warm throughput from 21.60 to 22.63. Its
+kernel preserves the current upstream eight-lane recurrent reduction order,
+rather than copying the fork's older reduction unchanged. The model,
+quantization, context policy and F16 KV cache remain the same.
+
+Cross-process logit controls matter here. The unchanged baseline itself
+produces two distinct teacher-forced vector sets in independent processes.
+The HC and GDN candidates match a recorded real-source baseline exactly
+across 65 full-vocabulary vectors. The pooled-input candidate matches the
+other baseline exactly. Those initial cross-build differences therefore do
+not establish candidate regressions. The cause of the baseline variation
+is not isolated. Within-process ordinary, causal-transition and
+clear/restore checks remain exact and are not relaxed.
+The final cold image matches the second unchanged real-source baseline
+bit-for-bit across all 65 vectors, with no nonfinite values or top-1 changes.
+
+The actual cold-image libraries pass 886 broad HIP operator cases and a
+293-case focused suite. The latter includes 220 GDN cases covering key-head
+counts, direct and materialized state, in-place updates, reshaped cache roots
+and rejected unsafe or externally observed graphs. The prototype's traces
+confirm both fusions activate on the real model, not just the test graphs.
+All eight top-k allocation-lifetime cases and seven native parser/chat tests
+pass. F16, Q8_0 and Q4_0 device state-copy checks each pass four cases with
+none skipped. These optional-cache checks do not change the F16 presets.
+
+Runtime dependency closure and `pip check` pass. The final image contains
+neither PyTorch nor the development SDK. CPU-only router startup and cleanup
+pass, as do actual tiny-model CPU, ROCm and Vulkan CLI runs and both GPU
+throughput smoke tests. Building all four HIP targets is not runtime
+acceptance on the other architectures.
+
+The uninstrumented production image repeats the Flash-Next service and
+context checks successfully. HTTP decode throughput is 22.89 at 4K, 21.92
+at 32K and 17.39 at 247K, within 0.5% of the combined prototype. Its 247K
+prefill takes 397.86 seconds and retrieves all six values. Off, low, medium
+and xhigh requests, nested tool arguments and replay, streaming, native
+Responses, historical-reasoning templates, prefix reuse and cancellation
+all pass. Thinking-off responses contain no reasoning text.
+
+The default dense Unsloth Qwen3.8 Q8 MTP control passes the same functional
+checks and a 32K retrieval/cached-decode comparison on both images. It uses
+its normal four unified-KV slots with a 262144-token per-slot ceiling and
+one serial client. The eight paired timing/retrieval responses have identical
+content and reasoning hashes. Shallow HTTP throughput is 15.78 versus 15.81
+tokens/s, cached 32K throughput is 14.44 versus 14.48, and mean 32K prefill
+is 106.99 seconds on both. This is no material regression or speedup for the
+older model, not a new dense-model 256K acceptance pass.
+
+The real gateway starts unloaded and passes dense → Flash-Next → dense
+switchback, missing/explicit sampler checks and structured tool round trips.
+All eighteen streaming/non-streaming cancellations leave the actual child
+slots idle. Backend ports remain ephemeral loopback-only. Managed Pi 1.2.0
+and installed Maki 0.6.3 both perform real file-read and shell-tool calls with
+Flash-Next and return the expected fixture values. Pi thinking-off has no
+reasoning output. The initial Maki command retained a removed `--no-rtk`
+flag, so it exited before inference. The corrected supported invocation
+passes without a product-code workaround.
+
+The full-day kernel log shows no GPU faults, resets or OOM events. The acceptance host is
+left idle with all test services stopped. Weights, default model, sampling
+policy, F16 KV settings, kernel options, memory limits and power policy are
+unchanged.
+This is bounded numerical and service acceptance, not proof of identical
+answers on every prompt or a new coding-quality benchmark. `gfx1150`,
+`gfx1200` and `gfx1201` remain **N/P** in this pass because those target
+devices were not used. The new dispatch is restricted to exact `gfx1151`.
+
+Raw requests, outputs, numerical controls, scripts, source patches, build
+logs and image identities are retained with checksums on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20261015-strix-decode/`.
+
 ### Fedora 44 Strix Halo llama.cpp upstream follow-up (2026-10-15)
 
 **PASS on Strix Halo.** The update reduces MTP checkpoint storage and removes

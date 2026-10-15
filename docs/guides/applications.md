@@ -280,18 +280,19 @@ The policy also selects a 2048-token microbatch, one non-unified KV slot and
 no RAM prompt archive. Reuse of the current live prefix still works. F16 K/V
 cache, Flash Attention and the 262144-token ceiling are retained.
 On `gfx1151` ROCm, the patched llama.cpp also uses selected-key HIP attention
-for Flash-Next's F16 QSA shape. A compact single-sequence graph removes dense
-selection masks and fuses pooling and score reduction. Scoped matrix kernels
+for Flash-Next's F16 QSA shape. A compact single-sequence graph intersects
+selected IDs with upstream's causal and sequence visibility mask without
+building a dense selection mask for every layer. Scoped matrix kernels
 also accelerate this model without changing K/V precision, quantization or
-sampling. Shared, gapped and unsupported cache layouts keep the ordinary
-attention graph. Vulkan and older Qwen families retain their existing paths.
-Single-token appends also reuse derived F32 indexer keys instead of preparing
-the entire history again. Prompt edits, rewinds and session restores invalidate
-that cache. It adds about 384 MiB at 256K for the current Flash-Next model and
-does not lower KV precision or change the model's context limit.
+sampling. Unsupported cache layouts keep the ordinary attention graph.
+Vulkan and older Qwen families retain their existing paths.
+Upstream llama.cpp owns the pooled indexer-key cache and its state lifecycle.
+There is no additional private derived-key cache.
 The scoped pipeline also avoids full convolution-history copies during
 prefill, combines normalization and injection work, and groups compatible
-decode projections. These changes retain F32 residuals and accumulation.
+decode projections. Single-token decode also combines convolution, recurrent
+state updates and normalization, and folds HC gates into the existing
+normalization path. These changes retain F32 residuals and accumulation.
 The fork's reduced-precision matrix and residual paths are not enabled.
 The [hardware record](../hardware-acceptance.md)
 contains the paired prefill measurements and correctness limits.
