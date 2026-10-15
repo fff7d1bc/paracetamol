@@ -307,10 +307,11 @@ class ThinkingPicker extends Container implements Focusable {
 
 	set focused(value: boolean) {
 		this._focused = value;
+		this.selector.focused = value;
 	}
 
 	handleInput(data: string): void {
-		this.selector.getSelectList().handleInput(data);
+		this.selector.handleInput(data);
 	}
 }
 

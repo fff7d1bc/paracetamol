@@ -50,9 +50,10 @@ runtime, then use the absolute `Runtime` path printed by the installer:
 make test-pi PI_RUNTIME=/absolute/path/to/managed/runtime
 ```
 
-Run this suite for extension or managed Pi dependency changes. It tests
+Run this suite for extension or managed Pi dependency changes. It tests model
+family grouping, native reasoning selection and search, cancellation,
 notification settlement and output isolation, HTML extraction, bounded
-pagination, key-file safety, provider errors, redirects and cancellation.
+pagination, key-file safety, provider errors and redirects.
 The dedicated CI job installs the same lockfile without lifecycle scripts
 into `build/` and runs these tests. It never contacts a search API.
 For live acceptance, fetch one public page through sandboxed Pi on an
