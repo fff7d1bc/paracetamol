@@ -88,6 +88,13 @@ revisions recorded in `catalog/catalog.json`.
   dot product and preserves the public residual labels used by control vectors
   and imatrix. This patch does not include the separate BF16 or
   F16 matrix experiments, shadow weights or reduced-precision residuals.
+  The single-token Qwen4exp GDN decode fusion derives from Strix fork
+  PR 106 at `9fbe5308fabbc79a53ddee5eadfad74ae0e4710e`, under MIT.
+  Paracetamol retains the pinned upstream eight-lane F32 recurrent reduction
+  and adds scoped graph, lifetime and alias checks with fallback tests.
+  HC gate folding derives from llama.cpp PR 30602 at
+  `681ae40b5688343dd1a2c6c44b903ba8d5e5ac68`, also under MIT. It is adapted
+  to preserve the existing combined normalization and injection path.
 - DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
   commit `0aaea5a238fb41a35106a551e73c8409dfb751ac`. The final image keeps only
   its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice

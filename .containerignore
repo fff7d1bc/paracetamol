@@ -27,6 +27,7 @@
 !applications/llama-cpp/quantized-kv-state-copy.patch
 !applications/llama-cpp/server-stream-keepalive.patch
 !applications/llama-cpp/topk-moe-boundaries.patch
+!applications/llama-cpp/hip-qwen4exp-decode.patch
 !applications/llama-cpp/process-allocation-policy.patch
 !applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/chat-templates/
