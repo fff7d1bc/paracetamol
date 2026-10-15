@@ -951,29 +951,40 @@ the repository-managed update command; package-only update forms use the
 private state.
 
 `internal/agent/maki.go` publishes the same live reviewed model catalog as one
-executable dynamic provider below Maki's private XDG configuration. It uses
-Maki's native `llama-cpp` provider as its protocol base, so the exact gateway
-`/v1` URL comes from the generated provider while Chat Completions,
-tool calls, and session reasoning state remain owned by Maki. Each model entry
-maps Maki's generic selector onto direct native JSON request fragments. A
+Lua provider in Maki's private XDG `init.lua`. It uses the OpenAI codec, which
+shares Maki's llama.cpp Chat Completions implementation. The gateway `/v1` URL
+is written to `providers.toml`, not returned by an auth hook. Maki allows a
+user-selected LAN HTTP endpoint there but refuses it as a plugin-selected
+origin. A host `PARACETAMOL_BASE_URL` override is removed from the managed
+client environment so it cannot redirect the verified inventory to another
+service. The auth hook returns only the optional Bearer and correlation
+headers. Chat Completions, tool calls and session reasoning remain owned by
+Maki. Each model entry maps Maki's generic selector onto direct native JSON
+request fragments. A
 generated `init.lua` selects the recommended installed model, adaptive
 reasoning, and one concurrent task subagent. Adaptive mode resolves through
 the selected model entry, so switching families also switches to that
 family's reviewed default. The initial tier file assigns that model to every
 subagent tier. An unchanged seed follows a later default change, while any
-user-edited tier assignment is preserved. Managed configuration and provider
-scripts are refreshed atomically and reject links or multiply linked files.
+user-edited tier assignment is preserved. The generated `plugin.toml` allows
+network access only to the selected gateway authority and denies the plugin's
+filesystem, process, environment and agent permissions. A static model list
+and exact `allowed_models` prevent discovery from broadening the reviewed
+inventory. Managed files are mode 0600, refreshed atomically and reject links
+or multiply linked files. Once the replacement is published, the obsolete
+generated `providers/paracetamol` script is removed. Unknown legacy provider
+entries are preserved and block launch.
 Maki update, rollback, migration, and informational commands pass through to
 the real executable. Other management commands use the private state without
 requiring an installed model.
-Maki's native llama.cpp provider does not currently place its internal session
-identifier in request headers. Each managed interactive launcher therefore
-generates one UUID and publishes it through the dynamic provider as a private
+Each managed session launch generates one UUID and publishes it through the
+Lua provider as a private
 gateway correlation header. It deliberately groups all tabs and subagents
 from that launcher invocation and is not presented as Maki's own session ID.
-Maki 0.4.8 at commit `a9495e1` added this dynamic-provider `thinking_fields`
-contract. Named modes send only the selected fragment: Qwen3.6 uses nested
-`chat_template_kwargs.enable_thinking`, Qwen3.8 sends `reasoning_effort`, and
+The integration requires Maki 0.6.3 or newer, verified against 0.6.3. Its Lua
+model rows retain the `thinking_fields` contract. Named modes send only the
+selected fragment: Qwen3.6 uses nested `chat_template_kwargs.enable_thinking`,
+Qwen3.8 sends `reasoning_effort`, and
 Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
 to a declared level; models marked `requires_thinking` clamp off upward before
 the fragment is selected. Explicit numeric budgets remain separate sampler

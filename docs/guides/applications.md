@@ -623,8 +623,8 @@ set `tuiMode` to `regular` in Pi's `/settings` or pass
 and completion divider remain enabled. Model selection and server-owned
 sampling defaults are unchanged.
 
-Maki is distributed separately. Put its `maki` executable on `PATH` before
-using the Paracetamol launcher.
+Maki is distributed separately. Put a Maki 0.6.3 or newer `maki` executable
+on `PATH` before using the Paracetamol launcher.
 
 Paracetamol ships PATH-friendly Pi and Maki launchers. Normal sessions query
 the gateway and render the intersection of its live frozen inventory with the
@@ -802,23 +802,31 @@ running inference gateway. No MCP server is installed by default. The small
 managed web extension below uses direct HTTP requests and needs no MCP server.
 
 `bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes one
-executable provider description and a small generated `init.lua` inside
-Maki's Paracetamol-owned XDG directories. The provider inherits Maki's native
-llama.cpp Chat Completions adapter and publishes the exact context, output, and
-thinking capabilities of the reviewed presets. Maki's normal global config,
-sessions, and model choices are not read or modified. Native named reasoning
-requires a Maki 0.4.8 build containing commit `a9495e1` or a later release.
-That commit applies `always_thinking` to interactive sessions but not Maki's
-non-interactive `--print` path. Use the TUI `/thinking` selector when the
-native reasoning condition matters.
+Lua provider in `init.lua`, its `plugin.toml` permissions and the gateway URL
+in `providers.toml` inside Maki's Paracetamol-owned XDG directories. The provider
+uses Maki's OpenAI Chat Completions codec and publishes the exact context,
+output and thinking capabilities of the reviewed presets. Maki's normal global config,
+sessions, and model choices are not read or modified. This integration requires
+Maki 0.6.3 or newer and has been tested with 0.6.3. The configured adaptive
+reasoning default applies to both interactive sessions and `--print`.
 
-An unexpected file in the managed Maki provider directory is left untouched
+There is no manual provider migration step. On the next managed launch,
+Paracetamol replaces its old `providers/paracetamol` script with the Lua
+configuration and removes that generated script. Private sessions and modified
+model-tier assignments remain in place. Executable provider scripts are no
+longer supported. The generated plugin gets network access to the selected
+gateway host and port, with no plugin filesystem, process, environment or
+agent permissions. This does not restrict Maki's separately permissioned
+built-in tools.
+
+An unexpected file in the old managed Maki provider directory is left untouched
 and blocks launch. This includes a retired `dwarfstar` provider from older
 checkouts. Inspect and remove that exact file yourself if it is no longer
 needed; Paracetamol no longer deletes it during startup.
 
-The recommended Qwen3.8 model starts at native medium effort. Maki
-remembers an explicit `/model` or `/thinking` choice in its private state. On
+New sessions start at adaptive reasoning, which means native medium for the
+recommended Qwen3.8 model. Use `/thinking` to change it during a session. Maki
+keeps its sessions and model-tier assignments in its private state. On
 the first launch, Paracetamol assigns the selected default to Maki's strong,
 medium, weak, and compaction tiers so a local subagent does not silently select
 another alphabetically sorted model. Later tier changes in `/model` are preserved.
