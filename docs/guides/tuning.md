@@ -427,12 +427,13 @@ when comparing results. Flash Attention defaults to `auto` for compatibility,
 but use explicit `on` and `off` runs when validating an upgrade because an
 upstream default can change without the workload changing.
 
-Paracetamol enables its reviewed f16 KV-contiguization patch automatically for
-Vulkan on Strix Halo. It addresses the dense-model prompt-processing cliff
-that otherwise appears as context grows. The path is deliberately not enabled
-for Strix Point or RDNA 4 without matching hardware results. It does not
-change ROCm behavior or make one backend the universal winner, so keep using
-the comparison above for each model and workload.
+Upstream llama.cpp automatically selects a contiguous KV scratch layout for
+eligible Vulkan prefill operations on AMD, excluding RDNA 4. This replaces
+Paracetamol's former Strix Halo F16 patch and needs no environment switch.
+It preserves KV precision and addresses the dense-model prefill slowdown at
+long context. The local acceptance measurements are from Strix Halo, not
+every eligible AMD GPU. This does not change ROCm behavior or make one backend
+the universal winner, so compare each model and workload.
 
 To measure the memory and long-context effects of a quantized KV cache, set
 `--cache-type-k` and `--cache-type-v` to `q8_0` or `q4_0`. Quantized values

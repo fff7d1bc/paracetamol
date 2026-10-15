@@ -465,13 +465,15 @@ tile boundaries, permuted layouts, grouped heads and recurrent snapshots.
 The [isolated Strix Halo comparison](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
 records its scope and removal criteria.
 
-The separate fail-closed
-`applications/llama-cpp/vulkan-f16-kv-contiguize.patch` carries the small,
-environment-gated part of commit `b1a10f981` that copies strided f16 KV data
-into contiguous scratch before Vulkan Flash Attention prefill. Paracetamol
-enables it only for the Vulkan backend on `gfx1151`; every other backend and
-architecture retains pinned-upstream behavior. This deliberately excludes the
-fork's wider collection of experimental kernels and tuning flags.
+Upstream llama.cpp owns Vulkan KV contiguization through PR 27703. It copies
+eligible strided F16 or BF16 KV data into contiguous scratch without changing
+the stored precision. Upstream selects this path on AMD except RDNA 4, with
+at least 256 query tokens and additional layout and device checks.
+Paracetamol no longer carries a dedicated shader or exports
+`GGML_VK_FA_KV_CONTIG`. The runtime status report does not claim that a local
+Vulkan fix is enabled. GPU execution, rather than the hardware profile alone,
+determines whether an operation uses the upstream path.
+
 `applications/llama-cpp/entrypoint.sh` exposes a constrained server/CLI policy
 around the resulting binaries. It checks the architecture reported by
 `rocminfo`, then maps the exact selected render-node count to explicit
