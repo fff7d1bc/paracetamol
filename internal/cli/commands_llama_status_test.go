@@ -7,7 +7,7 @@ import (
 	"paracetamol/internal/catalog"
 )
 
-const validLlamaRuntimeReport = `schema=1
+const validLlamaRuntimeReport = `schema=2
 mode=server
 profile=strix-halo
 backend=rocm
@@ -23,7 +23,6 @@ host_listen=127.0.0.1
 port=8080
 api_key=0
 unified_memory=1
-vulkan_f16_kv_contiguize=0
 `
 
 func TestParseLlamaRuntimeReport(t *testing.T) {
@@ -36,9 +35,19 @@ func TestParseLlamaRuntimeReport(t *testing.T) {
 	}
 }
 
+func TestParseLlamaRuntimeReportExplainsImageMismatch(t *testing.T) {
+	oldReport := strings.Replace(validLlamaRuntimeReport, "schema=2", "schema=1", 1) +
+		"vulkan_f16_kv_contiguize=0\n"
+	if _, err := parseLlamaRuntimeReport(oldReport); err == nil || !strings.Contains(err.Error(), "rebuild the llama.cpp image") {
+		t.Fatalf("old image report error = %v", err)
+	}
+}
+
 func TestParseLlamaRuntimeReportRejectsUnknownAndDuplicateKeys(t *testing.T) {
 	for _, contents := range []string{
 		validLlamaRuntimeReport + "surprise=value\n",
+		validLlamaRuntimeReport + "vulkan_f16_kv_contiguize=1\n",
+		strings.Replace(validLlamaRuntimeReport, "schema=2", "schema=1", 1),
 		strings.Replace(validLlamaRuntimeReport, "context=262144", "context=\ncontext=262144", 1),
 		strings.Replace(validLlamaRuntimeReport, "host_listen=127.0.0.1", "host_listen=aion.local", 1),
 	} {

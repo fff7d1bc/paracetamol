@@ -594,9 +594,12 @@ a faster unrelated architecture merely because it is convenient.
 Do not treat one successful tiny workflow as acceptance of every model family.
 
 For the quantized on-device state-copy correction, run upstream's
-`test-llama-context` with `--test '^(baseline|cp_d|cp_d_s)$'` on a small managed
+`test-llama-context` with `--test '^(baseline|cp_d|cp_d_s|ps)$'` on a small managed
 model. Repeat with both cache types set to `f16`, `q8_0` and `q4_0`. Require
-three passed cases and zero skipped cases for each run. The `baseline` case
+four passed cases and zero skipped cases for each run. The `ps` case checks
+that partial checkpoint size does not grow with tokens for a non-SWA cache.
+Also check real MTP checkpoint reuse because a plain tiny-model cache does
+not exercise the target/draft combination. The `baseline` case
 is a prerequisite, not an optional control. Filtering it out can produce a
 successful exit with the device-copy test skipped. This optional-cache test
 does not change the managed presets' F16 policy.

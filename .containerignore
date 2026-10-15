@@ -18,7 +18,6 @@
 !applications/llama-cpp/hip-apu-host-buffer.patch
 !applications/llama-cpp/router-disconnect.patch
 !applications/llama-cpp/quantized-kv-flash-attention.patch
-!applications/llama-cpp/vulkan-f16-kv-contiguize.patch
 !applications/llama-cpp/hip-strix-halo-tiled-gdn.patch
 !applications/llama-cpp/hip-strix-halo-graph-recapture.patch
 !applications/llama-cpp/qwen4exp-direct-reader.patch

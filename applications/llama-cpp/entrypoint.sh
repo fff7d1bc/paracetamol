@@ -156,7 +156,6 @@ bench_profile_args=()
 speculative_args=()
 model_policy_args=()
 unified_memory=0
-vulkan_f16_kv_contiguize=0
 qsa_kernel=0
 qsa_graph=0
 if [[ "$router" == 0 && -n "$context_override" ]]; then
@@ -304,12 +303,6 @@ else
         if [[ "$backend" == rocm && "$qsa_kernel_requested" != 0 ]]; then
             qsa_kernel=1
         fi
-        if [[ "$backend" == vulkan ]]; then
-            # The patched path is opt-in so other architectures and Vulkan
-            # implementations retain pinned-upstream behavior.
-            export GGML_VK_FA_KV_CONTIG=1
-            vulkan_f16_kv_contiguize=1
-        fi
         if [[ "$router" == 0 && -n "$flash_attn_strix_halo" ]]; then
             model_policy_args+=(--flash-attn "$flash_attn_strix_halo")
         fi
@@ -367,7 +360,7 @@ done
 # profile and backend device names resolved here without persisting stale
 # state or scraping unbounded application logs.
 {
-    printf 'schema=1\n'
+    printf 'schema=2\n'
     printf 'mode=%s\n' "$mode"
     printf 'profile=%s\n' "$profile"
     printf 'backend=%s\n' "$backend"
@@ -383,7 +376,6 @@ done
     printf 'port=%s\n' "$port"
     printf 'api_key=%s\n' "$runtime_api_key"
     printf 'unified_memory=%s\n' "$unified_memory"
-    printf 'vulkan_f16_kv_contiguize=%s\n' "$vulkan_f16_kv_contiguize"
 } > "$runtime_report"
 chmod 0444 "$runtime_report"
 

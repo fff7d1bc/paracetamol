@@ -27,7 +27,7 @@ var llamaRuntimeKeys = map[string]bool{
 	"device": true, "backend_devices": true, "architecture": true,
 	"gpu_count": true, "router": true, "models_max": true, "context": true,
 	"listen": true, "host_listen": true, "port": true, "api_key": true,
-	"unified_memory": true, "vulkan_f16_kv_contiguize": true,
+	"unified_memory": true,
 }
 
 var routerModelIdentifier = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
@@ -42,8 +42,8 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 		}
 		values[key] = value
 	}
-	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "1" || values["mode"] != "server" {
-		return nil, controlerr.New("unsupported llama.cpp runtime report")
+	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "2" || values["mode"] != "server" {
+		return nil, controlerr.New("unsupported llama.cpp runtime report; rebuild the llama.cpp image for this checkout")
 	}
 	for key := range values {
 		if !llamaRuntimeKeys[key] {
@@ -56,7 +56,7 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 	if values["profile"] == "auto" || platform.ValidateProfile(values["profile"]) != nil {
 		return nil, controlerr.New("invalid profile in llama.cpp runtime report")
 	}
-	for _, key := range []string{"router", "api_key", "unified_memory", "vulkan_f16_kv_contiguize"} {
+	for _, key := range []string{"router", "api_key", "unified_memory"} {
 		if values[key] != "0" && values[key] != "1" {
 			return nil, controlerr.New("invalid %s in llama.cpp runtime report", key)
 		}
@@ -268,7 +268,6 @@ func (app *App) llamaStatus(requested string) error {
 		{"Host publish", runtimeReport["host_listen"] + ":" + runtimeReport["port"]},
 		{"Authentication", map[bool]string{true: "configured (value redacted)", false: "none"}[runtimeReport["api_key"] == "1"]},
 		{allocationLabel, allocationValue},
-		{"Vulkan F16 KV fix", onOff(runtimeReport["vulkan_f16_kv_contiguize"])},
 	}
 	if router != nil {
 		serverRows = append(serverRows, [2]string{"Loaded-model limit", runtimeReport["models_max"]}, [2]string{"Configured models", strconv.Itoa(len(router))})

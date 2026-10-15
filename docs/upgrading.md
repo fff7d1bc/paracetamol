@@ -282,7 +282,6 @@ protected behavior is fixed.
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
 | `router-disconnect.patch` | Carries [PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`. Stops the child HTTP connection when its proxy closes and uses one response-wait deadline across wakeups. Includes the upstream non-streaming disconnect regression. | Upstream passes both streaming and non-streaming disconnects through the router and gateway. Observe the child slot becoming idle, not just a successful follow-up request. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
-| `vulkan-f16-kv-contiguize.patch` | Adds the environment-gated f16 KV contiguization path derived from commit `b1a10f981`. Paracetamol enables it only for Vulkan on `gfx1151`. | Equivalent upstream behavior retains the measured long-context improvement without shallow-context or output regressions. Do not broaden the profile gate without results from the additional architecture. |
 | `hip-strix-halo-graph-recapture.patch` | Reinstantiates the HIP executable after a changed capture on exact `gfx1151`, retaining ordinary graph replay. This corrects the populated direct-reader clear/restore failure isolated during the October source screens. Other architectures retain upstream executable updates. | The unpatched upstream path passes populated ordinary, causal-transition and clear/restore logit checks with the managed reader, followed by long-context and older-model checks. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
 | `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
@@ -294,10 +293,44 @@ protected behavior is fixed.
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 
-The October 14 refresh pins
+The October 15 follow-up pins `e36df604703dec1b6ce82f214698725475a57035`,
+16 upstream commits after the October 14 refresh, in image `r51`. All thirteen
+remaining patches apply unchanged. Upstream now owns the partial-checkpoint
+correction from [PR 30514](https://github.com/ggml-org/llama.cpp/pull/30514)
+and Vulkan KV contiguization from
+[PR 27703](https://github.com/ggml-org/llama.cpp/pull/27703).
+
+The dedicated Vulkan shader, its source patch and environment override are
+removed. The merged implementation reuses bit-preserving copy shaders,
+supports F16 and BF16 scratch, and selects eligible AMD devices except RDNA 4.
+Its minimum query batch is 256, compared with 64 in the former downstream
+path. This is upstream dispatch policy, not a newly enabled Paracetamol
+tuning switch. Keep cross-architecture acceptance distinct from the local
+Strix Halo measurements. The container runtime report moves to schema 2 and
+drops the obsolete local-fix boolean. Rebuild the image with the matching
+controller before using `status llama-cpp`.
+
+The [October 15 hardware record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-upstream-follow-up-2026-10-15)
+records the checkpoint-memory measurements, both backend comparisons and
+the hardware acceptance limits.
+
+The separate recurrent-state-copy experiment,
+[PR 30139](https://github.com/ggml-org/llama.cpp/pull/30139) at
+`10a57dd921c19152bc9121e1ff5aafba32169843`, is **not carried**. It passes
+the bounded state and 4K/32K request screens, with identical request and
+response-choice objects across eighteen paired requests. On Aion, shallow
+dense Q8 non-MTP decode improves from 7.222 to 7.290 tokens/s, about 0.95%.
+The default dense Q8 MTP HTTP control changes from 15.60 to 15.51 tokens/s.
+Flash-Next changes from 21.53 to 21.79 tokens/s, while its 32K prefill takes
+about 4.2% longer. These small, mixed results do not justify another carried
+graph-state patch. The in-place shortcut also excludes speculative rollback
+snapshots. Revisit it when upstream merges or the evidence changes, not as a
+known-bad proposal or an accepted long-context optimization.
+
+The October 14 refresh pinned
 `23deec025587a58469bdf0120313ff88a1ddcc7b`, 345 upstream commits after
-`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, and uses image `r50`.
-The fourteen-patch stack replaces the earlier partial rebase. Its
+`2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, and used image `r50`.
+That fourteen-patch stack replaced the earlier partial rebase. Its
 [screen record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-refresh-screen-2026-10-14)
 remains useful evidence of why a successful short request was insufficient.
 The [final-image record](hardware-acceptance.md#fedora-44-strix-halo-llamacpp-upstream-update-2026-10-14)
@@ -357,9 +390,9 @@ copy and successful-stream connection reuse corrections in the ledger.
 Other reviewed proposals remain deferred.
 [HIP sparse attention](https://github.com/ggml-org/llama.cpp/pull/30370), at
 `1ad19e56872d60cbee26c442a449bee7f0ba8fa9`, dispatches on GCN, not Strix Halo.
-The updated [Vulkan KV layout proposal](https://github.com/ggml-org/llama.cpp/pull/27703),
-at `3fdbb7132e8ed37fa785e5c74b870b5b01cf969a`, is worth tracking, but does not
-replace our narrowed F16 path without a new backend comparison.
+The [Vulkan KV layout proposal](https://github.com/ggml-org/llama.cpp/pull/27703),
+reviewed at `3fdbb7132e8ed37fa785e5c74b870b5b01cf969a`, subsequently merged
+and is included in the October 15 follow-up above.
 [MMQ copy vectorization](https://github.com/ggml-org/llama.cpp/pull/30493)
 and [vectorized RMS norm](https://github.com/ggml-org/llama.cpp/pull/29720)
 remain watch candidates rather than established end-to-end Strix Halo wins.
