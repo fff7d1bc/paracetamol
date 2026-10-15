@@ -605,7 +605,7 @@ limit counts model children and is not a memory-fit calculation. Use
 fit; otherwise the one-model default unloads the idle child before loading a
 different preset.
 
-Paracetamol manages its own pinned Pi 1.0.2 runtime. It requires Node.js 22.19 or
+Paracetamol manages its own pinned Pi 1.2.0 runtime. It requires Node.js 22.19 or
 newer and npm from the host distribution, then installs the repository-locked
 npm tree below the selected Paracetamol data directory:
 

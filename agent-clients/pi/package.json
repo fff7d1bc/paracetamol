@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Pinned Pi coding-agent runtime managed by Paracetamol",
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.2.0",
     "html-to-text": "10.0.1"
   },
   "engines": {

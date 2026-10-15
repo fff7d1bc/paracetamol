@@ -26,6 +26,46 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Managed Pi 1.2.0 (2026-10-15)
+
+**PASS for the managed local-model client.** Pi advances from 1.0.2 to 1.2.0.
+The reviewed lockfile contains 132 packages, down from 160 after upstream
+removed Chord and its esbuild dependency. Registry origins, integrity values,
+licenses and Node requirements remain validated. Installation still disables
+package lifecycle scripts. The Node minimum remains 22.19.0.
+
+Disposable and normal managed installations succeed on Hagane with system
+Node 22.22.1 and Aion with system Node 24.18.0. All 14 extension tests pass on
+both. The added picker tests exercise the installed Pi components, including
+family grouping, deduplication, supported reasoning choices, native search,
+cancellation and non-interactive isolation. The reasoning wrapper now forwards
+focus and input to the native component instead of bypassing its search box.
+
+Six sandboxed Aion sessions complete actual file-read and shell-tool round
+trips through the gateway and the unchanged `e36df60-r51` ROCm llama.cpp image.
+Qwen3.8 dense Q8 MTP passes off, low, medium and xhigh. Qwen3.6 dense Q8 MTP
+passes off and high. Captured HTTP requests show Qwen3.8 off maps to `none`
+and Qwen3.6 uses `enable_thinking: false`, with `preserve_thinking: true`.
+Both off cases have no reasoning blocks. Gateway request records confirm
+non-thinking sampler defaults, with no sampler overrides from Pi.
+
+An actual TUI checks `/model`, Ctrl+L, family grouping and immediate reasoning
+selection after changing models, including an exact `/model PROVIDER/MODEL`
+command. Searching for medium selects it successfully. A tool round trip
+produces one durable completion-divider entry and exactly one OSC 777
+notification at settlement. Print and RPC output remain valid JSON without
+terminal control bytes when notifications are enabled.
+
+Sandboxed `web_fetch` retrieves and extracts `https://example.com/` successfully.
+No Brave key is configured, so live search is not accepted by this pass. The
+search transport and error fixtures pass without a provider account.
+
+No model, sampler, context, engine image or host configuration is changed.
+This is bounded client acceptance, not a new quality or performance benchmark,
+cloud-provider/MCP acceptance, or acceptance on other GPU classes. Test services
+are stopped afterward. Raw local evidence is under ignored
+`build/housekeeping-20261015-hGZkrf/` on the two acceptance hosts.
+
 ### Fedora 44 Strix Halo llama.cpp upstream follow-up (2026-10-15)
 
 **PASS on Strix Halo.** The update reduces MTP checkpoint storage and removes
