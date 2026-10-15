@@ -408,13 +408,28 @@ or a plain text response alone.
 For the maintained llama.cpp reasoning matrix, exercise each native choice
 through Pi: Qwen3.6 off/on; Qwen3.8 off, low, medium, and xhigh; and Muse low,
 medium, high, and xhigh. Confirm Pi omits unsupported values. For Maki
-0.4.8 at or after commit `a9495e1`, capture the actual request fields for the
+0.6.3 or newer, capture the actual request fields for the
 same matrix. Confirm Qwen3.6 maps every enabled name to its on toggle,
 Qwen3.8 `high` snaps to medium, Muse off clamps to low, and adaptive follows
-the selected family's managed default. Exercise new interactive sessions:
-Maki commit `a9495e1` does not apply `always_thinking` in `--print` mode, so
-that path cannot validate the generated default or named selector. Keep these
+the selected family's managed default. The current client applies
+`always_thinking` in `--print` as well as interactive sessions. Keep these
 protocol checks separate from cross-model quality benchmarking.
+
+An optional installed-Maki transport test runs against a local fake gateway,
+without a GPU or model download:
+
+```bash
+PARACETAMOL_TEST_MAKI=/absolute/path/to/maki make test
+```
+
+It exercises the generated Lua provider with the actual client, checks
+reasoning fields, Bearer authentication, session correlation, tool execution
+and replay, and verifies that the client leaves sampling defaults to the
+gateway. Unit tests also cover stale script removal, preserved sessions,
+unknown provider refusal, file-link safety and the exact egress authority.
+After a provider integration change, also run a sandboxed live tool round-trip
+from a client host to an inference host using its LAN hostname. Local fixtures
+alone do not validate remote HTTP, DNS or GPU inference.
 
 After a Pi update, also verify the transport rather than trusting the selector
 label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every

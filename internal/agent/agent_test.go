@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,27 +59,21 @@ func TestClientKeyStaysInPrivateProviderFiles(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("Pi private mode: %v", err)
 	}
-	provider := makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", nil, "", key)
-	paths, err := PrepareMakiState(MakiPlan{Providers: map[string][]byte{ProviderID: provider}}, dataRoot)
+	provider := makiProvider("Paracetamol gateway", nil, "", key)
+	paths, err := PrepareMakiState(MakiPlan{Init: provider}, dataRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path = filepath.Join(paths.Config, "maki", "providers", ProviderID)
+	path = filepath.Join(paths.Config, "maki", "init.lua")
 	info, err = os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0o700 {
+	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("Maki private mode: %v", err)
 	}
-	output, err := exec.Command("/bin/sh", path, "resolve").Output()
+	output, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var resolved struct {
-		Headers map[string]string `json:"headers"`
-	}
-	if err := json.Unmarshal(output, &resolved); err != nil {
-		t.Fatal(err)
-	}
-	if resolved.Headers["Authorization"] != "Bearer "+key {
+	if !strings.Contains(string(output), `"Authorization":"Bearer `+key+`"`) {
 		t.Fatal("Maki resolver did not supply key")
 	}
 	configuration, err = PiConfig(managed, "http://127.0.0.1:7455/v1", nil, "")
@@ -91,11 +84,11 @@ func TestClientKeyStaysInPrivateProviderFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = PrepareMakiState(MakiPlan{Providers: map[string][]byte{ProviderID: makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", nil, "", "")}}, dataRoot)
+	_, err = PrepareMakiState(MakiPlan{Init: makiProvider("Paracetamol gateway", nil, "", "")}, dataRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{filepath.Join(dir, "models.json"), filepath.Join(paths.Config, "maki/providers", ProviderID)} {
+	for _, path := range []string{filepath.Join(dir, "models.json"), filepath.Join(paths.Config, "maki/init.lua")} {
 		contents, err := os.ReadFile(path)
 		if err != nil || strings.Contains(string(contents), key) {
 			t.Fatal("relaunch retained old key")
@@ -109,7 +102,7 @@ func TestClientModeKeepsManagementIndependentOfGatewayCredentials(t *testing.T) 
 			t.Fatalf("Pi mode for %v", args)
 		}
 	}
-	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"models"}, {"update"}, {"index", "src"}} {
+	for _, args := range [][]string{{"--help"}, {"--", "--version"}, {"help", "models"}, {"models"}, {"session", "list"}, {"trust", "list"}, {"update"}, {"index", "src"}} {
 		if MakiMode(args) == "session" {
 			t.Fatalf("Maki mode for %v", args)
 		}
@@ -382,7 +375,7 @@ func TestOptionalQwenAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	maki := makiProvider("Paracetamol gateway", "http://127.0.0.1:7455/v1", makiModels(models), "", "")
+	maki := makiProvider("Paracetamol gateway", makiModels(models), "", "")
 	for name, encoded := range map[string][]byte{"Pi": pi, "Maki": maki} {
 		for _, id := range []string{RecommendedModel, optionalModel} {
 			if !bytes.Contains(encoded, []byte(id)) {
@@ -394,11 +387,11 @@ func TestOptionalQwenAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 
 func TestMakiProviderAddsOnlyExplicitPerLaunchSessionHeader(t *testing.T) {
 	const session = "019fe5cc-5cad-7a92-aead-f0838931fb95"
-	withSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, session, ""))
+	withSession := string(makiProvider("Paracetamol gateway", nil, session, ""))
 	if !strings.Contains(withSession, "X-Paracetamol-Session-ID") || !strings.Contains(withSession, session) {
 		t.Fatalf("provider lacks session header: %s", withSession)
 	}
-	withoutSession := string(makiProvider("Paracetamol gateway", "http://127.0.0.1:8080/v1", nil, "", ""))
+	withoutSession := string(makiProvider("Paracetamol gateway", nil, "", ""))
 	if strings.Contains(withoutSession, "X-Paracetamol-Session-ID") {
 		t.Fatalf("provider emitted an empty session header: %s", withoutSession)
 	}
@@ -478,12 +471,15 @@ func TestPiManagementDoesNotContactGateway(t *testing.T) {
 
 func TestMakiStateRejectsUnmanagedProviderWithoutDeletingIt(t *testing.T) {
 	root := t.TempDir()
-	plan := MakiPlan{Providers: map[string][]byte{ProviderID: []byte("#!/bin/sh\n")}, Init: []byte("maki.setup({})\n"), Tiers: []byte("{}\n")}
+	plan := MakiPlan{Init: []byte("maki.setup({})\n"), Tiers: []byte("{}\n")}
 	paths, err := PrepareMakiState(plan, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	unmanaged := filepath.Join(paths.Config, "maki", "providers", "dwarfstar")
+	if err := os.Mkdir(filepath.Dir(unmanaged), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(unmanaged, []byte("#!/bin/sh\nset -eu\n# Paracetamol DwarfStar\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
