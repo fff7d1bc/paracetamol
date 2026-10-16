@@ -18,6 +18,43 @@ The optional `base_url` query parameter accepts one credential-free HTTP(S)
 API URL ending in `/v1`. Otherwise the validated request authority supplies
 the address. Forwarded headers are ignored.
 
+## Browser landing page
+
+Open the gateway's root address, such as `http://aion.local:7455/`.
+The embedded dark page has two tabs.
+
+- **Connect** shows the OpenAI-compatible base URL, native Maki setup,
+  configuration previews and downloads, and instructions for other clients.
+  Fresh-setup commands refuse to replace existing configuration files.
+- **Models** groups the frozen inventory by family, with search, exact IDs,
+  publisher labels, configured context, residency and expandable reasoning
+  details. It distinguishes Maki's preferred reasoning from the HTTP fallback.
+
+Refresh is manual. A failed refresh marks retained information as stale.
+There is no model loading, switching, shutdown, request-history view or
+background polling. Publisher and family names are presentation labels,
+not licensing assertions. Unknown names keep their exact model ID.
+
+`GET /paracetamol/v1/ui` is the page's protected read-only projection of the
+frozen inventory and residency snapshot. It accepts no query parameters and
+contains no host paths, request records, credentials or resource telemetry.
+Its shape is internal to the embedded page, not a new client API contract.
+Use `/v1/models` and the documented status endpoint for other clients.
+
+Only `GET` and `HEAD` on `/`, `/assets/gateway.css` and `/assets/gateway.js`
+are anonymous. They contain generic instructions and no server inventory.
+When authentication is enabled, the browser shows authenticated curl commands
+instead of a login form. It never accepts, stores or forwards a Bearer key.
+Page data and configuration exports remain protected.
+
+The browser uses its own origin for copyable commands. Configuration requests
+pass that origin plus `/v1` as `base_url`, including through HTTPS proxies.
+Direct curl exports retain their existing request-authority behavior.
+The page has no external scripts, fonts or assets. HTML, CSS and JavaScript
+are embedded in the Go binary, with no frontend runtime or build step.
+
+## Start the gateway
+
 Start every currently runnable text application in the foreground without
 extra selection:
 
@@ -134,8 +171,10 @@ HTTP.
 ## Optional authentication
 
 Authentication is off unless a server key file is explicitly configured. When
-enabled, every route requires `Authorization: Bearer KEY`, including health,
-model inventory and status. Loopback and LAN listeners enforce the same rule.
+enabled, all API routes require `Authorization: Bearer KEY`, including health,
+model inventory, page data, configuration exports and status. Only the exact
+generic landing-page and asset routes described above are anonymous.
+Loopback and LAN listeners enforce the same rule.
 Missing, incorrect or duplicate authorization headers receive HTTP 401 before
 body parsing, resource inspection or backend scheduling. There are no user
 accounts, roles, remote key-management endpoints or anonymous health bypass.

@@ -256,6 +256,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 		"unloaded", "status gateway --gateway-url " + config.DefaultGatewayURL,
 		"/home/test/.config/paracetamol/config.toml",
 		"Waiting for requests",
+		"Web UI", strings.TrimSuffix(config.DefaultGatewayURL, "/v1") + "/",
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("startup output lacks %q:\n%s", expected, output)

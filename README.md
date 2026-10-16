@@ -422,6 +422,11 @@ gateway retains its loopback endpoint when you add a LAN publication.
 ./paracetamol run gateway --listen 192.168.1.50 --port 7455
 ```
 
+Open `http://192.168.1.50:7455/` for connection instructions, Maki configuration
+downloads and a searchable model list. The page is embedded in the gateway
+and never loads a model. With authentication enabled, it shows instructions
+for authenticated curl instead of exposing inventory or asking for a key.
+
 Install Maki separately, then follow the [native Maki setup](docs/guides/remote-maki.md)
 to download `providers.toml` and `init.lua` from the gateway. Review and merge
 them into your normal Maki configuration. There is no Paracetamol installation,

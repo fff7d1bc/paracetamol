@@ -21,18 +21,9 @@ func (server *Server) makiConfig(writer http.ResponseWriter, request *http.Reque
 		writeAPIError(writer, http.StatusBadRequest, "invalid_request_error", "invalid_base_url", err.Error())
 		return
 	}
-	models := make([]textmodel.Model, 0, len(server.registry.Models))
-	for _, model := range server.registry.Models {
-		models = append(models, textmodel.Model{
-			ID: model.ID, Context: model.Context, MaxOutputTokens: model.MaxOutputTokens,
-			AgentTools: model.AgentTools, ReasoningControl: model.ReasoningControl,
-			ReasoningLevels: model.ReasoningLevels, ReasoningDefault: model.ReasoningDefault,
-			ReasoningOff: model.ReasoningOff,
-		})
-	}
 	// Only the immutable startup registry is consulted. Exporting configuration
 	// must neither acquire an allocation nor revalidate model files on disk.
-	files, err := clientconfig.Maki(models, endpoint, server.auth.enabled)
+	files, err := clientconfig.Maki(server.clientModels(), endpoint, server.auth.enabled)
 	if err != nil {
 		writeAPIError(writer, http.StatusConflict, "gateway_error", "no_client_models", err.Error())
 		return
@@ -47,6 +38,23 @@ func (server *Server) makiConfig(writer http.ResponseWriter, request *http.Reque
 		writer.Header().Set("Content-Disposition", `attachment; filename="paracetamol-init.lua"`)
 		_, _ = writer.Write(files.Init)
 	}
+}
+
+func (server *Server) clientModel(model Model) textmodel.Model {
+	return textmodel.Model{
+		ID: model.ID, Context: model.Context, MaxOutputTokens: model.MaxOutputTokens,
+		AgentTools: model.AgentTools, ReasoningControl: model.ReasoningControl,
+		ReasoningLevels: model.ReasoningLevels, ReasoningDefault: model.ReasoningDefault,
+		ReasoningOff: model.ReasoningOff,
+	}
+}
+
+func (server *Server) clientModels() []textmodel.Model {
+	models := make([]textmodel.Model, 0, len(server.registry.Models))
+	for _, model := range server.registry.Models {
+		models = append(models, server.clientModel(model))
+	}
+	return models
 }
 
 func clientConfigURL(request *http.Request) (string, error) {

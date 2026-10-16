@@ -55,6 +55,26 @@ It checks reasoning, authenticated and keyless access, replay and the absence
 of sampler overrides without a GPU or real credentials. It does not touch
 normal client state or prove macOS execution.
 
+Embedded gateway page checks cover exact anonymous routes, protected data,
+read-only behavior, empty inventory and separate HTTP/client reasoning defaults.
+Real-browser acceptance is optional and uses an installed Chromium and
+Puppeteer module. Neither is a build or runtime dependency. For example, with
+browser tooling already available locally,
+
+```bash
+PARACETAMOL_TEST_BROWSER=/absolute/path/to/chrome \
+PARACETAMOL_TEST_PUPPETEER=/absolute/path/to/puppeteer-core/lib/puppeteer/puppeteer-core.js \
+PARACETAMOL_TEST_SCREENSHOTS="$PWD/build/web-acceptance" \
+make test GO_PACKAGES=./internal/gateway
+```
+
+This starts fixture HTTP servers, never inference. It checks mobile layout,
+configuration previews/downloads, model filtering, HTML-safe rendering,
+clipboard fallback, failed refresh and the instructions-only auth state.
+Screenshots and downloaded fixtures stay under `build/`. Manually inspect
+the images after layout changes. Browser automation is not a substitute for
+checking native client configuration or target GPU inference.
+
 For a Go or Makefile change, also force the ordinary checkout binary through
 its atomic publication path rather than relying on an older incremental
 artifact:
