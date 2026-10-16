@@ -275,7 +275,7 @@ acceptance establishes that another compiled backend is unsafe for that exact
 preset. Direct startup may select the first declared backend only when the
 caller omitted `--backend`; an explicit incompatible choice fails. Managed
 routers and gateways omit incompatible presets from their frozen inventory.
-Throughput and coding-agent benchmarks enforce the same boundary. Validate
+Throughput and speculative benchmarks enforce the same boundary. Validate
 coherent multi-turn output and tool calls because startup, prompt processing,
 or a short retrieval key alone cannot establish backend compatibility.
 
@@ -400,8 +400,9 @@ Regular and Huihui Flash-Next share one policy with thinking min-p 0.05.
 Generated clients omit static tuples for these
 models so every request can select its own thinking mode. Direct benchmark
 runners send the selected tuple explicitly from the same catalog.
-`internal/agent/models.go` retains static client defaults for unrelated
-families. Adding `agent_tools` still requires an authoritative sampling audit.
+The native Maki export adds no static sampler tuple for other families either.
+Models without a catalog policy retain engine defaults unless the client sends
+values explicitly. Adding `agent_tools` still requires a sampling audit.
 Do not encode sampling as a bundle variant, client-name heuristic, or Jinja
 side effect. See [gateway sampling](gateway.md#model-aware-sampling-defaults).
 
@@ -425,7 +426,7 @@ focused HY and Gemma translation families. The Unsloth Flash-Next conversion
 keeps its own recipe because it has a distinct architecture and memory policy.
 Muse's forced-256K DFlash preset is the recipe launch; its 128K base and DFlash
 controls share the installed pair. Regular Flash-Next at xhigh is the
-managed-client default when advertised by the gateway. This harness preference
+exported Maki default when advertised by the gateway. This harness preference
 does not change the catalog or template's medium HTTP fallback. Huihui's
 abliterated v2 is a separate exact bundle and preset, using the same template,
 sampling and runtime policy without joining the regular recipe download.

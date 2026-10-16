@@ -20,9 +20,28 @@ func TestHelpListsCoreCommands(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 	}
-	for _, command := range []string{"build", "content", "run", "agent", "benchmark"} {
+	for _, command := range []string{"build", "content", "run", "benchmark"} {
 		if !strings.Contains(stdout.String(), command) {
 			t.Fatalf("help does not contain %q:\n%s", command, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "agent") {
+		t.Fatalf("retired client command is still advertised: %s", stdout.String())
+	}
+}
+
+func TestRetiredClientCommandsCannotLaunchOrInstall(t *testing.T) {
+	for _, arguments := range [][]string{
+		{"agent", "install", "pi"}, {"agent", "run", "pi"},
+		{"agent", "run", "maki"}, {"benchmark", "agent", "--list-tasks"},
+	} {
+		runner := &commandRunner{}
+		app, _, _ := testApp(t, runner)
+		if err := app.Dispatch(arguments); err == nil {
+			t.Fatalf("retired command accepted: %v", arguments)
+		}
+		if len(runner.commands) != 0 {
+			t.Fatalf("retired command executed a subprocess: %v", runner.commands)
 		}
 	}
 }
@@ -171,7 +190,7 @@ func TestFlagErrorIsPrintedOnceWithUsageStatus(t *testing.T) {
 }
 
 func TestNestedCommandHelpIsAvailable(t *testing.T) {
-	for _, arguments := range [][]string{{"run", "llama-cpp", "--help"}, {"run", "dwarfstar", "--help"}, {"agent", "run", "--help"}} {
+	for _, arguments := range [][]string{{"run", "llama-cpp", "--help"}, {"run", "dwarfstar", "--help"}, {"benchmark", "llama-cpp", "--help"}} {
 		t.Run(strings.Join(arguments, " "), func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if status := Main(context.Background(), arguments, strings.NewReader(""), &stdout, &stderr); status != 0 {
@@ -279,7 +298,7 @@ func TestBenchmarkFamiliesExposeModes(t *testing.T) {
 }
 
 func TestCommandGroupHelpIsSuccessful(t *testing.T) {
-	for _, command := range []string{"run", "content", "agent", "images", "cleanup", "benchmark"} {
+	for _, command := range []string{"run", "content", "images", "cleanup", "benchmark"} {
 		t.Run(command, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			status := Main(context.Background(), []string{command, "--help"}, strings.NewReader(""), &stdout, &stderr)
@@ -297,12 +316,10 @@ func TestIncompleteLeafCommandsShowRecoveryHelp(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"build"}, {"shell"}, {"logs"}, {"stop"},
 		{"images", "export"}, {"images", "import"},
-		{"agent", "install"},
 		{"content", "install", "--non-interactive"},
 		{"content", "import", "--non-interactive"},
 		{"content", "workflows", "install"},
 		{"benchmark", "comfyui", "run"},
-		{"benchmark", "agent"},
 		{"benchmark", "llama-cpp", "throughput"},
 		{"benchmark", "llama-cpp", "speculative"},
 		{"benchmark", "report"},
@@ -321,7 +338,7 @@ func TestUnknownCommandsShowNearestGroupHelp(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"unknown"}, {"run", "unknown"}, {"content", "unknown"},
 		{"content", "workflows", "unknown"}, {"images", "unknown"},
-		{"agent", "unknown"}, {"agent", "run", "unknown"},
+		{"agent", "run", "pi"}, {"agent", "run", "maki"}, {"benchmark", "agent"},
 		{"benchmark", "unknown"}, {"benchmark", "comfyui", "unknown"},
 		{"benchmark", "llama-cpp", "unknown"}, {"cleanup", "unknown"},
 	} {

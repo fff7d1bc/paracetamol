@@ -47,7 +47,7 @@ func Main(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io
 		fmt.Fprintf(stderr, "%s %v\n", errorTerminal.Error("error:"), err)
 		return 1
 	}
-	app := App{Context: ctx, Root: root, Environment: environmentValues, ConfigSelection: configurationSelection, Stdin: stdin, Stdout: stdout, Stderr: stderr, Runner: process.OSRunner{}, Executor: process.OSExecutor{}}
+	app := App{Context: ctx, Root: root, Environment: environmentValues, ConfigSelection: configurationSelection, Stdin: stdin, Stdout: stdout, Stderr: stderr, Runner: process.OSRunner{}}
 	err = app.Dispatch(args)
 	if err == nil {
 		return 0

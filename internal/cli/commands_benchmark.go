@@ -23,7 +23,6 @@ func (app *App) commandBenchmark(args []string) error {
 		app.writeGroupHelp(usage("benchmark", "COMMAND", "[OPTIONS]"),
 			[2]string{"comfyui run", "run one managed ComfyUI benchmark"},
 			[2]string{"comfyui suite", "run or resume an ordered ComfyUI suite"},
-			[2]string{"agent", "evaluate a model on frozen coding tasks"},
 			[2]string{"llama-cpp throughput", "measure llama-bench or compare backends"},
 			[2]string{"llama-cpp speculative", "screen speculative-decoding depths"},
 			[2]string{"report", "render a stored ComfyUI result"})
@@ -34,7 +33,7 @@ func (app *App) commandBenchmark(args []string) error {
 	}
 	if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		writeHelp()
-		return controlerr.Usage("choose benchmark comfyui, llama-cpp, agent, or report")
+		return controlerr.Usage("choose benchmark comfyui, llama-cpp, or report")
 	}
 	switch args[0] {
 	case "comfyui":
@@ -55,8 +54,6 @@ func (app *App) commandBenchmark(args []string) error {
 			app.writeGroupHelp(usage("benchmark", "comfyui", "COMMAND", "[OPTIONS]"), [2]string{"run", "run one exact bundle"}, [2]string{"suite", "run or resume an ordered suite"})
 			return controlerr.Usage("unknown ComfyUI benchmark command %q", args[1])
 		}
-	case "agent":
-		return app.benchmarkAgent(args[1:])
 	case "llama-cpp":
 		if groupHelpRequested(args[1:]) {
 			app.writeGroupHelp(usage("benchmark", "llama-cpp", "COMMAND", "[OPTIONS]"), [2]string{"throughput", "run llama-bench"}, [2]string{"speculative", "screen speculative-decoding depths"})

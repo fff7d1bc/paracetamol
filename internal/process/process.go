@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"os/exec"
-	"syscall"
 )
 
 type Command struct {
@@ -29,16 +28,6 @@ type Result struct {
 type Runner interface {
 	Run(context.Context, Command) (Result, error)
 	LookPath(string) (string, error)
-}
-
-type Executor interface {
-	Exec(path string, arguments, environment []string) error
-}
-
-type OSExecutor struct{}
-
-func (OSExecutor) Exec(path string, arguments, environment []string) error {
-	return syscall.Exec(path, arguments, environment)
 }
 
 type OSRunner struct{}

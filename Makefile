@@ -54,7 +54,7 @@ export GOFLAGS
 export GOTOOLCHAIN
 export GOTELEMETRY=off
 
-.PHONY: all build static test test-pi race check clean print-bin launcher-binary
+.PHONY: all build static test race check clean print-bin launcher-binary
 
 all: build
 
@@ -65,12 +65,6 @@ static: $(STATIC_BIN)
 test: | $(GOTMPDIR)
 	go test $(GO_PACKAGES)
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
-
-# Explicit optional suite: ordinary controller checks do not require Node/npm.
-# Install the reviewed runtime first with `paracetamol agent install pi`.
-test-pi:
-	@test -n "$(PI_RUNTIME)" || { printf '%s\n' 'Set PI_RUNTIME to the absolute Runtime path printed by agent install pi'; exit 2; }
-	PARACETAMOL_PI_RUNTIME="$(PI_RUNTIME)" node --test agent-clients/pi/tests/*.test.mjs
 
 race:
 	@test "$(HOST_GOOS)" = linux && test "$(PLATFORM)" = "$(HOST_GOOS)-$(HOST_GOARCH)" || { \

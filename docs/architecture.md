@@ -74,8 +74,8 @@ packages so tests can replace them without invoking GPU inference.
 The command parser accepts launcher flags before or after positionals while
 preserving `--` as an explicit upstream boundary. A mode only defines flags it
 can honor: for example, llama.cpp and DwarfStar CLI mode do not accept server
-publication or detach controls. Agent arguments must follow `--`; the `bin/pi`
-and `bin/maki` shims add that separator automatically.
+publication or detach controls. Only ComfyUI currently accepts upstream
+arguments after `--`.
 
 `internal/ui/` owns semantic terminal presentation. Interactive output uses
 color to distinguish headings, commands, states, warnings, and success while
@@ -102,16 +102,17 @@ historical evidence but are not accepted for resume.
 
 Controller-owned output uses two explicit publication policies from
 `internal/atomicfile/`. Final results, immutable derived resources, and
-archives are create-once and never replace another writer. Generated client
-or router configuration, a known checkpoint, and its derived report may
+archives are create-once and never replace another writer. Generated router
+configuration, a known checkpoint, and its derived report may
 replace only a singly linked regular file at the exact owned path. Both paths
 sync file data and the containing directory; links, directories, and multiply
 linked files fail closed.
 
 The typed controller schemas introduced at that boundary are hardware
 acceptance v2, ComfyUI benchmark/result-suite v2, llama.cpp benchmark/backend
-comparison v2, speculative-depth sweep v3, and coding-agent evaluation v5.
-Resume decodes these with unknown-field rejection and validates their bound
+comparison v2 and speculative-depth sweep v3. The coding-agent evaluation v5
+schema is archived with its retired runner.
+Active checkpoints use unknown-field rejection and validate their bound
 definitions and managed paths before trusting progress. Older files remain
 readable records, not resumable state.
 
@@ -680,11 +681,6 @@ apps/
     home/
   acceptance/
     results/                         checkpointed JSON and Markdown summaries
-  agent-evaluation/
-    sources/                         pinned public bare mirrors
-    cache/                           prepared toolchain caches, currently Go
-    results/                         machine-specific JSON and Markdown summaries
-    runs/                            fixtures, transcripts, patches, and grading logs
 content/
   comfyui/models/               direct ComfyUI model files
   llama-cpp/models/             managed GGUF model files
@@ -693,6 +689,9 @@ staging/
   comfyui/ llama-cpp/ dwarfstar/
   .cache/ .home/                downloader-only transient state
 ```
+
+Former `apps/pi/`, `apps/maki/` and `apps/agent-evaluation/` trees may still
+exist. They are preserved user data, not active runtime partitions.
 
 Managed `content/` and generated caches are reproducible from the catalog.
 Application `custom-loras`, `state`, `user`, `input`, `output`, and benchmark
@@ -846,11 +845,10 @@ listener. A private configured server key is loaded once and reduced to a
 digest for constant-time comparison. Client key selection is independent of
 server key selection. Bounded inventory and status probes share the gateway
 identity check and never follow redirects. Public authorization headers are
-stripped before backend proxying. Managed Pi and Maki receive their selected
-client key through their existing private generated provider files, never
-process arguments or sandbox environment passthrough. The key is necessarily
-readable by that client's own tools. Authentication changes neither backend
-loopback publication nor the trusted-local-process boundary, and does not
+stripped before backend proxying. Native clients manage their own credentials.
+The Maki export references an environment variable and never includes the
+server key. A client's own tools may be able to read its credentials.
+Authentication changes neither backend loopback publication nor the trusted-local-process boundary, and does not
 provide transport encryption.
 
 `internal/clientconfig/` renders portable Maki example configuration from
@@ -861,241 +859,35 @@ select regular Flash-Next at xhigh without changing the HTTP reasoning
 fallback. The native provider uses Maki's TOML reasoning mappings and a small
 separate startup-preferences snippet, not a provider plugin or remote runner.
 
-`bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
-resolves symlinks before locating it. The public `agent` command groups coding
-frontends below one command; their short PATH launchers retain the upstream
-command names. The generated model maps contain only the reviewed agent set,
-advertise each preset's managed starting context, and prefer regular Qwen3.8
-Flash-Next at native xhigh effort when the running gateway exposes it. This
-preference belongs to `internal/agent/models.go`, shared by Pi launch arguments
-and Maki's adaptive mapping. It does not alter the catalog or template's
-medium fallback for HTTP callers or the optional Huihui model. A launcher
-otherwise prefers dense Qwen3.8 27B MTP Q8, then the first exposed
-agent-capable model, and refuses a normal
-session when the gateway advertises no maintained model.
+`bin/paracetamol` is a PATH-friendly delegate to the checkout launcher and
+resolves symlinks before locating it. It is the only maintained PATH wrapper.
+Native Maki uses its ordinary configuration and permissions on macOS or Linux.
+The controller does not execute clients, own their state, install runtimes or
+provide a client sandbox.
 
-`agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
-and transitive runtime dependency graph. `internal/agent/piruntime.go` requires
-distribution-provided Node.js and npm, stages `npm ci --ignore-scripts` below
-the Pi application layout's `runtime/` directory, verifies the staged Pi version,
-and only then atomically activates the content-addressed installation. A
-failed install cannot look current, and normal launches never perform network
-installation. System Node.js remains outside the managed tree so distribution
-security updates do not require a separate Paracetamol runtime manager.
-Runtime installation does not own provider addresses or confinement policy.
-Those remain explicit inputs to configuration rendering and launch planning,
-so a later remote or non-bubblewrap client path can reuse the reviewed model
-profile without pretending that it is a local Linux sandbox.
+The export prefers regular Flash-Next at xhigh, then dense Qwen3.8 MTP Q8,
+then the first available coding-capable model. It records context, output
+limits and native reasoning mappings. Adaptive reasoning follows each model's
+reviewed preference. It does not rewrite saved tiers or global model policies.
+Refreshing is an explicit download and merge, not a startup action.
 
-`internal/agent/pi.go` queries the gateway's `/v1/models` endpoint for normal
-sessions, intersects it with the reviewed catalog, and renders that set into Pi's
-`models.json` schema with the `openai-completions` API. `bin/pi` delegates to
-the host launcher, which resolves only the runtime matching the current lock,
-mounts that complete tree read-only, and atomically refreshes `models.json`
-and Paracetamol's managed extensions below the Pi application's `sandbox/`
-directory. It points
-`PI_CODING_AGENT_DIR` at the same private state. Pi's ordinary user config is
-never modified. The managed model-picker extension intercepts the configured
-interactive model-selection shortcut and bare `/model`, presents stable
-model-family groups, and chains selection into Pi's native reasoning-level
-component. An
-exact built-in `/model PROVIDER/MODEL` change triggers the same reasoning
-step. Cycled and restored models deliberately do not, so ordinary navigation
-and session startup remain quiet. The launcher disables startup network
-checks, telemetry, and project `.pi` trust while leaving normal `AGENTS.md`
-context discovery enabled. It supplies the recommended installed model and
-its harness thinking preference as command-line defaults before forwarded
-Pi session arguments, so an explicit later `--provider`, `--model`, or
-`--thinking` remains authoritative. The generated provider enables Pi's
-native session-affinity headers, allowing the gateway to correlate requests
-with Pi's real session UUID without another extension or request-body access.
+The catalog owns reusable thinking and non-thinking sampling policies. The
+gateway freezes each model's policy, resolves reasoning before scheduling and
+fills only omitted or null sampler fields. Explicit values win field by field.
+Ambiguous reasoning controls fail before allocation. Templates and native
+reasoning remain backend-owned. Direct engine endpoints retain native
+defaults, while direct benchmarks send and record the catalog tuple.
 
-The completion-divider extension records the first low-level agent start and
-waits for Pi's `agent_settled` lifecycle event before adding a full-width
-elapsed-time marker to the transcript. Unlike `agent_end`, that boundary
-guarantees that no automatic retry, compaction retry, or queued continuation
-remains. The marker is a durable custom session entry, so restored scrollback
-retains it while the model context excludes it.
-An explicit `--completion-notify` Pi flag optionally emits a fixed terminal
-bell or OSC notification at that same boundary. It never includes model text,
-changes model context, emits outside an interactive TTY, or accesses D-Bus.
+DwarfStar is exported only when the gateway advertises a coding-capable preset.
+Its 128K model supports off and high, not the larger-context Think Max mode.
+A frozen registry proves receipt validity at startup, not backend residency.
+A new model still needs a complete function-tool round trip, not only a plain
+chat response, before being marked coding-capable.
 
-The managed web extension registers bounded page fetching and, only when a
-valid private `brave-search.key` exists in the private agent directory, Brave
-web search. Its requests run within Pi's existing shared-network sandbox.
-The launcher supplies `PARACETAMOL_PI_RUNTIME` so HTML extraction resolves
-the pinned `html-to-text` dependency from the read-only managed npm tree,
-never project `node_modules`. There is no remote extraction service, extra
-model call or background crawler. Fetch continuation uses four bounded
-in-memory snapshots. API credentials remain user-owned private files and are
-never copied to page-fetch requests, provider URLs or tool output. They are
-not protected from Pi's own file tools. The normal launcher and evaluation
-adapter share the Pi environment constructor; frozen evaluations continue
-to disable all extensions.
-
-`internal/agent/models.go` owns reviewed coding-task sampling metadata for
-every maintained llama.cpp agent preset. Pi receives static fields as
-`samplingParams` where the policy does not vary with thinking; explicit client
-request settings remain higher-precedence caller policy. Qwen3.8 samplers
-depend on reasoning mode, with a distinct Flash-Next thinking policy. The catalog
-owns validated, reusable thinking and non-thinking policies and each
-applicable preset references one through `sampling_policy`. The Go gateway
-freezes the policy with its inventory, resolves thinking before scheduling,
-and fills only omitted or null sampler fields. Explicit client values win.
-Ambiguous reasoning controls fail before backend allocation. Pi, Maki, and
-raw Chat Completions through the gateway therefore share one policy across
-engines without duplicated client configuration or a llama.cpp source patch.
-Templates and engine-native reasoning remain backend-owned. Direct engine
-endpoints use native defaults. Direct benchmarks explicitly send and record
-the selected catalog tuple.
-
-Pi recognizes package and configuration commands only when the command is its
-first argument. The launcher classifies `install`, `remove`, `uninstall`,
-`update`, `list`, `config`, `auth`, and `mcp` before adding session defaults, runs
-them online when requested, and points them at the same private state used by
-managed sessions. User-installed package resources therefore load on later
-launches without exposing Pi's ordinary host state. Informational `--help` and
-`--version` pass directly to the managed executable and require neither
-private state nor an installed model. Since bare `pi update` means self-update
-upstream, the bare, `self`, `pi`, `--self`, and `--all` forms are refused with
-the repository-managed update command; package-only update forms use the
-private state.
-
-`internal/agent/maki.go` publishes the same live reviewed model catalog as one
-Lua provider in Maki's private XDG `init.lua`. It uses the OpenAI codec, which
-shares Maki's llama.cpp Chat Completions implementation. The gateway `/v1` URL
-is written to `providers.toml`, not returned by an auth hook. Maki allows a
-user-selected LAN HTTP endpoint there but refuses it as a plugin-selected
-origin. A host `PARACETAMOL_BASE_URL` override is removed from the managed
-client environment so it cannot redirect the verified inventory to another
-service. The auth hook returns only the optional Bearer and correlation
-headers. Chat Completions, tool calls and session reasoning remain owned by
-Maki. Each model entry maps Maki's generic selector onto direct native JSON
-request fragments. A
-generated `init.lua` selects the recommended installed model, adaptive
-reasoning, and one concurrent task subagent. Adaptive mode resolves through
-the selected model entry, so switching families also switches to that
-family's reviewed default. The initial tier file assigns that model to every
-subagent tier. An unchanged seed follows a later default change, while any
-user-edited tier assignment is preserved. The generated `plugin.toml` allows
-network access only to the selected gateway authority and denies the plugin's
-filesystem, process, environment and agent permissions. A static model list
-and exact `allowed_models` prevent discovery from broadening the reviewed
-inventory. Managed files are mode 0600, refreshed atomically and reject links
-or multiply linked files. Once the replacement is published, the obsolete
-generated `providers/paracetamol` script is removed. Unknown legacy provider
-entries are preserved and block launch.
-Maki update, rollback, migration, and informational commands pass through to
-the real executable. Other management commands use the private state without
-requiring an installed model.
-Each managed session launch generates one UUID and publishes it through the
-Lua provider as a private
-gateway correlation header. It deliberately groups all tabs and subagents
-from that launcher invocation and is not presented as Maki's own session ID.
-The integration requires Maki 0.6.3 or newer, verified against 0.6.3. Its Lua
-model rows retain the `thinking_fields` contract. Named modes send only the
-selected fragment. Qwen3.8 sends `reasoning_effort`, and
-Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
-to a declared level; models marked `requires_thinking` clamp off upward before
-the fragment is selected. Explicit numeric budgets remain separate sampler
-ceilings and are not decoded into model-native labels. The schema does not
-carry per-model sampling parameters; those retain Paracetamol's gateway-side
-mode-aware defaults and normal per-request override precedence.
-
-DwarfStar appears in that same provider only when the gateway exposes it. The
-reviewed `antirez-deepseek-v4-flash-0731-q2-imatrix` model advertises the same
-131072-token runtime allocation and 16000-token output ceiling as the managed
-server. This public model ID names the GGUF publisher and exact managed
-release. It deliberately does not copy the pinned server's generic
-`deepseek-v4-flash` discovery alias, which omits both the 0731 release and the
-reviewed Q2 imatrix selection; the server accepts and echoes the exact managed
-ID in Chat Completions requests. The clients expose only direct
-(`reasoning_effort: none`) and normal thinking (`reasoning_effort: high`). At
-this context DwarfStar maps low, medium, and
-high to the same normal thinking mode; Think Max needs a substantially larger
-context and is not advertised. Pi maps the same behavior to `off` and `high`
-while hiding unsupported intermediate levels. Maki maps `/thinking off` and
-`/thinking high` directly to the same
-`reasoning_effort` values, with adaptive selecting high. The frozen gateway
-inventory is evidence that the content had a current verification receipt at
-gateway startup; it does not imply that DwarfStar is currently resident.
-
-`internal/agent/sandbox.go` owns the common client boundary. Both
-launchers use bubblewrap by default and refuse to fall back silently when
-`bwrap` is unavailable. They unshare user, PID, IPC, UTS, cgroup, and other
-available namespaces while deliberately restoring host networking for the
-loopback model endpoints. They drop capabilities, start a new session, and use
-parent-death cleanup. `/usr`, `/etc`, and the resolved client installation are
-read-only. If `/etc/resolv.conf` points to a dynamic regular file below `/run`,
-that exact file is rebound read-only after the private `/run` tmpfs is created;
-DNS remains usable without exposing another runtime tree. The exact resolved
-working directory is the only general persistent writable mount and keeps its
-host path. This preserves project identity,
-session directories, and absolute paths while exposing no siblings from the
-host filesystem. When the
-host uses Fedora's `/home -> var/home` link, the same link is recreated in the
-otherwise empty sandbox root so login-home and canonical paths keep resolving
-to the one mounted project. A minimal `/dev`, private `/tmp` and `/run`, and no
-GPU devices are provided. The
-host home and its ancestors are refused as working directories;
-broader project parents remain an explicit user-selected scope and are printed
-before launch.
-
-The child environment starts empty. Terminal and locale values, generated
-client settings, a narrow executable path, and sanitized Git author and
-committer identity are added explicitly. Tokens, proxy settings, SSH and
-desktop sockets, and unrelated `PARACETAMOL_*` values are not inherited. The real
-home is absent; config, data, state, cache, sessions, logs, and tool output
-persist only below the client's application `sandbox/` partition, whose owned
-directories are forced to mode `0700`. Sandbox state
-and the writable working directory must not overlap. Project `AGENTS.md`
-discovery remains available from the mounted project.
-
-`internal/evaluation/` builds a benchmark-specific layer on top
-of the Pi boundary. Every pinned source commit is exported into a new
-repository with one synthetic commit and no remote, while hidden graders and
-protected inputs remain outside the mounted worktree. Fixed repository-owned
-toolchain adapters select baseline, grading, and build commands. Go tasks add a
-prepared module cache as an explicit read-only mount and receive an offline
-proxy policy plus a temporary build cache. The standard-library Python task
-receives no dependency environment. Task definitions cannot supply arbitrary
-commands. The Pi process still needs shared host
-networking for its loopback model endpoint, so structured tool transcripts are
-audited for ordinary network commands and this boundary is not claimed as
-adversarial network containment. Grading happens outside the client sandbox
-against a copied worktree with dependency pins restored.
-
-A standard `/home/linuxbrew/.linuxbrew` installation is always mounted
-read-only when present, making its command-line toolchain available to both
-clients without allowing package or state mutation. System command directories
-remain earlier on `PATH` for a client outside Linuxbrew, so exposing the prefix
-does not replace Pi's reviewed system Node.js runtime or distribution tools. A
-client executable inside Linuxbrew keeps its own prefix first on `PATH`; a
-nonstandard `.linuxbrew` prefix needed by that executable is mounted read-only
-as well. Other executables outside `/usr` are mounted as the exact resolved
-file. Pi additionally supplies its complete content-addressed runtime as an
-explicit read-only mount while executing distribution Node.js from `/usr`.
-`--no-sandbox` is an
-explicit troubleshooting escape hatch and restores ordinary host filesystem
-access while retaining generated provider settings and private client state.
-Neither mode starts or supervises a model server.
-
-Maki prefers a legacy `~/.maki` directory over XDG paths. Sandboxed runs have
-an empty synthetic home and cannot see one. An unsandboxed run refuses to
-start while the legacy directory exists and directs the user to upstream
-`maki migrate xdg`; silently using ordinary host state would violate the
-private-state contract.
-
-Agent clients reserve the advertised per-turn output limit when deciding when
-to compact a session. Paracetamol caps that allowance at 16384 tokens so a 256K
-agent preset retains roughly 240K tokens for prompts, history, tools, and
-retained context. Compaction remains lossy and the sandbox remains the hard
-filesystem boundary when a local model misreads generated context.
-
-This protocol choice is deliberate. llama.cpp maps ordinary function tools
-from Chat Completions, which covers both clients' host-side tools. A newly
-maintained preset still needs a complete tool-call and tool-result acceptance
-test in each client before unattended use.
+The former Pi runtime, extensions, client launchers, sandbox and coding-task
+runner are retired. Frozen task definitions and hidden fixtures remain in
+`evaluations/coding/` as archival evidence. No retirement step deletes or
+migrates installed runtimes, sessions, credentials or raw evaluation results.
 
 Most benchmark resources are used unchanged. A small allowlisted renderer may
 derive a closely related task-specific prompt from the same pinned upstream

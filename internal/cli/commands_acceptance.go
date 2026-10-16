@@ -90,6 +90,11 @@ type acceptanceResult struct {
 	Cases       []acceptanceEntry    `json:"cases"`
 }
 
+func configApplicationImage(identifier string) string {
+	application, _ := config.ApplicationByID(identifier)
+	return application.Image
+}
+
 func (app *App) commandAcceptance(args []string) error {
 	if len(args) > 0 && args[0] == "run" {
 		return controlerr.Usage("acceptance is a direct command; use %q", identity.Command("acceptance", "[OPTIONS]"))

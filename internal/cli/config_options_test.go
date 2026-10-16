@@ -23,7 +23,7 @@ func TestExtractConfigurationSelectionAcceptsEitherPosition(t *testing.T) {
 }
 
 func TestExtractConfigurationSelectionPreservesPassthrough(t *testing.T) {
-	arguments := []string{"agent", "run", "pi", "--", "-c", "model-config.toml"}
+	arguments := []string{"run", "comfyui", "--", "-c", "application-config.toml"}
 	remaining, selection, err := extractConfigurationSelection(arguments)
 	if err != nil {
 		t.Fatal(err)

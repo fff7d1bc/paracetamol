@@ -386,22 +386,6 @@ func TestGatewayCredentialFlagsRejectEmptyOrWrongScope(t *testing.T) {
 	}
 }
 
-func TestRemoteGatewayWarningSeparatesAuthenticationFromEncryption(t *testing.T) {
-	for _, authenticated := range []bool{false, true} {
-		for _, scheme := range []string{"http", "https"} {
-			app, _, stderr := testApp(t, &commandRunner{})
-			app.writeAgentRemoteGateway("Pi", scheme+"://gateway.example.test/v1", authenticated)
-			want := "no key supplied"
-			if authenticated {
-				want = "Bearer key supplied"
-			}
-			if !strings.Contains(stderr.String(), want) || strings.Contains(stderr.String(), "HTTP does not encrypt") != (scheme == "http") {
-				t.Fatalf("warning=%s", stderr)
-			}
-		}
-	}
-}
-
 func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	requested := ""
 	input, output, cached, reasoning := int64(20), int64(5), int64(12), int64(3)
@@ -441,7 +425,7 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 				Sessions: []gateway.SessionAggregate{{ID: sessionID, Usage: gateway.RequestAggregate{Requests: 1, Tokens: gateway.AggregateTokens{Output: gateway.AggregateMetric{Total: 5, Observations: 1}}}}},
 			},
 			RecentRequests: []gateway.RequestRecord{{
-				ID: "r00000001", SessionID: sessionID, Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "pi/fixture",
+				ID: "r00000001", SessionID: sessionID, Model: "qwen", Application: "llama-cpp", Peer: "192.0.2.10", UserAgent: "http-client/fixture",
 				Stream: true, Outcome: gateway.OutcomeSucceeded, HTTPStatus: http.StatusOK,
 				Timing:         gateway.RequestTiming{GatewayWaitMilliseconds: 3, UpstreamMilliseconds: 40, TotalMilliseconds: 44},
 				Tokens:         gateway.TokenUsage{Input: &input, Output: &output, Cached: &cached, Reasoning: &reasoning},
@@ -463,7 +447,7 @@ func TestStatusGatewayRequestsRecentObservability(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"r00000001", "qwen", "succeeded", "44ms total", "20 input", "5 output", "12 cached",
-		"3 reasoning", sessionID, "Usage since start", "Recent sessions", "reasoning_effort=medium", "sampler defaults", "pi/fixture", "router model status is unavailable",
+		"3 reasoning", sessionID, "Usage since start", "Recent sessions", "reasoning_effort=medium", "sampler defaults", "http-client/fixture", "router model status is unavailable",
 		"256K configured context", "32K trained", "27.4B params", "27.2 GiB", "Q8_0", "PP 200.00 tok/s", "TG 16.00 tok/s", "draft 5/8 accepted (62.5%)",
 	} {
 		if !strings.Contains(stdout.String(), expected) {

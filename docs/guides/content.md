@@ -76,7 +76,7 @@ changes the managed-client default.
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
 Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a
 128 GB Strix Halo host with fast local SSD storage, not another quantization
-of dense 27B. It is the Pi and Maki default at `xhigh` when advertised by the
+of dense 27B. It is the exported Maki default at `xhigh` when advertised by the
 gateway. The preset uses SSD-backed lazy loading for the
 model's unusually large per-layer token embedding and has no MTP mode in the
 current pinned llama.cpp. On Strix Halo it uses a model-scoped ROCm direct

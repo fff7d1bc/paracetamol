@@ -64,7 +64,7 @@ port = 7455
 startup_timeout = "30m"
 
 [gateway.client]
-# Used by managed Pi, Maki, and `status gateway`.
+# Used by the controller's `status gateway` command, not native clients.
 url = "http://127.0.0.1:7455/v1"
 
 [gateway.llama-cpp]
@@ -164,8 +164,9 @@ api_key_file = "/home/USER/.config/paracetamol/gateway.key"
 ```
 
 Securely copy the same key to each authorized client host, then configure its
-client section. Local Pi and Maki clients also need this section. It can point
-to the same local file as the server section.
+client section for `status gateway`. It can point to the same local file as
+the server section. Native Maki has its own credential configuration described
+in the [client guide](guides/remote-maki.md#authentication).
 
 ```toml
 [gateway.client]
@@ -173,8 +174,8 @@ url = "http://gpu-host.local:7455/v1"
 api_key_file = "/home/USER/.config/paracetamol/gateway.key"
 ```
 
-`agent run pi`, `agent run maki` and `status gateway` also accept
-`--gateway-api-key-file PATH`. Server precedence is the command flag,
+`status gateway` also accepts `--gateway-api-key-file PATH`. Server precedence
+is the command flag,
 `PARACETAMOL_GATEWAY_API_KEY_FILE`, then `[gateway].api_key_file`. Client
 precedence is its command flag, `PARACETAMOL_GATEWAY_CLIENT_API_KEY_FILE`, then
 `[gateway.client].api_key_file`. All paths must be absolute. Client credentials
@@ -191,14 +192,12 @@ printf 'Authorization: Bearer %s\n' "$(< "$HOME/.config/paracetamol/gateway.key"
 ```
 
 The server reads its key once at startup and retains only a SHA-256 digest for
-constant-time comparison. Restart it to rotate or disable the key. Managed
-clients read their key on session launch and place it only in their existing
-private generated provider files, with mode `0600` for Pi or `0700` for Maki's
-provider script under a `0700` state directory. These files are credentials
-and should not be shared. A normal relaunch refreshes or removes that copy.
-Informational and package-management commands do not read the key or contact
-the gateway. Agent tools run as the same user and can read their own client's
-credential, so this is not a secret boundary against the agent itself.
+constant-time comparison. Restart it to rotate or disable the key. Native
+clients own their credential storage. The Maki export contains only the
+environment-variable name and, when authentication is disabled, a dummy
+credential. It never contains the gateway key. Client tools may be able to
+read their own credentials, so this is not a secret boundary against the
+agent itself.
 
 Keys are not printed in startup/status output, request logs or the request
 ledger. Inventory and status probes refuse redirects and validate the gateway
@@ -285,7 +284,7 @@ dense model's policy.
 
 ## Model-aware sampling defaults
 
-The gateway is the shared sampling-policy boundary for Pi, Maki, curl, and
+The gateway is the shared sampling-policy boundary for Maki, curl, and
 other HTTP clients. Each reviewed Qwen preset references a catalog policy.
 There is no model-name guessing and no universal Qwen tuple applied to other
 families. Models without a policy keep their original request bytes.
@@ -303,8 +302,8 @@ by the model. Qwen3.8 also accepts the
 boolean and supported nested `reasoning_effort` values.
 No client-specific workaround is involved.
 
-The regular Flash-Next harness default is `xhigh`. That preference belongs to
-the Pi and Maki launchers, which send it explicitly. The catalog and shared
+The regular Flash-Next default in the exported Maki example is `xhigh`.
+That client preference is sent explicitly. The catalog and shared
 template still use medium when a raw HTTP request omits reasoning, including
 for the optional Huihui variant. Both Flash-Next presets share one sampling
 policy and template.
@@ -365,6 +364,8 @@ The initial public surface is deliberately small:
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `GET /paracetamol/v1/status`
+- `GET /paracetamol/v1/clients/maki/providers.toml`
+- `GET /paracetamol/v1/clients/maki/init.lua`
 
 Every response identifies the public service with
 `Server: paracetamol/0.1.0-dev`, derived from the built command identity and
@@ -480,23 +481,15 @@ individual request history and session identifiers. Raw prefixed runtime
 output remains on gateway stderr; status exposes no host path or process
 detail.
 
-Pi and Maki accept one `--gateway-url` setting, with
-`PARACETAMOL_GATEWAY_URL` and `[gateway.client].url` as durable alternatives.
-Normal sessions query
-the live inventory, require its exact versioned Paracetamol gateway marker,
-and intersect it with local catalog capabilities before generating one
-`paracetamol` provider. A different service on the configured host and port is
-rejected before its status or response body is treated as model inventory.
-Management and informational client commands do not require a running gateway.
-Keep client and server checkouts on the same revision so model IDs, protocol
-markers, and capability metadata agree.
+Native Maki configuration comes from the [gateway export](guides/remote-maki.md).
+The client needs no checkout, local catalog or controller. Download and merge
+again when the frozen inventory changes. The provider selects one gateway
+URL for every backend and does not inject a shared session ID.
 
-Managed Pi enables its native OpenAI-compatible session-affinity headers, so
-the real Pi session UUID follows session restore, fork, and switching. Maki's
-llama.cpp provider currently receives but does not transmit Maki's internal
-session ID; Paracetamol therefore gives one launcher invocation a fresh UUID
-and places it in the private Paracetamol header. All Maki tabs and subagents in
-that invocation intentionally form one launch-level correlation group.
+The controller's `status gateway` command still accepts `--gateway-url`,
+`PARACETAMOL_GATEWAY_URL` and `[gateway.client].url`. Its bounded metadata
+probe checks the versioned gateway marker before trusting a response. These
+controller settings do not configure native Maki.
 
 ## Deliberate current limits
 

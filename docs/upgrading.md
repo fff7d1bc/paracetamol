@@ -16,7 +16,6 @@ Start every upgrade by locating the current values:
 rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
 rg -n 'BuildUnit|Spec{' internal/application/registry.go
 rg -n 'source_version|source_revision' catalog/catalog.json
-cat agent-clients/pi/package.json
 cat go.mod
 sort -u containers/content_tools/requirements.txt \
   applications/comfyui/constraints.txt
@@ -35,7 +34,6 @@ The main pin classes are:
 | Content download tools | `containers/content_tools/requirements.txt` | full exact dependency set |
 | Comfy dependencies | `applications/comfyui/constraints.txt` | transitive constraints |
 | Models and workflows | `catalog/` | full commits plus content hashes |
-| Managed Pi client | `agent-clients/pi/` | exact npm release plus lockfile integrity |
 
 AMD ROCm runtime packages belong to the lower tagged runtime; PyTorch, `pip`,
 and `wheel` policy belong to the higher shared base.
@@ -67,48 +65,22 @@ their normal layer cache and retaining downloaded Python packages. Use
 `--no-cache` for the final cold validation because it also cold-builds the
 prerequisite closure and bypasses the host package-download cache.
 
-## Upgrade the managed Pi client
+## Check native Maki compatibility
 
-Pi is a host-side managed client rather than a container application. Change
-the exact `@earendil-works/pi-coding-agent` dependency and matching Node.js
-minimum in `agent-clients/pi/package.json`, then resolve the complete npm tree
-without running package lifecycle scripts:
-
-```bash
-cd agent-clients/pi
-npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-cd ../..
-```
-
-Use npm 11 or newer to generate the lockfile. Older npm releases can omit
-license fields required by the immutable-metadata validator. Do not weaken
-that check or guess licenses to compensate. Installing an already reviewed
-lockfile does not require updating the host's npm.
-
-The manifest also pins `html-to-text` for the managed web extension. The
-loader accepts only these two reviewed direct dependencies and requires the
-lockfile to match both. HTML extraction is local and does not use an external
-service. Run `make test-pi PI_RUNTIME=/absolute/runtime/path` after changing
-either dependency, in addition to the normal launcher and acceptance checks.
-
-Review the complete lockfile change, including package versions, registry
-origins, integrity values, licenses, engine requirements, and native optional
-dependencies. Update `THIRD_PARTY_NOTICES.md`, user requirements, and exact Pi
-versions in maintained evaluation documentation when applicable.
-
-Install into a disposable data directory first. The command requires system
-Node.js and npm rather than a Homebrew runtime, stages the locked tree, and
-verifies Pi's reported version before activation:
+Paracetamol does not install or pin Maki. Its maintained example targets
+Maki 0.6.3 or newer. When changing the renderer or reviewing an upstream Maki
+schema change, run the native transport fixture with a separately installed
+client.
 
 ```bash
-./paracetamol agent install pi --data-dir /absolute/disposable/data
-./paracetamol agent run pi --data-dir /absolute/disposable/data -- --version
+PARACETAMOL_TEST_MAKI=/absolute/path/to/maki make test
 ```
 
-Then rerun the Pi launcher and package-management tests, install the new pin on
-each acceptance host, and perform the reasoning-transport checks documented in
-`testing-and-release.md`. A successful npm install or `pi --version` is not a
-substitute for one real tool call through the managed llama.cpp server.
+This uses disposable native configuration and a fake HTTP backend. It checks
+model selection, reasoning, credentials, a tool round trip and replay without
+touching normal client state. Follow it with a live remote tool round trip on
+an available inference host. Record the client version and distinguish native
+macOS execution from Linux protocol checks.
 
 ## Upgrade content download tools
 

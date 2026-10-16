@@ -91,95 +91,16 @@ or performance comparison in the maintainer acceptance matrix.
 
 ## Coding-agent evaluation
 
-Use the frozen coding suite to compare how managed models investigate and
-change real Go and Python repositories. It is deliberately separate from
-target-hardware smoke acceptance and `llama-bench`: a model can generate
-tokens quickly while still making an unsafe or incomplete patch.
+The Pi-based `benchmark agent` command is retired. Frozen task definitions and
+hidden fixtures remain under `evaluations/coding/`. Existing raw results under
+`apps/agent-evaluation/results/` and `apps/agent-evaluation/runs/` are untouched.
+See the [archived protocol](../coding-agent-evaluation.md) when interpreting or
+reproducing an older result.
 
-Inspect the eleven tasks and preview one model without fetching sources,
-creating data, loading a model, or starting Pi:
-
-```bash
-./paracetamol benchmark agent --list-tasks
-./paracetamol benchmark agent \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --dry-run
-```
-
-The frozen suite has nine implementation tasks and two read-only review tasks
-drawn from `reencode`, `fzr`, `ssh-host-proxy`, `paracetamol`, and `nonet`. Run
-the complete suite with one exact managed llama.cpp preset:
-
-```bash
-./paracetamol benchmark agent \
-  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl --thinking xhigh
-```
-
-Or run selected tasks while calibrating a model:
-
-```bash
-./paracetamol benchmark agent \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium \
-  --task re-align --task re-cancel
-```
-
-`--repetitions 3` creates a fresh checkout and Pi session for every attempt.
-Qwen3.8 accepts off, low, medium, or xhigh, while Muse accepts
-low, medium, high, or xhigh and has no off mode. The runner rejects selectors
-outside the chosen preset's native contract and records the native value in
-the result. It deliberately provides no “normalized” three-model condition:
-the same label would not mean the same control. Keep the Pi harness, hardware,
-task selection, repetitions, context, and runtime policy fixed, and state
-whether a run compares each model's operational default or performs a
-within-model reasoning sweep. Do not mix Pi results with Maki or another
-harness; harness comparisons are a separate experiment.
-
-DwarfStar can run the same suite through its independently managed endpoint:
-
-```bash
-./paracetamol benchmark agent --dwarfstar
-```
-
-Paracetamol fetches each pinned public repository into a managed source mirror,
-verifies the exact Git tree, and archives the base commit into a new repository
-with one synthetic commit and no remote. Pi therefore cannot discover the
-later reference fix through local Git history. Each attempt is sandboxed to
-its fixture. Go tasks receive an offline module cache, while the Python task
-uses its standard-library test environment without prepared dependencies. The
-model is instructed not to use the network, and recognized network commands in
-Pi's structured transcript invalidate the attempt. The host network remains
-available to the Pi process because it must reach the loopback model server,
-so this is an audited benchmark policy rather than syscall-level hostile-code
-containment.
-
-Implementation grading runs the resulting patch against the repository tests,
-then adds a hash-verified hidden test and runs the fixed toolchain's build or
-compilation check. Dependency files are restored to their pinned baseline
-before grading. A result is `solved` only when Pi exits cleanly, ordinary and
-hidden tests pass, the final check passes, and no dependency or audited-network
-policy was violated. Review answers are preserved as `review-pending`; they are
-intentionally not folded into the implementation solve rate and need factual
-human review.
-
-Raw results live below:
-
-```text
-apps/agent-evaluation/results/
-apps/agent-evaluation/runs/
-```
-
-Each result JSON has a neighboring Markdown summary. The run directory keeps
-the prompt-visible fixture, agent patch, Pi JSONL transcript, stderr, grading
-logs, review answer, and per-attempt server log. An unsolved implementation is
-a completed benchmark result, not a launcher failure. Infrastructure failure
-or interruption remains a nonzero command result and the checkpoint records
-where execution stopped.
-
-Public historical fixes may have appeared in model training data. Recent,
-small repositories reduce but do not eliminate that risk. Use the frozen
-suite for reproducible calibration, then add an unpublished holdout task when
-making a high-stakes final model choice.
+The former Pi and Maki runtime and sandbox data under `apps/pi/` and
+`apps/maki/` is also left in place. Native Maki uses its ordinary user
+configuration and sessions, not these private trees. Back them up before any
+manual cleanup. There is no automatic migration or deletion.
 
 ## Builds and local caches
 
