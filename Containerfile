@@ -1,9 +1,9 @@
 # docker.io/library/ubuntu:resolute-20260724.1 (26.04), resolved 2026-08-17.
-ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.0-r3
-ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.0-torch2.13-r6
+ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r4
+ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.13-r7
 ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914d4afc7a03
 ARG ROCM_PACKAGE_INDEX=https://stable.repo.amd.com/rocm/whl-next/
-ARG ROCM_VERSION=10.0.0
+ARG ROCM_VERSION=10.1.0
 ARG TORCH_VERSION=2.13.0
 ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2

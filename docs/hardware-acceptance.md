@@ -26,6 +26,177 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo ROCm 10.1 refresh (2026-10-16)
+
+The [ROCm 10.1.0 release](https://rocm.docs.amd.com/en/docs-10.1.0/about/release-notes.html)
+was compared with the accepted ROCm 10.0.0 stack on Fedora 44, kernel
+`7.2.10-200.fc44.x86_64`, Ryzen AI Max+ 395, `gfx1151`, and 128 GB LPDDR5X-8000.
+The host retained its balanced platform profile, `balance_performance` CPU
+preference and 112 GiB TTM ceiling. No host configuration changed.
+The controller baseline is `53224f5758d0d607ef2da428184a8011eb6a12b7`.
+The delivery revision is the commit adding this record. Application sources
+remain llama.cpp `623c16393c7d53a37df8bb69c6ea8ed6e5171f62`, DwarfStar
+`0aaea5a238fb41a35106a551e73c8409dfb751ac` and ComfyUI
+`700821e1364eaab0e8f21c538a2131719fec57bf`.
+
+This refresh changes the shared runtime and native SDK together. PyTorch
+`2.13.0`, torchvision `0.28.0` and torchaudio `2.11.0.2` retain their framework
+versions but use AMD's `+rocm10.1.0` wheels. PyTorch reports HIP
+`7.16.26385`. The native HIP compiler advances from Clang 23 to Clang 24.
+The Ubuntu base digest, application commits, source patches, model bytes,
+templates, samplers and managed F16 KV policy remain unchanged.
+
+All six managed build targets completed a cold `build all --no-cache`.
+The five ROCm-bearing outputs are:
+
+| Image suffix under `localhost/paracetamol:` | Image ID |
+| --- | --- |
+| `runtime-ubuntu26.04-rocm10.1-r4` | `a9cedc98cbc532f7a5ce489a409d1515cc6d8af4d90454e9491c52436473bc2c` |
+| `base-ubuntu26.04-rocm10.1-torch2.13-r7` | `5f67bee8829cbc689f5053f16db3e36d2cf49ffbae1e2c347c86f5c386c6683f` |
+| `comfyui-ubuntu26.04-rocm10.1-0.28.0-r13` | `b4aeb10bb447eabb9daad82048d790fefa74f527167a2288da72e32993bc1084` |
+| `llama-cpp-ubuntu26.04-rocm10.1-623c163-r55` | `d2ff4b98665725b35c28c57e32aed7c55d48507c094e31e5b64930f5ca65b48e` |
+| `dwarfstar-ubuntu26.04-rocm10.1-0aaea5a-r12` | `5a90a09a197b2e094b2e1041bb86c80fc1a4256dc3a3fee277fbf1241d4af09c` |
+
+Every Python environment passed `pip check`. Both native images retained
+device code for `gfx1150`, `gfx1151`, `gfx1200` and `gfx1201`, had no unresolved
+dynamic dependencies, and remained free of PyTorch and the build-only SDK.
+The base and ComfyUI images passed `doctor` and FP32/FP16 matrix,
+convolution and causal-attention GPU checks.
+
+The first custom random-FP16 convolution check exceeded its FP32-reference
+tolerance on both ROCm versions with identical reported errors. It was not a
+new regression. A replacement fixture using exactly representable binary
+fractions passed with zero tolerance on both versions. The original failures
+and baseline controls are retained with the results.
+
+The matching llama.cpp builder passed its 50 reader/allocation checks and
+seven upstream parser/template test programs. On the GPU, all 989 targeted
+QSA, Qwen, gated-delta-net and top-k operator cases passed, as did eight
+top-k allocation-lifetime cases. Flash-Next's fast state screen and
+real-source causal/restore screen had zero logit difference. The small-model
+state-copy fixture passed four cases with zero skips for each of F16, Q8_0
+and Q4_0 KV. Another 32 CPU-reference Flash Attention cases passed for Q8_0
+and Q4_0 cache layouts, including prefill, permutations and sparse attention.
+These optional-cache tests do not change managed cache precision.
+
+#### Flash-Next comparison
+
+The comparison used the unchanged
+`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, llama.cpp commit `623c163`,
+one ROCm slot, one serial client, 262144-token capacity, F16 KV, Flash
+Attention, the direct embedding reader, and batch/microbatch 2048. Requests
+explicitly selected medium reasoning, catalog sampling with temperature zero,
+and seed 42. Harness defaults remain xhigh.
+
+Loading is excluded. Retrieval requests start without a cached KV prefix,
+but the filesystem cache is not flushed. Prefill is the mean of two requests
+at the smaller sizes and one near the context ceiling. Warm decode is 512
+generated tokens divided by the total wall time of two cached 256-token
+requests, after a separate warm-up request.
+
+| Actual retrieval input | ROCm 10.0 prefill | ROCm 10.1 prefill | ROCm 10.0 warm decode | ROCm 10.1 warm decode |
+| --- | --- | --- | --- | --- |
+| 3667 tokens | 4.82 s | 4.78 s | 23.19 tokens/s | 23.09 tokens/s |
+| 32167 tokens | 43.69 s | 43.09 s | 22.21 tokens/s | 22.14 tokens/s |
+| 247165 tokens | 393.85 s | 387.85 s | 17.60 tokens/s | 17.57 tokens/s |
+
+Every retrieval recovered all six dispersed values. Prefill was about 1–1.5%
+quicker and decode differed by less than 0.5%. This bounded sample supports
+effectively unchanged performance, not a substantial speedup claim. Sampled
+available host memory stayed above 23.4 GiB during the candidate's Flash-Next
+checks.
+
+Off, low, medium and xhigh requests, nested tools, streaming, Responses,
+preserved reasoning history, prefix reuse, cancellation recovery and a
+two-client queue all passed on the candidate.
+
+#### Other regression checks
+
+Dense `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` passed the same short protocol,
+history, reuse, cancellation and two-client checks. Its paired 32167-token
+retrievals recovered all six values on both versions. With four slots sharing
+a 262144-token pool, F16 KV, MTP depth three and one serial measurement client,
+mean prefill rose from 106.05 to 109.32 seconds, about 3.1% slower. Warm decode
+was effectively unchanged at 14.34 versus 14.38 tokens/s by the same wall-time
+method above. This small regression belongs in the record even though
+Flash-Next is the primary acceptance workload.
+
+CPU-only ComfyUI and llama.cpp router startups reached their HTTP endpoints
+with no GPU devices and stopped cleanly. The formal llama.cpp/DwarfStar smoke
+suite `20261016T121526Z-4b4160bc` passed. The tiny Qwen3 benchmark and CLI smoke
+also passed separately on ROCm and Vulkan.
+
+Muse's DFlash variant passed its thinking and nested-tool checks. The regular
+Flash-Next Vulkan path passed both 32K retrievals, cached continuations and a
+clean follow-up request. This is a shorter-context Vulkan regression check,
+not a repeat of the near-256K ROCm comparison.
+
+Managed Pi 1.2.0 and Maki 0.6.3 both completed real file-read and shell-tool
+round trips through the gateway. Neither client received a model or reasoning
+override. The gateway observed regular Flash-Next at xhigh and launched the
+new image on an ephemeral loopback-only backend port.
+
+DwarfStar passed short HTTP inference, reasoning, a 6.6K input, nested tools,
+streaming, Responses, prefix reuse and cancellation recovery with both
+ordinary decoding and DSpark. These servers had 131072-token capacity, but
+the tests did not populate that entire context or benchmark DSpark speed.
+
+Huihui's optional Flash-Next variant also passed all supported reasoning
+modes, a longer input, nested tools, SSE, Responses and preserved-history
+rendering on the new ROCm image. This is a short runtime regression check,
+not a new coding-quality comparison.
+
+**PASS for the tested Strix Halo inference paths.** No AMDGPU fault, reset,
+timeout or OOM event appeared during the test window. The old ROCm 10.0
+PyTorch control runs emitted CPU split-lock warnings, retained in the kernel
+log. No host tuning was attempted. All owned test containers stopped and
+their listeners disappeared.
+
+Evidence is retained under
+`~/.local/share/paracetamol/apps/acceptance/results/20261016-rocm101/` on the
+acceptance host. It includes cold-build logs, package inventories, source and
+patch snapshots, exact image IDs, helper sources, corpus, raw requests and
+responses, numerical results, harness transcripts, kernel logs and a SHA-256
+manifest. The canonical controller snapshot and delivery patch identify the
+tested source independently of the rsynced checkout's older Git metadata.
+The previous images remain available as rollback controls.
+
+#### Deferred coverage
+
+`gfx1150`, `gfx1200` and `gfx1201` remain `N/P` for this runtime revision
+because those GPUs were unavailable. Retaining their device code is not
+runtime acceptance. ComfyUI image and video generation also remain `N/P` on
+Strix Halo because the `qwen-image-2512-fp8-lightning` and
+`wan-2.2-t2v-14b-fp8-lightning` fixtures were not installed. CPU startup and
+PyTorch operations do not replace those generation checks.
+
+For the deferred GPU classes, use this delivery's source and image tags above,
+record the locally built image IDs, and follow the
+[acceptance matrix](#representative-application-gate). Required content for the
+bounded native smoke is `llama-qwen-qwen3-0.6b-q8-0`. After choosing the exact
+render node and profile (`strix-point` or `rdna4`),
+run the following with a new result directory below `build/`:
+
+```bash
+./paracetamol doctor --no-config --render-node "$render_node"
+./paracetamol acceptance --no-config --application llama-cpp \
+  --profile "$profile" --render-node "$render_node" --non-interactive \
+  --output "$result_dir/acceptance.json"
+./paracetamol benchmark llama-cpp throughput --no-config \
+  --preset qwen-qwen3-0.6b-q8-0 --profile "$profile" \
+  --render-node "$render_node" --compare-backends --repetitions 3 \
+  --prompt-tokens 512 --generation-tokens 128 --context-depth 0 \
+  --batch-size 2048 --ubatch-size 512 --cache-type-k f16 --cache-type-v f16 \
+  --flash-attn on --output "$result_dir/native.json"
+```
+
+Expect exact device isolation, successful GPU execution on both backends,
+clean shutdown and no GPU fault or reset. Archive the JSON, logs and kernel
+window with the image IDs. ComfyUI needs its image and video fixtures and the
+normal visual-review acceptance pass on each class with sufficient memory.
+The large Flash-Next and DwarfStar models are not small-VRAM acceptance
+fixtures.
+
 ### Flash-Next harness default and Huihui variant (2026-10-16)
 
 **PASS for Huihui's ROCm integration on Strix Halo.** Regular Unsloth

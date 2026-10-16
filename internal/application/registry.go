@@ -64,7 +64,7 @@ var specs = []Spec{
 	{
 		ID: string(ComfyUI), DisplayName: "ComfyUI",
 		Summary:       "image and video generation with curated workflows",
-		Image:         identity.Image("comfyui-ubuntu26.04-rocm10.0-0.28.0-r12"),
+		Image:         identity.Image("comfyui-ubuntu26.04-rocm10.1-0.28.0-r13"),
 		ContainerName: identity.Container("comfyui"), Build: BuildComfyUI, Port: 8188,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server"}, Shell: true, Logs: true, MultiGPU: true, PyTorchBase: true,
 		AfterBuild:   []Action{{Arguments: []string{"content", "install", "comfyui"}, Description: "choose a reviewed ComfyUI recipe"}},
@@ -73,7 +73,7 @@ var specs = []Spec{
 	{
 		ID: string(LlamaCPP), DisplayName: "llama.cpp",
 		Summary:       "local GGUF inference, routing, and native throughput tests",
-		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.0-623c163-r54"),
+		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-623c163-r55"),
 		ContainerName: identity.Container("llama-cpp"), Build: BuildLlamaCPP, Port: 8080,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
 		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8"}, Description: "install the reviewed Qwen3.8 family"}},
@@ -85,7 +85,7 @@ var specs = []Spec{
 	{
 		ID: string(DwarfStar), DisplayName: "DwarfStar",
 		Summary:       "experimental high-memory DeepSeek V4 Flash inference",
-		Image:         identity.Image("dwarfstar-ubuntu26.04-rocm10.0-0aaea5a-r11"),
+		Image:         identity.Image("dwarfstar-ubuntu26.04-rocm10.1-0aaea5a-r12"),
 		ContainerName: identity.Container("dwarfstar"), Build: BuildDwarfStar, Port: 8000,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true,
 		AfterBuild:   []Action{{Arguments: []string{"content", "install", "dwarfstar", "flash-0731-q2-imatrix"}, Description: "install the reviewed high-memory model"}},
@@ -94,8 +94,8 @@ var specs = []Spec{
 }
 
 var units = []BuildUnit{
-	{ID: BuildRuntime, DisplayName: "minimal ROCm runtime", Target: "rocm-runtime", Image: identity.Image("runtime-ubuntu26.04-rocm10.0-r3")},
-	{ID: BuildPyTorchBase, DisplayName: "ROCm/PyTorch base", Target: "rocm-base", Image: identity.Image("base-ubuntu26.04-rocm10.0-torch2.13-r6"), Prerequisites: []BuildID{BuildRuntime}},
+	{ID: BuildRuntime, DisplayName: "minimal ROCm runtime", Target: "rocm-runtime", Image: identity.Image("runtime-ubuntu26.04-rocm10.1-r4")},
+	{ID: BuildPyTorchBase, DisplayName: "ROCm/PyTorch base", Target: "rocm-base", Image: identity.Image("base-ubuntu26.04-rocm10.1-torch2.13-r7"), Prerequisites: []BuildID{BuildRuntime}},
 	{ID: BuildContentTools, DisplayName: "content tools", Target: "content-tools", Image: identity.Image("content-ubuntu26.04-huggingface1.27-r1")},
 	{ID: BuildComfyUI, DisplayName: "ComfyUI", Target: "comfyui", Image: specs[0].Image, Prerequisites: []BuildID{BuildPyTorchBase}, Application: string(ComfyUI)},
 	{ID: BuildLlamaCPP, DisplayName: "llama.cpp", Target: "llama-cpp", Image: specs[1].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(LlamaCPP)},
