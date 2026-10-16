@@ -130,6 +130,8 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.models(writer)
 	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/status":
 		server.status(writer, request)
+	case request.Method == http.MethodGet && (request.URL.Path == makiConfigPath+"providers.toml" || request.URL.Path == makiConfigPath+"init.lua"):
+		server.makiConfig(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/chat/completions":
 		server.chat(writer, request)
 	default:

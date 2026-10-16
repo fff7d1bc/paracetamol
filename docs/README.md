@@ -19,6 +19,8 @@ then choose a user guide or maintainer reference below.
   context results, exact Unsloth artifacts, and limitations.
 - [Inference gateway](gateway.md) documents the native one-port scheduler,
   frozen inventory, backend lifecycle, API boundary, and failure policy.
+- [Remote Maki](guides/remote-maki.md) connects native macOS or Linux Maki
+  through gateway-generated configuration without installing Paracetamol.
 
 For a shorter application walkthrough made of copyable commands, use the
 built-in guide:
