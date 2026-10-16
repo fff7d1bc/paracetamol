@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"paracetamol/internal/agent"
 	"paracetamol/internal/benchmark"
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
@@ -23,6 +22,7 @@ import (
 	"paracetamol/internal/podman"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
+	"paracetamol/internal/textmodel"
 )
 
 type intList []int
@@ -258,10 +258,11 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return err
 	}
 	level := *thinking
+	modelCapabilities := textmodel.FromLlamaPreset(*presetID, preset)
 	if level == "" {
-		level = agent.ReasoningDefault(preset)
+		level = textmodel.ReasoningDefault(modelCapabilities)
 	}
-	if !containsString(agent.ReasoningLevels(preset), level) {
+	if !containsString(textmodel.ReasoningLevels(modelCapabilities), level) {
 		return controlerr.Usage("thinking level %q is not supported by %s", level, *presetID)
 	}
 	nativeReasoning := level

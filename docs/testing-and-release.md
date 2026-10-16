@@ -27,7 +27,7 @@ If a shell entrypoint or JSON manifest is added, include it explicitly.
 
 Package-local Go tests cover catalog invariants, download command confinement,
 workflow rendering, benchmark preparation, CLI resolution, profile detection,
-Podman command construction, persistent verification, and evaluation grading.
+Podman command construction, persistent verification, and client-config exports.
 Add tests for behavior and failure paths, not merely new lines or parser
 choices.
 
@@ -42,26 +42,18 @@ CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
-Managed Pi extensions have a separate Node.js test suite so the normal Go
-controller checks still work without Node or npm. Install the reviewed Pi
-runtime, then use the absolute `Runtime` path printed by the installer:
+Native Maki compatibility has an optional installed-client check. The normal
+suite uses renderer and HTTP fixtures and needs no installed client.
 
 ```bash
-make test-pi PI_RUNTIME=/absolute/path/to/managed/runtime
+PARACETAMOL_TEST_MAKI=/absolute/path/to/maki make test
 ```
 
-Run this suite for extension or managed Pi dependency changes. It tests model
-family grouping, native reasoning selection and search, cancellation,
-notification settlement and output isolation, HTML extraction, bounded
-pagination, key-file safety, provider errors and redirects.
-The dedicated CI job installs the same lockfile without lifecycle scripts
-into `build/` and runs these tests. It never contacts a search API.
-For live acceptance, fetch one public page through sandboxed Pi on an
-inference host. Verify the tool result, not only the final model answer.
-With a locally configured Brave key, also make one explicit search request.
-Without a key, report that live search acceptance remains untested rather
-than treating provider fixtures as a live result. For notifications, exercise
-a real TUI and confirm emission only at settlement and silence in print/RPC.
+It downloads generated TOML and Lua into temporary XDG directories, checks the
+model listing, and performs a simulated tool round trip with native Maki.
+It checks reasoning, authenticated and keyless access, replay and the absence
+of sampler overrides without a GPU or real credentials. It does not touch
+normal client state or prove macOS execution.
 
 For a Go or Makefile change, also force the ordinary checkout binary through
 its atomic publication path rather than relying on an older incremental
@@ -114,16 +106,6 @@ Exercise user-visible composition:
 ./paracetamol run llama-cpp server --router \
   --profile cpu --listen 127.0.0.1 --dry-run
 ./paracetamol run dwarfstar server --profile strix-halo --dry-run
-./paracetamol agent --help
-./paracetamol agent install pi --help
-./paracetamol agent run pi --help
-./paracetamol agent run pi --no-sandbox -- --help
-./paracetamol agent run pi -- list
-./paracetamol agent run pi -- install --help
-./paracetamol agent run pi -- update --extensions --help
-./paracetamol agent run maki --help
-./paracetamol agent run maki --no-sandbox -- --help
-./paracetamol agent run maki -- index internal/cli/
 ./paracetamol benchmark llama-cpp throughput \
   --preset qwen-qwen3-0.6b-q8-0 --profile cpu --dry-run
 ./paracetamol benchmark llama-cpp throughput \
@@ -155,30 +137,6 @@ Inspect resolved commands for:
 - no GPU devices in CPU mode;
 - exactly `/dev/kfd` plus the complete selected render-node set in GPU mode;
 - offline/network-none behavior where promised.
-
-For agent-client sandbox changes, run real Pi and Maki bubblewrap
-probes on Linux. Confirm each client starts and exits cleanly, its launch
-directory and private XDG state are writable, and the real home, SSH agent,
-inherited token variables, ordinary client state, and GPU devices are absent.
-Confirm that the host loopback llama.cpp endpoint remains reachable. On a host
-with external connectivity, resolve one external hostname from inside the
-sandbox, especially when `/etc/resolv.conf` points into `/run`. With a standard
-Linuxbrew installation present, confirm both a managed Pi client and Maki see
-its `bin` and `sbin` tools, the complete prefix is read-only, and system tools
-retain precedence unless the client itself is installed inside a `.linuxbrew`
-prefix. Repeat with a Linuxbrew client installation because its prefix lives
-below `/home`, which the sandbox otherwise hides. Confirm `AGENTS.md` loads in
-both clients while unapproved project `.pi` resources do not affect Pi.
-
-For managed Pi picker changes, also open the configured model-selection
-shortcut and bare `/model`, confirm models remain in stable family groups,
-and select a reasoning-capable model. Its supported reasoning selector must
-open immediately. Confirm exact `/model PROVIDER/MODEL` does the same while
-model cycling and session restoration remain prompt-free.
-
-On Fedora-family hosts where `/home` links to `/var/home`, confirm that both
-absolute spellings resolve to the mounted project while sibling home content
-remains absent.
 
 For image-archive changes, additionally create a tiny disposable local image,
 save it as a Docker archive, inspect it through `images import --dry-run`, remove and
@@ -316,8 +274,8 @@ output, a streamed request, client cancellation, FIFO draining, and an
 application switch. Confirm `status gateway` derives llama.cpp child residency
 from a read-only private `/models` probe without `reload`, filters foreign
 models and router arguments, and reports bounded fixed diagnostics on malformed
-or unavailable responses. Send Pi-, Maki-, and OpenCode-shaped reasoning and
-sampler payloads, then use `status gateway --requests N` to verify that client
+or unavailable responses. Send native Maki and generic OpenAI-compatible
+reasoning and sampler payloads, then use `status gateway --requests N` to verify that client
 and gateway-default values, selected policy/mode, wait/upstream/total timing,
 lifetime/model aggregates, validated
 session grouping, and available input/output/cached/reasoning tokens are
@@ -365,8 +323,8 @@ model residency or start a backend. Confirm credentials do not reach backend
 requests, logs, status or process arguments. Metadata clients must refuse
 redirects, distinguish HTTP 401 from a wrong service, and bound response reads.
 Check server/client key-file precedence independently, private file modes,
-symlink/FIFO/empty/malformed rejection and key rotation by restart. Run managed
-Pi and Maki against an authenticated endpoint using private test state and
+symlink/FIFO/empty/malformed rejection and key rotation by restart. Run native
+Maki against an authenticated endpoint using temporary XDG state and
 verify actual inference headers, not only generated configuration. Anonymous
 operation must remain unchanged when no key is configured.
 
@@ -397,81 +355,31 @@ command, preserve arguments after `--`, confirm CLI and environment precedence,
 and verify `config init` creates mode `0600` once without replacing an existing
 file. `--help` must remain available without loading configuration.
 
-For DwarfStar agent-client integration, start the gateway with both
-applications, select
-`paracetamol/antirez-deepseek-v4-flash-0731-q2-imatrix` in Pi and Maki, then complete
-one read plus function-tool round trip in each. Confirm Pi's off and high
-choices and Maki's off and high paths. Confirm both generated clients follow
-their one `--gateway-url`. Do not claim agent compatibility from `/v1/models`
-or a plain text response alone.
+For native Maki integration, cover both configuration export routes. Check the
+frozen inventory, tool-eligibility filtering, endpoint derivation, explicit
+base-URL override, no-store responses and authentication. Requests must not
+start a backend, fetch a supplied URL or export credentials. Forwarded headers
+must not change the exported authority.
 
-For the maintained llama.cpp reasoning matrix, exercise each native choice
-through Pi: Qwen3.8 off, low, medium, and xhigh; and Muse low,
-medium, high, and xhigh. Confirm Pi omits unsupported values. For Maki
-0.6.3 or newer, capture the actual request fields for the
-same matrix. Confirm Qwen3.8 `high` snaps to medium, Muse off clamps to low,
-and adaptive follows the selected model's harness default. The current client applies
-`always_thinking` in `--print` as well as interactive sessions. Keep these
-protocol checks separate from cross-model quality benchmarking. With no
-model or reasoning override, both clients must select regular Flash-Next at
-xhigh when advertised. Huihui must remain optional. HTTP requests omitting
-reasoning must still resolve to medium for both Flash-Next variants.
-For Maki 0.6.3 print-mode reasoning tests, select `always_thinking` through
-the supported Lua configuration as the transport fixture does. Its hidden
-`--thinking` compatibility flag is accepted but ignored, so it is not a mode
-override for acceptance tests.
+Use separately installed Maki 0.6.3 or newer for the optional transport fixture
+above. Qwen3.8 supports off, low, medium and xhigh. Unsupported high snaps to
+medium, and Muse off clamps to low. Adaptive follows each model's exported
+preference. Regular Flash-Next defaults to xhigh while Huihui and dense Qwen3.8
+remain medium. HTTP calls without reasoning retain the catalog medium fallback.
+Use Maki's native `always_thinking` Lua setting in print-mode tests. Its hidden
+`--thinking` flag is accepted but ignored in the tested release.
 
-An optional installed-Maki transport test runs against a local fake gateway,
-without a GPU or model download:
+On an available inference host, download the export to temporary native client
+state and complete a real file-read and shell-tool round trip over the LAN
+hostname. Check off and xhigh on regular Flash-Next and one other model family.
+For DwarfStar, test off and high and require reasoning history to survive the
+tool-result request. Inspect actual gateway request metadata and model output.
+Run a native macOS smoke separately when macOS is available. Linux fixtures
+do not establish DNS, permissions, keychain or runtime behavior on a Mac.
 
-```bash
-PARACETAMOL_TEST_MAKI=/absolute/path/to/maki make test
-```
-
-It exercises the generated Lua provider with the actual client, checks
-reasoning fields, Bearer authentication, session correlation, tool execution
-and replay, and verifies that the client leaves sampling defaults to the
-gateway. Unit tests also cover stale script removal, preserved sessions,
-unknown provider refusal, file-link safety and the exact egress authority.
-After a provider integration change, also run a sandboxed live tool round-trip
-from a client host to an inference host using its LAN hostname. Local fixtures
-alone do not validate remote HTTP, DNS or GPU inference.
-
-After a Pi update, also verify the transport rather than trusting the selector
-label. Every Qwen3.8 preset must use Pi's `openai` thinking format with off
-mapped to `none`. Run one live representative of each distinct template path. Thinking
-off must produce no reasoning block and must select the gateway's non-thinking
-sampling defaults; a TUI status line saying `thinking off` is not evidence of
-either behavior.
-
-For coding-agent evaluation changes, validate the frozen inputs before using
-GPU time:
-
-```bash
-./paracetamol benchmark agent --list-tasks
-./paracetamol benchmark agent \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --task re-align --dry-run
-go test ./internal/evaluation ./internal/agent ./internal/cli
-```
-
-Every implementation hidden test must fail on its recorded base commit, pass
-on its reference commit, and grade the complete reference diff as `solved`.
-Inspect the generated fixture to confirm it has exactly one Git commit, no
-remote, controlled `AGENTS.md`, and no mounted hidden-test sibling. Confirm a
-review task can change only `PARACETAMOL_EVAL_ANSWER.md`, dependency changes are
-reported and restored before grading, and recognized network commands make an
-attempt unsolved. Dry runs must create no data, source mirror, server, fixture,
-or result.
-
-Target-hardware acceptance uses Pi, ROCm, one exact host, 131072 tokens, and a
-fresh fixture and session per attempt. First run one easy and one safety task
-for a bounded integration check, then run the frozen selection. Inspect Pi's
-JSONL, the per-attempt server-log delta, ordinary and hidden test logs, build
-log, patch hash, and Markdown solve rate. An unsolved task is a valid completed
-measurement; infrastructure failure and interruption must still checkpoint
-and clean up the exact model container. Keep machine-specific run trees and
-results out of the repository.
+The former Pi coding-task runner is archived. Do not alter its frozen inputs
+or relabel its old results as native Maki measurements. See the
+[historical evaluation record](coding-agent-evaluation.md).
 
 Speculative-decoding catalog changes additionally require one single-model
 dry run and router INI inspection for every affected strategy. Cover an

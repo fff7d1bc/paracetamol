@@ -365,7 +365,8 @@ func requestPeer(request *http.Request) string {
 // requestSessionID accepts only opaque UUIDs from explicit correlation
 // headers. In particular, it never derives identity from prompts or other
 // request content. Pi's OpenAI-compatible session-affinity mode supplies the
-// second header; generic callers and managed Maki use the first.
+// second header; other clients may supply the first. Native Maki exports do not
+// invent a session identifier.
 func requestSessionID(request *http.Request) string {
 	for _, name := range []string{SessionIDHeader, "X-Session-Affinity", "X-Session-ID"} {
 		for _, value := range request.Header.Values(name) {

@@ -32,7 +32,6 @@ type App struct {
 	Stdout          io.Writer
 	Stderr          io.Writer
 	Runner          process.Runner
-	Executor        process.Executor
 	catalog         *catalog.Catalog
 	configuration   *config.Configuration
 	promptInput     *bufio.Reader
@@ -70,7 +69,6 @@ var commandTree = []commandDefinition{
 	{Name: "logs", Description: "show managed container logs", Run: func(app *App, args []string) error { return app.commandLogs(args) }},
 	{Name: "stop", Description: "stop the host gateway or managed containers", Run: func(app *App, args []string) error { return app.commandStop(args) }},
 	{Name: "content", Description: "list, install, import, and inspect managed content", Run: func(app *App, args []string) error { return app.commandContent(args) }},
-	{Name: "agent", Description: "install or run a managed coding agent", Run: func(app *App, args []string) error { return app.commandAgent(args) }},
 	{Name: "benchmark", Description: "run or report managed performance evaluations", Run: func(app *App, args []string) error { return app.commandBenchmark(args) }},
 	{Name: "images", Description: "export or import locally built images", Run: func(app *App, args []string) error { return app.commandImages(args) }},
 	{Name: "cleanup", Description: "remove one explicit managed resource scope", Run: func(app *App, args []string) error { return app.commandCleanup(args) }},
@@ -102,13 +100,6 @@ func environment() map[string]string {
 }
 
 func (app *App) podman() podman.Client { return podman.Client{Runner: app.Runner} }
-
-func (app *App) executor() process.Executor {
-	if app.Executor == nil {
-		return process.OSExecutor{}
-	}
-	return app.Executor
-}
 
 func (app *App) managedCatalog() (catalog.Catalog, error) {
 	if app.catalog != nil {

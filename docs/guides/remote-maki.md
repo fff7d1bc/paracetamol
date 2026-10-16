@@ -38,8 +38,13 @@ not load a model.
 ### Fresh Maki setup
 
 Maki uses `~/.config/maki` on macOS and Linux by default. If you set
-`XDG_CONFIG_HOME`, use its `maki` directory instead. These commands refuse to
-replace existing files. If either already exists, use the merge instructions.
+`XDG_CONFIG_HOME`, use its `maki` directory instead. If a legacy `~/.maki`
+directory exists, Maki uses that instead. Merge into that active configuration,
+or back it up and use Maki's own `maki migrate xdg` before continuing.
+Paracetamol does not migrate it.
+
+These commands refuse to replace existing files. If either already exists,
+use the merge instructions.
 
 ```sh
 maki_config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/maki"

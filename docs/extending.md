@@ -15,12 +15,13 @@ Before adding a command, classify the change:
 | T2V/I2V or another operation within one tool | application command mode |
 | FP8/BF16, base/accelerated model choice | catalog bundle variant |
 | Different deterministic Comfy graph | workflow renderer |
-| New supported coding-agent frontend | client below `agent` plus an optional PATH launcher |
+| New client configuration example | pure renderer in `internal/clientconfig/` plus a reviewed gateway export |
 
 Do not create top-level application commands or commands such as
 `run-new-gpu`. Keep application, profile, and mode orthogonal below `run`.
-Keep coding-agent frontends below `agent` rather than assigning each client a
-top-level command.
+Keep clients independent of the controller. Configuration exports consume the
+frozen gateway inventory and carry no credentials, fixed session IDs or
+sampler overrides. Do not add client installers, launchers or state managers.
 
 ## Extend human-facing output
 

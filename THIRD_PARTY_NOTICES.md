@@ -114,16 +114,6 @@ revisions recorded in `catalog/catalog.json`.
   optional DSpark support GGUF comes from the same MIT-licensed repository at
   revision `86bb38ce2ba7a98ab0e550359fec5f48859dc723` and is independently pinned
   by exact size and SHA-256.
-- Pi Coding Agent 1.2.0 is installed on explicit request from the
-  MIT-licensed `@earendil-works/pi-coding-agent` npm package. Paracetamol pins
-  the package and its transitive npm tree with registry integrity values in
-  `agent-clients/pi/package-lock.json`; it does not redistribute the installed
-  packages. Their package metadata remains in the managed runtime tree.
-- The managed Pi web extension uses MIT-licensed `html-to-text` 10.0.1 for
-  local HTML extraction. Its complete dependency tree, including the
-  htmlparser2 parser, is pinned with registry integrity and license metadata
-  in the same npm lockfile. Brave Search is an optional external API, not an
-  installed third-party executable.
 - PyTorch is BSD-3-Clause. ROCm components have component-specific licenses
   supplied with AMD's packages. Python packages retain the license metadata
   installed with their distributions.

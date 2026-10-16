@@ -24,17 +24,6 @@ type commandRunner struct {
 	run      func(process.Command) process.Result
 }
 
-type recordingExecutor struct {
-	path, arguments, environment string
-}
-
-func (executor *recordingExecutor) Exec(path string, arguments, environment []string) error {
-	executor.path = path
-	executor.arguments = strings.Join(arguments, "|")
-	executor.environment = strings.Join(environment, "|")
-	return nil
-}
-
 func (runner *commandRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
 	runner.commands = append(runner.commands, command)
 	if runner.run != nil {
@@ -276,18 +265,6 @@ func TestLlamaServerPrintsItsShareableConfigurationCommand(t *testing.T) {
 	}
 	if err := app.runLlama("server", []string{"--preset", "test", "--backend", "rocm", "--profile", "cpu", "--data-dir", dataRoot, "--dry-run"}); err == nil || !strings.Contains(err.Error(), "on profile cpu") {
 		t.Fatalf("explicit profile-incompatible backend err=%v", err)
-	}
-}
-
-func TestAgentExecBoundaryReceivesSortedEnvironment(t *testing.T) {
-	executor := &recordingExecutor{}
-	app, _, _ := testApp(t, &commandRunner{})
-	app.Executor = executor
-	if err := app.execProcess([]string{"/bin/tool", "argument"}, map[string]string{"Z": "last", "A": "first"}); err != nil {
-		t.Fatal(err)
-	}
-	if executor.path != "/bin/tool" || executor.arguments != "/bin/tool|argument" || executor.environment != "A=first|Z=last" {
-		t.Fatalf("unexpected exec request: %#v", executor)
 	}
 }
 

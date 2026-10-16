@@ -1,4 +1,16 @@
-# Coding-agent evaluation maintenance
+# Archived coding-agent evaluation
+
+The Pi runner and `benchmark agent` command were retired on 2026-10-16.
+This page records the historical implementation and protocol, not current
+commands or ownership. Use revision `9db17ff` or the exact older revision
+recorded with a result to inspect that runner.
+
+Frozen inputs in `evaluations/coding/` remain unchanged. Installed runtimes,
+sessions, credentials and raw evaluation results are preserved on disk. No
+Maki replacement runner is provided. Do not relabel historical measurements
+as results for today's client configuration.
+
+The remaining sections describe the retired runner.
 
 The frozen coding-agent suite answers a different question from GPU smoke
 acceptance and native llama.cpp performance tests: can one exact managed model,

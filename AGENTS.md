@@ -29,8 +29,8 @@ making every document mandatory startup reading.
   models, bundles, recipes, workflows, licenses, or benchmark resources.
 - Read [extension points](docs/extending.md) before adding or changing an
   application, command family, mode, profile, or renderer.
-- Read [coding-agent evaluation maintenance](docs/coding-agent-evaluation.md)
-  before changing frozen tasks, hidden graders, adapters, or result schemas.
+- Read the [archived coding-agent evaluation record](docs/coding-agent-evaluation.md)
+  before changing frozen tasks or hidden fixtures. The Pi runner is retired.
 - Read [hardware acceptance](docs/hardware-acceptance.md) before making a new
   GPU, profile, ROCm, memory-policy, or inference claim.
 
@@ -90,14 +90,11 @@ in the same change. Important ownership boundaries are:
 - `internal/probe/` and `tools/`: read-only archive, provider-metadata, and
   workflow research probes.
 - `bin/paracetamol`: PATH-friendly delegation to the checkout launcher.
-- `internal/agent/models.go` and `internal/agent/sandbox.go`: shared
-  agent-client model policy and bubblewrap boundary.
-- `agent-clients/pi/` and `internal/agent/piruntime.go`: pinned managed Pi npm
-  runtime, system Node.js requirement, installation, and receipts.
-- `bin/pi`, `bin/maki`, `internal/agent/pi.go`, and
-  `internal/agent/maki.go`: runtime
-  client launch and local model-catalog generation below the public `agent`
-  command group.
+- `internal/clientconfig/`: portable native Maki example configuration from
+  the gateway's frozen capabilities. No client execution, installation,
+  sandboxing, credentials, or user-state ownership.
+- `evaluations/coding/`: archived frozen task definitions and hidden fixtures.
+  Keep historical inputs and result provenance intact, not an active runner.
 - `containers/common/profile.py` and application entrypoints: container-side
   profile enforcement and application policy.
 - `applications/<application>/`: application-owned dependency pins,

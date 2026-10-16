@@ -34,17 +34,11 @@ func (layout Layout) VerificationReceipt() string {
 	return filepath.Join(layout.Root, "content", "."+identity.StateNamespace, "verification.json")
 }
 func (layout Layout) Staging() string { return filepath.Join(layout.Root, "staging") }
-func (layout Layout) PiRuntime() string {
-	return filepath.Join(layout.Application("pi"), "runtime")
-}
 func (layout Layout) LlamaBenchmarks() string {
 	return filepath.Join(layout.Application("llama-cpp"), "benchmarks")
 }
 func (layout Layout) ComfyBenchmarks() string {
 	return filepath.Join(layout.Application("comfyui"), "benchmarks")
-}
-func (layout Layout) AgentEvaluations() string {
-	return layout.Application("agent-evaluation")
 }
 func (layout Layout) AcceptanceResults() string {
 	return filepath.Join(layout.Application("acceptance"), "results")

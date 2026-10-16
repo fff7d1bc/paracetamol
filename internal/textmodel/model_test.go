@@ -2,11 +2,32 @@ package textmodel
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/project"
 )
+
+func TestLlamaPresetCapabilitiesPreserveBenchmarkReasoning(t *testing.T) {
+	preset := catalog.LlamaPreset{
+		Bundle: "bundle", DefaultContext: 262144, AgentTools: true,
+		ReasoningControl: "effort", ReasoningLevels: []string{"low", "medium", "xhigh"},
+		ReasoningDefault: "medium", ReasoningOff: true, SamplingPolicy: "policy",
+	}
+	model := FromLlamaPreset("model", preset)
+	if model.ID != "model" || model.Backend != BackendLlamaCPP || model.Bundle != "bundle" ||
+		model.Context != 262144 || model.MaxOutputTokens != 16384 || !model.AgentTools || model.SamplingPolicy != "policy" {
+		t.Fatalf("capabilities lost: %+v", model)
+	}
+	if ReasoningDefault(model) != "medium" || !reflect.DeepEqual(ReasoningLevels(model), []string{"off", "low", "medium", "xhigh"}) {
+		t.Fatalf("benchmark reasoning changed: %+v", model)
+	}
+	model.ReasoningLevels[0] = "changed"
+	if preset.ReasoningLevels[0] != "low" {
+		t.Fatal("model aliases catalog reasoning levels")
+	}
+}
 
 func TestRepositoryModelsHaveUniqueBackendNeutralIdentities(t *testing.T) {
 	root, err := project.Root()

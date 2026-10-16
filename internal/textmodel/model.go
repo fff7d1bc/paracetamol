@@ -34,14 +34,7 @@ type Model struct {
 func All(managed catalog.Catalog) ([]Model, error) {
 	byID := make(map[string]Model, len(managed.LlamaPresets)+len(managed.DwarfStarPresets))
 	for id, preset := range managed.LlamaPresets {
-		byID[id] = Model{
-			ID: id, Backend: BackendLlamaCPP, Bundle: preset.Bundle,
-			Context: preset.DefaultContext, MaxOutputTokens: OutputLimit(preset.DefaultContext),
-			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
-			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
-			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
-			SamplingPolicy: preset.SamplingPolicy,
-		}
+		byID[id] = FromLlamaPreset(id, preset)
 	}
 	for id, preset := range managed.DwarfStarPresets {
 		if _, duplicate := byID[id]; duplicate {
@@ -66,6 +59,17 @@ func All(managed catalog.Catalog) ([]Model, error) {
 		models = append(models, byID[id])
 	}
 	return models, nil
+}
+
+func FromLlamaPreset(id string, preset catalog.LlamaPreset) Model {
+	return Model{
+		ID: id, Backend: BackendLlamaCPP, Bundle: preset.Bundle,
+		Context: preset.DefaultContext, MaxOutputTokens: OutputLimit(preset.DefaultContext),
+		AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
+		ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
+		ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
+		SamplingPolicy: preset.SamplingPolicy,
+	}
 }
 
 func OutputLimit(context int64) int64 {

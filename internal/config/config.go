@@ -283,7 +283,7 @@ func SelectGatewayClientURL(flagValue string, environment map[string]string, con
 }
 
 // NormalizeGatewayURL validates the intentionally narrow client endpoint
-// contract shared by configuration, status, and managed coding agents.
+// contract shared by controller configuration, status, and client exports.
 func NormalizeGatewayURL(value string) (string, error) {
 	if value == "" || strings.IndexFunc(value, func(character rune) bool {
 		return unicode.IsSpace(character) || unicode.IsControl(character)

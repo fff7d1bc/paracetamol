@@ -29,6 +29,22 @@ func TestInstalledMaki(t *testing.T) {
 		t.Fatal("PARACETAMOL_TEST_MAKI must be absolute")
 	}
 	models := catalogModels(t)
+	t.Run("complete-catalog", func(t *testing.T) {
+		// Keep the expected default first for transport assertions, but export
+		// every model together to exercise native TOML array-table association.
+		var ordered []textmodel.Model
+		for _, model := range models {
+			if model.ID == RecommendedModel {
+				ordered = append(ordered, model)
+			}
+		}
+		for _, model := range models {
+			if model.ID != RecommendedModel {
+				ordered = append(ordered, model)
+			}
+		}
+		testNativeMaki(t, executable, ordered, "adaptive", "reasoning_effort", "xhigh", true)
+	})
 	for _, test := range []struct {
 		model, mode, field, value string
 		authenticated             bool
@@ -44,6 +60,8 @@ func TestInstalledMaki(t *testing.T) {
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "adaptive", "reasoning_effort", "medium", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "adaptive", "reasoning_strength", "high", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "off", "reasoning_strength", "low", true},
+		{"antirez-deepseek-v4-flash-0731-q2-imatrix", "adaptive", "reasoning_effort", "high", true},
+		{"antirez-deepseek-v4-flash-0731-q2-imatrix", "off", "reasoning_effort", "none", true},
 	} {
 		t.Run(fmt.Sprintf("%s/%s/auth=%t", test.model, test.mode, test.authenticated), func(t *testing.T) {
 			var selected []textmodel.Model
@@ -170,8 +188,10 @@ data: [DONE]
 		return output
 	}
 	listing := run("models")
-	if !strings.Contains(string(listing), models[0].ID) {
-		t.Fatalf("model missing from picker inventory: %s", listing)
+	for _, model := range models {
+		if strings.Contains(string(listing), model.ID) != model.AgentTools {
+			t.Fatalf("wrong picker eligibility for %s: %s", model.ID, listing)
+		}
 	}
 	output := run("--print", "--yolo", "--max-turns", "2", "Reply MAKI_NATIVE_OK")
 	if !strings.Contains(string(output), "MAKI_NATIVE_OK") {

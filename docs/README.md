@@ -93,7 +93,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    - [Adding or updating models, bundles, workflows, and benchmarks](content-catalog.md)
    - [Adding applications, commands, modes, or hardware profiles](extending.md)
    - [Testing, release checks, and routine housekeeping](testing-and-release.md)
-   - [Coding-agent evaluation maintenance](coding-agent-evaluation.md)
+   - [Archived coding-agent evaluation record](coding-agent-evaluation.md)
    - [Target-hardware acceptance matrix](hardware-acceptance.md)
    - [Additive vLLM and NVIDIA integration
      direction](vllm-integration-direction.md)
@@ -147,14 +147,12 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Content metadata and relationships | `catalog/catalog.json` |
 | Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |
 | ComfyUI benchmark preparation and results | `internal/benchmark/` |
-| PATH launchers | `bin/paracetamol`, `bin/pi`, `bin/maki` |
-| Agent model policy and sandbox | `internal/agent/models.go`, `internal/agent/sandbox.go` |
-| Runtime client configuration | `internal/agent/pi.go`, `internal/agent/maki.go` |
-| Managed Pi installation | `agent-clients/pi/`, `internal/agent/piruntime.go` |
-| Gateway-advertised agent model intersection | `internal/agent/models.go`, `internal/textmodel/` |
+| PATH launcher | `bin/paracetamol` |
+| Native Maki configuration export | `internal/clientconfig/`, `internal/gateway/clientconfig.go` |
+| Shared model capabilities | `internal/textmodel/` |
 | Native llama.cpp benchmark results | `internal/benchmark/` |
 | Server-side llama.cpp speculative-depth screens | `internal/benchmark/` |
-| Frozen coding-agent tasks and results | `evaluations/coding/`, `internal/evaluation/` |
+| Archived coding-agent tasks and hidden fixtures | `evaluations/coding/` |
 | Checkpointed target-hardware smoke acceptance | `internal/cli/commands_acceptance.go` |
 | Durable atomic file publication | `internal/atomicfile/` |
 | Third-party provenance summary | `THIRD_PARTY_NOTICES.md` |

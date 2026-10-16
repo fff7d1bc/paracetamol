@@ -61,8 +61,8 @@ Paracetamol checks the rest of that path too.
   rebuilds.
 - Containers are rootless, read-only, capability-free, and expose only the
   selected GPU devices. Web applications publish on loopback by default.
-- Optional Pi and Maki launchers add a bubblewrap filesystem
-  boundary around local coding-agent work.
+- The gateway exports native Maki configuration for macOS or Linux clients.
+  Other clients can use its OpenAI-compatible API directly.
 - `acceptance` goes beyond startup. It runs small real workloads, checkpoints
   progress, and collects visual review after unattended work.
 
@@ -79,9 +79,8 @@ the ignored `build/` directory.
 
 Development hosts currently run SteamOS 3.8, Fedora 44 in conventional and
 Kinoite deployments, and Ubuntu 26.04. Minimal installations may not include
-Podman. The optional managed Pi client also needs distribution-provided
-Node.js 22.19 or newer and npm. Paracetamol installs Pi into its private
-application data.
+Podman. Remote clients need only their own application and network access to
+an inference host. They do not need a Paracetamol checkout.
 
 GPU use needs read/write access to `/dev/kfd` and the selected
 `/dev/dri/renderD*` nodes. Run Doctor before changing permissions or kernel
@@ -89,11 +88,6 @@ settings. It reports the problem and the host-specific action when one is
 needed. The
 [host GPU access guide](docs/guides/tuning.md#host-gpu-access) explains the
 SELinux, group, and udev choices.
-
-The optional sandboxed agent launchers also need bubblewrap (`bwrap`). Use the
-distribution `bubblewrap` package from `apt`, `dnf`, or `pacman` when possible.
-Doctor reports Ubuntu's AppArmor user-namespace policy when it can interfere
-with a launcher.
 
 ### Pre-release compatibility
 
@@ -106,10 +100,15 @@ content, select the intended `data_dir` and run the normal installer so that
 Paracetamol can validate it.
 
 The Go transition changed a few commands and checkpoint formats. `acceptance`
-is now a direct leaf command, agent clients live below `agent run`, and
-benchmarks use the `comfyui run`, `comfyui suite`, `llama-cpp throughput`, and
-`llama-cpp speculative` modes. Older benchmark and acceptance JSON is still
+is now a direct leaf command. Benchmarks use `comfyui run`, `comfyui suite`,
+`llama-cpp throughput` and `llama-cpp speculative`. Older benchmark and acceptance JSON is still
 useful as historical evidence, but it cannot resume a current run.
+
+Managed Pi support, the Pi and Maki launchers, their bubblewrap sandbox, and
+`benchmark agent` have been retired. Installed runtimes, sessions, credentials
+and evaluation results are left untouched. Use native Maki with the
+[gateway configuration export](docs/guides/remote-maki.md). It runs with your
+normal user access, not the former launcher isolation.
 
 ## Quick start
 
@@ -167,7 +166,7 @@ Manager, and multi-GPU graphs are covered in the
 
 ### llama.cpp
 
-Qwen3.8 Flash-Next Dynamic Q4_K_XL at `xhigh` is the Pi and Maki default
+Qwen3.8 Flash-Next Dynamic Q4_K_XL at `xhigh` is the exported Maki default
 when the gateway advertises it. It needs a high-memory host. Dense Qwen3.8
 27B remains available for smaller systems and as a comparison model.
 
@@ -188,9 +187,9 @@ control shares the same verified artifact.
 Public text model IDs now begin with the publisher of the pinned GGUF. The
 models above are `unsloth-…`, and the Muse presets are `meta-models-…`.
 These are breaking changes for clients that send a literal `model` ID,
-including OpenAI-compatible HTTP clients. Update those IDs after upgrading;
-Pi and Maki regenerate their model lists from the gateway. Installed model
-files and their verification receipts are not renamed or re-downloaded. Run
+including OpenAI-compatible HTTP clients. Update those IDs after upgrading.
+Refresh Maki's exported configuration when the gateway inventory changes.
+Installed model files and their verification receipts are not renamed or re-downloaded. Run
 `./paracetamol content list models` to see the full current IDs.
 
 A separate 16.35 GiB Unsloth Dynamic v3 Q4_K_XL bundle keeps the same model
@@ -247,8 +246,8 @@ record](docs/qwen3.8-flash-next-direct-reader-feasibility.md) covers the
 The pinned conversion's license metadata could not be verified against a
 license file at its exact revision, so installation requires the explicit
 unverified-license acknowledgment. Hardware acceptance is limited to `gfx1151`.
-Pi and Maki select this model at `xhigh`. HTTP requests that omit reasoning
-still use `medium`.
+The Maki example selects this model at `xhigh`. HTTP requests that omit
+reasoning still use `medium`.
 
 Huihui's abliterated v2 is an optional, separately named Flash-Next variant.
 It uses the Unsloth-derived UD-Q4_K_XL files and the same runtime policy,
@@ -344,7 +343,7 @@ command without printing API-key values or host secret paths.
 
 For Qwen, the gateway fills missing sampling settings according to the
 request's thinking mode. Explicit client values still win. This applies to
-Pi, Maki, and raw HTTP clients using that endpoint. Direct engine endpoints
+Maki and other HTTP clients using that endpoint. Direct engine endpoints
 use native defaults. See [sampling policy](docs/gateway.md#model-aware-sampling-defaults).
 
 Override the profile only when testing or diagnosing.
@@ -363,19 +362,16 @@ Tailscale address only when unauthenticated network access is intentional.
 ./paracetamol run comfyui --listen 192.168.1.50
 ```
 
-For local coding-agent work, start the gateway and use the sandboxed PATH
-launcher. With no application option the gateway discovers every built text
+For local or remote coding-agent work, start the gateway and connect a native
+client. With no application option the gateway discovers every built text
 application that has a compatible, verified model. An explicit `-a` or
 `--application` list strictly replaces discovery. Startup does not load a
 backend.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8
-./paracetamol agent install pi  # once, and after Paracetamol changes its Pi pin
 ./paracetamol run gateway
-export PATH="$PWD/bin:$PATH"
-pi
-# Or use Maki
+# In another terminal, use Maki after configuring it as described below.
 ```
 
 Persistent gateway defaults are optional. Generate a complete runnable host
@@ -413,70 +409,33 @@ training context, parameter count, size, and quantization when the router
 reports them. Completion timing metadata supplies weighted prompt-processing
 and token-generation rates plus speculative acceptance. Token usage and
 client-supplied reasoning or sampler fields appear when available. Prompts and
-response content are not retained. Managed Pi uses its real session UUID.
-Maki groups one launcher invocation.
+response content are not retained. Clients may supply their own session UUID
+for grouping. The Maki example does not invent one.
 
 Status also shows observed streaming first-output latency, prompt-cache reuse
 and a host RAM/GPU sensor snapshot. Missing measurements stay unavailable.
 
-Pi and Maki can instead use a gateway on another trusted host. The gateway
-retains its local loopback endpoint while adding the requested publication.
-Authentication is optional and off by default. Select one intended address and
-restrict that port with the host firewall. See
-[gateway authentication](docs/gateway.md#optional-authentication) to require a
-Bearer key for Pi, Maki and other HTTP clients.
+Maki can run on macOS or Linux while the gateway runs on the GPU host. The
+gateway retains its loopback endpoint when you add a LAN publication.
 
 ```bash
-# GPU host
-./paracetamol run gateway -a llama-cpp \
-  -a dwarfstar --listen 192.168.1.50 --port 7455
-
-# Pi or Maki client host
-PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
+./paracetamol run gateway --listen 192.168.1.50 --port 7455
 ```
 
-For a durable client choice, put the endpoint in the client host's selected
-configuration. A command flag or `PARACETAMOL_GATEWAY_URL` still overrides it.
+Install Maki separately, then follow the [native Maki setup](docs/guides/remote-maki.md)
+to download `providers.toml` and `init.lua` from the gateway. Review and merge
+them into your normal Maki configuration. There is no Paracetamol installation,
+launcher, automatic refresh, or sandbox on the client.
 
-```toml
-[gateway.client]
-url = "http://gpu-host.local:7455/v1"
-```
+The export lists only verified coding-capable models in that gateway's frozen
+inventory. It prefers regular Flash-Next at `xhigh`. Raw HTTP requests still
+use medium when reasoning is omitted. Maki's model picker and `/thinking`
+select the model's native controls.
 
-Both managed clients perform a bounded `/v1/models` probe and generate only
-the reviewed models that this gateway instance actually advertises. They also
-require the versioned Paracetamol gateway marker, so another service on the
-configured port is rejected before its response is trusted. Direct llama.cpp
-and DwarfStar servers are still available for diagnostics, benchmarks, and
-engine-specific API work. See the
-[application guide](docs/guides/applications.md#inference-gateway) and
-[gateway design](docs/gateway.md).
-
-Regular Flash-Next starts at `xhigh` in Pi and Maki. Raw HTTP requests retain
-medium effort when omitted. Pi exposes off, low, medium, and
-xhigh choices without inventing a `high` level. Maki builds
-containing commit `a9495e1` expose the same native model controls through
-`/thinking`. Unsupported names snap downward, so `high` selects Qwen3.8
-medium. Paracetamol prevents Muse from
-falling below its native low strength.
-
-In managed Pi sessions, the configured model-selection shortcut (`Ctrl+L` by
-default) and bare `/model` open Paracetamol's family-grouped picker. Models stay
-under stable headings such as Qwen 3.8 and Muse Glimmer instead of moving the
-current model into a recent section. Selecting a model immediately opens its
-valid reasoning choices. An exact `/model PROVIDER/MODEL` command also opens
-the reasoning picker after changing models.
-
-When an interactive Pi run is fully settled, its transcript ends with a
-full-width `Worked for 2m 56s` divider. This appears only after automatic
-retries, compaction retries, and queued continuations are finished, and the
-marker never enters the model context.
-
-Both launchers keep the current directory and private client state writable
-while hiding the real home directory, credentials, Podman state, and GPU
-devices. The
-[tool-using client guide](docs/guides/applications.md#tool-using-clients) documents
-models, reasoning variants, agent modes, sandbox limits, and escape hatches.
+Restrict the published port with your firewall and use
+[optional Bearer authentication](docs/gateway.md#optional-authentication)
+when appropriate. HTTP does not encrypt credentials or prompts. Other clients
+can connect through the same OpenAI-compatible API.
 
 On a multi-GPU host, repeat `--render-node` for every card intended for one
 supported workload. Paracetamol never guesses the set and requires matching
@@ -600,29 +559,9 @@ The real run checkpoints every fresh-server request and can resume after an
 interruption. Its default long-context screen is intentionally an unattended
 hardware experiment, not a routine smoke test or an automatic preset change.
 
-Evaluate a managed model as a coding agent against the frozen Go and Python
-task suite.
-
-```bash
-./paracetamol benchmark agent --list-tasks
-./paracetamol benchmark agent \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --dry-run
-```
-
-Reasoning selectors follow each model's native contract.
-Qwen3.8 has off, low, medium, and xhigh effort. Muse has low, medium,
-high, and xhigh strength. The benchmark runner validates the selected value
-and records both the client selector and its native value. A shared label does
-not imply an equivalent reasoning condition across model families. Define and
-record the comparison protocol before running the separate hardware pass.
-
-Agent evaluation is separate from smoke acceptance and native token-speed
-benchmarking. It runs Pi against disposable single-commit fixtures, applies
-hidden tests after each implementation attempt, and preserves raw transcripts,
-patches, server logs, and a Markdown summary below managed application data. The
-[operations guide](docs/guides/operations.md#coding-agent-evaluation) explains the
-fixed-harness policy, review tasks, grading, repetitions, and result scope.
+The former Pi coding-task runner is retired. Its frozen tasks and historical
+results remain documented in the [archived evaluation record](docs/coding-agent-evaluation.md).
+Native llama.cpp and ComfyUI benchmarks are unchanged.
 
 ## User guides
 
@@ -630,7 +569,7 @@ The complete [documentation index](docs/README.md) includes user guides,
 maintainer references, research snapshots, and source-of-truth pointers.
 
 - [Applications](docs/guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, managed models, APIs, Pi, Maki, and multi-GPU
+  DwarfStar, managed models, APIs, Maki, and multi-GPU
   workloads.
 - [Content](docs/guides/content.md) covers recipes, exact bundles, licenses,
   verification, resumable downloads, mirrors, imports, and workflows.
@@ -647,7 +586,7 @@ Command-specific help is the authoritative interface reference.
 ./paracetamol content --help
 ./paracetamol run --help
 ./paracetamol acceptance --help
-./paracetamol benchmark agent --help
+./paracetamol benchmark llama-cpp --help
 ```
 
 Host development uses the installed Go toolchain by default and keeps its

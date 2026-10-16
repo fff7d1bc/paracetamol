@@ -213,7 +213,7 @@ artifacts and verification receipts keep their original paths and IDs.
 
 ### Choosing a managed Qwen preset
 
-Regular Unsloth Flash-Next at `xhigh` is the Pi and Maki default when it is
+Regular Unsloth Flash-Next at `xhigh` is the exported Maki default when it is
 advertised by the gateway. Dense Qwen3.8 27B remains a smaller alternative.
 Its MTP Q8 preset is the fallback when regular Flash-Next is unavailable.
 Qwen3.6 has been retired from the catalog, recipes and managed clients.
@@ -300,7 +300,7 @@ memory saving and modest high-context prefill gain, without claiming faster
 decode or general coding quality.
 
 The preset starts at the model's native 262144-token context and exposes off,
-low, medium, and xhigh reasoning. Pi and Maki start regular Flash-Next at
+low, medium, and xhigh reasoning. The Maki example starts regular Flash-Next at
 `xhigh`. The shared template and gateway fallback remain `medium` for HTTP
 callers that omit reasoning. Thinking uses
 temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
@@ -326,7 +326,7 @@ Flash-Next optimizations are shared. There is no Huihui-specific engine patch.
 ```
 
 Select `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`
-in Pi, Maki or an HTTP request. It stays non-default and keeps the medium
+in Maki or an HTTP request. It stays non-default and keeps the medium
 HTTP fallback. Choose its reasoning level in the client. It does not imply
 equal coding quality to the original.
 The [pinned model card](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/blob/43b4c1a8871afcc27e37bf996a431528b3d957e5/README.md)
@@ -510,10 +510,8 @@ persona or summarization instruction does not need a catalog preset. Do not
 add a hardware profile for task tuning either. In Paracetamol, profiles describe
 GPUs such as Strix Halo or RDNA 4.
 
-The managed Pi launcher is a coding-task caller, so its generated model
-entries apply caller-owned static defaults. For
-Qwen3.8, the gateway instead selects the catalog's thinking or
-non-thinking policy, so raw API clients receive the same defaults without
+For Qwen3.8, the gateway selects the catalog's thinking or non-thinking
+sampling policy, so native clients receive the same defaults without
 duplicating them. Explicit request fields remain authoritative.
 
 For a quick human check without an API client, run the model directly in a
@@ -611,129 +609,59 @@ limit counts model children and is not a memory-fit calculation. Use
 fit; otherwise the one-model default unloads the idle child before loading a
 different preset.
 
-Paracetamol manages its own pinned Pi 1.2.0 runtime. It requires Node.js 22.19 or
-newer and npm from the host distribution, then installs the repository-locked
-npm tree below the selected Paracetamol data directory:
+### Native clients
+
+Maki is the maintained configuration example. Install Maki 0.6.3 or newer
+separately on macOS or Linux, then download the native provider and startup
+preferences from the gateway. The [Maki setup guide](remote-maki.md) covers
+fresh configuration, merging into an existing setup, credentials and refreshes.
+No Paracetamol installation is needed on the client.
+
+The export lists only verified coding-capable models from the running gateway's
+frozen inventory. It includes their context limits, output ceilings and native
+reasoning choices. Refresh the files explicitly when that inventory changes.
+Newly installed content first requires a gateway restart.
+
+Publish on one trusted LAN address and restrict its port with the host
+firewall. The same port remains available on local IPv4 loopback.
 
 ```bash
-./paracetamol agent install pi
+./paracetamol run gateway --listen 192.168.1.50 --port 7455
 ```
 
-The command is idempotent. Rerun it after pulling a change to
-`agent-clients/pi/package-lock.json`; an ordinary launch never downloads or
-repairs the runtime.
+Using `--port` without `--listen` selects loopback for that invocation, even
+when configuration normally publishes another address. Use both flags when
+changing a LAN publication. Optional [Bearer authentication](../gateway.md#optional-authentication)
+protects both inference and configuration downloads. Plain HTTP still exposes
+credentials and prompts to the network.
 
-Pi 1.0 uses fullscreen by default. To retain normal terminal scrollback,
-set `tuiMode` to `regular` in Pi's `/settings` or pass
-`./paracetamol agent run pi -- --tui-mode regular`. The managed family picker
-and completion divider remain enabled. Model selection and server-owned
-sampling defaults are unchanged.
+Native Maki runs with normal user access. There is no Paracetamol filesystem
+or network sandbox, runtime installation, credential store or session manager.
+Maki's permission prompts and folder trust are not equivalent to the former
+bubblewrap boundary. Keep backups and review executable project configuration.
 
-Maki is distributed separately. Put a Maki 0.6.3 or newer `maki` executable
-on `PATH` before using the Paracetamol launcher.
+The example prefers regular Unsloth Flash-Next at xhigh, then dense Qwen3.8
+27B MTP Q8, then the first available coding-capable model. It limits concurrent
+task subagents to one but does not change saved tier assignments or other
+providers. Use Maki's model picker and `/thinking` to choose another model or
+reasoning mode.
 
-Paracetamol ships PATH-friendly Pi and Maki launchers. Normal sessions query
-the gateway and render the intersection of its live frozen inventory with the
-current reviewed client catalog. Install the recommended model and start the
-gateway first, then choose a client:
+| Family | Native control | Choices | Default |
+| --- | --- | --- | --- |
+| Qwen3.8 27B | reasoning effort | off, low, medium, xhigh | medium |
+| Regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in the Maki example, medium when omitted over HTTP |
+| Huihui Flash-Next abliterated v2 | reasoning effort | off, low, medium, xhigh | medium |
+| Muse Glimmer 30B | reasoning strength | low, medium, high, xhigh | high |
 
-```bash
-./paracetamol content install llama-cpp qwen3.8-flash-next \
-  --acknowledge-license-risk
-./paracetamol agent install pi
-./paracetamol run gateway
-export PATH="$PWD/bin:$PATH"
-pi
-# or: maki
-```
+Qwen3.8 has no native high level. The reviewed template uses medium when HTTP
+reasoning is omitted. The client preference sends xhigh explicitly for regular
+Flash-Next. Maki maps unsupported high to medium and clamps Muse off to low.
+Adaptive follows the selected model's exported default.
 
-The generated provider lists only agent-capable models advertised by that
-gateway process. Installing or verifying another model does not mutate a
-running snapshot; restart the gateway before it can appear. Pi accepts `--model
-PRESET`, with `--provider paracetamol` available when the provider would
-otherwise be ambiguous. Maki accepts `-m paracetamol/PRESET` and exposes the
-same entries through `/model`.
-
-Managed Pi sessions replace the stock interactive picker with a
-Paracetamol-owned view. The configured model-selection shortcut (`Ctrl+L` by
-default), bare `/model`, and `/select-model` open models in stable family
-groups such as Qwen 3.8 and Muse Glimmer. The current model remains
-in its natural group and is marked there rather than being promoted to the
-top. Search matches family, provider, ID, and display name. After selection,
-Pi immediately asks for one of that model's supported reasoning levels. An
-exact `/model PROVIDER/MODEL` command uses Pi's normal selector and then opens
-the same reasoning prompt. Model cycling and session restoration do not add a
-prompt; `Shift+Tab`, `/settings`, and `--thinking` remain available for direct
-reasoning changes. After Pi has finished the complete agent run, including any
-automatic retry, compaction retry, or queued continuation, managed interactive
-sessions add a full-width `Worked for 2m 56s` divider. The divider remains in
-restored scrollback but does not enter the model context.
-
-An optional terminal notification fires at the same settled boundary. It is
-off by default and never runs a desktop command or opens the host D-Bus socket.
-Choose the protocol your terminal supports:
-
-```bash
-./paracetamol agent run pi -- --completion-notify osc777
-# Kitty
-./paracetamol agent run pi -- --completion-notify osc99
-# Terminal bell, whose sound or visual behavior depends on terminal settings
-./paracetamol agent run pi -- --completion-notify bell
-```
-
-`osc777` follows Pi's upstream notification example for terminals such as
-Ghostty and WezTerm. Terminal settings, SSH and multiplexers can suppress
-notifications. Print mode, RPC and redirected output never emit them.
-The message means Pi is ready for input, not that the task succeeded.
-
-Pi or Maki can run on a client host while the gateway runs on a different GPU
-host. A non-loopback `--listen` adds that publication while preserving the
-gateway's IPv4 loopback endpoint for clients on the GPU host. Publish only on
-a trusted LAN address and limit its port with the host firewall. The gateway
-supports [optional Bearer authentication](../gateway.md#optional-authentication),
-disabled by default. Configure the matching client key for managed Pi, Maki and
-`status gateway`. Plain HTTP still exposes keys and prompts to the network.
-
-The same `--port` is used by the loopback and additional endpoint. Using
-`--port` without `--listen` selects loopback for that invocation, even when
-configuration or the environment normally publishes another address. Supply
-both options when changing a remote publication.
-
-```bash
-# GPU host
-./paracetamol run gateway -a llama-cpp \
-  --listen 192.168.1.50 --port 7455
-
-# Pi or Maki client host
-PARACETAMOL_GATEWAY_URL=http://gpu-host.local:7455/v1 pi
-```
-
-For a durable remote choice, set `[gateway.client].url` in the client host's
-selected `config.toml`. The equivalent direct form is
-`./paracetamol agent run pi --gateway-url URL --` (or the matching Maki
-command). Resolution is command flag, `PARACETAMOL_GATEWAY_URL`, configured
-client URL, then the built-in loopback default. A normal session performs a bounded
-`GET /v1/models` probe before starting Pi, requires the exact versioned
-Paracetamol gateway response marker, intersects the advertised IDs with the
-reviewed Paracetamol agent catalog, and applies the normal recommended-model
-order. A different service on the configured port is rejected before its
-response body is trusted. The client therefore needs no local GGUF installation
-or verification receipt. The generated reasoning, context, and sampling
-metadata still comes from the client's Paracetamol checkout, so keep the two
-hosts on the same revision. Pi and Maki print the selected remote endpoint and
-a transport warning before the session begins. HTTPS protects transport
-when supplied by a trusted reverse proxy; Paracetamol does not attach remote API
-credentials.
-
-Pi's real session UUID is attached through its native session-affinity support.
-Maki currently supplies a fresh correlation UUID for one launcher invocation,
-which groups its tabs and subagents without claiming to be Maki's internal
-session identity. Generic OpenAI-compatible callers may send a UUID in
-`X-Paracetamol-Session-ID`; the gateway consumes that header and does not
-forward it to the model backend.
-
-Managed Qwen servers and the remaining generated clients use these llama.cpp
-request defaults:
+The provider sends Qwen's `reasoning_effort` or Muse's `reasoning_strength`,
+not a numeric thinking budget. Qwen off is `reasoning_effort: none`.
+The exported configuration adds no sampler overrides. For Qwen, the gateway
+fills missing or null sampler fields according to the requested thinking mode.
 
 | Model family / condition | Temperature | Top-p | Top-k | Min-p | Presence penalty | Repeat penalty |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -741,290 +669,21 @@ request defaults:
 | Qwen3.8 27B, off | 0.7 | 0.8 | 20 | 0 | 1.5 | 1 |
 | Flash-Next, regular and Huihui, thinking | 1.0 | 0.95 | 20 | 0.05 | 0 | 1 |
 | Flash-Next, regular and Huihui, off | 0.7 | 0.8 | 20 | 0 | 1.5 | 1 |
-| KAT-Coder V2.5 Dev | 1.0 | 0.95 | 20 | 0 | 1.5 | 1 |
-| Gemma 4 31B IT | 1.0 | 0.95 | 64 | 0 | 0 | 1 |
-| Muse Glimmer 30B | 1.0 | 0.95 | 64 | 0 | 0 | 1 |
 
-The sources include Qwen's recommendation for
-[Qwen3.8 27B](https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md),
-the [Flash-Next model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/README.md),
-KAT-Coder's
-[agent API example](https://huggingface.co/Kwaipilot/KAT-Coder-V2.5-Dev/blob/7be56fe773e72b6f5ca93c1ae45d828ddb893922/README.md),
-Gemma 4's
-[standardized sampling guidance](https://huggingface.co/google/gemma-4-31B-it/blob/842da3794eaa0b77d5f08bae87a17459d91ff475/README.md),
-and Muse Glimmer's
-[model card](https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/f84ecc3a0ea984a4c04542a84269e3d065350a6e/README.md).
-Neutral values make parameters omitted by an upstream configuration explicit
-and disable llama.cpp's otherwise nonzero min-p default. The upstream name
-`repetition_penalty` is sent to llama.cpp as `repeat_penalty`.
+Explicit request values take precedence field by field. Models without a catalog
+sampling policy retain backend defaults. Direct engine endpoints also use
+native defaults. See [gateway sampling policy](../gateway.md#model-aware-sampling-defaults).
 
-These are defaults, not locks. Pi per-request sampling parameters, another
-agent's provider options, and raw API fields can override them.
+Maki and other OpenAI-compatible clients use `/v1/chat/completions` for function
+tools. Configure the real starting context rather than advertising a larger
+limit. The export caps long-context llama.cpp models at 16K output per turn,
+leaving more room for history before compaction. This is not a reasoning budget.
 
-Qwen3.8 samplers are mode-dependent rather than static. Pi omits their
-sampling tuples so the gateway can supply the official family
-policy after resolving thinking. Explicit numeric request values still take
-precedence.
-
-Dense Qwen3.8 and both Flash-Next variants use zero presence penalty when
-thinking, and the shared non-thinking tuple when off.
-Maki's native named selector carries the model's reasoning control but no
-sampling tuple, so the gateway also supplies its mode-aware policy. Explicit
-sampling remains higher precedence field by field in every client.
-
-`bin/pi` delegates to `./paracetamol agent run pi` and executes the exact Pi release
-installed by `./paracetamol agent install pi`; it never searches `PATH` for
-another Pi. The repository's package manifest and lockfile pin the complete
-npm dependency tree, while system Node.js remains the only runtime. The
-installed tree is mounted read-only and kept separate from the generated
-`models.json`, Paracetamol's managed extensions, and Pi's private managed
-state. The model file uses Pi's `openai-completions` provider and lists the same
-reviewed llama.cpp presets and DwarfStar model. Managed resources are
-refreshed atomically on every launch. Pi's normal `~/.pi/agent` state is not
-read or modified. The launcher disables Pi's update checks and telemetry
-during managed sessions. It declines project `.pi` resources by default,
-while ordinary `AGENTS.md` context still loads.
-
-Pi's package commands keep their upstream shape through the PATH launcher.
-For example, `pi install npm:pi-code-indexer`, `pi list`, and `pi update
---extensions` act on Pi's private Paracetamol-owned state, without requiring an
-installed model or a running server. Since Pi itself is repository-pinned,
-bare `pi update` and its `self`, `pi`, `--self`, and `--all` forms are refused;
-update the checkout and rerun `./paracetamol agent install pi` instead. An
-explicit package command may use the network. Installed user packages
-and their extensions, skills, prompts, and themes are available on later
-managed launches. They are trusted executable inputs with access to the
-writable project and host network inside the sandbox, so review them before
-installation. A local `pi install -l` still requires explicit project approval
-before its project resources can load.
-
-Pi's `mcp` management commands also use this private state without needing a
-running inference gateway. No MCP server is installed by default. The small
-managed web extension below uses direct HTTP requests and needs no MCP server.
-
-`bin/maki` delegates to `./paracetamol agent run maki`. It atomically refreshes one
-Lua provider in `init.lua`, its `plugin.toml` permissions and the gateway URL
-in `providers.toml` inside Maki's Paracetamol-owned XDG directories. The provider
-uses Maki's OpenAI Chat Completions codec and publishes the exact context,
-output and thinking capabilities of the reviewed presets. Maki's normal global config,
-sessions, and model choices are not read or modified. This integration requires
-Maki 0.6.3 or newer and has been tested with 0.6.3. The configured adaptive
-reasoning default applies to both interactive sessions and `--print`.
-
-There is no manual provider migration step. On the next managed launch,
-Paracetamol replaces its old `providers/paracetamol` script with the Lua
-configuration and removes that generated script. Private sessions and modified
-model-tier assignments remain in place. Executable provider scripts are no
-longer supported. The generated plugin gets network access to the selected
-gateway host and port, with no plugin filesystem, process, environment or
-agent permissions. This does not restrict Maki's separately permissioned
-built-in tools.
-
-An unexpected file in the old managed Maki provider directory is left untouched
-and blocks launch. This includes a retired `dwarfstar` provider from older
-checkouts. Inspect and remove that exact file yourself if it is no longer
-needed; Paracetamol no longer deletes it during startup.
-
-New sessions start at adaptive reasoning, which means native `xhigh` for
-regular Flash-Next and medium for dense Qwen3.8 and Huihui. Use `/thinking`
-to change it during a session. Maki
-keeps its sessions and model-tier assignments in its private state. On
-the first launch, Paracetamol assigns the selected default to Maki's strong,
-medium, weak, and compaction tiers so a local subagent does not silently select
-another alphabetically sorted model. Later tier changes in `/model` are preserved.
-An unchanged generated assignment follows the default if installed content
-changes. The generated config also limits Maki to one concurrent task subagent
-because several simultaneous 256K local sessions can exhaust shared GPU
-memory.
-
-The PATH launchers require bubblewrap and start sandboxed by default. Their
-writable host paths are the launch directory and private per-client state
-below `DATA_DIR/apps/CLIENT/sandbox`. The launch directory keeps its absolute
-path inside the sandbox so sessions retain stable project paths. Fedora's
-`/home` alias to `/var/home` is preserved, so either spelling of an absolute
-project path resolves consistently. Private state keeps sessions and client
-preferences useful across launches without exposing ordinary host-side
-history. The real home directory, SSH agent, credentials, Podman state, and
-GPU devices are not mounted. A sanitized Git author and committer identity is
-passed without mounting `.gitconfig`.
-
-On Ubuntu, AppArmor may restrict unprivileged user namespaces to executables
-with matching profiles. The distribution bubblewrap package may be covered
-while a Linuxbrew or other custom build is not. `./paracetamol doctor` reports
-the active kernel policy and, when restricted, prints a persistent opt-out.
-That opt-out applies system-wide and reduces protection against kernel bugs
-reachable through unprivileged user namespaces, so Doctor says so alongside
-the command.
-
-System files and each resolved client installation are read-only. Pi's exact
-managed npm installation is mounted as one runtime tree. When the standard
-`/home/linuxbrew/.linuxbrew` installation exists, the launchers always mount
-the complete prefix read-only and make its `bin` and `sbin` tools available.
-Distribution tools retain precedence for clients outside Linuxbrew; this keeps
-Pi on the reviewed system Node.js while still exposing tools absent from
-`/usr`, such as a Linuxbrew-only FFmpeg. A client installed in a nonstandard
-`.linuxbrew` prefix receives that read-only prefix too and keeps it first on
-`PATH`.
-
-Maki can load executable project configuration from `.maki/init.lua`. Treat it
-like code from the checkout. The bubblewrap boundary still prevents that code
-from reaching the rest of the home directory, but it retains access to the
-writable project and host network.
-
-Networking cannot be unshared because the managed router is normally on host
-loopback. The sandbox can therefore still reach the Internet, LAN, and other
-localhost services, and it can still alter or delete anything in the writable
-launch directory. It is a practical damage boundary, not a VM or network
-policy. `/etc` remains read-only; when its `resolv.conf` symlink points into
-the otherwise private `/run`, the launcher restores only that exact resolver
-target as a read-only bind so DNS continues to follow the host configuration.
-When Avahi is active, the launcher also binds only its exact Unix socket so
-NSS can resolve LAN `.local` names without exposing the rest of host `/run`.
-
-Web fetching does not require `--no-sandbox`. For example, enter this in Pi
-to run a real shell request:
-
-```text
-!curl --fail --show-error --location --max-time 20 https://example.com/
-```
-
-Pi's managed `--offline` setting disables automatic catalog refreshes and
-other background network activity. It does not block shell commands or
-extension requests. Managed Pi includes `web_fetch` for known URLs and an
-optional Brave-backed `web_search`. Neither makes background requests or
-uses another model to summarize results.
-
-`web_fetch` extracts HTML to text while retaining code whitespace and link
-targets. It also accepts plain text, Markdown and JSON. Each result contains
-at most 8,000 text characters and provides `next_offset` for continuation.
-Positive offsets read the same snapshot, so pagination does not download the
-page repeatedly. Offset zero fetches a fresh page. Pi keeps four snapshots in
-memory, clears them on session start, and reports when a snapshot has expired.
-Responses are limited to 2 MiB and 30 seconds, with up to five redirects and
-200,000 extracted characters per snapshot. Larger extracted text is explicitly
-marked as clipped. This is not a browser or a PDF reader. It cannot solve
-JavaScript challenges, log in, or recover content the server did not send.
-
-To enable search, obtain a [Brave Search API key](https://api-dashboard.search.brave.com/)
-and save only the key in a private `brave-search.key` file. With the default
-data directory, its host path is:
-
-```text
-~/.local/share/paracetamol/apps/pi/sandbox/data/pi/agent/brave-search.key
-```
-
-Create it with your editor after launching managed Pi once, then run:
-
-```bash
-chmod 600 ~/.local/share/paracetamol/apps/pi/sandbox/data/pi/agent/brave-search.key
-```
-
-Restart Pi or use `/reload`. `/web` shows whether search is enabled and the
-key path as seen by Pi. Inside the sandbox, that same directory appears as
-`/run/paracetamol/home/.local/share/pi/agent`. A custom data directory changes
-the host prefix. Do not paste the key into chat or put it in command-line
-arguments. Paracetamol never overwrites this user-owned file. The key is used
-only in the Brave request header and is not sent when fetching result URLs.
-
-Without a valid key, `web_search` is not advertised to the model. With one,
-each explicit search call requests five results with bounded titles, snippets
-and URLs, plus an optional next page. Queries are sent to Brave and consume
-your API quota. Page fetches contact the destination sites directly without
-cookies or authentication. They have the same host-network reach as `curl`,
-including local services. This is not a new network security boundary.
-The model's file tools can read private Pi state, including this key, just as
-they can read its provider credentials. External text remains untrusted even
-after HTML extraction.
-
-Scraping a search engine is not a dependable substitute for the API.
-DuckDuckGo HTML/Lite may return a bot challenge even when DNS and HTTPS work,
-and disabling the sandbox does not fix that.
-
-The launcher refuses `/`, the host home directory, or another ancestor of the
-home as the writable scope. Start it from the repository you intend to expose.
-Launching from a broader directory such as `~/src` is allowed but deliberately
-exposes every project below that directory; the launcher prints the resolved
-writable path before the client starts.
-
-Use the direct command for the explicit escape hatch:
-
-```bash
-./paracetamol agent run pi --no-sandbox --
-./paracetamol agent run maki --no-sandbox --
-```
-
-This restores ordinary host filesystem access and should be reserved for a
-toolchain or linked worktree that cannot operate inside the narrow mount set.
-It still uses Paracetamol's generated provider catalog and private client state.
-
-Pi uses its standard coding-agent tool loop. Project `.pi` resources are
-declined by default so a checkout
-cannot silently add executable extensions or settings. That is an input guard,
-not an authorization prompt for model tool calls. Pi has no built-in sandbox,
-so the bubblewrap boundary is the control that limits filesystem damage. Pass
-`--approve` only when project Pi resources are intentionally trusted.
-
-Maki starts in Build mode. Press `Tab` to toggle its built-in Plan mode, where
-only the plan file may be written, then return to Build when the plan is ready.
-Its `--print` mode always starts a new Build-mode session, so use the TUI when
-the Plan boundary matters.
-
-For long-context presets, Paracetamol advertises a 16K per-turn output ceiling to
-both clients. That leaves more native context available before automatic
-compaction. It is a per-turn output limit, not a model reasoning setting or a
-total-session limit.
-
-The maintained model families expose their native controls:
-
-| Family | Native control | Managed choices | Default |
-| --- | --- | --- | --- |
-| Qwen3.8 27B | reasoning effort | off, low, medium, xhigh | medium |
-| Regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in harnesses, medium when omitted over HTTP |
-| Huihui Flash-Next abliterated v2 | reasoning effort | off, low, medium, xhigh | medium |
-| Muse Glimmer 30B | reasoning strength | low, medium, high, xhigh | high |
-
-Qwen3.8 has no native `high` level. Its pinned official template defaults to
-`xhigh`; Paracetamol's reviewed copy changes only that fallback to `medium`, so
-an omitted HTTP setting never silently selects the most expensive level.
-The harness launch preference sends `xhigh` explicitly for regular Flash-Next.
-Muse has no native off mode.
-
-Pi sends Qwen3.8's graduated control
-through the OpenAI-compatible `reasoning_effort` field. In particular,
-Qwen3.8 off is `reasoning_effort: none`. Pi's separately named `qwen`
-transport is for DashScope-style top-level `enable_thinking`; do not use it
-for the managed llama.cpp provider.
-
-Pi uses `Shift+Tab`, `/settings`, or `--thinking`, and Maki uses `/thinking`.
-Pi hides unsupported choices. Maki exposes a generic selector, while
-Paracetamol's generated model entries map it to each model's native request
-fields. Unsupported named levels snap downward to a declared level. Qwen3.8
-maps `high` to `medium`, and
-Muse clamps off to its native `low`. Adaptive mode follows the managed default
-for the currently selected model rather than retaining the previous model's
-named level.
-
-Both clients use `/v1/chat/completions` and expose their file and shell
-tools as ordinary function calls. That matches llama.cpp's current tool
-adapter. Still test a complete read, edit, command, and tool-result loop in
-each maintained client before letting a newly added model work unattended.
-
-Use the Paracetamol preset ID as the API model ID. Configure the client with the
-preset's actual starting context rather than advertising a larger limit. For
-example, `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` starts at 262144 tokens. Once a router
-model is loaded, inspect the template llama.cpp recognized:
-
-```bash
-curl -sS --get http://127.0.0.1:8080/props \
-  --data-urlencode 'model=unsloth-qwen3.8-27b-mtp-ud-q8-k-xl' |
-  jq '{template_caps: .chat_template_caps, slots: .total_slots,
-       context: .default_generation_settings.n_ctx}'
-```
-
-Test one complete tool round trip before giving an agent write access: request
-a tool call, return its result as a tool message, and require a final answer.
-Then test nested object arguments and streaming. A successful ordinary chat
-response is not evidence that the structured tool-call path works.
+Before granting a new model unattended write access, test a complete read,
+edit, command and tool-result loop. A plain chat response does not validate
+tool handling. Other clients can use the same API without the Maki example.
+Clients may send a UUID in `X-Paracetamol-Session-ID` for correlation, but the
+export deliberately does not insert a shared or invented session identifier.
 
 ### Japanese and English translation
 
@@ -1263,11 +922,11 @@ versus 37.5 seconds and 66.77 GB for BF16. These are one-host observations,
 not cross-hardware promises. The complete immutable inputs and caveats are in
 the [maintainer feasibility record](../muse-glimmer-llama-cpp-agent-feasibility.md).
 
-The target's base, 128K DFlash, and forced-256K DFlash presets are advertised
-to the managed Pi and Maki clients. Pi uses the pinned upstream temperature
-1.0, top-p 0.95, and top-k 64 defaults; Maki
-retains the server sampler defaults because its dynamic-provider schema cannot
-express per-model sampling. Live Maki tasks completed substantial repository
+The target's base, 128K DFlash, and forced-256K DFlash presets are available
+in the native Maki export when advertised by the gateway. The export leaves
+sampling to the backend for Muse. Its upstream recommendation is temperature
+1.0, top-p 0.95 and top-k 64, which callers may send explicitly.
+Historical Maki tasks completed substantial repository
 reviews with official K-quant at 128K, the former Q8 target at both 128K and
 forced 256K, and BF16 at 128K. An earlier retired-client answer was a shallow
 turn, not a server crash: repository-review depth remains sensitive to the
@@ -1280,7 +939,7 @@ set this policy explicitly, and `status llama-cpp` reports it under
 `Reasoning history`. It controls retained conversation history, not whether
 the current reply thinks. Muse does not have a native off mode.
 It exposes low, medium, high, and xhigh `Reasoning strength`, defaulting to
-high. Pi exposes the named levels. Maki maps its generic selector to Muse's
+high. Maki maps its selector to Muse's
 native strength field, and adaptive selects the managed high default.
 
 Paracetamol previously installed
@@ -1480,7 +1139,6 @@ same `paracetamol` provider. Choose it explicitly in a client:
 
 ```bash
 ./paracetamol run gateway -a llama-cpp -a dwarfstar
-pi --provider paracetamol --model antirez-deepseek-v4-flash-0731-q2-imatrix --thinking high
 maki -m paracetamol/antirez-deepseek-v4-flash-0731-q2-imatrix
 ```
 
@@ -1489,13 +1147,14 @@ than DwarfStar's generic `deepseek-v4-flash` discovery alias. The gateway's
 frozen `/v1/models` response therefore identifies the reviewed installed
 release and quantization instead of forwarding the engine-owned alias list.
 
-Pi exposes direct and normal thinking behavior as `off` and `high`. The engine
+The export exposes direct and normal thinking behavior as off and high. The engine
 maps low, medium, and high to the same mode below its much larger Think Max
 context threshold, so Paracetamol does not expose three misleading labels. The
 managed 128K server also cannot activate the 384K-minimum Think Max mode.
 Maki exposes the same off and high behaviors through `/thinking`; adaptive
-selects high. Both clients use their one `--gateway-url` rather than carrying
-separate ports for each backend.
+selects high. Maki uses one gateway URL rather than separate ports for each
+backend. Refresh the [native configuration](remote-maki.md) after restarting
+the gateway with DwarfStar included.
 
 Run the hardware-bound smoke separately after initial setup. Outside Strix
 Halo, selecting DwarfStar explicitly is also the opt-in that prevents the
