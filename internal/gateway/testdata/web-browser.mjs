@@ -15,8 +15,12 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   page.on("request", request => requests.push({ url: request.url(), method: request.method() }));
   await page.setViewport({ width: 1440, height: 1100 });
+  await page.emulateTimezone("America/New_York");
+  const snapshotResponse = page.waitForResponse(response => response.url().endsWith("/paracetamol/v1/ui"));
   await page.goto(plain);
   await page.waitForFunction(() => document.querySelector("#connection-state").textContent === "Gateway reachable");
+  const snapshot = await (await snapshotResponse).json();
+  assert.equal(await page.$eval("#snapshot-time", node => node.textContent), "Checked " + new Date(snapshot.collected_at).toISOString());
   assert.equal(await page.$eval("#api-address", node => node.textContent), plain + "/v1");
   assert.match(await page.$eval("#default-model-note", node => node.textContent), /xhigh/);
   const command = await page.$eval("#setup-command", node => node.textContent);
