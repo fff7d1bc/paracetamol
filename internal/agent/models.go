@@ -12,7 +12,7 @@ import (
 
 var ProviderID = identity.StateNamespace
 
-const RecommendedModel = "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"
+const RecommendedModel = "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"
 
 // AgentModels intersects the catalog's client capabilities with the gateway's
 // frozen advertised inventory. A nil inventory deliberately means all models
@@ -43,13 +43,25 @@ func DefaultModel(models []textmodel.Model, client string) (string, string, stri
 		return "", "", "", fmt.Errorf("gateway advertises no model maintained for %s", client)
 	}
 	selected := models[0]
-	for _, model := range models {
-		if model.ID == RecommendedModel {
-			selected = model
-			break
+	// Keep the smaller, established dense model ahead of optional derivatives
+	// when the gateway cannot expose the high-memory Flash-Next default.
+	for _, preferred := range []string{RecommendedModel, "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"} {
+		for _, model := range models {
+			if model.ID == preferred {
+				return ProviderID, model.ID, clientReasoningDefault(model), nil
+			}
 		}
 	}
-	return ProviderID, selected.ID, textmodel.ReasoningDefault(selected), nil
+	return ProviderID, selected.ID, clientReasoningDefault(selected), nil
+}
+
+// Harness preferences must not change the shared template or gateway fallback
+// for HTTP callers that omit reasoning. Both clients use this same selection.
+func clientReasoningDefault(model textmodel.Model) string {
+	if model.ID == RecommendedModel && contains(textmodel.ReasoningLevels(model), "xhigh") {
+		return "xhigh"
+	}
+	return textmodel.ReasoningDefault(model)
 }
 
 func DwarfStarModel(managed catalog.Catalog) (textmodel.Model, error) {

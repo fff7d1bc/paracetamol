@@ -41,9 +41,6 @@ func TestSamplingPoliciesPreserveReviewedEngineDifferences(t *testing.T) {
 			true:  {"temperature": 1, "top_p": .95, "top_k": 20, "min_p": 0, "presence_penalty": 0, "repeat_penalty": 1},
 			false: {"temperature": .7, "top_p": .8, "top_k": 20, "min_p": 0, "presence_penalty": 1.5, "repeat_penalty": 1},
 		} {
-			if thinking && id == "qwen3.6-35b-a3b" {
-				expected["presence_penalty"] = 1.5
-			}
 			if thinking && id == "qwen3.8-flash-next" {
 				expected["min_p"] = .05
 			}

@@ -382,7 +382,7 @@ The llama.cpp image contains both ROCm and Vulkan. Compare them unattended:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset unsloth-qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl \
   --compare-backends \
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
@@ -414,7 +414,7 @@ cache before each measured prompt and generation run with `--context-depth`:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset unsloth-qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl \
   --compare-backends \
   --context-depth 32768 \
   --flash-attn on \

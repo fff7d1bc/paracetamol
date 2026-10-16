@@ -368,7 +368,7 @@ func TestOptionalQwenAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider != ProviderID || selected != RecommendedModel || thinking != "medium" {
+	if provider != ProviderID || selected != RecommendedModel || thinking != "xhigh" {
 		t.Fatalf("default = %q/%q at %q", provider, selected, thinking)
 	}
 	pi, err := PiConfig(managed, "http://127.0.0.1:7455/v1", models, "")
@@ -382,6 +382,71 @@ func TestOptionalQwenAppearsInBothClientsWithoutChangingDefault(t *testing.T) {
 				t.Errorf("%s config lacks %q", name, id)
 			}
 		}
+	}
+}
+
+func TestFlashNextHarnessDefaultDoesNotChangeHTTPOrOtherModels(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join(projectRoot(t), "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const huihui = "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl"
+	const dense = "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"
+	models, err := AgentModels(managed, []string{huihui, dense, RecommendedModel})
+	if err != nil || len(models) != 3 {
+		t.Fatalf("models=%v err=%v", models, err)
+	}
+	for _, client := range []string{"Pi", "Maki"} {
+		_, id, thinking, err := DefaultModel(models, client)
+		if err != nil || id != RecommendedModel || thinking != "xhigh" {
+			t.Fatalf("%s default=%s/%s err=%v", client, id, thinking, err)
+		}
+	}
+	for _, args := range [][]string{nil, {"--thinking", "medium"}} {
+		plan, err := createPiPlan(context.Background(), managed, projectRoot(t), "http://127.0.0.1:7455/v1", args,
+			PiRuntime{Root: "/runtime", Node: "/node", Entrypoint: "/pi"}, []string{huihui, dense, RecommendedModel}, false, "")
+		if err != nil || plan.DefaultModel != RecommendedModel || plan.DefaultThinking != "xhigh" {
+			t.Fatalf("Pi plan=%#v err=%v", plan, err)
+		}
+		thinking := ""
+		for i, arg := range plan.Command {
+			if arg == "--thinking" && i+1 < len(plan.Command) {
+				thinking = plan.Command[i+1]
+			}
+		}
+		want := "xhigh"
+		if len(args) > 0 {
+			want = "medium"
+		}
+		if thinking != want {
+			t.Fatalf("Pi command=%v, want thinking %s", plan.Command, want)
+		}
+	}
+	for _, model := range models {
+		if model.ReasoningDefault != "medium" {
+			t.Fatalf("HTTP default changed for %s: %s", model.ID, model.ReasoningDefault)
+		}
+		want := "medium"
+		if model.ID == RecommendedModel {
+			want = "xhigh"
+		}
+		if got := clientReasoningDefault(model); got != want {
+			t.Fatalf("%s client default=%s want %s", model.ID, got, want)
+		}
+		row := makiModels([]textmodel.Model{model})[0]
+		fields := row["thinking_fields"].(map[string]any)
+		if got := fields["adaptive"].(map[string]string)["reasoning_effort"]; got != want {
+			t.Fatalf("Maki adaptive for %s=%s want %s", model.ID, got, want)
+		}
+	}
+	// A gateway without Flash-Next still launches a real advertised model.
+	fallback, err := AgentModels(managed, []string{huihui, dense})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, id, thinking, err := DefaultModel(fallback, "Pi")
+	if err != nil || id != dense || thinking != "medium" {
+		t.Fatalf("fallback=%s/%s err=%v", id, thinking, err)
 	}
 }
 

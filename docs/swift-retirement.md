@@ -2,7 +2,9 @@
 
 On 2026-09-27 we removed the two UkisAI Swift 1.5 presets from the managed
 catalog. This is a curation decision, not a claim that either conversion is
-universally broken. The trusted dense Qwen3.8 27B default is unchanged.
+universally broken. The trusted dense Qwen3.8 27B default was unchanged by
+that removal. On 2026-10-16, regular Unsloth Flash-Next became the harness
+default at xhigh. See the [current model guide](guides/applications.md#choosing-a-managed-qwen-preset).
 
 The deciding observation was a real Pi coding session on the acceptance host at `xhigh`.
 The prompt asked for a small Python script that calculates pi accurately to
@@ -27,7 +29,7 @@ the added licensing burden do not justify keeping the Swift alternatives.
 Both the 27B and Flash-Next Swift artifacts, bundles, presets, recipes, and
 Pi picker category were removed. This does not delete GGUFs already installed
 on a host, Pi session records, or task files. The Unsloth Flash-Next preset
-remains experimental, while dense Qwen3.8 27B remains the managed default.
+remained experimental at the time, with dense Qwen3.8 27B still the default.
 
 The supporting Pi session records are retained privately and are not bundled
 with this public repository.

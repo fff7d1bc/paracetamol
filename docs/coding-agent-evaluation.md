@@ -132,8 +132,9 @@ meaning across families.
 Pi remains the fixed harness for version 5. Maki has different tool prompts
 and context behavior and belongs in a separately labelled harness comparison.
 
-Qwen3.6 supports only thinking off/on; Pi displays on in its generic `high`
-slot. Qwen3.8 supports off/low/medium/xhigh and defaults to medium. Muse
+Qwen3.8 supports off/low/medium/xhigh. Its HTTP fallback is medium, while
+normal Pi and Maki sessions prefer xhigh for regular Flash-Next. Evaluations
+select and record their reasoning explicitly. Muse
 supports low/medium/high/xhigh, defaults to high, and cannot turn reasoning
 off. Consequently the runner has no normalized three-model switch. A primary
 operational comparison should use each preset's recorded default. A separate
@@ -144,15 +145,13 @@ because replacing those would test a synthetic configuration. Start with one
 attempt per task, then run three fresh repetitions for finalists. Do not tune
 the prompt or hidden grader after seeing a new model's answer.
 
-Qwen3.6 and Qwen3.8 sampling follows the selected mode. In normal Pi sessions,
-the gateway supplies Qwen3.6's dense or sparse thinking tuple, Qwen3.8's
+Qwen3.8 sampling follows the selected mode. In normal Pi sessions,
+the gateway supplies the selected dense or Flash-Next
 thinking tuple for low, medium, and xhigh, or the shared non-thinking tuple
 for off. This direct evaluation path configures Pi with that same tuple for
 its one fixed model and mode. It must never reuse that static configuration
 for a normal session where the user can change thinking levels. The
-evaluation result records the sent values. Qwen3.6's temperature-0.6
-precise-coding recommendation is
-an explicit experimental override, not the managed default. Off remains an
+evaluation result records the sent values. Off remains an
 explicitly labelled within-family condition rather than a semantically
 matched cross-model level. Maki remains outside the fixed comparison because
 it is a different harness, even though it receives the same gateway-side Qwen

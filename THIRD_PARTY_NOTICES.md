@@ -134,14 +134,6 @@ revisions recorded in `catalog/catalog.json`.
   includes Qwen's Apache-2.0 chat template from base-model revision
   `7e4ae267688d671ddfca3122e4528ee980cf3234` so the older unchanged GGUF
   receives the later content-type and tool-response hardening.
-- Managed Qwen3.6 27B and Qwen3.6 35B-A3B GGUF conversions are downloaded
-  from full pinned Unsloth revisions. Each pinned model card explicitly
-  declares Apache-2.0 and links its corresponding Qwen source-model license.
-  Their four embedded templates are byte-identical.
-  The llama.cpp image includes an Apache-2.0 adaptation of that template which
-  retains later system and developer messages and omits empty historical
-  reasoning blocks. Paracetamol records every GGUF shard's exact size and
-  SHA-256 and does not redistribute those weights.
 - The managed Qwen3.8 27B Dynamic Q8_K_XL and Q4_K_XL GGUFs are downloaded
   from full pinned Unsloth revisions whose model cards declare Apache-2.0.
   Paracetamol records each file's exact size and SHA-256 and does not
@@ -160,6 +152,15 @@ revisions recorded in `catalog/catalog.json`.
   The managed Qwen3.8 template also matches Qwen3.8 Flash-Next revision
   `de4b8e4d43b917e7706784d8bb445c9af86a3540` before Paracetamol's common
   medium-default adaptation.
+- Huihui Qwen3.8 Flash-Next abliterated v2 uses the four Unsloth-derived
+  UD-Q4_K_XL shards from `huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF`
+  at `43b4c1a8871afcc27e37bf996a431528b3d957e5`. Its model card explicitly
+  distinguishes these from the separate Swift-derived files. The card names
+  the Qwen Community License but its linked LICENSE file is absent, so the
+  modified conversion remains `NOASSERTION` with an explicit acknowledgment
+  gate. The official Qwen license is recorded as lineage only. Every shard
+  has its own size and SHA-256 pin. Paracetamol does not redistribute the
+  weights, and uses its existing Qwen3.8 template without modification.
 - KAT-Coder V2.5 Dev Q8_0 is downloaded from one full pinned Bartowski GGUF
   revision derived from Kwaipilot's public text-only checkpoint. The
   conversion repository declares Apache-2.0 and records its upstream model

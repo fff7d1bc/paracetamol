@@ -110,7 +110,7 @@ Exercise user-visible composition:
   --listen 127.0.0.1 --dry-run
 ./paracetamol run llama-cpp server --model /path/to/model.gguf \
   --profile cpu --listen 127.0.0.1 --dry-run
-./paracetamol content install llama-cpp qwen3.6 --dry-run
+./paracetamol content install llama-cpp qwen3.8 --dry-run
 ./paracetamol run llama-cpp server --router \
   --profile cpu --listen 127.0.0.1 --dry-run
 ./paracetamol run dwarfstar server --profile strix-halo --dry-run
@@ -287,9 +287,9 @@ and that containers disappear after stopping. Run this check from a shell with
 to the keep-id process, `/tmp/comfy` must be writable, and persistent files
 must retain the private host mask.
 
-The llama.cpp router check requires `content install llama-cpp qwen3.6`,
-but does not load a model. Confirm `unsloth-qwen3.6-27b-mtp-q8-0` and
-`unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl` are present and unloaded.
+The llama.cpp router check requires `content install llama-cpp qwen3.8`,
+but does not load a model. Confirm `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` and
+`unsloth-qwen3.8-27b-ud-q8-k-xl` are present and unloaded.
 The pinned upstream router may also advertise its reserved empty `default`
 preset; that is not managed content and should not be selected during the
 smoke test.
@@ -406,14 +406,20 @@ their one `--gateway-url`. Do not claim agent compatibility from `/v1/models`
 or a plain text response alone.
 
 For the maintained llama.cpp reasoning matrix, exercise each native choice
-through Pi: Qwen3.6 off/on; Qwen3.8 off, low, medium, and xhigh; and Muse low,
+through Pi: Qwen3.8 off, low, medium, and xhigh; and Muse low,
 medium, high, and xhigh. Confirm Pi omits unsupported values. For Maki
 0.6.3 or newer, capture the actual request fields for the
-same matrix. Confirm Qwen3.6 maps every enabled name to its on toggle,
-Qwen3.8 `high` snaps to medium, Muse off clamps to low, and adaptive follows
-the selected family's managed default. The current client applies
+same matrix. Confirm Qwen3.8 `high` snaps to medium, Muse off clamps to low,
+and adaptive follows the selected model's harness default. The current client applies
 `always_thinking` in `--print` as well as interactive sessions. Keep these
-protocol checks separate from cross-model quality benchmarking.
+protocol checks separate from cross-model quality benchmarking. With no
+model or reasoning override, both clients must select regular Flash-Next at
+xhigh when advertised. Huihui must remain optional. HTTP requests omitting
+reasoning must still resolve to medium for both Flash-Next variants.
+For Maki 0.6.3 print-mode reasoning tests, select `always_thinking` through
+the supported Lua configuration as the transport fixture does. Its hidden
+`--thinking` compatibility flag is accepted but ignored, so it is not a mode
+override for acceptance tests.
 
 An optional installed-Maki transport test runs against a local fake gateway,
 without a GPU or model download:
@@ -432,9 +438,8 @@ from a client host to an inference host using its LAN hostname. Local fixtures
 alone do not validate remote HTTP, DNS or GPU inference.
 
 After a Pi update, also verify the transport rather than trusting the selector
-label: every exposed Qwen3.6 preset must use `qwen-chat-template`, and every
-Qwen3.8 preset must use Pi's `openai` thinking format with off mapped to
-`none`. Run one live representative of each distinct template path. Thinking
+label. Every Qwen3.8 preset must use Pi's `openai` thinking format with off
+mapped to `none`. Run one live representative of each distinct template path. Thinking
 off must produce no reasoning block and must select the gateway's non-thinking
 sampling defaults; a TUI status line saying `thinking off` is not evidence of
 either behavior.
@@ -445,8 +450,8 @@ GPU time:
 ```bash
 ./paracetamol benchmark agent --list-tasks
 ./paracetamol benchmark agent \
-  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
-  --thinking high --task re-align --dry-run
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
+  --thinking medium --task re-align --dry-run
 go test ./internal/evaluation ./internal/agent ./internal/cli
 ```
 

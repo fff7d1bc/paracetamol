@@ -125,7 +125,7 @@ model families, and exact bundle installation.
 Use llama.cpp for local text models, an OpenAI-compatible API, or an
 interactive terminal session.
 
-For the common managed default:
+For the dense model on smaller hosts:
 
 ```bash
 ./paracetamol build llama-cpp
@@ -158,36 +158,23 @@ For the Muse Glimmer comparison:
   --preset meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k
 ```
 
-The default Qwen3.8 preset starts at 262144 tokens and verifies up to three
-tokens from its embedded prediction heads. The dense Qwen3.6 27B MTP Q8_0 and
-sparse Qwen3.6 35B-A3B MTP Dynamic Q8_K_XL comparison presets have the same
-context and draft depth. Every managed preset retains llama.cpp's F16 target
-K/V cache. Paracetamol favors full cache precision over the modest
-long-context throughput gain previously measured with Q8 K/V on dense
-Qwen3.6. That dense MTP preset still enables Flash Attention on Strix Halo;
-other profile-specific Flash Attention behavior remains unchanged. `--context`
-overrides the catalog default.
-
-All managed Qwen3.6 presets start at their native 256K. The pinned
-[27B](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/blob/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/README.md)
-and
-[35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/blob/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/README.md)
-model cards call 256K the native context and recommend at least 128K to
-preserve thinking capabilities. The value is a ceiling, not an amount of
-prompt text Paracetamol feeds the model. llama.cpp prepares context capacity at
-startup, while request work still follows the tokens actually sent.
+The dense Qwen3.8 Q8 MTP preset starts at 262144 tokens and verifies up to
+three tokens from its embedded prediction heads. Flash-Next also starts at
+262144 tokens, without MTP. Every managed preset retains F16 target K/V
+cache. `--context` overrides the catalog default. This is a ceiling, not an
+amount of prompt text fed to the model. Request work follows the tokens sent.
 
 Use 128K or 64K when memory matters more than the full native window:
 
 ```bash
 # Smaller working set:
 ./paracetamol run llama-cpp server \
-  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --context 65536
 
 # Reduced but still substantial working set:
 ./paracetamol run llama-cpp server \
-  --preset unsloth-qwen3.6-27b-mtp-q8-0 \
+  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
   --context 131072
 ```
 
@@ -206,7 +193,7 @@ A model and a Paracetamol preset are related, but they are not interchangeable:
 
 | Layer | What it owns | Examples |
 | --- | --- | --- |
-| GGUF model | Architecture, trained weights, and quantization | Qwen3.6 27B Q8_0 or 35B-A3B Dynamic Q8_K_XL |
+| GGUF model | Architecture, trained weights, and quantization | Dense Qwen3.8 27B Dynamic Q8_K_XL or Flash-Next Dynamic Q4_K_XL |
 | Paracetamol preset | Model artifact, context size, and required model runtime policy | Chat template, Jinja, profile-specific Flash Attention, K/V cache and model loading, MTP or DFlash settings |
 | Server launch | Machine and service policy for this run | ROCm or Vulkan, hardware profile, render nodes, listen address, port |
 | API request or client | The current task and generation behavior | System message, conversation history, temperature, top-p, maximum tokens |
@@ -226,24 +213,21 @@ artifacts and verification receipts keep their original paths and IDs.
 
 ### Choosing a managed Qwen preset
 
-Qwen3.8 27B MTP is the managed-client default. Dense Qwen3.6 27B MTP remains
-the smaller earlier comparison point, while sparse Qwen3.6 35B-A3B MTP is
-restored for users who prefer its established agent behavior. Neither becomes
-the default. Install either non-MTP control when you need to isolate
-speculative decoding:
+Regular Unsloth Flash-Next at `xhigh` is the Pi and Maki default when it is
+advertised by the gateway. Dense Qwen3.8 27B remains a smaller alternative.
+Its MTP Q8 preset is the fallback when regular Flash-Next is unavailable.
+Qwen3.6 has been retired from the catalog, recipes and managed clients.
+Existing Qwen3.6 files are not deleted automatically.
 
 | Preset | What changes | Good use |
 | --- | --- | --- |
 | `qwen-qwen3-0.6b-q8-0` | Tiny 0.6B model | Startup, API, and GPU-offload smoke tests |
-| `unsloth-qwen3.6-27b-mtp-q8-0` | Dense 27B MTP Q8_0 | General assistant and smaller baseline |
-| `unsloth-qwen3.6-27b-q8-0` | Dense 27B Q8_0 | Non-MTP control for the dense model |
-| `unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl` | Sparse 35B-A3B MTP Dynamic Q8_K_XL | Established high-throughput agent comparison |
-| `unsloth-qwen3.6-35b-a3b-ud-q8-k-xl` | Sparse 35B-A3B Dynamic Q8_K_XL | Non-MTP control for the sparse model |
 | `unsloth-qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
-| `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Managed coding-agent default |
+| `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Dense coding-agent alternative |
 | `unsloth-qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
-| `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Preferred experimental 128 GB Strix Halo path with SSD-backed lazy ngram loading |
+| `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Harness default at xhigh on the accepted 128 GB Strix Halo path |
+| `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl` | Huihui abliterated v2, Unsloth-derived Dynamic Q4_K_XL | Optional modified weights with the same Flash-Next runtime policy |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
@@ -316,12 +300,13 @@ memory saving and modest high-context prefill gain, without claiming faster
 decode or general coding quality.
 
 The preset starts at the model's native 262144-token context and exposes off,
-low, medium, and xhigh reasoning with medium as the default. Thinking uses
+low, medium, and xhigh reasoning. Pi and Maki start regular Flash-Next at
+`xhigh`. The shared template and gateway fallback remain `medium` for HTTP
+callers that omit reasoning. Thinking uses
 temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
 0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
 upstream llama.cpp supports the target architecture but not its MTP heads, so
-Paracetamol deliberately provides no speculative alias. This experimental
-path does not replace the dense 27B MTP default. Q4_K_XL is preferred on the
+Paracetamol deliberately provides no speculative alias. Q4_K_XL is preferred on the
 accepted 128 GB Strix Halo host because it improves Unsloth's quant-fidelity
 measurements over IQ4_XS while retaining 34 GiB of available memory after a
 199872-token retrieval run. The Q5_K_XL payload exceeds the measured remaining
@@ -329,7 +314,28 @@ capacity margin. The 87.2 GiB IQ4_XS conversion was retired because it still
 exceeds practical 32 and 64 GB device classes while Q4_K_XL fits the accepted
 128 GB system and provides the stronger quantization.
 
-On the accepted Fedora Strix Halo host, start the optional MTP preset with the
+Huihui's abliterated v2 is a separate weight option based on Unsloth's
+UD-Q4_K_XL conversion, not the Swift-derived series in the same repository.
+It uses the same `qwen3.8.jinja`, native reasoning choices, preserved history,
+gateway sampling policy, 256K context and F16 KV. The ROCm reader and all
+Flash-Next optimizations are shared. There is no Huihui-specific engine patch.
+
+```bash
+./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl \
+  --acknowledge-license-risk
+```
+
+Select `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`
+in Pi, Maki or an HTTP request. It stays non-default and keeps the medium
+HTTP fallback. Choose its reasoning level in the client. It does not imply
+equal coding quality to the original.
+The [pinned model card](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/blob/43b4c1a8871afcc27e37bf996a431528b3d957e5/README.md)
+describes modified weights with reduced refusal behavior. Its linked license
+file is absent, so the download retains the explicit `NOASSERTION` gate.
+The [hardware acceptance log](../hardware-acceptance.md) records the tested
+scope rather than treating protocol compatibility as a quality benchmark.
+
+On the accepted Fedora Strix Halo host, start the optional dense MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:
 
 ```bash
@@ -357,7 +363,7 @@ tokens/s) but slower prefill made its whole request 3.5% slower (170.29 versus
 164.59 seconds). The mixed result does not justify a backend override.
 
 Against the retired Q4_K_M path, the preview Dynamic Q4_K_XL stayed within
-12.4% on these whole requests. Against the default Dynamic Q8_K_XL on matched
+12.4% on these whole requests. Against the dense Dynamic Q8_K_XL on matched
 ROCm requests, it generated 25% faster at 4K and 30% faster at 32K. A
 medium-effort Pi run at
 64K and a nested-tool router probe both passed. Two later hidden-graded
@@ -398,7 +404,7 @@ reports large improvements over Qwen3.6-27B on its coding and agent harnesses.
 Treat those numbers as candidate-selection evidence, not acceptance of this
 quantization or local client behavior.
 The accepted medium-effort tool run and the neutral omitted-effort behavior
-support using the Qwen3.8 MTP preset as Paracetamol's managed-client default. The
+support keeping dense Qwen3.8 MTP as the smaller managed-client alternative. The
 catalog currently serves text only; native vision needs the optional projector
 and separate multimodal acceptance.
 
@@ -471,8 +477,8 @@ preset:
 
 Paracetamol presets do not store a general system prompt or persona. Ordinary
 task sampling belongs in the caller because it can change without changing the
-model's safe runtime setup. Qwen3.6 and Qwen3.8 are deliberate model-policy
-exceptions. Their gateway presets select model- and mode-specific defaults
+model's safe runtime setup. Qwen3.8 is a deliberate model-policy
+exception. Its gateway presets select model- and mode-specific defaults
 for each Chat Completions request. Direct engine endpoints do not apply that
 catalog policy. Send a `system`
 message and any sampling overrides in the OpenAI-compatible request, and send
@@ -480,7 +486,7 @@ the complete message history when the conversation should continue:
 
 ```json
 {
-  "model": "unsloth-qwen3.6-27b-mtp-q8-0",
+  "model": "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl",
   "messages": [
     {
       "role": "system",
@@ -505,8 +511,8 @@ add a hardware profile for task tuning either. In Paracetamol, profiles describe
 GPUs such as Strix Halo or RDNA 4.
 
 The managed Pi launcher is a coding-task caller, so its generated model
-entries apply caller-owned static defaults. For Qwen3.6 and
-Qwen3.8, direct and router servers instead select the catalog's thinking or
+entries apply caller-owned static defaults. For
+Qwen3.8, the gateway instead selects the catalog's thinking or
 non-thinking policy, so raw API clients receive the same defaults without
 duplicating them. Explicit request fields remain authoritative.
 
@@ -514,7 +520,7 @@ For a quick human check without an API client, run the model directly in a
 terminal:
 
 ```bash
-./paracetamol run llama-cpp cli --preset unsloth-qwen3.6-27b-mtp-q8-0
+./paracetamol run llama-cpp cli --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 CLI mode owns an interactive conversation in that terminal. API callers must
@@ -552,10 +558,9 @@ selector for Gemma 4.
 ### Tool-using clients
 
 Managed Qwen, Gemma 4, and Muse Glimmer agent presets enable llama.cpp's Jinja
-engine. This is required for structured OpenAI-style tool calls. All four
-Qwen3.6 presets select Paracetamol's current fixed `qwen3.6.jinja`: it retains
-later system and developer messages and avoids a closed empty reasoning block
-before a historical tool call while preserving the model's protocol. Gemma 4
+engine. This is required for structured OpenAI-style tool calls. Every Qwen3.8
+preset, including Huihui, selects the same managed `qwen3.8.jinja` and retains
+reasoning history. Gemma 4
 uses Google's canonical embedded template. Muse uses Meta's later pinned ATEM
 template from the base repository because its unchanged official GGUF still
 embeds the original release template. Paracetamol does not replace these
@@ -633,7 +638,8 @@ current reviewed client catalog. Install the recommended model and start the
 gateway first, then choose a client:
 
 ```bash
-./paracetamol content install llama-cpp qwen3.8
+./paracetamol content install llama-cpp qwen3.8-flash-next \
+  --acknowledge-license-risk
 ./paracetamol agent install pi
 ./paracetamol run gateway
 export PATH="$PWD/bin:$PATH"
@@ -651,7 +657,7 @@ same entries through `/model`.
 Managed Pi sessions replace the stock interactive picker with a
 Paracetamol-owned view. The configured model-selection shortcut (`Ctrl+L` by
 default), bare `/model`, and `/select-model` open models in stable family
-groups such as Qwen 3.8, Qwen 3.6, and Muse Glimmer. The current model remains
+groups such as Qwen 3.8 and Muse Glimmer. The current model remains
 in its natural group and is marked there rather than being promoted to the
 top. Search matches family, provider, ID, and display name. After selection,
 Pi immediately asks for one of that model's supported reasoning levels. An
@@ -731,21 +737,17 @@ request defaults:
 
 | Model family / condition | Temperature | Top-p | Top-k | Min-p | Presence penalty | Repeat penalty |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6 27B, thinking | 1.0 | 0.95 | 20 | 0 | 0 | 1 |
-| Qwen3.6 35B-A3B, thinking | 1.0 | 0.95 | 20 | 0 | 1.5 | 1 |
-| Qwen3.6, off | 0.7 | 0.8 | 20 | 0 | 1.5 | 1 |
 | Qwen3.8 27B, thinking | 1.0 | 0.95 | 20 | 0 | 0 | 1 |
 | Qwen3.8 27B, off | 0.7 | 0.8 | 20 | 0 | 1.5 | 1 |
+| Flash-Next, regular and Huihui, thinking | 1.0 | 0.95 | 20 | 0.05 | 0 | 1 |
+| Flash-Next, regular and Huihui, off | 0.7 | 0.8 | 20 | 0 | 1.5 | 1 |
 | KAT-Coder V2.5 Dev | 1.0 | 0.95 | 20 | 0 | 1.5 | 1 |
 | Gemma 4 31B IT | 1.0 | 0.95 | 64 | 0 | 0 | 1 |
 | Muse Glimmer 30B | 1.0 | 0.95 | 64 | 0 | 0 | 1 |
 
-The sources are Qwen's general-thinking and non-thinking recommendations for
-[Qwen3.6 27B](https://huggingface.co/Qwen/Qwen3.6-27B/blob/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9/README.md)
-and
-[Qwen3.6 35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B/blob/995ad96eacd98c81ed38be0c5b274b04031597b0/README.md),
-Qwen's thinking-mode recommendation for
+The sources include Qwen's recommendation for
 [Qwen3.8 27B](https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md),
+the [Flash-Next model card](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/README.md),
 KAT-Coder's
 [agent API example](https://huggingface.co/Kwaipilot/KAT-Coder-V2.5-Dev/blob/7be56fe773e72b6f5ca93c1ae45d828ddb893922/README.md),
 Gemma 4's
@@ -759,15 +761,13 @@ and disable llama.cpp's otherwise nonzero min-p default. The upstream name
 These are defaults, not locks. Pi per-request sampling parameters, another
 agent's provider options, and raw API fields can override them.
 
-Qwen3.6 and Qwen3.8 are mode-dependent rather than static. Pi omits their
+Qwen3.8 samplers are mode-dependent rather than static. Pi omits their
 sampling tuples so the gateway can supply the official family
 policy after resolving thinking. Explicit numeric request values still take
 precedence.
 
-Dense Qwen3.6 and Qwen3.8 thinking use zero presence penalty, sparse Qwen3.6
-thinking uses 1.5, and all three use the shared non-thinking tuple when off.
-Qwen3.6's separate temperature-0.6 precise-coding recommendation remains an
-explicit task override rather than a default inferred from the client name.
+Dense Qwen3.8 and both Flash-Next variants use zero presence penalty when
+thinking, and the shared non-thinking tuple when off.
 Maki's native named selector carries the model's reasoning control but no
 sampling tuple, so the gateway also supplies its mode-aware policy. Explicit
 sampling remains higher precedence field by field in every client.
@@ -825,8 +825,9 @@ and blocks launch. This includes a retired `dwarfstar` provider from older
 checkouts. Inspect and remove that exact file yourself if it is no longer
 needed; Paracetamol no longer deletes it during startup.
 
-New sessions start at adaptive reasoning, which means native medium for the
-recommended Qwen3.8 model. Use `/thinking` to change it during a session. Maki
+New sessions start at adaptive reasoning, which means native `xhigh` for
+regular Flash-Next and medium for dense Qwen3.8 and Huihui. Use `/thinking`
+to change it during a session. Maki
 keeps its sessions and model-tier assignments in its private state. On
 the first launch, Paracetamol assigns the selected default to Maki's strong,
 medium, weak, and compaction tiers so a local subagent does not silently select
@@ -973,24 +974,22 @@ both clients. That leaves more native context available before automatic
 compaction. It is a per-turn output limit, not a model reasoning setting or a
 total-session limit.
 
-The maintained model families have three different native contracts:
+The maintained model families expose their native controls:
 
 | Family | Native control | Managed choices | Default |
 | --- | --- | --- | --- |
-| Qwen3.6 27B and 35B-A3B | thinking toggle | off, on | on |
 | Qwen3.8 27B | reasoning effort | off, low, medium, xhigh | medium |
+| Regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in harnesses, medium when omitted over HTTP |
+| Huihui Flash-Next abliterated v2 | reasoning effort | off, low, medium, xhigh | medium |
 | Muse Glimmer 30B | reasoning strength | low, medium, high, xhigh | high |
 
 Qwen3.8 has no native `high` level. Its pinned official template defaults to
 `xhigh`; Paracetamol's reviewed copy changes only that fallback to `medium`, so
-an omitted setting never silently selects the most expensive level. Qwen3.6
-does not have graduated effort levels. Clients with a fixed shared vocabulary
-display its on state as `high` or `thinking`, but the request is translated to
-the native on/off toggle rather than treating `high` as a Qwen3.6 effort.
+an omitted HTTP setting never silently selects the most expensive level.
+The harness launch preference sends `xhigh` explicitly for regular Flash-Next.
 Muse has no native off mode.
 
-Pi sends Qwen3.6's toggle through llama.cpp's
-`chat_template_kwargs.enable_thinking` and sends Qwen3.8's graduated control
+Pi sends Qwen3.8's graduated control
 through the OpenAI-compatible `reasoning_effort` field. In particular,
 Qwen3.8 off is `reasoning_effort: none`. Pi's separately named `qwen`
 transport is for DashScope-style top-level `enable_thinking`; do not use it
@@ -999,10 +998,10 @@ for the managed llama.cpp provider.
 Pi uses `Shift+Tab`, `/settings`, or `--thinking`, and Maki uses `/thinking`.
 Pi hides unsupported choices. Maki exposes a generic selector, while
 Paracetamol's generated model entries map it to each model's native request
-fields. Unsupported named levels snap downward to a declared level: Qwen3.6
-maps every enabled level to its on toggle, Qwen3.8 maps `high` to `medium`, and
+fields. Unsupported named levels snap downward to a declared level. Qwen3.8
+maps `high` to `medium`, and
 Muse clamps off to its native `low`. Adaptive mode follows the managed default
-for the currently selected family rather than retaining the previous model's
+for the currently selected model rather than retaining the previous model's
 named level.
 
 Both clients use `/v1/chat/completions` and expose their file and shell
@@ -1012,12 +1011,12 @@ each maintained client before letting a newly added model work unattended.
 
 Use the Paracetamol preset ID as the API model ID. Configure the client with the
 preset's actual starting context rather than advertising a larger limit. For
-example, `unsloth-qwen3.6-27b-mtp-q8-0` starts at 262144 tokens. Once a router
+example, `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` starts at 262144 tokens. Once a router
 model is loaded, inspect the template llama.cpp recognized:
 
 ```bash
 curl -sS --get http://127.0.0.1:8080/props \
-  --data-urlencode 'model=unsloth-qwen3.6-27b-mtp-q8-0' |
+  --data-urlencode 'model=unsloth-qwen3.8-27b-mtp-ud-q8-k-xl' |
   jq '{template_caps: .chat_template_caps, slots: .total_slots,
        context: .default_generation_settings.n_ctx}'
 ```
@@ -1156,7 +1155,7 @@ Vulkan, so a server, terminal session, or benchmark can select it explicitly:
 
 ```bash
 ./paracetamol run llama-cpp cli \
-  --preset unsloth-qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl \
   --backend vulkan
 ```
 
@@ -1164,7 +1163,7 @@ If you do not know which one to use, run them back to back:
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset unsloth-qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl \
   --compare-backends
 ```
 
@@ -1209,11 +1208,9 @@ separate pinned draft. Performance and output behavior depend on the llama.cpp
 revision, context, backend, and hardware. Use the server API for end-to-end MTP
 measurements as described in the Qwen section.
 
-Both Qwen3.6 MTP presets use three draft tokens. On Strix Halo, dense 27B
-combines that depth with Flash Attention. Both presets retain F16 target K/V,
-as do the other managed models. The earlier dense-model Q8 cache measurements
-remain documented as tuning evidence, but are no longer managed runtime
-policy. Inspect the resolved policy with `content list models --details`
+Dense Qwen3.8 MTP presets use three draft tokens and retain F16 target K/V,
+as do the other managed models. Flash-Next has no managed MTP preset.
+Inspect the resolved policy with `content list models --details`
 instead of inferring cache precision from the weight quantization in a preset
 name.
 
@@ -1306,7 +1303,7 @@ Inspect the router itself, or select one configured child policy:
 
 ```bash
 ./paracetamol status llama-cpp
-./paracetamol status llama-cpp --model unsloth-qwen3.6-27b-mtp-q8-0
+./paracetamol status llama-cpp --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
 ```
 
 Select a preset using the OpenAI API `model` field. Missing models are skipped;
@@ -1320,7 +1317,7 @@ An ordinary Chat Completions request selects the router preset through
 curl -sS http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{
-    "model": "unsloth-qwen3.6-27b-mtp-q8-0",
+    "model": "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl",
     "messages": [{"role": "user", "content": "Explain unified memory."}],
     "max_tokens": 512
   }' | jq -r '.choices[0].message.content'

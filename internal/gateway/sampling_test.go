@@ -106,7 +106,7 @@ func TestSamplingDefaultsEveryManagedModelAndMode(t *testing.T) {
 			}
 		})
 	}
-	if len(policies) != 4 {
+	if !reflect.DeepEqual(policies, map[string]bool{"qwen3.8-27b": true, "qwen3.8-flash-next": true}) {
 		t.Fatalf("tested policies=%v", policies)
 	}
 }

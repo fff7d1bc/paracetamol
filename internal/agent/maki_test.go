@@ -208,17 +208,16 @@ func TestInstalledMakiProvider(t *testing.T) {
 		model, mode, field string
 		value              any
 	}{
-		{RecommendedModel, "adaptive", "reasoning_effort", "medium"},
+		{RecommendedModel, "adaptive", "reasoning_effort", "xhigh"},
 		{RecommendedModel, "off", "reasoning_effort", "none"},
 		{RecommendedModel, "low", "reasoning_effort", "low"},
 		{RecommendedModel, "medium", "reasoning_effort", "medium"},
 		{RecommendedModel, "high", "reasoning_effort", "medium"},
 		{RecommendedModel, "xhigh", "reasoning_effort", "xhigh"},
-		{"unsloth-qwen3.6-27b-mtp-q8-0", "off", "chat_template_kwargs", false},
-		{"unsloth-qwen3.6-27b-mtp-q8-0", "adaptive", "chat_template_kwargs", true},
-		{"unsloth-qwen3.6-27b-mtp-q8-0", "high", "chat_template_kwargs", true},
-		{"unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl", "off", "chat_template_kwargs", false},
-		{"unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl", "adaptive", "chat_template_kwargs", true},
+		{"unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "adaptive", "reasoning_effort", "medium"},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "off", "reasoning_effort", "none"},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "adaptive", "reasoning_effort", "medium"},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "xhigh", "reasoning_effort", "xhigh"},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "off", "reasoning_strength", "low"},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "adaptive", "reasoning_strength", "high"},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "xhigh", "reasoning_strength", "xhigh"},

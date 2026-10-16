@@ -286,10 +286,16 @@ Explicit values win independently, including zero. Invalid explicit sampler
 values are left for the engine to reject, not repaired by the gateway.
 
 Use top-level `"reasoning_effort":"none"` for off, or a native level listed
-by the model. Qwen3.6 also accepts its normal boolean
-`chat_template_kwargs.enable_thinking` toggle. Both Qwen families accept that
+by the model. Qwen3.8 also accepts the
+`chat_template_kwargs.enable_thinking`
 boolean and supported nested `reasoning_effort` values.
 No client-specific workaround is involved.
+
+The regular Flash-Next harness default is `xhigh`. That preference belongs to
+the Pi and Maki launchers, which send it explicitly. The catalog and shared
+template still use medium when a raw HTTP request omits reasoning, including
+for the optional Huihui variant. Both Flash-Next presets share one sampling
+policy and template.
 
 Malformed or conflicting thinking controls return HTTP 400 before a backend
 starts. For example, `reasoning_effort: medium` combined with

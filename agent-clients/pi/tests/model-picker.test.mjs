@@ -28,10 +28,11 @@ const model = (id, levels) => ({
 		.map((level) => [level, levels.includes(level) ? level : null])),
 });
 const dense = model("unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", ["off", "low", "medium", "xhigh"]);
-const older = model("unsloth-qwen3.6-27b-mtp-q8-0", ["off", "high"]);
+const huihui = model("huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", ["off", "low", "medium", "xhigh"]);
+const dwarfstar = model("antirez-deepseek-v4-flash-0731-q2-imatrix", ["off", "high"]);
 const muse = model("meta-models-muse-glimmer-30b", ["low", "medium", "high", "xhigh"]);
 
-function fixture({ models = [muse, older, dense, dense], actions = [], mode = "tui" } = {}) {
+function fixture({ models = [muse, dwarfstar, huihui, dense, dense], actions = [], mode = "tui" } = {}) {
 	const handlers = new Map(), commands = new Map(), notices = [], screens = [], selections = [];
 	let level = "medium", hooks = 0;
 	const pi = {
@@ -76,21 +77,22 @@ test("model picker groups and deduplicates models, then searches native reasonin
 	assert.deepEqual(f.selections, [dense]);
 	assert.equal(f.level, "xhigh");
 	const grouped = f.screens[0];
-	assert.match(grouped, /Qwen 3\.8 \(1\)/);
-	assert.ok(grouped.indexOf("Qwen 3.8") < grouped.indexOf("Qwen 3.6"));
-	assert.ok(grouped.indexOf("Qwen 3.6") < grouped.indexOf("Muse Glimmer"));
+	assert.match(grouped, /Qwen 3\.8 \(2\)/);
+	assert.match(grouped, /huihui-ai-qwen3\.8-/);
+	assert.ok(grouped.indexOf("Qwen 3.8") < grouped.indexOf("Muse Glimmer"));
+	assert.ok(grouped.indexOf("Muse Glimmer") < grouped.indexOf("DeepSeek V4 Flash"));
 	assert.doesNotMatch(grouped, /Recent/);
 	assert.match(f.screens[1], /No reasoning/);
 	assert.doesNotMatch(f.screens[1], /Very brief reasoning|Deep reasoning|Maximum reasoning/);
 });
 
 test("reasoning choices follow each model and cancellation preserves the level", async () => {
-	for (const selected of [older, muse]) {
+	for (const selected of [dwarfstar, muse]) {
 		const f = fixture({ actions: [(component) => component.handleInput("\x1b")] });
 		await f.handlers.get("model_select")({ source: "set", model: selected }, f.ctx);
 		assert.equal(f.level, "medium");
 		assert.equal(f.screens.length, 1);
-		if (selected === older) {
+		if (selected === dwarfstar) {
 			assert.match(f.screens[0], /No reasoning/);
 			assert.match(f.screens[0], /Deep reasoning/);
 			assert.doesNotMatch(f.screens[0], /Moderate reasoning|Extra-high reasoning/);

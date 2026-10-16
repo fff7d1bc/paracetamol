@@ -852,32 +852,9 @@ that the template's optional historical-thinking support should be enabled:
 the 2026-08-12 trial described in the hardware-acceptance record did not
 establish a quality benefit from reasoning preservation.
 
-The bundled `qwen3.6.jinja` is an Apache-2.0 adaptation of the byte-identical
-8,057-byte templates embedded in all four pinned Unsloth Qwen3.6 GGUFs. The
-embedded source has SHA-256
-`55d4931433fe502b794226ee7f4d206a6bdd436ac9f80eb7d8ebb4c639f9ea0c`;
-the managed template has SHA-256
-`ea69920311f2efccf6343675490b27bd22d03787ebb8ccaf6e9101bfeba72898`.
-The adaptation renders system and developer messages after the leading pair
-instead of silently dropping them, and does not emit a closed empty reasoning
-block before a historical tool call. It deliberately retains the embedded
-template's default of discarding reasoning from completed turns. The
-2026-08-14 A/B record in the Qwen tuning snapshot found no reason to adopt the
-community v22 template's additional prompt policy or default reasoning
-preservation. On an upgrade, extract and hash every selected GGUF template,
-compare Qwen's current base-model template independently, then render later
-developer messages and a complete multi-turn tool exchange before updating or
-removing the managed adaptation.
-
-The four Qwen3.6 presets also reference catalog-owned sampling policies. Dense
-27B thinking defaults to temperature 1.0, top-p 0.95, top-k 20, min-p 0,
-presence penalty 0, and repeat penalty 1. Sparse 35B-A3B uses the same tuple
-with presence penalty 1.5. Thinking off for either family defaults to
-temperature 0.7, top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, and
-repeat penalty 1. Qwen's separate temperature-0.6 precise-coding tuple is not
-the general server default. Recheck both model cards, both reasoning modes,
-and explicit-request precedence whenever the template, catalog policies, or
-server request parser changes.
+Qwen3.6 and its dedicated template were retired on 2026-10-16. Historical
+acceptance records remain available, but there is no current Qwen3.6 policy
+to rebase or preserve.
 
 The bundled `qwen3.8.jinja` is an Apache-2.0 adaptation of Qwen's
 byte-identical official templates at Qwen3.8-27B revision
@@ -901,6 +878,15 @@ the model card, template, catalog policy, or server request parser changes.
 Flash-Next uses its separate `qwen3.8-flash-next` policy. It changes thinking
 min-p from 0 to 0.05 while retaining the other Qwen3.8 thinking and
 non-thinking defaults. Recheck the two families independently.
+
+Huihui's Unsloth-derived abliterated v2 uses that same Flash-Next policy and
+template. Keep its preset policy identical to regular Flash-Next apart from
+the artifact and bundle identity. Compare every GGUF header and tensor layout,
+then run reasoning, tools, history, sampling and long-context checks on the
+actual modified weights. The regular model's successful tests do not establish
+the derivative's quality. Harness preference for regular Flash-Next at xhigh
+is separate from the template's medium fallback and must not leak into raw
+HTTP requests that omit reasoning.
 
 The 2026-08-14 community-template candidate at
 `froggeric/Qwen-Fixed-Chat-Templates` revision
