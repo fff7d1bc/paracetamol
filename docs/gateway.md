@@ -34,6 +34,8 @@ The embedded dark page has three tabs.
   details. It distinguishes Maki's preferred reasoning from the HTTP fallback.
 
 Refresh is manual. A failed refresh marks retained information as stale.
+Pages reserve scrollbar space to avoid horizontal shifts. Expandable sections
+use Show/Hide labels and support keyboard activation.
 The last-check timestamp uses ISO 8601 in UTC (`Z`), independent of the browser's locale.
 There is no model loading, switching, shutdown, request-history view or
 background polling. Publisher and family names are presentation labels,

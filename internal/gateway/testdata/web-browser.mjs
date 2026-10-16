@@ -23,10 +23,28 @@ try {
   assert.equal(await page.$eval("#snapshot-time", node => node.textContent), "Checked " + new Date(snapshot.collected_at).toISOString());
   assert.equal(await page.$eval("#overview", node => node.hidden), false);
   assert.equal(await page.$eval("#configuration", node => node.hidden), true);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter), "stable");
+  const shellBounds = () => page.$eval(".shell", node => {
+    const { x, width } = node.getBoundingClientRect();
+    return { x, width };
+  });
+  const overviewBounds = await shellBounds();
   await page.focus("#tab-overview");
   await page.keyboard.press("ArrowRight");
   await page.waitForFunction(() => !document.querySelector("#configuration").hidden);
   assert.equal(await page.$eval("#overview", node => node.hidden), true);
+  assert.deepEqual(await shellBounds(), overviewBounds, "scrollbar shifted the page");
+  for (const summary of await page.$$("#configuration details > summary")) {
+    assert.equal(await summary.evaluate(node => getComputedStyle(node).listStyleType), "none");
+    assert.equal(await summary.evaluate(node => getComputedStyle(node, "::after").content), '"Show"');
+    await summary.focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await summary.evaluate(node => node.parentElement.open), true);
+    assert.equal(await summary.evaluate(node => getComputedStyle(node, "::after").content), '"Hide"');
+    assert.deepEqual(await shellBounds(), overviewBounds, "expansion shifted the page");
+    await page.keyboard.press("Space");
+    assert.equal(await summary.evaluate(node => node.parentElement.open), false);
+  }
   assert.equal(await page.$eval("#api-address", node => node.textContent), plain + "/v1");
   assert.match(await page.$eval("#default-model-note", node => node.textContent), /xhigh/);
   const command = await page.$eval("#setup-command", node => node.textContent);
@@ -77,6 +95,7 @@ try {
   assert.equal(await page.$$eval(".model-row", nodes => nodes.length), 3);
   assert.equal(await page.$eval("#model-groups", node => node.querySelectorAll("img").length), 0);
   await page.click(".model-row summary");
+  assert.equal(await page.$eval(".model-row summary", node => getComputedStyle(node, "::after").content), '"Hide"');
   await page.click("#refresh");
   await page.waitForFunction(() => !document.querySelector("#refresh").disabled);
   assert.equal(await page.$$eval(".model-row details[open]", nodes => nodes.length), 1);
