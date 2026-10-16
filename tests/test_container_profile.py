@@ -34,9 +34,9 @@ class FakeCuda:
             raise AssertionError("unexpected device index")
 
 
-def fake_torch(architecture="gfx1201", hip="7.15.26333", available=True):
+def fake_torch(architecture="gfx1201", hip="7.16.26385", available=True):
     return SimpleNamespace(
-        __version__="2.13.0+rocm10.0.0",
+        __version__="2.13.0+rocm10.1.0",
         version=SimpleNamespace(hip=hip),
         cuda=FakeCuda(architecture, available),
     )

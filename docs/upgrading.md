@@ -165,7 +165,7 @@ Validate with:
 ```bash
 ./paracetamol build all --no-cache
 podman run --rm --entrypoint /bin/bash \
-  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.0-0.28.0-r12 \
+  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.1-0.28.0-r13 \
   -lc 'cat /etc/os-release; python --version'
 ```
 
