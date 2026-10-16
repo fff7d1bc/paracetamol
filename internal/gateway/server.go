@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"paracetamol/internal/config"
 	"paracetamol/internal/hostdoctor"
 	"paracetamol/internal/identity"
 )
@@ -40,11 +41,13 @@ type Server struct {
 	requests        requestLedger
 	resources       func() hostdoctor.ResourceSnapshot
 	auth            bearerAuth
+	llamaSlots      int
 }
 
 type ServerOptions struct {
-	Resources func() hostdoctor.ResourceSnapshot
-	APIKey    string
+	Resources  func() hostdoctor.ResourceSnapshot
+	APIKey     string
+	LlamaSlots int
 }
 
 type Status struct {
@@ -79,6 +82,12 @@ type ModelRuntime struct {
 }
 
 func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options ServerOptions) (*Server, error) {
+	if options.LlamaSlots == 0 {
+		options.LlamaSlots = config.DefaultLlamaSlots
+	}
+	if options.LlamaSlots < 1 || options.LlamaSlots > 64 {
+		return nil, fmt.Errorf("llama.cpp request slots must be between 1 and 64")
+	}
 	if scheduler == nil || len(registry.Models) == 0 {
 		return nil, fmt.Errorf("gateway server requires a scheduler and model inventory")
 	}
@@ -100,6 +109,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	server := &Server{
 		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
 		resources:       options.Resources,
+		llamaSlots:      options.LlamaSlots,
 		auth:            auth,
 		residencyClient: &http.Client{Transport: residencyTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}

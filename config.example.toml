@@ -25,3 +25,5 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
+# Simultaneous requests per loaded model, sharing its configured KV token pool.
+slots = 4

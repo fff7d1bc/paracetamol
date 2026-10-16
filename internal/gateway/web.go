@@ -66,6 +66,7 @@ type webModel struct {
 	State                ModelState    `json:"state"`
 	Runtime              *ModelRuntime `json:"runtime,omitempty"`
 	MakiReasoningDefault string        `json:"maki_reasoning_default,omitempty"`
+	RequestSlots         int           `json:"request_slots"`
 }
 
 type webSnapshot struct {
@@ -103,6 +104,10 @@ func (server *Server) webData(w http.ResponseWriter, r *http.Request) {
 	for index, model := range server.registry.Models {
 		name, family, publisher := modelPresentation(model.ID)
 		item := webModel{Model: model, Name: name, Family: family, Publisher: publisher, State: residency[index].State, Runtime: residency[index].Runtime}
+		item.RequestSlots = 1
+		if model.Backend == "llama-cpp" {
+			item.RequestSlots = server.llamaSlots
+		}
 		if model.AgentTools {
 			item.MakiReasoningDefault = clientconfig.ReasoningDefault(server.clientModel(model))
 		}

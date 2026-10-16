@@ -260,9 +260,13 @@ large ngram token embedding, as described by the pinned
 On the accepted Strix Halo profile, ROCm uses buffered CPU reads for
 `per_layer_token_embd.weight`. The rest of the weights use device allocation
 with inherited unified-memory allocation disabled for this model process.
-The policy also selects a 2048-token microbatch, one non-unified KV slot and
-no RAM prompt archive. Reuse of the current live prefix still works. F16 K/V
-cache, Flash Attention and the 262144-token ceiling are retained.
+The policy also selects a 2048-token microbatch and no RAM prompt archive.
+Four request slots share a 262144-token KV pool by default. This allows
+concurrent conversations, not four independent 256K allocations. A lone
+conversation can still use the full ceiling. `--slots 1` restores the
+single-request, non-unified-cache policy. Reuse of the current live prefix
+still works. F16 K/V precision and Flash Attention are retained. See
+[gateway concurrency](../gateway.md) for the distinction from `--models-max`.
 On `gfx1151` ROCm, the patched llama.cpp also uses selected-key HIP attention
 for Flash-Next's F16 QSA shape. A compact single-sequence graph intersects
 selected IDs with upstream's causal and sequence visibility mask without

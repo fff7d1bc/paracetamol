@@ -319,7 +319,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	}
 	commands := map[int][]string{}
 	for _, depth := range depths {
-		extra := []string{"--parallel", "1", "--spec-draft-p-min", fmt.Sprint(*draftProbability), "--batch-size", fmt.Sprint(*batch), "--ubatch-size", fmt.Sprint(*ubatch)}
+		extra := []string{"--spec-draft-p-min", fmt.Sprint(*draftProbability), "--batch-size", fmt.Sprint(*batch), "--ubatch-size", fmt.Sprint(*ubatch)}
 		if *draftSampling == "off" {
 			extra = append(extra, "--no-spec-draft-backend-sampling")
 		}
@@ -339,7 +339,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		if *disableGraphs {
 			environment = append(environment, "GGML_CUDA_DISABLE_GRAPHS=1")
 		}
-		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, AllowedProfiles: preset.BackendProfiles[*backend], RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
+		command, err := runtime.LlamaCommand(runtime.LlamaOptions{Slots: 1, Image: image, Profile: profile, Mode: "server", DataDir: dataRoot, Backend: *backend, ManagedModel: artifact.Destination, ManagedDraft: managedDraft, SpeculativeType: preset.SpeculativeType, DraftTokens: int64(depth), ContextOverrideArchitectures: preset.ContextOverrideArchitectures, Jinja: preset.Jinja, ReasoningPreserve: preset.ReasoningPreserve, ChatTemplate: preset.ChatTemplate, ProfileFlashAttention: flashPolicy, ProfileKVCache: kvPolicy, ProfileModelLoad: preset.ModelLoad, AllowedProfiles: preset.BackendProfiles[*backend], RenderNodes: selectedNodes, Listen: "127.0.0.1", Port: port, Context: int64(*contextSize), Detach: true, Unconfined: *unconfined, ContainerName: speculativeBenchmarkContainer, ContainerRole: "benchmark", AutoRemove: false, Arguments: extra, Environment: environment}, app.podman().SELinuxVolumeSuffix(app.Context))
 		if err != nil {
 			return err
 		}

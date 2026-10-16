@@ -47,9 +47,30 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
+	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 4") {
+		t.Fatalf("missing request slots: %s", output)
+	}
 	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
+		}
+	}
+}
+
+func TestRequestSlotsRejectInvalidCountsBeforeHostProbes(t *testing.T) {
+	for _, value := range []string{"0", "-1", "65"} {
+		for _, gatewayMode := range []bool{false, true} {
+			runner := &commandRunner{}
+			app, _, _ := testApp(t, runner)
+			var err error
+			if gatewayMode {
+				err = app.runGateway([]string{"--slots", value})
+			} else {
+				err = app.runLlama("server", []string{"--router", "--slots", value})
+			}
+			if err == nil || !strings.Contains(err.Error(), "--slots must be between 1 and 64") || len(runner.commands) != 0 {
+				t.Fatalf("slots=%s gateway=%v err=%v commands=%v", value, gatewayMode, err, runner.commands)
+			}
 		}
 	}
 }
@@ -151,19 +172,34 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 	set.Var(&nodes, "render-node", "fixture")
 	backend := set.String("backend", "rocm", "fixture")
 	modelsMax := set.Int("models-max", 1, "fixture")
+	slots := set.Int("slots", config.DefaultLlamaSlots, "fixture")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "fixture")
 	if err := parseFlags(set, []string{"-a", "llama-cpp", "--models-max", "3"}); err != nil {
 		t.Fatal(err)
 	}
 	configuredBackend := "vulkan"
 	configuredModels := 2
+	configuredSlots := 2
 	configuredTimeout := "45m"
 	configuration := config.Configuration{Path: "/profiles/aion.toml", Gateway: config.GatewayConfiguration{
 		Applications: []string{"dwarfstar"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
-		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels},
+		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels, Slots: &configuredSlots},
 	}}
-	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
+	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
 		t.Fatal(err)
+	}
+	if *slots != 2 {
+		t.Fatalf("configured slots=%d", *slots)
+	}
+	if err := parseFlags(set, []string{"--slots", "4"}); err != nil {
+		t.Fatal(err)
+	}
+	nodes = nil
+	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if *slots != 4 {
+		t.Fatalf("explicit slots=%d", *slots)
 	}
 	if strings.Join(applications, ",") != "llama-cpp" || strings.Join(nodes, ",") != "/dev/dri/renderD128" || *backend != "vulkan" || *modelsMax != 3 || *startupTimeout != 45*time.Minute {
 		t.Fatalf("applications=%v nodes=%v backend=%s models=%d timeout=%s", applications, nodes, *backend, *modelsMax, *startupTimeout)
@@ -243,7 +279,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	app.writeGatewayStartup(gatewayStartup{
 		LocalEndpoint: config.DefaultGatewayURL, Applications: []string{"llama-cpp"},
 		Profile: "strix-halo", RenderNodes: []string{"/dev/dri/renderD128"},
-		Backend: "rocm", ModelsMax: 1, Configuration: "/home/test/.config/paracetamol/config.toml",
+		Backend: "rocm", ModelsMax: 1, Slots: 4, Configuration: "/home/test/.config/paracetamol/config.toml",
 		Registry: gateway.Registry{
 			Fingerprint: "1234567890abcdef",
 			Models:      []gateway.Model{{ID: "qwen-one"}, {ID: "qwen-two"}},
@@ -253,6 +289,7 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 	for _, expected := range []string{
 		config.DefaultGatewayURL, "strix-halo", "/dev/dri/renderD128",
 		"2 verified models", "1234567890ab", "up to 1 loaded model",
+		"4 per llama.cpp model",
 		"unloaded", "status gateway --gateway-url " + config.DefaultGatewayURL,
 		"/home/test/.config/paracetamol/config.toml",
 		"Waiting for requests",

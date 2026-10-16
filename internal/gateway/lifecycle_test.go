@@ -30,6 +30,37 @@ type lifecycleRunner struct {
 	logsOnce     sync.Once
 }
 
+func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
+	for _, slots := range []int{0, 1, 4, -1, 65} {
+		lifecycle, err := NewContainerLifecycle(LifecycleOptions{
+			Registry: Registry{Models: []Model{{ID: "fixture", Backend: "llama-cpp"}}},
+			DataRoot: "/data", Profile: "cpu", LlamaBackend: "rocm", LlamaModelsMax: 1,
+			LlamaSlots: slots, RouterPreset: "/data/models.ini", Runner: &lifecycleRunner{}, Log: io.Discard,
+		})
+		if slots < 0 || slots > 64 {
+			if err == nil {
+				t.Fatalf("accepted slots=%d", slots)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		command, _, _, err := lifecycle.command(AllocationLlamaCPP)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := slots
+		if want == 0 {
+			want = 4
+		}
+		joined := strings.Join(command, " ")
+		if !strings.Contains(joined, fmt.Sprintf("PARACETAMOL_LLAMA_SLOTS=%d", want)) || !strings.Contains(joined, "PARACETAMOL_LLAMA_MODELS_MAX=1") {
+			t.Fatalf("command=%s", joined)
+		}
+	}
+}
+
 func (runner *lifecycleRunner) LookPath(string) (string, error) { return "/usr/bin/podman", nil }
 
 func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command) (process.Result, error) {

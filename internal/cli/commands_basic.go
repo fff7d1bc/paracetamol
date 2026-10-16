@@ -585,7 +585,9 @@ func (app *App) runLlama(mode string, args []string) error {
 	listen, portText, apiKey := "", "", ""
 	detach := false
 	modelsMax := 0
+	slots := config.DefaultLlamaSlots
 	if mode == "server" {
+		set.IntVar(&slots, "slots", config.DefaultLlamaSlots, "simultaneous requests per loaded model")
 		set.StringVar(&listen, "listen", "", "host IP on which to publish the server (default: 127.0.0.1)")
 		set.StringVar(&portText, "port", "", "host server port (default: 8080)")
 		set.BoolVar(&detach, "detach", false, "run in background")
@@ -631,6 +633,9 @@ func (app *App) runLlama(mode string, args []string) error {
 	if modelsMaxValue < 1 {
 		return controlerr.Usage("--models-max must be at least 1")
 	}
+	if slots < 1 || slots > 64 {
+		return controlerr.Usage("--slots must be between 1 and 64")
+	}
 	profileValue := firstNonEmpty(*profileFlag, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
 	if err := platform.ValidateProfile(profileValue); err != nil {
 		return controlerr.Usage("%v", err)
@@ -652,7 +657,7 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
-	options := runtime.LlamaOptions{Profile: profileValue, Mode: mode, DataDir: dataRoot, Backend: *backend, ModelsMax: modelsMaxValue, RenderNodes: selectedNodes, AutoRemove: true, Unconfined: *unconfined, Detach: detach}
+	options := runtime.LlamaOptions{Profile: profileValue, Mode: mode, DataDir: dataRoot, Backend: *backend, ModelsMax: modelsMaxValue, Slots: slots, RenderNodes: selectedNodes, AutoRemove: true, Unconfined: *unconfined, Detach: detach}
 	application, _ := config.ApplicationByID("llama-cpp")
 	if mode == "server" {
 		options.Listen = firstNonEmpty(listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen))

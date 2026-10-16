@@ -38,6 +38,7 @@ type LifecycleOptions struct {
 	RenderNodes       []string
 	LlamaBackend      string
 	LlamaModelsMax    int
+	LlamaSlots        int
 	RouterPreset      string
 	SourceRevision    string
 	VolumeSuffix      string
@@ -71,6 +72,12 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	}
 	if options.LlamaModelsMax < 1 {
 		return nil, fmt.Errorf("gateway llama.cpp models-max must be positive")
+	}
+	if options.LlamaSlots == 0 {
+		options.LlamaSlots = config.DefaultLlamaSlots
+	}
+	if options.LlamaSlots < 1 || options.LlamaSlots > 64 {
+		return nil, fmt.Errorf("llama.cpp request slots must be between 1 and 64")
 	}
 	if options.StartupTimeout <= 0 {
 		options.StartupTimeout = DefaultStartupTimeout
@@ -243,7 +250,7 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 			Image: application.Image, Profile: lifecycle.options.Profile, Mode: "server",
 			DataDir: lifecycle.options.DataRoot, Backend: lifecycle.options.LlamaBackend,
 			SourceRevision: lifecycle.options.SourceRevision, RouterPreset: lifecycle.options.RouterPreset,
-			ModelsMax: lifecycle.options.LlamaModelsMax, RenderNodes: lifecycle.options.RenderNodes,
+			ModelsMax: lifecycle.options.LlamaModelsMax, Slots: lifecycle.options.LlamaSlots, RenderNodes: lifecycle.options.RenderNodes,
 			Listen: "127.0.0.1", Port: application.Port, Detach: true, Unconfined: lifecycle.options.Unconfined,
 			ContainerName: name, ContainerRole: GatewayBackendRole, AutoRemove: true, DynamicHostPort: true,
 		}, lifecycle.options.VolumeSuffix)

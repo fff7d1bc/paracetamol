@@ -36,6 +36,7 @@ func (app *App) runGateway(args []string) (result error) {
 	portFlag := set.String("port", "", fmt.Sprintf("gateway port shared by local and published endpoints. Using --port alone selects loopback (default: %d)", config.DefaultGatewayPort))
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
+	slots := set.Int("slots", config.DefaultLlamaSlots, "llama.cpp simultaneous requests per loaded model")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
 	keyFile := set.String("api-key-file", "", "private file containing the optional gateway Bearer key")
 	unconfined := set.Bool("unconfined", false, "disable backend seccomp")
@@ -57,7 +58,7 @@ func (app *App) runGateway(args []string) (result error) {
 		return err
 	}
 	gatewayConfiguration := configuration.Gateway
-	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, modelsMax, startupTimeout); err != nil {
+	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
 		return err
 	}
 	for _, application := range applications {
@@ -70,6 +71,9 @@ func (app *App) runGateway(args []string) (result error) {
 	}
 	if *modelsMax < 1 {
 		return controlerr.Usage("--models-max must be at least 1")
+	}
+	if *slots < 1 || *slots > 64 {
+		return controlerr.Usage("--slots must be between 1 and 64")
 	}
 	if *startupTimeout <= 0 {
 		return controlerr.Usage("--startup-timeout must be positive")
@@ -135,7 +139,7 @@ func (app *App) runGateway(args []string) (result error) {
 	gatewayLog := gateway.NewAtomicLogWriter(app.Stderr)
 	lifecycle, err := gateway.NewContainerLifecycle(gateway.LifecycleOptions{
 		Catalog: managed, Registry: registry, DataRoot: dataRoot, Profile: profile,
-		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax,
+		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax, LlamaSlots: *slots,
 		RouterPreset: routerPath, SourceRevision: app.projectRevision(),
 		VolumeSuffix: app.podman().SELinuxVolumeSuffix(app.Context), Unconfined: *unconfined,
 		StartupTimeout: *startupTimeout, Runner: app.Runner, Log: gatewayLog,
@@ -170,8 +174,9 @@ func (app *App) runGateway(args []string) (result error) {
 		return err
 	}
 	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
-		Resources: func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
-		APIKey:    apiKey,
+		LlamaSlots: *slots,
+		Resources:  func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
+		APIKey:     apiKey,
 	})
 	if err != nil {
 		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
@@ -199,7 +204,7 @@ func (app *App) runGateway(args []string) (result error) {
 	app.writeGatewayStartup(gatewayStartup{
 		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
-		Backend: *backend, ModelsMax: *modelsMax, Registry: registry, Configuration: configuration.Path,
+		Backend: *backend, ModelsMax: *modelsMax, Slots: *slots, Registry: registry, Configuration: configuration.Path,
 		Authenticated: apiKey != "",
 	})
 	serveResults := make(chan error, len(listeners))
@@ -235,6 +240,7 @@ type gatewayStartup struct {
 	RenderNodes        []string
 	Backend            string
 	ModelsMax          int
+	Slots              int
 	Registry           gateway.Registry
 	Configuration      string
 	Authenticated      bool
@@ -290,7 +296,7 @@ func renderNodeEnvironmentConfigured(environment map[string]string) bool {
 	return plural || environment[prefix+"_RENDER_NODE"] != ""
 }
 
-func applyGatewayConfiguration(set *commandFlags, environment map[string]string, configuration config.Configuration, applications, nodes *stringList, backend *string, modelsMax *int, startupTimeout *time.Duration) error {
+func applyGatewayConfiguration(set *commandFlags, environment map[string]string, configuration config.Configuration, applications, nodes *stringList, backend *string, modelsMax, slots *int, startupTimeout *time.Duration) error {
 	gatewayConfiguration := configuration.Gateway
 	if !set.changed("application") {
 		*applications = append(*applications, gatewayConfiguration.Applications...)
@@ -300,6 +306,9 @@ func applyGatewayConfiguration(set *commandFlags, environment map[string]string,
 	}
 	if !set.changed("models-max") && gatewayConfiguration.LlamaCPP.ModelsMax != nil {
 		*modelsMax = *gatewayConfiguration.LlamaCPP.ModelsMax
+	}
+	if !set.changed("slots") && gatewayConfiguration.LlamaCPP.Slots != nil {
+		*slots = *gatewayConfiguration.LlamaCPP.Slots
 	}
 	if !set.changed("startup-timeout") && gatewayConfiguration.StartupTimeout != nil {
 		configuredTimeout, err := time.ParseDuration(*gatewayConfiguration.StartupTimeout)
@@ -376,6 +385,11 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	for _, application := range summary.Applications {
 		if application == "llama-cpp" {
 			rows = append(rows, [2]string{"llama.cpp", fmt.Sprintf("%s · up to %d loaded %s", summary.Backend, summary.ModelsMax, plural(summary.ModelsMax, "model", "models"))})
+			detail := "additional requests wait"
+			if summary.Slots > 1 {
+				detail = "shared context pool"
+			}
+			rows = append(rows, [2]string{"Request slots", fmt.Sprintf("%d per llama.cpp model · %s", summary.Slots, detail)})
 			break
 		}
 	}

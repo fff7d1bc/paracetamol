@@ -61,7 +61,7 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 			write("mkdir", "#!/bin/sh\ntest \"$*\" = '-p /data/cache /data/home'\n")
 			write("rocminfo", "#!/bin/sh\nprintf '  Name: %s\\n' \"$TEST_ARCH\"\n")
 			write("llama-cli", "#!/bin/sh\ntest \"$*\" = '--list-devices' || exit 1\nprintf 'ROCm0: fixture\\nVulkan0: fixture\\n'\n")
-			write("llama-server", "#!/bin/sh\nprintf '\\nQSA=%s/%s\\nVULKAN_KV_CONTIG=%s\\n' \"$PARACETAMOL_QWEN4EXP_QSA_KERNEL\" \"$PARACETAMOL_QWEN4EXP_QSA_GRAPH\" \"${GGML_VK_FA_KV_CONTIG-unset}\"\n")
+			write("llama-server", "#!/bin/sh\nprintf '\\nQSA=%s/%s\\nVULKAN_KV_CONTIG=%s\\n' \"$PARACETAMOL_QWEN4EXP_QSA_KERNEL\" \"$PARACETAMOL_QWEN4EXP_QSA_GRAPH\" \"${GGML_VK_FA_KV_CONTIG-unset}\"\nprintf 'ARGS=%s\\n' \"$*\"\n")
 			profile, gpus := "auto", "1"
 			if tc.arch == "cpu" {
 				profile, gpus = "cpu", "0"
@@ -83,13 +83,16 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 			if err != nil || !strings.Contains(string(output), "\nQSA="+tc.want+"\n") {
 				t.Fatalf("err=%v output=%s", err, output)
 			}
+			if !strings.Contains(string(output), "--parallel 4 --kv-unified\n") {
+				t.Fatalf("missing default request slots: %s", output)
+			}
 			// Vulkan layout selection belongs to upstream now. Neither the
 			// environment nor the status snapshot should claim a local override.
 			if !strings.Contains(string(output), "\nVULKAN_KV_CONTIG=unset\n") {
 				t.Fatalf("obsolete Vulkan override: %s", output)
 			}
 			report, err := os.ReadFile(filepath.Join(dir, "report"))
-			if err != nil || !strings.HasPrefix(string(report), "schema=2\n") ||
+			if err != nil || !strings.HasPrefix(string(report), "schema=3\n") ||
 				strings.Contains(string(report), "vulkan_f16_kv_contiguize") {
 				t.Fatalf("err=%v report=%s", err, report)
 			}
