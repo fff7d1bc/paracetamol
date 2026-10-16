@@ -11,22 +11,33 @@
 <body>
   <div class="shell">
     <header class="masthead">
-      <a class="brand" href="#connect"><span class="brand-mark" aria-hidden="true"></span><span>{{.}}<small>LOCAL INFERENCE GATEWAY</small></span></a>
+      <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true"></span><span>{{.}}<small>LOCAL INFERENCE GATEWAY</small></span></a>
       <div class="connection"><span id="connection-state" class="badge">Checking connection</span><span id="snapshot-time">No snapshot yet</span></div>
     </header>
 
     <nav class="tabs" aria-label="Gateway pages" role="tablist">
-      <a href="#connect" id="tab-connect" role="tab" aria-controls="connect" aria-selected="true">Connect</a>
+      <a href="#overview" id="tab-overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
+      <a href="#configuration" id="tab-configuration" role="tab" aria-controls="configuration" aria-selected="false" tabindex="-1">Configuration</a>
       <a href="#models" id="tab-models" role="tab" aria-controls="models" aria-selected="false" tabindex="-1">Models <span id="model-count" class="tab-count" hidden></span></a>
     </nav>
     <div id="notice" class="notice" role="status" hidden></div>
     <noscript><p class="notice">JavaScript is needed for model browsing and address-specific commands. The API is at <code>/v1</code>. Maki configuration is available at <a href="/paracetamol/v1/clients/maki/providers.toml">providers.toml</a> and <a href="/paracetamol/v1/clients/maki/init.lua">init.lua</a>. Authenticated gateways require a Bearer header through curl. Review downloads before merging them into <code>~/.config/maki/</code>.</p></noscript>
 
     <main>
-      <section id="connect" role="tabpanel" aria-labelledby="tab-connect">
+      <section id="overview" role="tabpanel" aria-labelledby="tab-overview">
         <div class="page-heading"><p class="eyebrow">YOUR MODELS, YOUR TOOLS</p><h1>A local endpoint.<br>Use it wherever you work.</h1><p class="lead">Connect from this machine or another device on your network.<br class="desktop-break"> Your client runs independently. The gateway handles inference.</p></div>
 
         <div class="endpoint panel"><div><span class="field-label">OpenAI-compatible base URL</span><code id="api-address">/v1</code></div><button type="button" class="button" data-copy="api-address">Copy address</button></div>
+
+        <div class="file-grid overview-links">
+          <a class="panel navigation-card" href="#configuration"><h2>Configure your client</h2><p>Maki setup, configuration downloads and examples for other tools.</p></a>
+          <a class="panel navigation-card" href="#models"><h2>Browse models</h2><p>Available models, reasoning controls, context capacity and loaded state.</p></a>
+        </div>
+        <p class="transport-note">HTTP does not encrypt prompts or credentials. Use a trusted network, an encrypted tunnel or HTTPS when needed.</p>
+      </section>
+
+      <section id="configuration" role="tabpanel" aria-labelledby="tab-configuration" hidden>
+        <div class="page-heading compact"><p class="eyebrow">CLIENT SETUP</p><h1>Connect your tools.</h1><p class="lead">Use Maki or any OpenAI-compatible client. No Paracetamol installation needed on your client machine.</p></div>
 
         <article class="panel setup-card">
           <div class="section-heading"><div><span class="eyebrow">01 / NATIVE CLIENT</span><h2>Connect Maki</h2><p>For macOS and Linux. Maki 0.6.3 or newer.</p></div><span class="badge subtle">No launcher required</span></div>
@@ -40,8 +51,9 @@
               <div id="preview-panel" class="code-panel" hidden><div class="code-heading"><strong id="preview-title"></strong><div class="actions"><button class="text-button" type="button" data-copy="preview-content">Copy</button><button id="close-preview" class="text-button" type="button">Close</button></div></div><pre id="preview-content" tabindex="0"></pre></div>
             </section>
             <section><h3><span class="step-number">2</span> Add them to Maki</h3>
-              <details open><summary>Fresh setup</summary><p>These commands stop if either configuration file already exists. If you have a legacy <code>~/.maki</code> directory, migrate it with Maki’s <code>maki migrate xdg</code> first. A custom <code>XDG_CONFIG_HOME</code> uses its own <code>maki</code> directory instead.</p><div class="code-panel"><div class="code-heading"><span>Terminal · default config location</span><button class="text-button" type="button" data-copy="setup-command">Copy</button></div><pre id="setup-command" tabindex="0">Enable JavaScript to show commands for this gateway.</pre></div></details>
-              <details><summary>Existing configuration</summary><p>Back up your files first. Replace or merge the complete <code>paracetamol</code> provider block in <code>providers.toml</code>, including its nested model tables. Keep your other providers.</p><p>Merge the preferences into the existing single <code>maki.setup(...)</code> call in <code>init.lua</code>. Do not append a second call or replace unrelated settings. Check any existing model allowlist if the provider does not appear.</p><p>To download into a temporary directory without touching your configuration, use these commands and inspect the files there.</p><div class="code-panel"><div class="code-heading"><span>Terminal · download for review</span><button class="text-button" type="button" data-copy="review-command">Copy</button></div><pre id="review-command" tabindex="0"></pre></div></details>
+              <p>For a fresh setup, save both files in <code>~/.config/maki</code>. If you use <code>XDG_CONFIG_HOME</code>, use its <code>maki</code> directory instead. Already have configuration? Merge the files rather than replacing them.</p>
+              <details><summary>Install with curl</summary><p>This command uses the same config location. Both downloads must succeed before files are written. Existing files are never replaced. If you have a legacy <code>~/.maki</code> directory, run <code>maki migrate xdg</code> first.</p><div class="code-panel"><div class="code-heading"><span>Terminal · default config location</span><button class="text-button" type="button" data-copy="setup-command">Copy</button></div><pre id="setup-command" tabindex="0">Enable JavaScript to show commands for this gateway.</pre></div></details>
+              <details><summary>Existing configuration</summary><p>Use the Download buttons above and back up your configuration before merging. Replace or merge the complete <code>paracetamol</code> provider block in <code>providers.toml</code>, including its nested model tables. Keep your other providers.</p><p>Merge the preferences into the existing single <code>maki.setup(...)</code> call in <code>init.lua</code>. Do not append a second call or replace unrelated settings. Check any existing model allowlist if the provider does not appear.</p><p>On an authenticated gateway, use the curl URLs below to download for review before merging.</p><div class="code-panel"><div class="code-heading"><span>Terminal · download for review</span><button class="text-button" type="button" data-copy="review-command">Copy</button></div><pre id="review-command" tabindex="0"></pre></div></details>
             </section>
             <section><h3><span class="step-number">3</span> Open your project</h3><div class="code-panel"><div class="code-heading"><span>Terminal</span><button class="text-button" type="button" data-copy="launch-command">Copy</button></div><pre id="launch-command" tabindex="0">maki models
 cd ~/src/your-project
@@ -50,7 +62,7 @@ maki</pre></div><p>Choose models in Maki’s picker and reasoning with <code>/th
           <aside class="footnote">Refresh these files when the gateway’s model inventory changes. Existing sessions, credentials and other providers are yours to manage.</aside>
         </article>
 
-        <article class="panel setup-card"><div class="section-heading"><div><span class="eyebrow">02 / ANY OPENAI-COMPATIBLE CLIENT</span><h2>Bring another tool</h2><p>Use the base URL above and an exact model ID from the Models tab.</p></div></div><p id="api-key-note">Checking whether this gateway requires authentication.</p><div class="code-panel"><div class="code-heading"><span>Terminal · list available models</span><button class="text-button" type="button" data-copy="curl-command">Copy</button></div><pre id="curl-command" tabindex="0"></pre></div><p>For Qwen models, the gateway fills missing sampling settings based on the requested thinking mode. Explicit client settings take precedence. Connecting another provider directly in Maki does not route it through this gateway.</p></article>
+        <article class="panel setup-card"><div class="section-heading"><div><span class="eyebrow">02 / ANY OPENAI-COMPATIBLE CLIENT</span><h2>Bring another tool</h2><p>Use the base URL on Overview and an exact model ID from Models.</p></div></div><p id="api-key-note">Checking whether this gateway requires authentication.</p><div class="code-panel"><div class="code-heading"><span>Terminal · list available models</span><button class="text-button" type="button" data-copy="curl-command">Copy</button></div><pre id="curl-command" tabindex="0"></pre></div><p>For Qwen models, the gateway fills missing sampling settings based on the requested thinking mode. Explicit client settings take precedence. Connecting another provider directly in Maki does not route it through this gateway.</p></article>
         <p class="transport-note">HTTP does not encrypt prompts or credentials. Use a trusted network, an encrypted tunnel or HTTPS when needed.</p>
       </section>
 

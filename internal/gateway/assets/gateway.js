@@ -5,6 +5,7 @@
 const byID = (id) => document.getElementById(id);
 const apiAddress = new URL("/v1", window.location.origin).href;
 const exportRoot = "/paracetamol/v1/clients/maki/";
+const tabs = ["overview", "configuration", "models"];
 let snapshot = null;
 let busy = false;
 let feedbackTimer;
@@ -67,8 +68,8 @@ async function copyText(text, target) {
 }
 
 function selectTab() {
-  const name = window.location.hash === "#models" ? "models" : "connect";
-  for (const tab of ["connect", "models"]) {
+  const name = tabs.includes(window.location.hash.slice(1)) ? window.location.hash.slice(1) : "overview";
+  for (const tab of tabs) {
     const selected = tab === name;
     byID("tab-" + tab).setAttribute("aria-selected", String(selected));
     byID("tab-" + tab).tabIndex = selected ? 0 : -1;
@@ -78,29 +79,21 @@ function selectTab() {
 
 function setupCommands(authenticated) {
   const header = authenticated ? " --header @/absolute/path/to/private-header-file" : "";
-  const downloads = ["providers.toml", "init.lua"].map((name) =>
-    `curl -fsS${header} ${shellQuote(exportURL(name).href)} \\\n  -o "$maki_setup_dir/${name}"`).join("\n");
-  byID("review-command").textContent = `maki_setup_dir=$(mktemp -d)\n${downloads}\nprintf 'Downloaded to %s\\n' "$maki_setup_dir"`;
+  const download = (name) => `curl -fsS${header} ${shellQuote(exportURL(name).href)}`;
+  byID("review-command").textContent = ["providers.toml", "init.lua"].map((name) => download(name)).join("\n");
   byID("setup-command").textContent = `(
-  set -eu
-  maki_config_dir="$HOME/.config/maki"
-  if [ -e "$HOME/.maki" ] || [ -n "\${XDG_CONFIG_HOME:-}" ]; then
-    printf '%s\\n' 'Existing or custom layout. Use the merge instructions below.'
-    exit 1
-  fi
-  for name in providers.toml init.lua; do
-    if [ -e "$maki_config_dir/$name" ] || [ -L "$maki_config_dir/$name" ]; then
-      printf 'Keep existing %s. Use the merge instructions below.\\n' "$name"
-      exit 1
-    fi
-  done
-  maki_setup_dir=$(mktemp -d)
-${downloads.split("\n").map((line) => "  " + line).join("\n")}
-  mkdir -p "$maki_config_dir"
+  set -euC
   umask 077
-  set -C
-  cat "$maki_setup_dir/providers.toml" > "$maki_config_dir/providers.toml"
-  cat "$maki_setup_dir/init.lua" > "$maki_config_dir/init.lua"
+  maki_config_dir="\${XDG_CONFIG_HOME:-$HOME/.config}/maki"
+  [ ! -e "$HOME/.maki" ] || { echo 'Run maki migrate xdg first.'; exit 1; }
+  for name in providers.toml init.lua; do
+    [ ! -e "$maki_config_dir/$name" ] && [ ! -L "$maki_config_dir/$name" ] || { echo "Keep existing $name. Merge instead."; exit 1; }
+  done
+  providers=$(${download("providers.toml")})
+  init=$(${download("init.lua")})
+  mkdir -p "$maki_config_dir"
+  printf '%s\\n' "$providers" > "$maki_config_dir/providers.toml"
+  printf '%s\\n' "$init" > "$maki_config_dir/init.lua"
 )`;
   byID("curl-command").textContent = `curl -fsS${header} ${shellQuote(new URL("/v1/models", window.location.origin).href)}`;
   byID("api-key-note").textContent = authenticated
@@ -134,7 +127,7 @@ function lockPage() {
   byID("preview-content").textContent = "";
   byID("preview-panel").hidden = true;
   byID("default-model-note").textContent = "The exported configuration selects defaults from your authenticated model inventory.";
-  byID("models-message").textContent = "Model inventory is protected. Use the authenticated curl example on Connect to list models. This page has no browser login.";
+  byID("models-message").textContent = "Model inventory is protected. Use the authenticated curl example on Configuration to list models. This page has no browser login.";
   byID("connection-state").textContent = "Authentication required";
   byID("connection-state").className = "badge warn";
   byID("snapshot-time").textContent = "No public inventory";
@@ -302,7 +295,8 @@ byID("refresh-connect").addEventListener("click", refresh);
 document.querySelector('[role="tablist"]').addEventListener("keydown", (event) => {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
-  const selected = event.key === "Home" ? "connect" : event.key === "End" ? "models" : window.location.hash === "#models" ? "connect" : "models";
+  const current = Math.max(0, tabs.indexOf(window.location.hash.slice(1)));
+  const selected = event.key === "Home" ? tabs[0] : event.key === "End" ? tabs[tabs.length - 1] : tabs[(current + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
   window.location.hash = selected;
   byID("tab-" + selected).focus();
 });
