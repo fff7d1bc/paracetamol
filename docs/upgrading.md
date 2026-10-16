@@ -292,9 +292,48 @@ protected behavior is fixed.
 | `quantized-kv-state-copy.patch` | Carries [PR 30541](https://github.com/ggml-org/llama.cpp/pull/30541) at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`. Counts tensor elements rather than quantization blocks for on-device sequence save, restore and scattered range copies. Protects optional quantized-cache use without changing F16 presets. | Upstream contains the equivalent correction and its `test-llama-context` device-copy and scatter cases pass with F16, Q8_0 and Q4_0 caches. |
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
-| `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Retains upstream F32 reduction order, F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
+| `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 
-The decode follow-up keeps the `e36df604703dec1b6ce82f214698725475a57035`
+The October 16 update pins `623c16393c7d53a37df8bb69c6ea8ed6e5171f62`,
+37 upstream commits after `e36df60`, in image `r53`. Twelve patches apply
+unchanged. `hip-qwen4exp-pipeline.patch` and `hip-qwen4exp-decode.patch` are
+rebased for upstream's vectorized
+F32 RMS normalization from
+[PR 29720](https://github.com/ggml-org/llama.cpp/pull/29720). The decode,
+HC and narrow-row fusions now reproduce the aligned float4 reduction tree.
+Misaligned tensors and unsupported row shapes retain upstream's fallback.
+Exact fused/reference checks remain exact, with added alignment and row-width
+cases. A clean patch application did not catch this arithmetic coupling, but
+the native operator tests did. Review reduction order as well as types on
+future normalization updates.
+
+Upstream also includes the previously deferred pooled-input view reuse from
+[PR 30613](https://github.com/ggml-org/llama.cpp/pull/30613), Vulkan device
+initialization serialization, bounded pinned-host allocation, and server
+slot/draft-state fixes. This is not permission to remove the APU host-buffer,
+graph-recapture, router-disconnect or KV-state-copy patches. Their removal
+gates remain independent.
+
+Two separately screened optimizations remain outside this update:
+
+- The activation-copy change from
+  [PR 30493](https://github.com/ggml-org/llama.cpp/pull/30493), head
+  `4373bb620120b5fe1b811e1c4a202db9d82fa586`, lengthens Flash-Next's
+  32K prefill by about 9.4% without improving decode. Do not carry it on
+  the strength of results from another model or GPU.
+- An isolated F16 attention kernel from
+  [Strix fork PR 172](https://github.com/halo-box/strix-llama.cpp/pull/172),
+  head `1ea2d675d7977c47e3c6952b3fc2ac376ef17b93`, shortens dense Qwen27B's
+  32K prefill by about 10% in the initial screen, but shows no meaningful
+  Flash-Next gain. Its roughly 1200-line kernel and changed attention
+  evaluation order require more qualification than that result warrants.
+  It is not a production-accepted patch. No fork-wide changes or private
+  HIP runtime were imported.
+
+The [October 16 hardware record](hardware-acceptance.md#strix-halo-llamacpp-refresh-and-optimization-screens-2026-10-16)
+contains the paired Flash-Next timings and numerical limitations.
+
+The October 15 decode follow-up keeps the `e36df604703dec1b6ce82f214698725475a57035`
 source pin and adds a fourteenth patch in image `r52`. The GDN implementation
 derives from [Strix fork PR 106](https://github.com/halo-box/strix-llama.cpp/pull/106)
 at `9fbe5308fabbc79a53ddee5eadfad74ae0e4710e`. Its older recurrent reduction
@@ -309,13 +348,14 @@ larger fusion and slows prefill on the acceptance host. Preserve this ordering w
 The [hardware record](hardware-acceptance.md#strix-halo-flash-next-decode-follow-up-2026-10-15)
 separates the independent candidate screens from the combined result.
 
-The pooled-input view change in
+At that October 15 screen, the pooled-input view change in
 [PR 30613](https://github.com/ggml-org/llama.cpp/pull/30613), tested at
-`870e2b09de9a2e9f61d1b679a053baaff2a2ca9f`, is not carried. Its measured gain
+`870e2b09de9a2e9f61d1b679a053baaff2a2ca9f`, was not carried. Its measured gain
 is too small to justify another patch. The same applies to the parallel HC
 pre-mix scheduling idea from fork commit
 `389d446be5fd2babf97d2d98b3cdf39c4742a5fc`. These are deferred for value,
-not classified as broken. Revisit them when upstream changes or merges.
+not classified as broken. The pooled-input change is now supplied upstream
+by the October 16 pin. The HC scheduling idea remains deferred.
 
 The October 15 follow-up pins `e36df604703dec1b6ce82f214698725475a57035`,
 16 upstream commits after the October 14 refresh, in image `r51`. All thirteen

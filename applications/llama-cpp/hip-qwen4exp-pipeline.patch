@@ -4,6 +4,11 @@ MIT-licensed halo-box/strix-llama.cpp snapshot
 contributed the scoped Q8 prefetch and small MoE tiles now collected here.
 No shadow weights, BF16/F16 matrix mode or residual downcast is included.
 
+HC and narrow-row RMS fusions follow upstream's aligned float4 F32
+reduction tree. Scalar or unsupported layouts fall back instead of silently
+changing normalization order. Keep this compatibility when removing an
+independent decode optimization.
+
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 index bb026ad98..c3d79037f 100644
 --- a/ggml/include/ggml.h
@@ -1034,14 +1039,15 @@ index 11ec58497..fb65e43bc 100644
                                    (const float *) weights->data,
 diff --git a/ggml/src/ggml-cuda/norm-gated.cu b/ggml/src/ggml-cuda/norm-gated.cu
 new file mode 100644
-index 000000000..fe3739c47
+index 000000000..4a994b58a
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/norm-gated.cu
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,137 @@
 +#include "norm-gated.cuh"
 +#include "ggml-impl.h"
 +
-+// One wave per row, with the same reduction tree as the block-per-row norm.
++// One wave per row, reproducing upstream's float4 reduction. For 256
++// columns two virtual waves retain the same tree as its 128-thread block.
 +static __device__ __forceinline__ float xor_tree(float v) {
 +#pragma unroll
 +    for (int off = 16; off > 0; off >>= 1) { v += __shfl_xor_sync(0xffffffff, v, off, 32); }
@@ -1062,17 +1068,18 @@ index 000000000..fe3739c47
 +    }
 +    x += sample * stride_sample + channel * stride_channel + row * stride_row;
 +    dst += g * ncols; if (GATE) z += g * ncols;
-+    float part[8];
++    float part[2];
 +#pragma unroll
-+    for (int wv = 0; wv < 8; ++wv) {
-+        const int col = 32 * wv + lane;
-+        const float xi = col < ncols ? x[col] : 0.0f;
-+        part[wv] = xor_tree(xi * xi);
++    for (int wv = 0; wv < 2; ++wv) {
++        const int col = 4 * (32 * wv + lane);
++        float tmp = 0.0f;
++        if (col < ncols) {
++            const float4 xi = *(const float4 *) (x + col);
++            tmp = xi.x*xi.x + xi.y*xi.y + xi.z*xi.z + xi.w*xi.w;
++        }
++        part[wv] = xor_tree(tmp);
 +    }
-+    float v = 0.0f;
-+#pragma unroll
-+    for (int wv = 0; wv < 8; ++wv) { v = lane == wv ? part[wv] : v; }
-+    const float tmp = xor_tree(v);
++    const float tmp = part[0] + part[1];
 +    const float mean = tmp / ncols;
 +    const float scale = rsqrtf(mean + eps);
 +#pragma unroll
@@ -1091,6 +1098,7 @@ index 000000000..fe3739c47
 +    if (x->type != GGML_TYPE_F32 || w->type != GGML_TYPE_F32 || out->type != GGML_TYPE_F32) return false;
 +    if (x->ne[0] > 256 || x->ne[0] % 32 != 0 || x->nb[0] != 4 || !ggml_is_contiguous(w) || !ggml_is_contiguous(out)) return false;
 +    if (w->ne[0] != x->ne[0] || w->ne[1] != 1 || w->ne[2] != 1 || w->ne[3] != 1) return false;
++    if (!ggml_cuda_is_aligned(x, 16) || !ggml_cuda_is_aligned(w, 16) || !ggml_cuda_is_aligned(out, 16)) return false;
 +    const int64_t rows = x->ne[1] * x->ne[2] * x->ne[3];
 +    if (rows < 4096 || uint64_t(rows) > UINT32_MAX) return false;
 +    return ggml_nelements(out) == ggml_nelements(x);
@@ -1135,6 +1143,7 @@ index 000000000..fe3739c47
 +    if (!((out->src[0] == mul && out->src[1] == sig) || (out->src[0] == sig && out->src[1] == mul))) return 0;
 +    if (!ggml_node_has_n_uses(cgraph, i, 1) || !ggml_node_has_n_uses(cgraph, i+1, 1) || !ggml_node_has_n_uses(cgraph, k, 1)) return 0;
 +    if (!rows_shape_ok(x, w, out) || z->type != GGML_TYPE_F32 || !ggml_is_contiguous(z) || !ggml_is_contiguous(mul)) return 0;
++    if (!ggml_cuda_is_aligned(rms, 16) || !ggml_cuda_is_aligned(mul, 16)) return 0;
 +    if (!ggml_are_same_shape(z, out) || !ggml_are_same_shape(mul, out) || !ggml_are_same_shape(rms, out)) return 0;
 +    float eps; memcpy(&eps, rms->op_params, sizeof(float)); if (eps < 0.0f) return 0;
 +    m.x = x; m.w = w; m.z = z; m.dst = out; m.eps = eps;
@@ -1152,6 +1161,7 @@ index 000000000..fe3739c47
 +    const ggml_tensor * w = mul->src[0] == rms ? mul->src[1] : (mul->src[1] == rms ? mul->src[0] : nullptr);
 +    if (!w || !ggml_node_has_n_uses(cgraph, i, 1)) return 0;
 +    if (!rows_shape_ok(x, w, mul) || !ggml_are_same_shape(rms, mul)) return 0;
++    if (!ggml_cuda_is_aligned(rms, 16)) return 0;
 +    float eps; memcpy(&eps, rms->op_params, sizeof(float)); if (eps < 0.0f) return 0;
 +    m.x = x; m.w = w; m.z = nullptr; m.dst = mul; m.eps = eps;
 +    if (norm_needs_staging(m)) return 0;
@@ -1549,15 +1559,16 @@ index 000000000..c58cd0d4a
 +void ggml_cuda_ple_conv_direct(ggml_backend_cuda_context & ctx, const ggml_cuda_ple_conv_match & m);
 diff --git a/ggml/src/ggml-cuda/qwen4exp-hc.cu b/ggml/src/ggml-cuda/qwen4exp-hc.cu
 new file mode 100644
-index 000000000..3abc19657
+index 000000000..698473a60
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qwen4exp-hc.cu
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,207 @@
 +#include "qwen4exp-hc.cuh"
 +#include "ggml-backend-impl.h"
 +
 +// Adapt the Strix fork's combined residual/RMS operation to upstream's HC_POST
-+// node. Keep the upstream F32 arithmetic and 1024-thread RMS reduction order.
++// node. Match upstream's aligned float4 F32 RMS reduction. Zero virtual lanes
++// retain the same tree for 256/512-thread rows as for a 1024-thread row.
 +template <int BLOCK>
 +static __global__ void qwen_hc_norm_kernel(const float * x, const float * residual,
 +        const float * weights, const float * gamma, float * post, float * norm,
@@ -1565,26 +1576,25 @@ index 000000000..3abc19657
 +    const int stream = blockIdx.x, token = blockIdx.y, tid = threadIdx.x;
 +    const int64_t row = (int64_t) token * streams + stream;
 +    const float w = weights[row];
-+    // Four virtual groups retain exactly the 1024-thread arithmetic tree
-+    // with fewer physical threads. Unlike the fork's packed-pair reduction,
-+    // this changes scheduling without reordering F32 sums.
++    // Virtual groups retain the upstream tree with fewer physical threads.
 +    constexpr int GROUPS = 1024/BLOCK;
-+    float values[GROUPS][3] = {};
++    float values[GROUPS][4] = {};
 +    __shared__ float partial[32];
 +#pragma unroll
 +    for (int group = 0; group < GROUPS; ++group) {
 +        float sum = 0.0f;
 +#pragma unroll
-+        for (int k = 0; k < 3; ++k) {
-+            const int col = tid + group*BLOCK + 1024*k;
++        for (int k = 0; k < 4; ++k) {
++            const int col = 4*(tid + group*BLOCK) + k;
 +            if (col < embd) {
 +                float value = x[(int64_t) token*embd + col] * w;
 +                value += residual[row*embd + col];
 +                values[group][k] = value;
 +                post[row*embd + col] = value;
-+                sum += value*value;
 +            }
 +        }
++        const float * v = values[group];
++        sum = v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3];
 +        sum = warp_reduce_sum(sum);
 +        if (tid % 32 == 0) partial[group*(BLOCK/32) + tid/32] = sum;
 +    }
@@ -1594,15 +1604,15 @@ index 000000000..3abc19657
 +#pragma unroll
 +    for (int group = 0; group < GROUPS; ++group) {
 +#pragma unroll
-+        for (int k = 0; k < 3; ++k) {
-+            const int col = tid + group*BLOCK + 1024*k;
++        for (int k = 0; k < 4; ++k) {
++            const int col = 4*(tid + group*BLOCK) + k;
 +            if (col < embd) norm[row*embd + col] = scale*values[group][k]*gamma[stream*embd + col];
 +        }
 +    }
 +}
 +
 +// F32-only version of the fork's norm/injection fusion. Normalized residual
-+// values retain the original RMS tree. The four dot products use an ordinary
++// values retain upstream's float4 RMS tree. The four dot products use an ordinary
 +// parallel F32 reduction, not a rounded F16/BF16 matrix path.
 +static __global__ void qwen_hc_norm_inject_kernel(const float * x, const float * residual,
 +        const float * weights, const float * gamma, const float * projection,
@@ -1614,21 +1624,22 @@ index 000000000..3abc19657
 +    for (int stream=0;stream<4;++stream) {
 +        const int64_t row=int64_t(token)*4+stream;
 +        const float w=weights[row];
-+        float values[4][3]={};
++        float values[4][4]={};
 +#pragma unroll
 +        for (int group=0;group<4;++group) {
 +            float sum=0;
 +#pragma unroll
-+            for (int k=0;k<3;++k) {
-+                const int col=tid+group*256+k*1024;
++            for (int k=0;k<4;++k) {
++                const int col=4*(tid+group*256)+k;
 +                if (col<embd) {
 +                    float v=x[int64_t(token)*embd+col]*w;
 +                    v+=residual[row*embd+col];
 +                    post[row*embd+col]=v;
 +                    values[group][k]=v;
-+                    sum+=v*v;
 +                }
 +            }
++            const float * v=values[group];
++            sum=v[0]*v[0]+v[1]*v[1]+v[2]*v[2]+v[3]*v[3];
 +            sum=warp_reduce_sum(sum);
 +            if (tid%32==0) partial[group*8+tid/32]=sum;
 +        }
@@ -1638,8 +1649,8 @@ index 000000000..3abc19657
 +#pragma unroll
 +        for (int group=0;group<4;++group) {
 +#pragma unroll
-+            for (int k=0;k<3;++k) {
-+                const int col=tid+group*256+k*1024;
++            for (int k=0;k<4;++k) {
++                const int col=4*(tid+group*256)+k;
 +                if (col<embd) {
 +                    const float v=scale*values[group][k]*gamma[stream*embd+col];
 +                    norm[row*embd+col]=v;
@@ -1671,7 +1682,7 @@ index 000000000..3abc19657
 +    auto * mul = graph->nodes[i+2];
 +    if (post->op != GGML_OP_DSV4_HC_POST || strcmp(mul->name, "qwen4exp_hc_norm") != 0 ||
 +            post->src[3] || rms->op != GGML_OP_RMS_NORM || rms->src[0] != post || mul->op != GGML_OP_MUL ||
-+            mul->src[0] != rms || post->ne[0] < 1024 || post->ne[0] > 3072 ||
++            mul->src[0] != rms || post->ne[0] < 1024 || post->ne[0] > 3072 || post->ne[0] % 4 != 0 ||
 +            post->ne[1] != 4 || post->ne[2] > 65535 || post->ne[3] != 1) return false;
 +    const auto * x = post->src[0], * res = post->src[1], * w = post->src[2], * gamma = mul->src[1];
 +    for (const auto * t : {x, res, w, gamma, (const ggml_tensor *) post, (const ggml_tensor *) rms, (const ggml_tensor *) mul}) {
@@ -1684,6 +1695,10 @@ index 000000000..3abc19657
 +            gamma->ne[0] != embd || gamma->ne[1] != 4 || gamma->ne[2] != 1 || gamma->ne[3] != 1 ||
 +            !ggml_can_fuse_subgraph(graph, i, {GGML_OP_DSV4_HC_POST, GGML_OP_RMS_NORM, GGML_OP_MUL}, {i, i+2})) return false;
 +    if (aliases) {
++        // Otherwise upstream would select a different scalar reduction.
++        for (const auto * t : std::initializer_list<const ggml_tensor *>{post, rms, mul, gamma}) {
++            if (!ggml_cuda_is_aligned(t, 16)) return false;
++        }
 +        auto overlap = [](const ggml_tensor * a, const ggml_tensor * b) {
 +            const uintptr_t av = (uintptr_t) a->data, bv = (uintptr_t) b->data;
 +            return av <= bv ? bv-av < ggml_nbytes(a) : av-bv < ggml_nbytes(b);

@@ -26,6 +26,142 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp refresh and optimization screens (2026-10-16)
+
+**PASS for the ROCm refresh on Strix Halo.** The upstream
+refresh preserves the existing Flash-Next performance. Neither separately
+tested optimization is added. This is a maintenance update, not another large
+speedup, and does not change the GGUFs, F16 KV cache or model defaults.
+
+The source advances from `e36df604703dec1b6ce82f214698725475a57035` to
+`623c16393c7d53a37df8bb69c6ea8ed6e5171f62`, a 37-commit upstream range.
+Twelve patches remain unchanged and two are rebased for upstream's vectorized
+F32 RMS normalization. There are still fourteen patches. The cold-built image
+is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-623c163-r53`, ID
+`96e50090780b754ff60b40802dfe831966f019aa361a777d80a725444fe00051`.
+Its actual builder is checked against source tree
+`9c9d386f09f349f98fdc08e47a8316f2070e6f12`. The baseline is the accepted
+`e36df60-r52` image, ID
+`7313e700a594d3dcf43504c86ce8bfc585e8423d5daed77d0884f465e669fc73`.
+The controller starts at `7ea1a4c`. The delivery revision is the commit adding
+this record.
+
+The host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, ROCm 10.0,
+`gfx1151`, 128 GB LPDDR5X-8000, balanced platform policy and
+`balance_performance` CPU EPP. No host configuration is changed.
+
+Flash-Next uses the same managed Unsloth Dynamic UD-Q4_K_XL shards, non-MTP,
+F16 K/V, direct embedding reader and existing QSA policy. The server has one
+262144-token slot and one serial client. Requests use medium reasoning and
+the catalog sampler tuple, with temperature zero and seed 42 for measurement.
+Cold means no reused KV prefix, not a flushed filesystem cache. Loading is
+excluded. Old/new/new/old runs reduce ordering bias at both short and long
+contexts. Every retrieval recovers the six dispersed exact values.
+
+| Actual input tokens | Old prefill seconds | Updated prefill seconds | Old cached HTTP tokens/s | Updated cached HTTP tokens/s |
+| ---: | ---: | ---: | ---: | ---: |
+| 3667 | 4.81 | 4.80 | 22.94 | 23.20 |
+| 32167 | 43.79 | 43.59 | 22.01 | 22.25 |
+| 247165 | 394.39 | 390.74 | 17.51 | 17.56 |
+
+Prefill is the mean across the paired runs. Cached throughput divides 1024
+generated tokens by the total wall time of four fully warm requests for each
+build. The first continuation reprocesses a larger tail and is excluded.
+The fixed 256-token continuations are deliberately truncated timing probes,
+not completed coding tasks or a model-quality benchmark. At 247K, individual
+prefill times are 397.53 and 391.25 seconds for the baseline, and 395.55 and
+385.94 for the update. The small differences should not be advertised as a
+substantial acceleration.
+
+The separate cold-built production rerun agrees. Its 4K, 32K and 247K prefill
+times are 4.81, 43.73 and 393.29 seconds, with cached HTTP throughput of 23.16,
+22.23 and 17.55 tokens/s. All six retrieval values are correct at each depth.
+
+The final dense Qwen27B Q8 MTP control pair gives 107.07 versus 106.09 seconds
+of 32K prefill, and 14.44 versus 14.32 cached HTTP tokens/s, old versus new.
+Retrieval is correct on both. This small sample shows no useful speed win and
+does not establish a material regression. It is separate from the attention
+candidate below, which is not shipped.
+
+Two independent candidates remain outside the image:
+
+- Upstream [PR 30493](https://github.com/ggml-org/llama.cpp/pull/30493),
+  `4373bb620120b5fe1b811e1c4a202db9d82fa586`, lengthens paired Flash-Next
+  32K prefill from 43.07 to 47.12 seconds, with unchanged decode. It is rejected.
+  Its 129 focused matrix cases pass, but that does not offset the performance
+  loss. The planned dense-model screen is skipped after this rejection.
+- An isolated kernel from [Strix fork PR 172](https://github.com/halo-box/strix-llama.cpp/pull/172),
+  `1ea2d675d7977c47e3c6952b3fc2ac376ef17b93`, shortens dense Qwen27B Q8 MTP
+  32K prefill to 95.45 seconds, between baseline runs of 105.97 and 106.16.
+  Decode does not improve. Flash-Next's control is effectively unchanged.
+  The 150 focused attention cases pass, but the roughly 1200-line kernel and
+  changed attention evaluation order need further numerical and long-context
+  qualification. It is deferred, not production-accepted. No whole fork,
+  private HIP runtime or reduced-precision matrix mode is imported.
+
+The final production libraries pass 989 HIP operator cases, including 103
+added alignment and row-width cases. The exact normalization comparisons stay
+exact, and the existing F32 injection-dot CPU-reference tolerance remains
+`1e-10`. Shared weight views are visited before both fixture branches so an
+incidental view node cannot select different upstream RMS/MUL fusion paths.
+All eight allocation-lifetime cases and seven native parser/chat tests pass.
+F16, Q8_0 and Q4_0 device state-copy checks each pass four cases with none
+skipped. Those optional-cache checks do not alter the F16 presets.
+
+Populated ordinary, causal-transition and clear/restore checks remain exact.
+Three independent updated-build runs agree across 65 full-vocabulary
+teacher-forced vectors. The cold production image matches the first of those
+runs exactly. Disabling only the rebased GDN or narrow-normalization fusion
+also matches all 65 vectors exactly.
+
+Whole-model bit identity is not claimed. The unchanged old image itself varies
+between processes. Its HC fused/unfused comparison has one top-1 difference
+out of 65 vectors, as does the updated image. Worst raw logit NMSE is about
+0.133 and 0.124 respectively. These diagnostics do not establish a new quality
+regression or prove universal answer equivalence. Preserve the independent
+operator references and within-process state gates rather than relaxing them
+to accommodate cross-process variation.
+
+The runtime closure has no missing shared libraries, bundled source tree,
+compiler or PyTorch payload, and `pip check` passes. CPU-only router startup
+has no GPU devices. The tiny Qwen model completes CLI generation on CPU, ROCm
+and Vulkan, plus both GPU throughput smokes. Qwen3.8 dense Q8 MTP and Flash-Next
+pass reasoning modes, chat, tool round trips, SSE, Responses, preserved-history
+template, prefix reuse, cancellation and queued requests. Qwen3.6 dense MTP
+passes its chat, reasoning, tool, template and cache checks. Muse DFlash passes
+its bounded reasoning and tool checks.
+
+Flash-Next's Vulkan control uses four slots sharing a 262144-token pool and one
+serial client. Old/new 4K prefill is 8.22/8.25 seconds and cached HTTP throughput
+is 24.37/24.36 tokens/s, with correct retrieval and tool replies. This is a
+short-context control, not renewed near-256K Vulkan performance acceptance.
+
+One initial Vulkan mmap load was interrupted after more than sixteen minutes
+of continuing model-file page reads. No GPU fault or OOM accompanied it.
+The retained old image subsequently loaded in 140.49 seconds and the updated
+image in 46.61 seconds, with the same launch settings and no host changes.
+The slow load did not reproduce, but its cause is not established. Do not
+present those cache-sensitive startup times as an upgrade speedup or claim
+that cold-start loading variability has been fixed. The interrupted run and
+the successful controls remain in the raw evidence.
+
+The gateway starts unloaded and completes dense-to-Flash-Next-to-dense model
+switching. Both omitted sampling defaults and explicit client overrides pass.
+Its backend remains on an ephemeral loopback port. All eighteen streaming and
+non-streaming disconnect checks release the actual child slot. Managed Pi 1.2.0
+and Maki 0.6.3 perform real file-read and shell-tool rounds through the gateway.
+Pi's thinking-off run has no reasoning content. The fixture remains unchanged
+and shutdown leaves no test container or listener.
+
+Final host checks pass `make check`, `make test`, `make static`, forced Go
+rebuild, Python compilation, shell syntax, catalog JSON parsing and whitespace
+validation. No new kernel GPU, SVM, OOM or protection-fault event is recorded.
+Raw logs, scripts, image/source identities and numerical vectors are retained
+outside the checkout at
+`~/.local/share/paracetamol/apps/acceptance/results/20261016-llama-upstream/`
+on the acceptance host, with a SHA-256 manifest. The machine is left idle. Inference acceptance
+on `gfx1150`, `gfx1200` and `gfx1201` remains **NOT PERFORMED**.
+
 ### Managed Pi 1.2.0 (2026-10-15)
 
 **PASS for the managed local-model client.** Pi advances from 1.0.2 to 1.2.0.
