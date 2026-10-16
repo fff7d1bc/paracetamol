@@ -16,12 +16,51 @@ llama_stream_token_embedding_args() {
                 --override-tensor per_layer_token_embd.weight=CPU \
                 --no-unified-memory --no-host --fit off \
                 --batch-size 2048 --ubatch-size 2048 --cache-ram 0
-            if [[ "$mode" == server ]]; then
-                printf '%s\n' --parallel 1 --no-kv-unified
-            fi
             ;;
         *) return 1 ;;
     esac
+}
+
+# Keep the accepted separate cache for a single streaming-model slot. Multiple
+# slots share the configured token pool: partitioning it would silently shrink
+# each conversation, while multiplying it can exhaust a 128 GB host.
+llama_server_slot_args() {
+    local slots="$1" separate="$2"
+    [[ "$slots" =~ ^([1-9]|[1-5][0-9]|6[0-4])$ ]] || return 1
+    printf '%s\n' --parallel "$slots"
+    if [[ "$separate" == 1 && "$slots" == 1 ]]; then
+        printf '%s\n' --no-kv-unified
+    else
+        [[ "$separate" == 0 || "$separate" == 1 ]] || return 1
+        printf '%s\n' --kv-unified
+    fi
+}
+
+# Run after model/profile policy expansion, when the final cache layout is
+# known. Emit one slot/context tuple per section, without duplicate INI keys.
+llama_server_slot_ini() {
+    local slots="$1"
+    [[ "$slots" =~ ^([1-9]|[1-5][0-9]|6[0-4])$ ]] || return 1
+    awk -v slots="$slots" '
+        function flush() {
+            if (!section) return
+            if (context !~ /^[1-9][0-9]*$/ || context > 2147483647) {
+                print "invalid configured context in managed router preset" > "/dev/stderr"
+                bad = 1
+                exit 1
+            }
+            print "parallel = " slots
+            print (separate && slots == 1 ? "no-kv-unified = true" : "kv-unified = true")
+            printf "c = %.0f\n", context
+        }
+        /^\[/ { flush(); section=1; context=""; separate=0 }
+        /^c = / { context=$3; next }
+        /^no-kv-unified = true$/ { separate=1; next }
+        /^kv-unified = true$/ { separate=0; next }
+        /^parallel = / { next }
+        { print }
+        END { if (!bad) flush() }
+    '
 }
 
 llama_stream_token_embedding_ini() {
@@ -39,4 +78,8 @@ llama_stream_token_embedding_ini() {
         fi
         printf '%s = %s\n' "$key" "$value"
     done
+    # The final slot renderer retains this single-slot layout only at slots=1.
+    if [[ "$backend" == rocm ]]; then
+        printf '%s\n' 'no-kv-unified = true'
+    fi
 }

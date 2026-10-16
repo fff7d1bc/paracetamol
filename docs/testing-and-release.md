@@ -101,6 +101,14 @@ signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 make race
 ```
 
+For llama.cpp concurrency changes, verify the running backend's slot count,
+KV layout and total token pool. Use explicit worker counts, distinct request
+markers and repeated turns to catch state leakage. Confirm overlapping
+generation rather than merely successful requests queued through one slot.
+Measure aggregate generated tokens divided by total wall time and report
+per-request latency separately. Include an overflow request and long-context
+retrieval without mistaking configured capacity for populated-context coverage.
+
 Normal builds use CGO and require a C compiler so the host binary follows
 glibc and NSS name resolution. The race target uses the same native boundary.
 `make static` is the explicit CGO-disabled build. It remains in Tier 1 as a

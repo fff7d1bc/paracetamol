@@ -154,6 +154,12 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 			return invalidConfigurationValue(setting, err)
 		}
 		configuration.Gateway.LlamaCPP.ModelsMax = &value
+	case "gateway.llama-cpp.slots":
+		value, err := parseConfigurationInteger(rawValue)
+		if err != nil {
+			return invalidConfigurationValue(setting, err)
+		}
+		configuration.Gateway.LlamaCPP.Slots = &value
 	default:
 		return fmt.Errorf("unknown configuration setting %s", setting)
 	}

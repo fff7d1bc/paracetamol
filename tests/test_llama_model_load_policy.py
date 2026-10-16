@@ -9,10 +9,10 @@ POLICY = Path(__file__).resolve().parents[1] / "applications/llama-cpp/model-loa
 
 
 class LlamaModelLoadPolicyTests(unittest.TestCase):
-    def invoke(self, function, *args):
+    def invoke(self, function, *args, input=None):
         return subprocess.run(
             ["bash", "-euc", 'source "$1"; shift; "$@"', "policy-test", str(POLICY), function, *args],
-            text=True, capture_output=True, check=True,
+            text=True, capture_output=True, check=True, input=input,
             env={**os.environ, "GGML_CUDA_ENABLE_UNIFIED_MEMORY": "1"},
         ).stdout.splitlines()
 
@@ -30,12 +30,14 @@ class LlamaModelLoadPolicyTests(unittest.TestCase):
                     index += 1
                 expected[key] = value
             ini = dict(line.split(" = ", 1) for line in self.invoke("llama_stream_token_embedding_ini", backend))
+            if backend == "rocm":
+                expected["no-kv-unified"] = "true"
             self.assertEqual(ini, expected)
             if backend == "rocm":
                 self.assertEqual(ini["lazy-mode"], "on-direct")
                 for key in ("no-unified-memory", "no-host", "no-kv-unified"):
                     self.assertEqual(ini[key], "true")
-                self.assertEqual(ini["parallel"], "1")
+                self.assertNotIn("parallel", ini)
                 self.assertEqual(ini["cache-ram"], "0")
                 self.assertEqual(ini["batch-size"], "2048")
                 self.assertEqual(ini["ubatch-size"], "2048")
@@ -50,6 +52,23 @@ class LlamaModelLoadPolicyTests(unittest.TestCase):
         for backend, mode in (("rocm", "bench"), ("unknown", "server")):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.invoke("llama_stream_token_embedding_args", backend, mode)
+
+    def test_slots_share_context_without_partitioning_or_multiplying_it(self):
+        for slots in (1, 4):
+            cache_flag = "no-kv-unified" if slots == 1 else "kv-unified"
+            self.assertEqual(self.invoke("llama_server_slot_args", str(slots), "1"),
+                             ["--parallel", str(slots), f"--{cache_flag}"])
+            self.assertEqual(self.invoke("llama_server_slot_args", str(slots), "0"),
+                             ["--parallel", str(slots), "--kv-unified"])
+            source = "version = 1\n[flash]\nc = 262144\nno-kv-unified = true\n[dense]\nc = 262144\n"
+            result = "\n".join(self.invoke("llama_server_slot_ini", str(slots), input=source))
+            self.assertIn(f"[flash]\nparallel = {slots}\n{cache_flag} = true\nc = 262144", result)
+            self.assertIn(f"[dense]\nparallel = {slots}\nkv-unified = true\nc = 262144", result)
+        for slots, separate in (("0", "1"), ("65", "1"), ("4", "bad")):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.invoke("llama_server_slot_args", slots, separate)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.invoke("llama_server_slot_ini", "4", input="version = 1\n[bad]\nc = 0\n")
 
 
 if __name__ == "__main__":

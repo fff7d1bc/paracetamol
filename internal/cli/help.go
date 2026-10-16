@@ -37,6 +37,7 @@ var metavarByFlag = map[string]string{
 	"memory-policy":          "POLICY",
 	"model":                  "MODEL",
 	"models-max":             "COUNT",
+	"slots":                  "COUNT",
 	"output":                 "PATH",
 	"output-tokens":          "TOKENS",
 	"poll":                   "PERCENT",

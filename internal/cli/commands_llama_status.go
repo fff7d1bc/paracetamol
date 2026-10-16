@@ -25,7 +25,7 @@ const llamaRuntimeReportPath = "/tmp/paracetamol-llama-runtime"
 var llamaRuntimeKeys = map[string]bool{
 	"schema": true, "mode": true, "profile": true, "backend": true,
 	"device": true, "backend_devices": true, "architecture": true,
-	"gpu_count": true, "router": true, "models_max": true, "context": true,
+	"gpu_count": true, "router": true, "models_max": true, "slots": true, "context": true,
 	"listen": true, "host_listen": true, "port": true, "api_key": true,
 	"unified_memory": true,
 }
@@ -42,7 +42,7 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 		}
 		values[key] = value
 	}
-	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "2" || values["mode"] != "server" {
+	if len(values) != len(llamaRuntimeKeys) || values["schema"] != "3" || values["mode"] != "server" {
 		return nil, controlerr.New("unsupported llama.cpp runtime report; rebuild the llama.cpp image for this checkout")
 	}
 	for key := range values {
@@ -71,6 +71,9 @@ func parseLlamaRuntimeReport(contents string) (map[string]string, error) {
 		if value, err := strconv.ParseInt(values["context"], 10, 64); err != nil || value < 1 {
 			return nil, controlerr.New("invalid context in llama.cpp runtime report")
 		}
+	}
+	if slots, err := strconv.Atoi(values["slots"]); err != nil || slots < 1 || slots > 64 {
+		return nil, controlerr.New("invalid slots in llama.cpp runtime report")
 	}
 	if err := config.ValidateListenAddress(values["listen"]); err != nil {
 		return nil, controlerr.New("invalid container listen address in llama.cpp runtime report")
@@ -264,6 +267,7 @@ func (app *App) llamaStatus(requested string) error {
 		allocationValue = "unified memory " + allocationValue + "; model policies may opt out"
 	}
 	serverRows := [][2]string{
+		{"Request slots per model", runtimeReport["slots"]},
 		{"Mode", mode}, {"Container bind", runtimeReport["listen"] + ":" + runtimeReport["port"]},
 		{"Host publish", runtimeReport["host_listen"] + ":" + runtimeReport["port"]},
 		{"Authentication", map[bool]string{true: "configured (value redacted)", false: "none"}[runtimeReport["api_key"] == "1"]},
@@ -451,8 +455,14 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		rows = append(rows,
 			[2]string{"Allocation", "device allocation, inherited unified memory disabled for this model"},
 			[2]string{"Batch / microbatch", "2048 / 2048"},
-			[2]string{"RAM prompt archive", "disabled, live-prefix reuse retained"},
-			[2]string{"Slots", "1, non-unified KV"})
+			[2]string{"RAM prompt archive", "disabled, live-prefix reuse retained"})
+	}
+	if runtimeReport["mode"] == "server" {
+		cache := "shared KV token pool"
+		if runtimeReport["slots"] == "1" && modelLoad == catalog.LlamaModelLoadStreamTokenEmbedding && runtimeReport["backend"] == "rocm" {
+			cache = "non-unified KV"
+		}
+		rows = append(rows, [2]string{"Slots", runtimeReport["slots"] + ", " + cache})
 	}
 	rows = append(rows, [2]string{"Sampling", "request values or llama.cpp defaults"})
 	if preset != nil && preset.SamplingPolicy != "" {
@@ -501,6 +511,7 @@ func llamaReproductionCommand(environment, runtimeReport map[string]string, pres
 	} else {
 		command = append(command, "--model", "GGUF_PATH")
 	}
+	command = append(command, "--slots", runtimeReport["slots"])
 	command = append(command, "--backend", runtimeReport["backend"], "--profile", runtimeReport["profile"])
 	for _, node := range strings.Split(environment["PARACETAMOL_RENDER_NODES"], ",") {
 		if node != "" {

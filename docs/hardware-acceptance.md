@@ -26,6 +26,83 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Four llama.cpp request slots on Strix Halo (2026-10-16)
+
+The request-slot delivery starts from controller `bbbf0a07881afa4e58f2a52d189cfb59389207e9`.
+It retains llama.cpp `623c16393c7d53a37df8bb69c6ea8ed6e5171f62`, ROCm 10.1,
+the existing source patches, model bytes, F16 KV, templates and sampling policies.
+The image advances to `llama-cpp-ubuntu26.04-rocm10.1-623c163-r56`.
+The final image ID is
+`1cef96272e13dbd09891cbecdce98c9dc56129189b584217ec6a48c95037cfc7`.
+The initial direct-server acceptance used image
+`3d33928ee26a2c5ad71ac08b58ac3149c7c0ff1b67fd9635171cd17584e45179`.
+The final entrypoint removes a redundant overridden KV flag and clarifies an
+error message, without changing the effective inference settings.
+
+The host is the same Fedora 44, kernel `7.2.10-200.fc44.x86_64`, Ryzen AI Max+
+395, 128 GB `gfx1151` machine described below. No host configuration changed.
+Results and probe sources are retained outside Git at
+`build/four-slots-20261016-tnfTgB/` on that host.
+
+**Four slots share the existing 262144-token pool. They are not four separate
+256K allocations.** A preliminary four-separate-cache configuration consumed
+too much memory and was stopped by the test's 8 GiB available-memory guard.
+It is not the delivered policy. Shared-cache direct acceptance retained at
+least 20.96 GiB available RAM, including the near-ceiling test.
+
+The direct ROCm screen used
+`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, four slots, the shared
+262144-token pool, and batch/microbatch 2048. Short generation requests used
+medium reasoning, temperature zero, seed 42 and exactly 256 output tokens.
+Loading and a warm-up request were excluded. Aggregate throughput is total
+generated tokens divided by the whole request group's wall time.
+
+| Client workers | Total output tokens | Wall time | Aggregate output rate |
+| --- | --- | --- | --- |
+| 1 | 256 | 10.63 s | 24.09 tokens/s |
+| 4 | 1024 | 18.39 s | 55.67 tokens/s |
+| 5 | 1280 | 29.79 s | 42.97 tokens/s |
+
+All four workers emitted tokens within 1.02 seconds in the four-client run,
+before any finished. With five clients, four started within 0.65 seconds and
+the fifth waited about 18.97 seconds for its first output. Four distinct marker
+answers passed both before and after the generation rounds. The fixed-output
+task measures throughput, not the quality of the deliberately truncated code.
+The final image's `--slots 1` control measured 23.92 tokens/s with one client,
+compared with 24.09 above. This short screen shows no meaningful single-client
+decode penalty, but does not establish equivalence for every workload.
+With four clients queued through that one slot, the same 1024 output tokens
+took 44.16 seconds, compared with 18.39 seconds with four slots.
+
+Structured tool call/replay passed. Both 32167-token retrievals and the
+247165-token retrieval recovered all six reference values, followed by cached
+continuations and a successful short fresh prompt. Near-ceiling prefill was
+402.77 seconds. Two warmed 256-token continuations took 14.92 and 14.94 seconds,
+or 17.15 tokens/s end to end. This is a small acceptance screen, not evidence
+that four fully populated 256K conversations fit, nor a universal speedup claim.
+
+The gateway/router path also passed four simultaneous unequal-context
+conversations, approximately 5K, 11K, 21K and 32K tokens, with distinct start/end
+keys and four cached follow-ups. Four concurrent xhigh arithmetic requests,
+structured tool call/replay and stream cancellation followed by a fresh request
+passed. Its short four-client generation screen produced 54.34 tokens/s
+combined. The generated native router sections and loaded child logs both
+confirmed four slots with the unchanged context pool. The gateway model page
+reported four configured slots without loading additional models.
+
+Switching through the same router to
+`unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` passed the four-marker, repeated generation,
+four-client, five-client and post-generation marker checks. This is a
+multi-slot MTP compatibility check, not a quantization or reasoning-quality
+comparison. DwarfStar's single-request policy is unchanged. Other GPU classes
+were not exercised for this delivery.
+
+The final image passed CPU-only router startup, rendered four-slot presets,
+`pip check` and clean removal. Host checks, static and normal builds, race
+tests, container-policy tests and the real-browser gateway test passed. The
+GPU test window produced no kernel journal entries. Test containers and the
+foreground gateway were stopped, leaving the host's configuration untouched.
+
 ### Strix Halo ROCm 10.1 refresh (2026-10-16)
 
 The [ROCm 10.1.0 release](https://rocm.docs.amd.com/en/docs-10.1.0/about/release-notes.html)

@@ -7,7 +7,7 @@ import (
 	"paracetamol/internal/catalog"
 )
 
-const validLlamaRuntimeReport = `schema=2
+const validLlamaRuntimeReport = `schema=3
 mode=server
 profile=strix-halo
 backend=rocm
@@ -17,6 +17,7 @@ architecture=gfx1151
 gpu_count=1
 router=0
 models_max=2
+slots=4
 context=262144
 listen=0.0.0.0
 host_listen=127.0.0.1
@@ -36,7 +37,7 @@ func TestParseLlamaRuntimeReport(t *testing.T) {
 }
 
 func TestParseLlamaRuntimeReportExplainsImageMismatch(t *testing.T) {
-	oldReport := strings.Replace(validLlamaRuntimeReport, "schema=2", "schema=1", 1) +
+	oldReport := strings.Replace(validLlamaRuntimeReport, "schema=3", "schema=1", 1) +
 		"vulkan_f16_kv_contiguize=0\n"
 	if _, err := parseLlamaRuntimeReport(oldReport); err == nil || !strings.Contains(err.Error(), "rebuild the llama.cpp image") {
 		t.Fatalf("old image report error = %v", err)
@@ -47,9 +48,12 @@ func TestParseLlamaRuntimeReportRejectsUnknownAndDuplicateKeys(t *testing.T) {
 	for _, contents := range []string{
 		validLlamaRuntimeReport + "surprise=value\n",
 		validLlamaRuntimeReport + "vulkan_f16_kv_contiguize=1\n",
-		strings.Replace(validLlamaRuntimeReport, "schema=2", "schema=1", 1),
+		strings.Replace(validLlamaRuntimeReport, "schema=3", "schema=1", 1),
 		strings.Replace(validLlamaRuntimeReport, "context=262144", "context=\ncontext=262144", 1),
 		strings.Replace(validLlamaRuntimeReport, "host_listen=127.0.0.1", "host_listen=gateway.test", 1),
+		strings.Replace(validLlamaRuntimeReport, "slots=4\n", "", 1),
+		strings.Replace(validLlamaRuntimeReport, "slots=4", "slots=0", 1),
+		strings.Replace(validLlamaRuntimeReport, "slots=4", "slots=65", 1),
 	} {
 		if _, err := parseLlamaRuntimeReport(contents); err == nil {
 			t.Fatalf("invalid report accepted:\n%s", contents)
@@ -101,7 +105,7 @@ func TestLlamaModelLoadStatusUsesResidentStrixDefault(t *testing.T) {
 func TestLlamaStatusScopesStreamingAllocationDetailsToROCm(t *testing.T) {
 	for _, backend := range []string{"rocm", "vulkan"} {
 		section := map[string]string{"paracetamol-model-load-strix-halo": catalog.LlamaModelLoadStreamTokenEmbedding}
-		report := map[string]string{"profile": "strix-halo", "backend": backend}
+		report := map[string]string{"profile": "strix-halo", "backend": backend, "mode": "server", "slots": "4"}
 		rows, err := llamaModelStatusRows(catalog.Catalog{}, nil, section, nil, report)
 		if err != nil {
 			t.Fatal(err)
@@ -113,7 +117,7 @@ func TestLlamaStatusScopesStreamingAllocationDetailsToROCm(t *testing.T) {
 		if (found["Allocation"] != "") != (backend == "rocm") {
 			t.Fatalf("wrong allocation details for %s: %v", backend, found)
 		}
-		if backend == "rocm" && (found["Batch / microbatch"] != "2048 / 2048" || found["Slots"] != "1, non-unified KV") {
+		if backend == "rocm" && (found["Batch / microbatch"] != "2048 / 2048" || found["Slots"] != "4, shared KV token pool") {
 			t.Fatalf("missing streaming settings: %v", found)
 		}
 	}

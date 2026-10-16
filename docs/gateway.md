@@ -107,6 +107,7 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
+slots = 4
 ```
 
 Select another file globally either before or after the command:
@@ -314,6 +315,25 @@ combined weights and contexts fit memory. Increase it only for a model set
 known to fit. At the count limit, the pinned router queues a new model request
 until it can evict an idle least-recently-used child; it does not evict a busy
 child.
+
+Request concurrency is a separate setting. Each loaded llama.cpp model has
+four request slots by default. Use `--slots N` or
+`[gateway.llama-cpp].slots = N` to change it. A fifth request waits for a slot
+without loading another copy of the model. DwarfStar still serves one request
+at a time.
+
+With multiple slots, llama.cpp shares the preset's KV token pool. A 256K
+preset is **256K total across active conversations**, not four independent
+256K allocations and not a fixed 64K limit per conversation. One conversation
+can use nearly the whole pool when the others are idle. Long simultaneous
+conversations must fit together, and running out of KV space can cause
+reprocessing or a backend error. More slots improve aggregate throughput on
+some workloads but do not promise faster individual responses. Use `--slots 1`
+when one long conversation should have the server to itself.
+
+The startup banner, gateway model details, and `status llama-cpp` show the
+configured request-slot count separately from the loaded-model limit. Direct
+`run llama-cpp server` supports the same `--slots` flag and default.
 
 Keep `--models-max 1` for Flash-Next on a 128 GB Strix Halo host. Its improved
 memory headroom does not mean it can coexist with the dense Q8 model. Switching

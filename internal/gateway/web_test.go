@@ -93,6 +93,9 @@ func TestWebSnapshotIsReadOnlyAndKeepsClientDefaultsSeparate(t *testing.T) {
 		t.Fatalf("snapshot=%+v status=%d", snapshot, w.Code)
 	}
 	first := snapshot.Models[0]
+	if first.RequestSlots != 4 {
+		t.Fatalf("request slots=%d", first.RequestSlots)
+	}
 	if first.MakiReasoningDefault != "xhigh" || first.ReasoningDefault != "medium" || first.State != ModelUnloaded || first.Family != "Qwen 3.8 Flash-Next" || first.Publisher != "unsloth" {
 		t.Fatalf("model=%+v", first)
 	}

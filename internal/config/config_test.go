@@ -32,6 +32,7 @@ api_key_file = "/etc/paracetamol/client.key"
 [gateway.llama-cpp]
 backend = "vulkan"
 models_max = 2
+slots = 3
 `
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
@@ -48,7 +49,8 @@ models_max = 2
 		configuration.Gateway.Client.APIKeyFile == nil || *configuration.Gateway.Client.APIKeyFile != "/etc/paracetamol/client.key" ||
 		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128"}) ||
 		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != "https://gateway.example.test:7443/v1/" ||
-		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 {
+		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 ||
+		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != 3 {
 		t.Fatalf("gateway=%#v", configuration.Gateway)
 	}
 }
@@ -101,6 +103,9 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"data path":           {"[storage]\ndata_dir = 'relative'\n", "non-empty absolute path"},
 		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},
 		"models range":        {"[gateway.llama-cpp]\nmodels_max = 0\n", "at least 1"},
+		"slots zero":          {"[gateway.llama-cpp]\nslots = 0\n", "between 1 and 64"},
+		"slots overflow":      {"[gateway.llama-cpp]\nslots = 65\n", "between 1 and 64"},
+		"slots type":          {"[gateway.llama-cpp]\nslots = '4'\n", "decimal integer"},
 		"client scheme":       {"[gateway.client]\nurl = 'ftp://example.test/v1'\n", "credential-free HTTP(S)"},
 		"server key path":     {"[gateway]\napi_key_file = ''\n", "non-empty absolute path"},
 		"client key path":     {"[gateway.client]\napi_key_file = 'relative'\n", "non-empty absolute path"},
@@ -207,7 +212,8 @@ func TestDefaultContentsIsCompleteAndRunnable(t *testing.T) {
 		configuration.Gateway.RenderNodes == nil || len(configuration.Gateway.RenderNodes) != 0 ||
 		configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort ||
 		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != DefaultGatewayURL ||
-		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" {
+		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" ||
+		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != DefaultLlamaSlots {
 		t.Fatalf("configuration=%#v", configuration)
 	}
 }

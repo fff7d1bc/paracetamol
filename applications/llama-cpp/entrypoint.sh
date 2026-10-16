@@ -31,6 +31,7 @@ qsa_graph_requested="${PARACETAMOL_QWEN4EXP_QSA_GRAPH:-auto}"
 allowed_profiles="${PARACETAMOL_LLAMA_ALLOWED_PROFILES:-}"
 router="${PARACETAMOL_LLAMA_ROUTER:-0}"
 models_max="${PARACETAMOL_LLAMA_MODELS_MAX:-2}"
+slots="${PARACETAMOL_LLAMA_SLOTS:-4}"
 listen="${PARACETAMOL_LISTEN:-0.0.0.0}"
 host_listen="${PARACETAMOL_HOST_LISTEN:-unknown}"
 port="${PARACETAMOL_PORT:-8080}"
@@ -51,6 +52,8 @@ case "$mode" in
 esac
 [[ "$gpu_count" =~ ^[0-9]+$ ]] ||
     die "invalid visible GPU count '$gpu_count'"
+[[ "$slots" =~ ^([1-9]|[1-5][0-9]|6[0-4])$ ]] ||
+    die "llama.cpp slots must be between 1 and 64"
 case "$jinja" in
     0|1) ;;
     *) die "invalid llama.cpp Jinja setting '$jinja'" ;;
@@ -360,7 +363,7 @@ done
 # profile and backend device names resolved here without persisting stale
 # state or scraping unbounded application logs.
 {
-    printf 'schema=2\n'
+    printf 'schema=3\n'
     printf 'mode=%s\n' "$mode"
     printf 'profile=%s\n' "$profile"
     printf 'backend=%s\n' "$backend"
@@ -370,6 +373,7 @@ done
     printf 'gpu_count=%s\n' "$gpu_count"
     printf 'router=%s\n' "$router"
     printf 'models_max=%s\n' "$models_max"
+    printf 'slots=%s\n' "$slots"
     printf 'context=%s\n' "$runtime_context"
     printf 'listen=%s\n' "$listen"
     printf 'host_listen=%s\n' "$host_listen"
@@ -426,6 +430,7 @@ else
     fi
 fi
 if [[ "$mode" == server ]]; then
+    printf '  request slots: %s per model (additional requests wait)\n' "$slots"
     printf '  container bind: %s:%s\n' "$listen" "$port"
     printf '  host publish:  %s:%s\n' "$host_listen" "$port"
 fi
@@ -553,7 +558,7 @@ if [[ "$mode" == server ]]; then
                     }
                     { print }
                 '
-        } > "$router_preset"
+        } | llama_server_slot_ini "$slots" > "$router_preset"
         exec llama-server \
             --host "$listen" \
             --port "$port" \
@@ -561,6 +566,13 @@ if [[ "$mode" == server ]]; then
             --models-max "$models_max" \
             "$@"
     fi
+    separate=0
+    if [[ "$profile" == strix-halo && "$backend" == rocm && "$model_load" == stream-token-embedding ]]; then
+        separate=1
+    fi
+    slot_arguments="$(llama_server_slot_args "$slots" "$separate")" ||
+        die "invalid server slot policy"
+    mapfile -t server_slot_args <<< "$slot_arguments"
     exec llama-server \
         --offline \
         --host "$listen" \
@@ -569,7 +581,8 @@ if [[ "$mode" == server ]]; then
         "${profile_args[@]}" \
         "${model_policy_args[@]}" \
         "${speculative_args[@]}" \
-        "$@"
+        "$@" \
+        "${server_slot_args[@]}"
 fi
 
 exec llama-cli \

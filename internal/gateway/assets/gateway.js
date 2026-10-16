@@ -147,7 +147,7 @@ function validSnapshot(data) {
   return data && typeof data.collected_at === "string" && Number.isFinite(Date.parse(data.collected_at)) &&
     typeof data.gateway === "string" && Array.isArray(data.models) && data.models.every((model) =>
       model && ["id", "name", "family", "publisher", "application", "state"].every((key) => typeof model[key] === "string") &&
-      Number.isFinite(model.context) && Number.isFinite(model.max_output_tokens) && typeof model.agent_tools === "boolean" &&
+      Number.isFinite(model.context) && Number.isFinite(model.max_output_tokens) && Number.isInteger(model.request_slots) && model.request_slots > 0 && typeof model.agent_tools === "boolean" &&
       (!model.reasoning_levels || (Array.isArray(model.reasoning_levels) && model.reasoning_levels.every((level) => typeof level === "string"))));
 }
 
@@ -241,7 +241,8 @@ function renderModels() {
         ["Supported reasoning", levels.length ? levels.join(" · ") : "No declared reasoning control"],
         ["HTTP reasoning when omitted", model.reasoning_default || (model.reasoning_control === "toggle" ? "on" : "Backend default")],
         ["Maki adaptive reasoning", model.agent_tools ? model.maki_reasoning_default || "No declared reasoning control" : "Not applicable"],
-        ["Configured context capacity", model.context.toLocaleString() + " tokens"],
+        ["Configured request slots", String(model.request_slots)],
+        ["Configured context capacity", model.context.toLocaleString() + " tokens" + (model.application === "llama-cpp" && model.request_slots > 1 ? " shared across slots" : "")],
         ["Runtime context capacity", model.runtime?.context ? model.runtime.context.toLocaleString() + " tokens" : "Unavailable until reported by the backend"],
         ["Client output limit", model.max_output_tokens.toLocaleString() + " tokens"],
       ];

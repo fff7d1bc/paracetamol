@@ -34,6 +34,7 @@ type LlamaOptions struct {
 	AllowedProfiles              []string
 	RouterPreset                 string
 	ModelsMax                    int
+	Slots                        int
 	RenderNodes                  []string
 	Listen                       string
 	Port                         int
@@ -74,6 +75,12 @@ type LlamaBenchmarkOptions struct {
 var LlamaBenchmarkContainer = identity.Container("llama-cpp-benchmark")
 
 func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
+	if options.Slots == 0 {
+		options.Slots = config.DefaultLlamaSlots
+	}
+	if options.Slots < 1 || options.Slots > 64 {
+		return nil, fmt.Errorf("llama.cpp slots must be between 1 and 64")
+	}
 	layout := storage.Layout{Root: options.DataDir}
 	readOnly := readOnlySharedSuffix(volumeSuffix)
 	application, _ := config.ApplicationByID("llama-cpp")
@@ -103,6 +110,7 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	command = env(command, "PARACETAMOL_LLAMA_ALLOWED_PROFILES", strings.Join(options.AllowedProfiles, ","))
 	command = env(command, "PARACETAMOL_SOURCE_REVISION", options.SourceRevision)
 	command = env(command, "PARACETAMOL_LLAMA_MODE", options.Mode)
+	command = env(command, "PARACETAMOL_LLAMA_SLOTS", options.Slots)
 	command = env(command, "PARACETAMOL_LLAMA_MODEL", containerModel)
 	draft := ""
 	if options.ManagedDraft != "" {
