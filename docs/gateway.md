@@ -31,6 +31,7 @@ The embedded dark page has two tabs.
   details. It distinguishes Maki's preferred reasoning from the HTTP fallback.
 
 Refresh is manual. A failed refresh marks retained information as stale.
+The last-check timestamp uses ISO 8601 in UTC (`Z`), independent of the browser's locale.
 There is no model loading, switching, shutdown, request-history view or
 background polling. Publisher and family names are presentation labels,
 not licensing assertions. Unknown names keep their exact model ID.

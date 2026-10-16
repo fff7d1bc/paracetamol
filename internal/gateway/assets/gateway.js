@@ -165,7 +165,7 @@ async function refresh() {
     byID("preview-content").textContent = "";
     byID("connection-state").textContent = data.gateway === "ready" ? "Gateway reachable" : "Gateway shutting down";
     byID("connection-state").className = data.gateway === "ready" ? "badge good" : "badge warn";
-    byID("snapshot-time").textContent = "Checked " + new Date(data.collected_at).toLocaleTimeString();
+    byID("snapshot-time").textContent = "Checked " + new Date(data.collected_at).toISOString();
     byID("notice").hidden = true;
     byID("model-count").textContent = String(data.models.length);
     byID("model-count").hidden = false;
