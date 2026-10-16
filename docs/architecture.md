@@ -853,6 +853,14 @@ readable by that client's own tools. Authentication changes neither backend
 loopback publication nor the trusted-local-process boundary, and does not
 provide transport encryption.
 
+`internal/clientconfig/` renders portable Maki example configuration from
+reviewed model capabilities. Gateway exports consume only the frozen registry,
+not the full catalog or a fresh disk scan. They carry no secrets, private
+paths, fixed session identifiers or sampler overrides. Client preferences
+select regular Flash-Next at xhigh without changing the HTTP reasoning
+fallback. The native provider uses Maki's TOML reasoning mappings and a small
+separate startup-preferences snippet, not a provider plugin or remote runner.
+
 `bin/paracetamol` is a PATH-friendly delegate to the root checkout launcher and
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream

@@ -6,6 +6,18 @@ loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
 
+Native clients do not need a Paracetamol installation. The gateway serves
+Maki example configuration at
+`GET /paracetamol/v1/clients/maki/providers.toml` and
+`GET /paracetamol/v1/clients/maki/init.lua`.
+See [remote Maki setup](guides/remote-maki.md) for installation and refreshes.
+Both routes use the normal gateway authentication policy, disable caching,
+and consult only the frozen inventory without loading a backend. No eligible
+coding model returns HTTP 409. Invalid export parameters return HTTP 400.
+The optional `base_url` query parameter accepts one credential-free HTTP(S)
+API URL ending in `/v1`. Otherwise the validated request authority supplies
+the address. Forwarded headers are ignored.
+
 Start every currently runnable text application in the foreground without
 extra selection:
 
