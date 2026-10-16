@@ -69,7 +69,7 @@ case "$qsa_graph_requested" in
 esac
 # This mirrors the host catalog allowlist so neither boundary accepts paths.
 case "$chat_template" in
-    ""|kat-coder-v2.5|muse-glimmer-atem|qwen3-0.6b|qwen3.6|qwen3.8|translategemma-manual) ;;
+    ""|kat-coder-v2.5|muse-glimmer-atem|qwen3-0.6b|qwen3.8|translategemma-manual) ;;
     *) die "unknown managed llama.cpp chat template '$chat_template'" ;;
 esac
 case "$speculative_type" in
@@ -166,7 +166,7 @@ if [[ "$router" == 0 && "$jinja" == 1 ]]; then
 fi
 if [[ "$router" == 0 ]]; then
     # Upstream now preserves history by default. Keep the reviewed model
-    # policy explicit so Qwen3.6 does not inherit Qwen3.8's history behavior.
+    # policy explicit rather than changing unrelated models' history behavior.
     if [[ "$reasoning_preserve" == 1 ]]; then
         model_policy_args+=(--reasoning-preserve)
     else

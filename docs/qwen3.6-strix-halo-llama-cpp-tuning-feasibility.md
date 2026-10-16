@@ -16,7 +16,9 @@ retired. All managed llama.cpp presets now retain the default F16 target K/V
 cache. The measured Q8 throughput gains remain valid historical evidence, but
 Paracetamol now prioritizes full cache precision over that model-specific
 performance improvement. The independently accepted MTP depth and Flash
-Attention settings remain in place.
+Attention settings remained in place until Qwen3.6 was retired from the
+catalog on 2026-10-16. The results below are historical, not a current install
+or launch guide.
 
 ## Conclusions
 

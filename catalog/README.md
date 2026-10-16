@@ -72,6 +72,12 @@ artifacts. `THIRD_PARTY_NOTICES.md` records third-party provenance, while the
 catalog itself remains authoritative for exact revisions, sizes, hashes,
 licenses, agreements, relationships, and runtime policy.
 
+Huihui Flash-Next abliterated v2 is an optional Unsloth-derived UD-Q4_K_XL
+variant, distinct from that repository's Swift series. It reuses regular
+Flash-Next's template and runtime policy, with a separate artifact identity.
+Its missing license text is recorded as `NOASSERTION`, requiring explicit
+acknowledgment. Qwen3.6 is no longer in the managed catalog.
+
 ## Import policy
 
 New artifacts must be traced to their direct source and immutable revision.

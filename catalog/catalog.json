@@ -1101,74 +1101,6 @@
         "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/blob/93769bc7ab5ad1e9cd22d857e3138cf5d977ae81/README.md"
       }
     },
-    "unsloth-qwen3.6-27b-q8-0-gguf": {
-      "description": "Qwen3.6 27B Q8_0 GGUF for llama.cpp",
-      "source": {
-        "repository": "unsloth/Qwen3.6-27B-GGUF",
-        "revision": "82d411acf4a06cfb8d9b073a5211bf410bfc29bf",
-        "path": "Qwen3.6-27B-Q8_0.gguf"
-      },
-      "destination": "unsloth-qwen3.6-27b/unsloth-Qwen3.6-27B-Q8_0.gguf",
-      "target": "llama-models",
-      "size": 28595763424,
-      "sha256": "f93f517f38e696d35a1a7df2c0e3155a64f4c4dcd662107a146ae263f7fb14ce",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/unsloth/Qwen3.6-27B-GGUF/blob/82d411acf4a06cfb8d9b073a5211bf410bfc29bf/README.md"
-      }
-    },
-    "unsloth-qwen3.6-27b-mtp-q8-0-gguf": {
-      "description": "Qwen3.6 27B MTP Q8_0 GGUF for llama.cpp",
-      "source": {
-        "repository": "unsloth/Qwen3.6-27B-MTP-GGUF",
-        "revision": "5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace",
-        "path": "Qwen3.6-27B-Q8_0.gguf"
-      },
-      "destination": "unsloth-qwen3.6-27b-mtp/unsloth-Qwen3.6-27B-Q8_0.gguf",
-      "target": "llama-models",
-      "size": 29047084160,
-      "sha256": "9408dcb356cc061a05c139e5647cbde0698ff980c6a69f7fc214e9989f86cfa8",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/blob/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace/README.md"
-      }
-    },
-    "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf": {
-      "description": "Qwen3.6 35B-A3B Unsloth Dynamic Q8_K_XL GGUF for llama.cpp",
-      "source": {
-        "repository": "unsloth/Qwen3.6-35B-A3B-GGUF",
-        "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
-        "path": "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
-      },
-      "destination": "unsloth-qwen3.6-35b-a3b/unsloth-Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
-      "target": "llama-models",
-      "size": 38451182560,
-      "sha256": "b762215c5f507f4865df4ac3d1afa803828afa41e05ecac3fac431a67bbd88e8",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/blob/a483e9e6cbd595906af30beda3187c2663a1118c/README.md"
-      }
-    },
-    "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf": {
-      "description": "Qwen3.6 35B-A3B MTP Unsloth Dynamic Q8_K_XL GGUF for llama.cpp",
-      "source": {
-        "repository": "unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
-        "revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
-        "path": "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf"
-      },
-      "destination": "unsloth-qwen3.6-35b-a3b-mtp/unsloth-Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf",
-      "target": "llama-models",
-      "size": 39099447584,
-      "sha256": "6c6b816537abad90b250a0972b345466028d861ddfe316d5f0de31ca6440f781",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/blob/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/README.md"
-      }
-    },
     "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf": {
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL GGUF with embedded MTP heads for llama.cpp",
       "source": {
@@ -1201,6 +1133,90 @@
         "spdx": "Apache-2.0",
         "status": "verified",
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1": {
+      "description": "Huihui Qwen3.8 Flash-Next 125B-A6B abliterated v2, Unsloth-derived Dynamic Q4_K_XL GGUF shard 1 of 4",
+      "source": {
+        "repository": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+        "revision": "43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "path": "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
+      },
+      "destination": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl/huihui-ai-abliterated-v2-Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "target": "llama-models",
+      "size": 10946624,
+      "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/tree/43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "warning": "The Huihui GGUF repack names the Qwen Community License in its model card but the linked LICENSE file is absent at the pinned revision. The conversion and abliteration license remains unverified.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-2": {
+      "description": "Huihui Qwen3.8 Flash-Next 125B-A6B abliterated v2, Unsloth-derived Dynamic Q4_K_XL GGUF shard 2 of 4",
+      "source": {
+        "repository": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+        "revision": "43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "path": "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf"
+      },
+      "destination": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl/huihui-ai-abliterated-v2-Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "target": "llama-models",
+      "size": 49859583136,
+      "sha256": "6f3e21a5ae10c9124c2405061d89f90b575a0704b2927f059621b7936850b276",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/tree/43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "warning": "The Huihui GGUF repack names the Qwen Community License in its model card but the linked LICENSE file is absent at the pinned revision. The conversion and abliteration license remains unverified.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-3": {
+      "description": "Huihui Qwen3.8 Flash-Next 125B-A6B abliterated v2, Unsloth-derived Dynamic Q4_K_XL GGUF shard 3 of 4",
+      "source": {
+        "repository": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+        "revision": "43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "path": "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf"
+      },
+      "destination": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl/huihui-ai-abliterated-v2-Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+      "target": "llama-models",
+      "size": 49376141504,
+      "sha256": "bb24c1d9c42c129ad93d427d3be6ca9a8d5ca6bf07ca9a50ddca03328d08c702",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/tree/43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "warning": "The Huihui GGUF repack names the Qwen Community License in its model card but the linked LICENSE file is absent at the pinned revision. The conversion and abliteration license remains unverified.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4": {
+      "description": "Huihui Qwen3.8 Flash-Next 125B-A6B abliterated v2, Unsloth-derived Dynamic Q4_K_XL GGUF shard 4 of 4",
+      "source": {
+        "repository": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+        "revision": "43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "path": "unsloth-UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf"
+      },
+      "destination": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl/huihui-ai-abliterated-v2-Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+      "target": "llama-models",
+      "size": 12087983520,
+      "sha256": "3d6a9aee4ade5740394da9bcb9fa22ea9343471f246af6914f8fcc8327ceab8e",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/tree/43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "warning": "The Huihui GGUF repack names the Qwen Community License in its model card but the linked LICENSE file is absent at the pinned revision. The conversion and abliteration license remains unverified.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
       }
     },
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1": {
@@ -1930,50 +1946,6 @@
         "llama"
       ]
     },
-    "llama-unsloth-qwen3.6-27b-q8-0": {
-      "description": "Qwen3.6 27B Q8_0 llama.cpp model",
-      "application": "llama-cpp",
-      "artifacts": [
-        "unsloth-qwen3.6-27b-q8-0-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
-    "llama-unsloth-qwen3.6-27b-mtp-q8-0": {
-      "description": "Qwen3.6 27B MTP Q8_0 llama.cpp model",
-      "application": "llama-cpp",
-      "artifacts": [
-        "unsloth-qwen3.6-27b-mtp-q8-0-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
-    "llama-unsloth-qwen3.6-35b-a3b-ud-q8-k-xl": {
-      "description": "Qwen3.6 35B-A3B Unsloth Dynamic Q8_K_XL llama.cpp model",
-      "application": "llama-cpp",
-      "artifacts": [
-        "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
-    "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
-      "description": "Qwen3.6 35B-A3B MTP Unsloth Dynamic Q8_K_XL llama.cpp model",
-      "application": "llama-cpp",
-      "artifacts": [
-        "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
     "llama-unsloth-qwen3.8-27b-ud-q8-k-xl": {
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL llama.cpp model with embedded MTP heads",
       "application": "llama-cpp",
@@ -1990,6 +1962,20 @@
       "application": "llama-cpp",
       "artifacts": [
         "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf"
+      ],
+      "groups": [
+        "all",
+        "llama"
+      ]
+    },
+    "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl": {
+      "description": "Huihui abliterated v2 Flash-Next using the Unsloth-derived Dynamic Q4_K_XL shards, optional non-MTP variant",
+      "application": "llama-cpp",
+      "artifacts": [
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-2",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-3",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4"
       ],
       "groups": [
         "all",
@@ -2576,42 +2562,6 @@
     }
   },
   "sampling_policies": {
-    "qwen3.6-27b": {
-      "thinking": {
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 0.0,
-        "repeat_penalty": 1.0
-      },
-      "non_thinking": {
-        "temperature": 0.7,
-        "top_p": 0.8,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 1.5,
-        "repeat_penalty": 1.0
-      }
-    },
-    "qwen3.6-35b-a3b": {
-      "thinking": {
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 1.5,
-        "repeat_penalty": 1.0
-      },
-      "non_thinking": {
-        "temperature": 0.7,
-        "top_p": 0.8,
-        "top_k": 20,
-        "min_p": 0.0,
-        "presence_penalty": 1.5,
-        "repeat_penalty": 1.0
-      }
-    },
     "qwen3.8-27b": {
       "thinking": {
         "temperature": 1.0,
@@ -2677,57 +2627,6 @@
       "default_context": 262144,
       "chat_template": "kat-coder-v2.5",
       "agent_tools": true
-    },
-    "unsloth-qwen3.6-27b-q8-0": {
-      "bundle": "llama-unsloth-qwen3.6-27b-q8-0",
-      "artifact": "unsloth-qwen3.6-27b-q8-0-gguf",
-      "default_context": 262144,
-      "chat_template": "qwen3.6",
-      "sampling_policy": "qwen3.6-27b",
-      "agent_tools": true,
-      "reasoning_control": "toggle",
-      "reasoning_default": "on",
-      "reasoning_off": true
-    },
-    "unsloth-qwen3.6-27b-mtp-q8-0": {
-      "bundle": "llama-unsloth-qwen3.6-27b-mtp-q8-0",
-      "artifact": "unsloth-qwen3.6-27b-mtp-q8-0-gguf",
-      "default_context": 262144,
-      "speculative_type": "draft-mtp",
-      "draft_tokens": 3,
-      "chat_template": "qwen3.6",
-      "sampling_policy": "qwen3.6-27b",
-      "agent_tools": true,
-      "reasoning_control": "toggle",
-      "reasoning_default": "on",
-      "reasoning_off": true,
-      "flash_attention": {
-        "strix-halo": "on"
-      }
-    },
-    "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl": {
-      "bundle": "llama-unsloth-qwen3.6-35b-a3b-ud-q8-k-xl",
-      "artifact": "unsloth-qwen3.6-35b-a3b-ud-q8-k-xl-gguf",
-      "default_context": 262144,
-      "chat_template": "qwen3.6",
-      "sampling_policy": "qwen3.6-35b-a3b",
-      "agent_tools": true,
-      "reasoning_control": "toggle",
-      "reasoning_default": "on",
-      "reasoning_off": true
-    },
-    "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl": {
-      "bundle": "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl",
-      "artifact": "unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl-gguf",
-      "default_context": 262144,
-      "speculative_type": "draft-mtp",
-      "draft_tokens": 3,
-      "chat_template": "qwen3.6",
-      "sampling_policy": "qwen3.6-35b-a3b",
-      "agent_tools": true,
-      "reasoning_control": "toggle",
-      "reasoning_default": "on",
-      "reasoning_off": true
     },
     "unsloth-qwen3.8-27b-ud-q8-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
@@ -2800,6 +2699,41 @@
       "reasoning_default": "medium",
       "reasoning_off": true,
       "reasoning_preserve": true
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl": {
+      "bundle": "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl",
+      "artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+      "backends": [
+        "rocm",
+        "vulkan"
+      ],
+      "backend_profiles": {
+        "rocm": [
+          "strix-halo"
+        ]
+      },
+      "default_context": 262144,
+      "chat_template": "qwen3.8",
+      "sampling_policy": "qwen3.8-flash-next",
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "reasoning_default": "medium",
+      "reasoning_off": true,
+      "reasoning_preserve": true,
+      "flash_attention": {
+        "strix-halo": "on"
+      },
+      "model_load": {
+        "strix-halo": "stream-token-embedding"
+      },
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
     },
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",

@@ -26,6 +26,83 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Flash-Next harness default and Huihui variant (2026-10-16)
+
+**PASS for Huihui's ROCm integration on Strix Halo.** Regular Unsloth
+Flash-Next becomes the Pi and Maki default at `xhigh`. Huihui abliterated v2
+is an optional Unsloth-derived UD-Q4_K_XL variant, not the Swift-derived
+conversion from the same repository. This is runtime acceptance, not a claim
+of equal coding quality or a recommendation to replace the regular model.
+Qwen3.6 is removed from the active catalog, recipes, clients and image
+template set. Existing downloaded files are not deleted.
+
+The controller starts at `08fac22`. The delivery revision is the commit
+adding this record. The image is
+`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-623c163-r54`, ID
+`4437224c72818ea3ddc623e0aeee5ac8959dcca7ea05cb5266affb79cefdfc0c`.
+Its llama.cpp source and fourteen patches are unchanged from the preceding
+acceptance. The image revision removes the unused Qwen3.6 template and its
+entrypoint selector. Runtime dependency closure, `pip check` and CPU-only
+router startup pass.
+
+All four Huihui shards at revision
+`43b4c1a8871afcc27e37bf996a431528b3d957e5` pass full size and SHA-256
+verification, totaling 111334654784 bytes. Every complete GGUF header matches
+the corresponding regular Unsloth shard, including tokenizer, embedded
+template and tensor layout. The first shard is byte-identical, while the
+other three payload hashes differ. Separate directories and basenames prevent
+mixing the two sets. The missing license text remains `NOASSERTION`, with
+explicit risk acknowledgment before download.
+
+Both variants use the same managed `qwen3.8.jinja`, SHA-256
+`eec13618752e4cc957e65efca4c052aac43683bfae884f07299022a1322d0e9a`,
+sampling policy, native reasoning choices, preserved history, non-MTP
+execution, F16 KV and model-scoped ROCm optimizations. A regression test
+compares their complete preset policies after excluding artifact identity.
+No reduced-precision arithmetic mode or Huihui-specific engine patch is added.
+
+The unchanged Fedora 44 host uses kernel `7.2.10-200.fc44.x86_64`, `gfx1151`,
+128 GB LPDDR5X-8000, balanced platform policy and `balance_performance` EPP.
+ROCm tests use one 262144-token slot and one serial client. Off, low, medium
+and xhigh answers pass, along with a nested tool round trip, SSE, Responses
+and preserved-history rendering. Two 32167-token retrievals and one
+247165-token retrieval recover all six dispersed values. Both context-depth
+suites also pass fixed-length cached continuations and a short clean request.
+The long prefill takes 391.52 seconds, with llama.cpp reporting about 17.85
+generated tokens/s afterward.
+These deliberately truncated continuations are throughput checks, not coding
+tasks. Available host memory never falls below 23.88 GiB in the ROCm run.
+
+The Vulkan control also passes all reasoning modes, tools, SSE, Responses,
+history and both 32167-token retrievals, followed by cached continuation and
+clean-request checks. It uses four slots sharing a 262144-token pool and one
+serial client. This accepts the shorter Vulkan protocol path, not near-256K
+Vulkan capacity or performance for Huihui.
+
+Managed Pi 1.2.0 and Maki 0.6.3 select regular Flash-Next at xhigh without
+model or reasoning arguments and complete actual file-read and shell-tool
+tasks. Huihui completes the same task in Pi at off and xhigh and in Maki at
+adaptive medium. Pi off produces no thinking blocks. An initial test wrongly
+used Maki's ignored `--thinking off` CLI flag and observed medium instead.
+The corrected live test exercises adaptive mode. Installed-client transport
+tests cover named choices through Maki's supported Lua configuration.
+
+Gateway tests verify both sampling modes, omitted and null defaults, explicit
+zero overrides, provenance reporting and rejection of conflicting reasoning
+selectors. Omitted template reasoning renders identically to explicit medium,
+not xhigh. Harness preference therefore does not change HTTP fallback policy.
+The gateway advertises no Qwen3.6 models, starts unloaded and keeps its child
+on an ephemeral loopback port.
+
+Host checks pass `make check`, `make test`, `make static`, forced Go rebuild,
+all fourteen Pi extension tests, Python compilation, shell syntax, catalog
+JSON and full-install dry-run validation. No new kernel GPU, SVM, OOM or
+protection-fault event is recorded. Test containers and listeners are removed.
+Raw evidence, including the initial Maki test mistake, is retained on Aion at
+`~/.local/share/paracetamol/apps/acceptance/results/20261016-flash-next-models/`
+with a SHA-256 manifest. Inference on `gfx1150`, `gfx1200` and `gfx1201` is
+**NOT PERFORMED** for this variant.
+
 ### Strix Halo llama.cpp refresh and optimization screens (2026-10-16)
 
 **PASS for the ROCm refresh on Strix Halo.** The upstream
@@ -4261,8 +4338,8 @@ local source image.
 | Hunyuan T2V | `hunyuan-video-1.5-t2v-480p-cfg-distilled` | pending | pending | pending | pending |
 | Hunyuan I2V | `hunyuan-video-1.5-i2v-480p-step-distilled` | pending | pending | pending | pending |
 | llama.cpp offload smoke | `llama-qwen-qwen3-0.6b-q8-0` | pending | pending | pending | pending |
-| llama.cpp Qwen3.6 tool protocol | `unsloth-qwen3.6-27b-mtp-q8-0`, complete nested tool round trip at 256K with thinking on (Pi `high`) and off | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
 | llama.cpp Qwen3.8 tool protocol | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, complete nested tool round trip at 256K with off, low, medium, and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
+| llama.cpp Huihui Flash-Next | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`, shared regular Flash-Next policy with off, low, medium and xhigh | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-10-16 on ROCm at 256K capacity and Vulkan at 32K input | ROCm N/P by model policy, Vulkan pending |
 | llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
 | llama.cpp Muse DFlash | `meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |
 | DwarfStar direct-answer smoke | DeepSeek V4 Flash 0731 Q2 imatrix (routed IQ2_XXS/Q2_K, Q8 attention/shared/output), 4K context, 64-token ceiling | N/P unless host memory offload is deliberately provisioned | pending | pending | pending |

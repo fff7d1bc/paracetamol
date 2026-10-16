@@ -112,7 +112,7 @@ the complete suite with one exact managed llama.cpp preset:
 
 ```bash
 ./paracetamol benchmark agent \
-  --preset unsloth-qwen3.6-27b-mtp-q8-0 --thinking high
+  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl --thinking xhigh
 ```
 
 Or run selected tasks while calibrating a model:
@@ -125,8 +125,7 @@ Or run selected tasks while calibrating a model:
 ```
 
 `--repetitions 3` creates a fresh checkout and Pi session for every attempt.
-`--thinking high` means native thinking on for Qwen3.6; it is not a graduated
-high effort. Qwen3.8 accepts off, low, medium, or xhigh, while Muse accepts
+Qwen3.8 accepts off, low, medium, or xhigh, while Muse accepts
 low, medium, high, or xhigh and has no off mode. The runner rejects selectors
 outside the chosen preset's native contract and records the native value in
 the result. It deliberately provides no “normalized” three-model condition:

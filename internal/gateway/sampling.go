@@ -121,8 +121,8 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 		}
 		levels := model.ReasoningLevels
 		if model.ReasoningControl == "toggle" {
-			// Qwen3.6 has no effort scale. Positive OpenAI effort selections
-			// still mean on, just as they do in its template.
+			// Toggle-only models have no effort scale. Positive OpenAI effort selections
+			// still mean on, just as they do in the template.
 			levels = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
 		}
 		if !slices.Contains(levels, value) {

@@ -29,7 +29,7 @@ Recipes are organized by their consuming application:
 comfyui
   image  edit  t2v  i2v
 llama-cpp
-  qwen3.6  qwen3.8  qwen3.8-flash-next
+  qwen3.8  qwen3.8-flash-next
   kat-coder  muse-glimmer
   shisa-v2.1  translation-gemma  translation-hy
 dwarfstar
@@ -41,7 +41,6 @@ Install interactively, or select one recipe explicitly:
 ```bash
 ./paracetamol content install
 ./paracetamol content install comfyui image
-./paracetamol content install llama-cpp qwen3.6
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
@@ -52,14 +51,8 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
 ```
 
-The `qwen3.6` recipe installs both reviewed MTP choices: dense 27B MTP Q8_0
-and sparse 35B-A3B MTP Dynamic Q8_K_XL. Its next-step command starts dense
-27B, and Qwen3.8 remains the managed-client default. Matching dense and sparse
-non-MTP GGUFs remain available through the exact-bundle browser.
-
-The upstream 27B and 35B-A3B MTP artifact basenames omit `MTP`. Their
-Paracetamol directories, bundles, presets, and pinned sources retain the exact
-MTP identity and prevent collisions with the non-MTP files.
+Qwen3.6 has been retired from the managed catalog. Old downloads are left
+in place, but no longer appear in the gateway or generated client lists.
 
 The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
 That file contains the dense 27B target and its trained MTP prediction heads,
@@ -69,7 +62,7 @@ recipe until its multimodal runtime contract is separately accepted.
 
 The exact `llama-unsloth-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
 Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
-`qwen3.8` recipe so installing the recommended model does not also download a
+`qwen3.8` recipe so installing the dense Q8 model does not also download a
 second quantization:
 
 ```bash
@@ -78,12 +71,13 @@ second quantization:
 
 Its base and embedded-MTP presets start at a reviewed 128K context for more
 constrained hardware. The smaller quantization is optional and never
-displaces Dynamic Q8_K_XL as the managed-client default.
+changes the managed-client default.
 
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
 Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a
 128 GB Strix Halo host with fast local SSD storage, not another quantization
-of the dense 27B default. The preset uses SSD-backed lazy loading for the
+of dense 27B. It is the Pi and Maki default at `xhigh` when advertised by the
+gateway. The preset uses SSD-backed lazy loading for the
 model's unusually large per-layer token embedding and has no MTP mode in the
 current pinned llama.cpp. On Strix Halo it uses a model-scoped ROCm direct
 reader and allocator policy. A ROCm router or gateway includes it when the
@@ -94,6 +88,19 @@ guide](applications.md) for capacity and concurrency limits.
 Its pinned conversion repository declares license
 metadata but does not contain the referenced license text, so Paracetamol
 keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
+
+Huihui's optional abliterated v2 uses the Unsloth-derived UD-Q4_K_XL shards,
+not its separate Swift-derived series. It has a distinct publisher-prefixed
+identity and reuses the regular Flash-Next runtime policy and template.
+Install it separately without changing the default:
+
+```bash
+./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl \
+  --acknowledge-license-risk
+```
+
+This download also needs explicit license-risk acknowledgment. It is another
+103.7 GiB model, not a patch file applied to existing weights.
 
 The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
 matching DFlash draft. The next-step command starts the forced-256K DFlash

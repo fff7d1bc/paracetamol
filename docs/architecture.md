@@ -790,7 +790,7 @@ or speculative-decoding policies retain separate runtime acceptance.
 
 `reasoning_control` is the narrower model claim behind agent-client reasoning
 selectors. `reasoning_levels`, `reasoning_default`, and `reasoning_off` define
-the exact UI contract. Qwen3.6 declares a toggle, Qwen3.8 declares native
+the exact UI contract. Qwen3.8 declares native
 effort, and Muse declares native strength. llama.cpp forwards recognized
 OpenAI-compatible labels through its template capability layer as both
 `reasoning_effort` and `reasoning_strength`; each template consumes only its
@@ -857,9 +857,13 @@ provide transport encryption.
 resolves symlinks before locating it. The public `agent` command groups coding
 frontends below one command; their short PATH launchers retain the upstream
 command names. The generated model maps contain only the reviewed agent set,
-advertise each preset's managed starting context, and prefer Qwen3.8 27B MTP
-Q8 at native medium effort when the running gateway exposes it. A launcher
-otherwise selects the first exposed agent-capable model and refuses a normal
+advertise each preset's managed starting context, and prefer regular Qwen3.8
+Flash-Next at native xhigh effort when the running gateway exposes it. This
+preference belongs to `internal/agent/models.go`, shared by Pi launch arguments
+and Maki's adaptive mapping. It does not alter the catalog or template's
+medium fallback for HTTP callers or the optional Huihui model. A launcher
+otherwise prefers dense Qwen3.8 27B MTP Q8, then the first exposed
+agent-capable model, and refuses a normal
 session when the gateway advertises no maintained model.
 
 `agent-clients/pi/package.json` and its npm lockfile own the exact Pi release
@@ -892,7 +896,7 @@ step. Cycled and restored models deliberately do not, so ordinary navigation
 and session startup remain quiet. The launcher disables startup network
 checks, telemetry, and project `.pi` trust while leaving normal `AGENTS.md`
 context discovery enabled. It supplies the recommended installed model and
-its catalog default thinking level as command-line defaults before forwarded
+its harness thinking preference as command-line defaults before forwarded
 Pi session arguments, so an explicit later `--provider`, `--model`, or
 `--thinking` remains authoritative. The generated provider enables Pi's
 native session-affinity headers, allowing the gateway to correlate requests
@@ -924,9 +928,8 @@ to disable all extensions.
 `internal/agent/models.go` owns reviewed coding-task sampling metadata for
 every maintained llama.cpp agent preset. Pi receives static fields as
 `samplingParams` where the policy does not vary with thinking; explicit client
-request settings remain higher-precedence caller policy. Qwen3.6 and Qwen3.8
-are deliberately different because their official samplers depend on
-reasoning mode, and sparse Qwen3.6 has a distinct thinking policy. The catalog
+request settings remain higher-precedence caller policy. Qwen3.8 samplers
+depend on reasoning mode, with a distinct Flash-Next thinking policy. The catalog
 owns validated, reusable thinking and non-thinking policies and each
 applicable preset references one through `sampling_policy`. The Go gateway
 freezes the policy with its inventory, resolves thinking before scheduling,
@@ -983,8 +986,7 @@ gateway correlation header. It deliberately groups all tabs and subagents
 from that launcher invocation and is not presented as Maki's own session ID.
 The integration requires Maki 0.6.3 or newer, verified against 0.6.3. Its Lua
 model rows retain the `thinking_fields` contract. Named modes send only the
-selected fragment: Qwen3.6 uses nested `chat_template_kwargs.enable_thinking`,
-Qwen3.8 sends `reasoning_effort`, and
+selected fragment. Qwen3.8 sends `reasoning_effort`, and
 Muse sends `reasoning_strength`. Maki snaps unsupported effort names downward
 to a declared level; models marked `requires_thinking` clamp off upward before
 the fragment is selected. Explicit numeric budgets remain separate sampler

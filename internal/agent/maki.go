@@ -149,7 +149,7 @@ func makiModels(models []textmodel.Model) []map[string]any {
 				fields["adaptive"] = map[string]any{"chat_template_kwargs": map[string]bool{"enable_thinking": true}}
 			default:
 				field := "reasoning_" + selected.ReasoningControl
-				fields["adaptive"] = map[string]string{field: selected.ReasoningDefault}
+				fields["adaptive"] = map[string]string{field: clientReasoningDefault(selected)}
 				for _, level := range selected.ReasoningLevels {
 					fields[level] = map[string]string{field: level}
 				}

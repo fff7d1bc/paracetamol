@@ -26,7 +26,6 @@ var byApplication = map[string][]Recipe{
 		{ID: "i2v", Application: "comfyui", Description: "Wan 2.2 I2V FP8, 4-step Lightning", Bundles: []string{"wan-2.2-i2v-14b-fp8-lightning"}, Next: []string{"run", "comfyui"}},
 	},
 	"llama-cpp": {
-		{ID: "qwen3.6", Application: "llama-cpp", Description: "Unsloth Qwen3.6 dense 27B MTP Q8_0 and sparse 35B-A3B MTP Dynamic Q8_K_XL", Bundles: []string{"llama-unsloth-qwen3.6-27b-mtp-q8-0", "llama-unsloth-qwen3.6-35b-a3b-mtp-ud-q8-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.6-27b-mtp-q8-0"}},
 		{ID: "qwen3.8", Application: "llama-cpp", Description: "Unsloth Qwen3.8 dense 27B Dynamic Q8_K_XL with MTP", Bundles: []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"}},
 		{ID: "qwen3.8-flash-next", Application: "llama-cpp", Description: "Unsloth Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL for experimental Strix Halo SSD-backed loading", Bundles: []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}},
 		{ID: "kat-coder", Application: "llama-cpp", Description: "Bartowski KAT-Coder V2.5 Dev 35B Q8_0 coding and agent model", Bundles: []string{"llama-bartowski-kat-coder-v2.5-dev-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "bartowski-kat-coder-v2.5-dev-q8-0"}},

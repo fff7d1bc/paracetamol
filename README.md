@@ -167,7 +167,11 @@ Manager, and multi-GPU graphs are covered in the
 
 ### llama.cpp
 
-Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default.
+Qwen3.8 Flash-Next Dynamic Q4_K_XL at `xhigh` is the Pi and Maki default
+when the gateway advertises it. It needs a high-memory host. Dense Qwen3.8
+27B remains available for smaller systems and as a comparison model.
+
+To start with the dense model:
 
 ```bash
 ./paracetamol build llama-cpp
@@ -177,12 +181,12 @@ Dense Qwen3.8 27B Dynamic Q8_K_XL with MTP is the common managed default.
 ```
 
 The recipe installs one 29.30 GiB GGUF containing the dense target and its MTP
-prediction heads. The default preset starts at 256K context, verifies up to
+prediction heads. The dense preset starts at 256K context, verifies up to
 three draft tokens, and uses native medium reasoning effort. Its non-MTP
 control shares the same verified artifact.
 
 Public text model IDs now begin with the publisher of the pinned GGUF. The
-default above is `unsloth-…`, and the Muse presets are `meta-models-…`.
+models above are `unsloth-…`, and the Muse presets are `meta-models-…`.
 These are breaking changes for clients that send a literal `model` ID,
 including OpenAI-compatible HTTP clients. Update those IDs after upgrading;
 Pi and Maki regenerate their model lists from the gateway. Installed model
@@ -200,7 +204,7 @@ managed-client default.
 
 The Dynamic v3 Q4_K_XL presets start at a reviewed 128K context. Treat the
 smaller quantization as a capacity and throughput tradeoff, not an
-equivalent-quality replacement for the Dynamic Q8_K_XL default. On the
+equivalent-quality replacement for Dynamic Q8_K_XL. On the
 accepted Strix Halo host its matched depth-three MTP screen generated 3.3%
 faster than the earlier preview Q4 artifact, with 1.9% slower prompt
 processing. It solved three of five fresh hidden-graded Pi tasks. The earlier
@@ -213,7 +217,7 @@ comparison](docs/guides/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
 medium and `xhigh` quality results, per-task outcomes, targeted retries, and
 the limits of applying those Unsloth-specific findings to other GGUF releases.
 
-Qwen3.8 Flash-Next 125B-A6B is a separate experimental family for 128 GB
+Qwen3.8 Flash-Next 125B-A6B is a separate family for 128 GB
 Strix Halo hosts with fast local storage. Its guided four-shard Unsloth
 Dynamic Q4_K_XL conversion occupies 103.7 GiB. Paracetamol reads the model's
 large per-layer token embedding on demand from local storage, with the other
@@ -242,22 +246,24 @@ record](docs/qwen3.8-flash-next-direct-reader-feasibility.md) covers the
 
 The pinned conversion's license metadata could not be verified against a
 license file at its exact revision, so installation requires the explicit
-unverified-license acknowledgment. The preset stays outside all defaults and
-is accepted only on `gfx1151`.
+unverified-license acknowledgment. Hardware acceptance is limited to `gfx1151`.
+Pi and Maki select this model at `xhigh`. HTTP requests that omit reasoning
+still use `medium`.
 
-Qwen3.6 and Muse Glimmer remain separate comparison families. Their recipes
-install the dense and sparse Qwen3.6 MTP choices and Muse's Dynamic target and
-DFlash pair.
+Huihui's abliterated v2 is an optional, separately named Flash-Next variant.
+It uses the Unsloth-derived UD-Q4_K_XL files and the same runtime policy,
+template and sampling defaults. It does not replace regular Flash-Next.
+See the [model guide](docs/guides/applications.md#choosing-a-managed-qwen-preset)
+for installation and limitations.
+
+Qwen3.6 has been retired from the catalog and clients. Existing downloads
+are left untouched. Muse Glimmer remains a separate comparison family.
 
 ```bash
-./paracetamol content install llama-cpp qwen3.6
 ./paracetamol content install llama-cpp muse-glimmer
 ```
 
-The Qwen3.6 recipe prints dense 27B MTP as its next step. Sparse 35B-A3B MTP
-is an optional comparison and does not change the Qwen3.8 managed-client
-default. Qwen3.6 MTP and non-MTP variants use distinct GGUFs, so they appear
-on separate `content list models` rows. Each Qwen3.8 quantization shares one
+Each dense Qwen3.8 quantization shares one
 GGUF between its base and MTP presets. The list prints each pair of
 preset aliases on one comma-separated row. Muse's three presets also share
 one artifact pair.
@@ -446,16 +452,17 @@ engine-specific API work. See the
 [application guide](docs/guides/applications.md#inference-gateway) and
 [gateway design](docs/gateway.md).
 
-Qwen3.8 starts at native medium effort. Pi exposes its off, low, medium, and
+Regular Flash-Next starts at `xhigh` in Pi and Maki. Raw HTTP requests retain
+medium effort when omitted. Pi exposes off, low, medium, and
 xhigh choices without inventing a `high` level. Maki builds
 containing commit `a9495e1` expose the same native model controls through
 `/thinking`. Unsupported names snap downward, so `high` selects Qwen3.8
-medium. Paracetamol maps Qwen3.6 to its on/off toggle and prevents Muse from
+medium. Paracetamol prevents Muse from
 falling below its native low strength.
 
 In managed Pi sessions, the configured model-selection shortcut (`Ctrl+L` by
 default) and bare `/model` open Paracetamol's family-grouped picker. Models stay
-under stable headings such as Qwen 3.8 and Qwen 3.6 instead of moving the
+under stable headings such as Qwen 3.8 and Muse Glimmer instead of moving the
 current model into a recent section. Selecting a model immediately opens its
 valid reasoning choices. An exact `/model PROVIDER/MODEL` command also opens
 the reasoning picker after changing models.
@@ -571,7 +578,7 @@ Compare llama.cpp's ROCm and Vulkan backends on the exact model you use.
 
 ```bash
 ./paracetamol benchmark llama-cpp throughput \
-  --preset unsloth-qwen3.6-27b-q8-0 \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl \
   --compare-backends
 ```
 
@@ -603,8 +610,8 @@ task suite.
   --thinking medium --dry-run
 ```
 
-Reasoning selectors follow each model's native contract. Qwen3.6 has an off/on
-toggle. Qwen3.8 has off, low, medium, and xhigh effort. Muse has low, medium,
+Reasoning selectors follow each model's native contract.
+Qwen3.8 has off, low, medium, and xhigh effort. Muse has low, medium,
 high, and xhigh strength. The benchmark runner validates the selected value
 and records both the client selector and its native value. A shared label does
 not imply an equivalent reasoning condition across model families. Define and

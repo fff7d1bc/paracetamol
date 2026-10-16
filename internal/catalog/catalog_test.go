@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 52 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 4 || len(loaded.LlamaPresets) != 18 || len(loaded.DwarfStarPresets) != 1 {
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 49 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 15 || len(loaded.DwarfStarPresets) != 1 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
@@ -33,7 +34,7 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 		t.Fatalf("unexpected Qwen3.8 Flash-Next Q4_K_XL preset: %#v", flashNextQ4)
 	}
 	for id, preset := range loaded.LlamaPresets {
-		if id != flashNextQ4.ID && (len(preset.BackendProfiles) != 0 || len(preset.ModelLoad) != 0) {
+		if preset.SamplingPolicy != "qwen3.8-flash-next" && (len(preset.BackendProfiles) != 0 || len(preset.ModelLoad) != 0) {
 			t.Fatalf("unrelated preset %s acquired an exceptional runtime policy", id)
 		}
 		for profile, cacheType := range preset.KVCache {
@@ -45,6 +46,56 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	dwarfstar := loaded.DwarfStarPresets["antirez-deepseek-v4-flash-0731-q2-imatrix"]
 	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
 		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
+	}
+}
+
+func TestHuihuiFlashNextReusesRegularRuntimePolicy(t *testing.T) {
+	loaded, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	regular := loaded.LlamaPresets["unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"]
+	huihui, ok := loaded.LlamaPresets["huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl"]
+	if !ok {
+		t.Fatal("missing Huihui variant")
+	}
+	bundle := loaded.Bundles[huihui.Bundle]
+	regularBundle := loaded.Bundles[regular.Bundle]
+	if len(bundle.Artifacts) != 4 {
+		t.Fatalf("Huihui requires all four shards, got %v", bundle.Artifacts)
+	}
+	for i, id := range bundle.Artifacts {
+		artifact := loaded.Artifacts[id]
+		original := loaded.Artifacts[regularBundle.Artifacts[i]]
+		if artifact.Source.Repository != "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF" ||
+			!strings.HasPrefix(artifact.Source.Path, "unsloth-UD-Q4_K_XL/") || artifact.Size != original.Size ||
+			artifact.License.SPDX != "NOASSERTION" || artifact.License.Status != "unverified" {
+			t.Fatalf("unexpected Huihui shard provenance: %#v", artifact)
+		}
+		if filepath.Dir(artifact.Destination) == filepath.Dir(original.Destination) {
+			t.Fatal("variant shards must not mix with the original model")
+		}
+	}
+	// This is another weight choice, not a second implementation of the
+	// template, sampling, allocation, context or reasoning contract.
+	huihui.ID, huihui.Bundle, huihui.Artifact = regular.ID, regular.Bundle, regular.Artifact
+	if !reflect.DeepEqual(regular, huihui) {
+		t.Fatalf("Flash-Next policies diverged: regular=%#v Huihui=%#v", regular, huihui)
+	}
+	for id := range loaded.LlamaPresets {
+		if strings.Contains(id, "qwen3.6") {
+			t.Fatalf("retired model remains advertised: %s", id)
+		}
+	}
+	for id := range loaded.Artifacts {
+		if strings.Contains(id, "qwen3.6") {
+			t.Fatalf("retired artifact remains managed: %s", id)
+		}
+	}
+	for id := range loaded.Bundles {
+		if strings.Contains(id, "qwen3.6") {
+			t.Fatalf("retired bundle remains selectable: %s", id)
+		}
 	}
 }
 

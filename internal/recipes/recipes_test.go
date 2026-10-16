@@ -20,12 +20,18 @@ func TestFlashNextRecipeUsesAcceptedQ4KXLVariant(t *testing.T) {
 	}
 }
 
-func TestQwen38RecipeKeepsDefault(t *testing.T) {
+func TestQwen38RecipeKeepsDenseSelection(t *testing.T) {
 	qwen, err := Find("llama-cpp", "qwen3.8")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(qwen.Bundles, []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}) {
-		t.Fatalf("Qwen default bundles = %v", qwen.Bundles)
+		t.Fatalf("Qwen dense bundles = %v", qwen.Bundles)
+	}
+}
+
+func TestQwen36RecipeIsRetired(t *testing.T) {
+	if _, err := Find("llama-cpp", "qwen3.6"); err == nil {
+		t.Fatal("retired recipe remains selectable")
 	}
 }
