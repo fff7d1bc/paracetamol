@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  scrollbar-gutter: stable;
   --bg: #101318;
   --panel: #181d25;
   --raised: #1e2530;
@@ -80,7 +81,10 @@ h3 { font-size: 1.05rem; margin: 0 0 1rem; }
 .code-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 16px; color: var(--muted); font-size: .73rem; border-bottom: 1px solid #293240; background: #1b222c; }
 pre { margin: 0; padding: 17px; overflow: auto; font-size: .78rem; line-height: 1.8; tab-size: 2; max-height: 420px; white-space: pre-wrap; overflow-wrap: anywhere; }
 details { border-top: 1px solid var(--line); }
-summary { padding: 13px 0; font-size: .88rem; font-weight: 550; }
+summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; font-size: .88rem; font-weight: 550; list-style: none; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "Show"; min-width: 4ch; text-align: right; color: var(--accent); font-size: .78rem; font-weight: 400; }
+details[open] > summary::after { content: "Hide"; }
 details p:last-child { margin-bottom: 15px; }
 .footnote { font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 17px; margin-top: 22px; }
 .transport-note { font-size: .78rem; color: var(--muted); padding: 0 3px; }
