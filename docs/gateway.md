@@ -21,11 +21,14 @@ the address. Forwarded headers are ignored.
 ## Browser landing page
 
 Open the gateway's root address, such as `http://gateway.example:7455/`.
-The embedded dark page has two tabs.
+The embedded dark page has three tabs.
 
-- **Connect** shows the OpenAI-compatible base URL, native Maki setup,
+- **Overview** shows the OpenAI-compatible base URL and links to setup and models.
+- **Configuration** contains native Maki setup,
   configuration previews and downloads, and instructions for other clients.
-  Fresh-setup commands refuse to replace existing configuration files.
+  Fresh setup writes directly to `~/.config/maki` (or `$XDG_CONFIG_HOME/maki`),
+  without temporary directories. Both downloads must succeed before either
+  file is written. Existing configuration files are never replaced.
 - **Models** groups the frozen inventory by family, with search, exact IDs,
   publisher labels, configured context, residency and expandable reasoning
   details. It distinguishes Maki's preferred reasoning from the HTTP fallback.

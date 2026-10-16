@@ -61,6 +61,11 @@ h3 { font-size: 1.05rem; margin: 0 0 1rem; }
 .text-button { color: var(--accent); background: none; border: 0; font-size: .8rem; padding: 5px 2px; }
 .text-button:hover:not(:disabled) { color: #c5e0ff; text-decoration: underline; }
 .setup-card { padding: 28px; margin-bottom: 25px; }
+.overview-links { margin-bottom: 28px; }
+.navigation-card { display: block; padding: 24px; text-decoration: none; }
+.navigation-card:hover { border-color: var(--accent); }
+.navigation-card h2 { font-size: 1.15rem; color: var(--text); }
+.navigation-card p { margin-bottom: 0; font-size: .88rem; color: var(--muted); }
 .section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; }
 .section-heading p, .steps p, .setup-card > p { color: var(--muted); font-size: .88rem; }
 .default-note { background: #20334866; border-left: 2px solid #547b9e; padding: 10px 14px; margin: 4px 0 24px; }
@@ -101,6 +106,7 @@ details p:last-child { margin-bottom: 15px; }
 footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 15px; padding: 24px 0; margin-top: 38px; border-top: 1px solid var(--line); font-size: .72rem; color: var(--muted); }
 .feedback { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); max-width: min(90vw, 620px); background: #263e55; border: 1px solid #6387a9; color: var(--text); border-radius: 8px; padding: 12px 18px; font-size: .85rem; z-index: 2; box-shadow: 0 8px 40px #0008; }
 @media (max-width: 650px) {
+  .tabs { gap: 20px; }
   .shell { padding: 0 18px; }
   .masthead { align-items: flex-start; padding-top: 23px; gap: 10px; }
   .brand { font-size: 1.05rem; gap: 10px; }
