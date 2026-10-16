@@ -11,6 +11,16 @@ remain Linux-only.
 
 ## Download the configuration
 
+For a guided setup, open the gateway address in a browser, for example
+`http://gateway.example:7455/`. Connect has configuration previews, downloads and
+copyable commands for fresh or existing setups. Models lists the exact IDs
+and their reasoning controls. Neither tab starts inference.
+
+Commands and browser downloads use the address you opened. Behind HTTPS,
+the browser supplies that public `/v1` URL explicitly to the export route.
+When Bearer authentication is enabled, the page provides authenticated curl
+instructions without accepting or storing a key in the browser.
+
 Start the gateway on the inference host with its intended LAN address and
 port. On the client, download into a temporary directory first.
 

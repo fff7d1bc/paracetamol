@@ -39,7 +39,7 @@ func testMakePublication(t *testing.T, makePath string, makefile []byte, target,
 	root := t.TempDir()
 	fakeBin := filepath.Join(root, "fake-bin")
 	outputDir := filepath.Join(root, "build", "linux-amd64", "bin")
-	for _, dir := range []string{fakeBin, outputDir} {
+	for _, dir := range []string{fakeBin, outputDir, filepath.Join(root, "internal/gateway/assets")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -58,6 +58,7 @@ func testMakePublication(t *testing.T, makePath string, makefile []byte, target,
 	write("Makefile", makefile, 0o644)
 	write("go.mod", []byte("module fixture\n\ngo 1.26.0\n"), 0o644)
 	write("main.go", []byte("package main\nfunc main() {}\n"), 0o644)
+	write("internal/gateway/assets/gateway.css", []byte("body {}\n"), 0o644)
 	write("fake-bin/go", []byte(`#!/bin/sh
 set -eu
 case "$1/$2" in
@@ -134,5 +135,27 @@ esac
 		if strings.HasPrefix(entry.Name(), ".") {
 			t.Errorf("temporary build output left behind: %s", entry.Name())
 		}
+	}
+	if failure == "none" {
+		// An asset-only edit must invalidate both normal and static binaries.
+		check := func(wantStale bool) {
+			t.Helper()
+			probe := exec.CommandContext(ctx, makePath, "--no-print-directory", "-q", target, "GO_SOURCE_ROOTS=main.go")
+			probe.Dir, probe.Env = root, cmd.Env
+			output, err := probe.CombinedOutput()
+			if wantStale {
+				if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+					t.Fatalf("asset did not trigger rebuild: %v %s", err, output)
+				}
+			} else if err != nil {
+				t.Fatalf("completed build still stale: %v %s", err, output)
+			}
+		}
+		check(false)
+		later := time.Now().Add(time.Second)
+		if err := os.Chtimes(filepath.Join(root, "internal/gateway/assets/gateway.css"), later, later); err != nil {
+			t.Fatal(err)
+		}
+		check(true)
 	}
 }

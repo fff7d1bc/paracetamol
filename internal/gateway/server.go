@@ -118,12 +118,18 @@ func (server *Server) BeginShutdown() {
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Server", identity.CommandName+"/"+identity.Version)
 	writer.Header().Set(IdentityHeader, IdentityValue)
+	if server.serveWeb(writer, request) {
+		return
+	}
 	// Apply the same policy on loopback and LAN, before reading any request
-	// body, exposing inventory/status, or touching the scheduler.
+	// body, exposing inventory/status, or touching the scheduler. Only the
+	// generic web document and exact embedded assets above are public.
 	if !server.auth.allow(writer, request) {
 		return
 	}
 	switch {
+	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/ui":
+		server.webData(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/health":
 		server.health(writer)
 	case request.Method == http.MethodGet && request.URL.Path == "/v1/models":

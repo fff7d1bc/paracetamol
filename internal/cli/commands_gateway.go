@@ -360,6 +360,7 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 		rows = append(rows, [2]string{summary.AdditionalLabel, summary.AdditionalEndpoint})
 	}
 	rows = append(rows,
+		[2]string{"Web UI", strings.TrimSuffix(summary.LocalEndpoint, "/v1") + "/"},
 		[2]string{"Profile", profile},
 		[2]string{"Applications", strings.Join(summary.Applications, ", ")},
 		[2]string{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},

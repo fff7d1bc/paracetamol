@@ -840,8 +840,10 @@ neither sends a signal to a discovered PID nor adds a shutdown route to the
 published HTTP API. The control socket is independent of model storage and
 the selected gateway port.
 
-Optional gateway Bearer authentication is enforced before every route on every
-listener. A private configured server key is loaded once and reduced to a
+Optional gateway Bearer authentication is enforced before every API route on
+every listener. Only GET/HEAD for the generic root document and two exact
+embedded asset paths bypass it. No inventory or host data is embedded in those
+public resources. A private configured server key is loaded once and reduced to a
 digest for constant-time comparison. Client key selection is independent of
 server key selection. Bounded inventory and status probes share the gateway
 identity check and never follow redirects. Public authorization headers are
@@ -850,6 +852,16 @@ The Maki export references an environment variable and never includes the
 server key. A client's own tools may be able to read its credentials.
 Authentication changes neither backend loopback publication nor the trusted-local-process boundary, and does not
 provide transport encryption.
+
+`internal/gateway/assets/` contains the embedded browser page. Make tracks
+these files as build inputs. The protected `/paracetamol/v1/ui` projection
+reuses the frozen registry, client preference policy and read-only residency
+probe. It does not sample host resources or inspect the request ledger.
+The browser uses text nodes for inventory and export previews, performs only
+explicit reads, and never accepts credentials. It has no third-party assets,
+polling, lifecycle controls or browser storage. Browser-origin export URLs
+use the existing validated `base_url` override rather than trusting forwarded
+headers at the server boundary.
 
 `internal/clientconfig/` renders portable Maki example configuration from
 reviewed model capabilities. Gateway exports consume only the frozen registry,
