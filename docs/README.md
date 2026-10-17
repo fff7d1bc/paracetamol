@@ -18,7 +18,8 @@ then choose a user guide or maintainer reference below.
   reports the hidden-graded medium and `xhigh` coding-agent comparison,
   context results, exact Unsloth artifacts, and limitations.
 - [Inference gateway](gateway.md) documents the native one-port scheduler,
-  frozen inventory, backend lifecycle, API boundary, and failure policy.
+  frozen inventory, backend lifecycle, API boundary, private usage statistics,
+  and failure policy.
 - [Remote Maki](guides/remote-maki.md) connects native macOS or Linux Maki
   through gateway-generated configuration without installing Paracetamol.
 
@@ -139,6 +140,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Local image build commands | `internal/buildplan/` |
 | Podman process boundary and runtime command construction | `internal/podman/`, `internal/runtime/` |
 | Lazy text-inference inventory, proxy, scheduler, and backend lifecycle | `internal/gateway/`, `internal/textmodel/` |
+| Durable daily usage totals and Statistics page | `internal/gateway/statistics*.go`, `internal/gateway/assets/` |
 | In-container GPU/profile validation | `containers/common/profile.py` |
 | Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
 | Remote URL resolution and generated local packs | `internal/remoteimport/` |

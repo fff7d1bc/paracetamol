@@ -10,6 +10,13 @@ revisions recorded in `catalog/catalog.json`.
 
 ## Direct components
 
+- The host gateway uses `modernc.org/sqlite` v1.60.1, under BSD-3-Clause,
+  for local usage statistics. It embeds SQLite 3.53.4, which is public domain,
+  without depending on system SQLite or CGO. Module versions and checksums
+  are pinned in `go.mod` and `go.sum`. The driver license and its full upstream
+  third-party notices are retained in `licenses/modernc-sqlite/`. That upstream
+  notice distinguishes linked components from test and build-tool dependencies.
+  Paracetamol does not import the optional vector-search or VFS extensions.
 - ComfyUI is pinned to an exact source revision and is licensed under
   GPL-3.0. Its source and license are present at `/opt/ComfyUI` in the locally
   built image.

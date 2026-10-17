@@ -5,10 +5,14 @@
 const byID = (id) => document.getElementById(id);
 const apiAddress = new URL("/v1", window.location.origin).href;
 const exportRoot = "/paracetamol/v1/clients/maki/";
-const tabs = ["overview", "configuration", "models"];
+const tabs = ["overview", "configuration", "models", "statistics"];
 let snapshot = null;
 let busy = false;
 let feedbackTimer;
+let statisticsDays = 7;
+let statisticsAttempted = false;
+let statisticsSnapshot = null;
+let statisticsSequence = 0;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -75,6 +79,7 @@ function selectTab() {
     byID("tab-" + tab).tabIndex = selected ? 0 : -1;
     byID(tab).hidden = !selected;
   }
+  if (name === "statistics" && !statisticsAttempted) refreshStatistics();
 }
 
 function setupCommands(authenticated) {
@@ -111,7 +116,11 @@ async function readResponse(path) {
     error.authentication = true;
     throw error;
   }
-  if (!response.ok) throw new Error(`Gateway returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const error = new Error(`Gateway returned HTTP ${response.status}.`);
+    error.httpStatus = response.status;
+    throw error;
+  }
   return response;
 }
 
@@ -120,6 +129,12 @@ function setExportAvailable(available) {
 }
 
 function lockPage() {
+  statisticsSequence++;
+  statisticsSnapshot = null;
+  statisticsAttempted = true;
+  byID("refresh-statistics").disabled = false;
+  byID("statistics-content").hidden = byID("statistics-metadata").hidden = byID("statistics-warning").hidden = true;
+  byID("statistics-status").textContent = "Statistics are protected. Use authenticated curl with a private header file; this page has no browser login.";
   snapshot = null;
   setExportAvailable(false);
   byID("model-count").hidden = true;
@@ -134,6 +149,162 @@ function lockPage() {
   byID("notice").textContent = "This gateway requires a Bearer key. Setup instructions remain available, but model details and configuration downloads require authenticated curl.";
   byID("notice").hidden = false;
   setupCommands(true);
+  statisticsAuthCommand();
+}
+
+function statisticsAuthCommand() {
+  const panel = byID("statistics-status");
+  panel.append(element("pre", "statistics-auth", `curl -fsS --header @/absolute/path/to/private-header-file ${shellQuote(new URL("/paracetamol/v1/statistics?days=" + statisticsDays, window.location.origin).href)}`));
+}
+
+const count = (value) => Number.isSafeInteger(value) && value >= 0;
+const metricValid = (value) => value && count(value.total) && count(value.observations);
+function usageValid(usage) {
+  return usage && ["requests", "succeeded", "failed", "canceled"].every(key => count(usage[key])) &&
+    ["input", "output", "cached", "reasoning"].every(key => metricValid(usage[key])) &&
+    usage.cache_reuse && ["input_tokens", "cached_tokens", "observations"].every(key => count(usage.cache_reuse[key]));
+}
+
+function validStatistics(data, days) {
+  const date = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value));
+  return data && data.schema === "paracetamol.statistics.v1" && ["ready", "disabled", "unavailable"].includes(data.state) &&
+    data.period_days === days && count(data.retention_days) && date(data.from) && date(data.to) &&
+    typeof data.collected_at === "string" && Number.isFinite(Date.parse(data.collected_at)) &&
+    (!data.recording_since || date(data.recording_since)) &&
+    (data.state !== "ready" || (typeof data.incomplete === "boolean" && count(data.dropped_requests) && count(data.pending_requests) &&
+      usageValid(data.overall) && Array.isArray(data.daily) && data.daily.length === days && data.daily.every(day => date(day.date) && usageValid(day.usage)) &&
+      Array.isArray(data.models) && data.models.every(model => typeof model.model === "string" && typeof model.application === "string" && usageValid(model.usage))));
+}
+
+function periodName(days) {
+  return days === 1 ? "Today" : `Last ${days} days`;
+}
+
+function tokenTotal(metric) {
+  return metric.observations ? metric.total.toLocaleString() : "Unavailable";
+}
+
+function observationLabel(observations, requests) {
+  return `${observations.toLocaleString()} of ${requests.toLocaleString()} requests observed` + (observations < requests ? " · partial" : "");
+}
+
+function tokenCell(metric, requests) {
+  const cell = element("td");
+  cell.append(element("span", "", tokenTotal(metric)), element("small", "", observationLabel(metric.observations, requests)));
+  return cell;
+}
+
+function cacheLabel(usage) {
+  const cache = usage.cache_reuse;
+  return cache.observations && cache.input_tokens > 0 ? (100 * cache.cached_tokens / cache.input_tokens).toLocaleString(undefined, { maximumFractionDigits: 1 }) + "%" : "Unavailable";
+}
+
+function usageTable(rows, daily) {
+  const table = element("table", "usage-table");
+  const head = element("thead");
+  const labels = daily ? ["UTC date", "Requests", "Input tokens", "Output tokens", "Cached tokens"] : ["Model / application", "Requests / outcomes", "Input tokens", "Output tokens", "Cached tokens", "Cache reuse"];
+  const header = element("tr");
+  labels.forEach(label => { const cell = element("th", "", label); cell.scope = "col"; header.append(cell); });
+  head.append(header);
+  const body = element("tbody");
+  for (const row of rows) {
+    const usage = row.usage;
+    const line = element("tr");
+    const name = element("th");
+    name.scope = "row";
+    name.append(element(daily ? "span" : "code", "", daily ? row.date : row.model));
+    if (!daily) name.append(element("small", "", row.application));
+    const requests = element("td", "", usage.requests.toLocaleString());
+    if (!daily) requests.append(element("small", "", `${usage.succeeded} succeeded · ${usage.failed} failed · ${usage.canceled} canceled`));
+    line.append(name, requests, ...["input", "output", "cached"].map(key => tokenCell(usage[key], usage.requests)));
+    if (!daily) {
+      const cache = element("td", "", cacheLabel(usage));
+      cache.append(element("small", "", observationLabel(usage.cache_reuse.observations, usage.requests)));
+      line.append(cache);
+    }
+    body.append(line);
+  }
+  table.append(head, body);
+  return table;
+}
+
+function renderStatistics(data) {
+  byID("statistics-content").hidden = true;
+  byID("statistics-warning").hidden = true;
+  byID("statistics-metadata").hidden = false;
+  byID("statistics-period").textContent = `${periodName(data.period_days)} · ${data.from} through ${data.to} (UTC, inclusive)`;
+  byID("statistics-recording").textContent = data.state === "disabled" ? "Recording is disabled." : (data.recording_since ? `Recorded since ${data.recording_since} (UTC). ` : "Recording start unavailable. ") + `Retention: ${data.retention_days} days.`;
+  byID("statistics-updated").textContent = (data.state === "ready" ? "Last updated " : "Last checked ") + new Date(data.collected_at).toISOString();
+  if (data.state !== "ready") {
+    byID("statistics-status").textContent = data.state === "disabled" ? "Statistics recording is disabled. No usage totals are available." : "Statistics storage is unavailable. No usage totals are available; refresh to try again.";
+    return;
+  }
+  const usage = data.overall;
+  byID("statistics-status").textContent = usage.requests ? "Recorded aggregates. Refresh to check for new usage." : "No recorded requests in this period. This does not include requests before recording began.";
+  if (data.incomplete || data.dropped_requests || data.pending_requests) {
+    byID("statistics-warning").hidden = false;
+    byID("statistics-warning").textContent = `Recording is incomplete. ${data.dropped_requests.toLocaleString()} dropped requests; ${data.pending_requests.toLocaleString()} pending requests. This warning covers retained history, not just the selected period. An unclean stop can leave losses uncounted. Totals may omit usage, and refreshing may not recover missing records.`;
+  }
+  if (!usage.requests) return;
+  const cards = document.createDocumentFragment();
+  for (const [key, title] of [["input", "Input tokens"], ["output", "Output tokens"], ["cached", "Cached tokens"]]) {
+    const card = element("article", "panel statistic-card");
+    card.append(element("h2", "", title), element("strong", "statistic-value", tokenTotal(usage[key])), element("p", "muted", observationLabel(usage[key].observations, usage.requests)));
+    cards.append(card);
+  }
+  const outcomes = element("article", "panel statistic-card outcomes-card");
+  outcomes.append(element("h2", "", "Request outcomes"), element("strong", "statistic-value", usage.requests.toLocaleString()), element("p", "muted", `${usage.succeeded.toLocaleString()} succeeded · ${usage.failed.toLocaleString()} failed · ${usage.canceled.toLocaleString()} canceled`));
+  const cache = element("article", "panel statistic-card cache-card");
+  cache.append(element("h2", "", "Cache reuse"), element("strong", "statistic-value", cacheLabel(usage)), element("p", "muted", observationLabel(usage.cache_reuse.observations, usage.requests)), element("p", "muted", usage.cache_reuse.observations ? `Paired counts: ${usage.cache_reuse.cached_tokens.toLocaleString()} cached / ${usage.cache_reuse.input_tokens.toLocaleString()} input tokens.` : "Paired counts unavailable."));
+  cards.append(outcomes, cache);
+  byID("statistics-summary").replaceChildren(cards);
+  const chart = document.createDocumentFragment();
+  const maximum = Math.max(1, ...data.daily.flatMap(day => [day.usage.input.total, day.usage.output.total]));
+  for (const day of data.daily) {
+    const row = element("div", "daily-chart-row");
+    row.append(element("span", "daily-chart-date", day.date.slice(5)));
+    const bars = element("div", "daily-chart-bars");
+    for (const key of ["input", "output"]) {
+      const metric = day.usage[key];
+      const track = element("div", "daily-chart-track");
+      const bar = element("span", "daily-chart-bar " + key + (!metric.observations ? " missing" : ""));
+      bar.style.width = metric.observations ? (metric.total / maximum * 100) + "%" : "100%";
+      track.title = `${day.date} ${key}: ${tokenTotal(metric)}; ${observationLabel(metric.observations, day.usage.requests)}`;
+      track.append(bar);
+      bars.append(track);
+    }
+    row.append(bars);
+    chart.append(row);
+  }
+  byID("statistics-chart").replaceChildren(chart);
+  byID("statistics-daily-table").replaceChildren(usageTable(data.daily, true));
+  byID("statistics-model-table").replaceChildren(usageTable(data.models, false));
+  byID("statistics-content").hidden = false;
+}
+
+async function refreshStatistics() {
+  if (byID("statistics").hidden) return;
+  statisticsAttempted = true;
+  // Range changes may overlap reads. Only the newest read may replace data;
+  // retained data keeps its own period and timestamp even after a failure.
+  const sequence = ++statisticsSequence;
+  const days = statisticsDays;
+  byID("refresh-statistics").disabled = true;
+  byID("statistics-status").textContent = `Loading ${periodName(days)}…` + (statisticsSnapshot ? ` Previous data below is for ${periodName(statisticsSnapshot.period_days)} and has not been refreshed.` : "");
+  try {
+    const response = await readResponse("/paracetamol/v1/statistics?days=" + days);
+    const data = await response.json();
+    if (sequence !== statisticsSequence) return;
+    if (!validStatistics(data, days)) throw new Error("The gateway returned invalid statistics.");
+    statisticsSnapshot = data;
+    renderStatistics(data);
+  } catch (error) {
+    if (sequence !== statisticsSequence) return;
+    if (error.authentication) lockPage();
+    else byID("statistics-status").textContent = (error.httpStatus === 503 ? `Statistics are unavailable for ${periodName(days)}. ` : `Could not refresh ${periodName(days)}. `) + error.message + (statisticsSnapshot ? ` Shown data is stale and remains for ${periodName(statisticsSnapshot.period_days)} (${statisticsSnapshot.from} through ${statisticsSnapshot.to}, UTC).` : " No statistics are available. Refresh to try again.");
+  } finally {
+    if (sequence === statisticsSequence) byID("refresh-statistics").disabled = false;
+  }
 }
 
 function validSnapshot(data) {
@@ -292,6 +463,12 @@ byID("close-preview").addEventListener("click", () => { byID("preview-panel").hi
 byID("model-search").addEventListener("input", renderModels);
 byID("refresh").addEventListener("click", refresh);
 byID("refresh-connect").addEventListener("click", refresh);
+byID("refresh-statistics").addEventListener("click", refreshStatistics);
+document.querySelectorAll("[data-days]").forEach(button => button.addEventListener("click", () => {
+  statisticsDays = Number(button.dataset.days);
+  document.querySelectorAll("[data-days]").forEach(range => range.setAttribute("aria-pressed", String(range === button)));
+  refreshStatistics();
+}));
 document.querySelector('[role="tablist"]').addEventListener("keydown", (event) => {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   event.preventDefault();

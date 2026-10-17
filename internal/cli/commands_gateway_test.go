@@ -50,10 +50,53 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 4") {
 		t.Fatalf("missing request slots: %s", output)
 	}
-	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080"} {
+	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080", "--statistics", "--statistics=false", "--statistics-retention-days DAYS", "default: 90"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
+	}
+}
+
+func TestGatewayStatisticsHelpAndInvalidOptionsNeverCreateData(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"--statistics-retention-days", "0"}, {"--statistics=invalid"}} {
+		runner := &commandRunner{}
+		app, _, _ := testApp(t, runner)
+		dataRoot := filepath.Join(t.TempDir(), "absent")
+		err := app.runGateway(append(args, "--data-dir", dataRoot))
+		if err == nil {
+			t.Fatal("expected help or invalid argument")
+		}
+		if len(runner.commands) != 0 {
+			t.Fatalf("host probes=%v", runner.commands)
+		}
+		if _, err := os.Lstat(dataRoot); !os.IsNotExist(err) {
+			t.Fatalf("data root mutated: %v", err)
+		}
+	}
+}
+
+func TestGatewayStartupReportsStatisticsPolicy(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		app, stdout, _ := testApp(t, &commandRunner{})
+		app.writeGatewayStartup(gatewayStartup{StatisticsEnabled: enabled, StatisticsRetentionDays: 90})
+		expected := "disabled"
+		if enabled {
+			expected = "daily totals · 90 days"
+		}
+		if !strings.Contains(stdout.String(), "Statistics") || !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("startup=%s", stdout)
+		}
+	}
+}
+
+func TestGatewayStartupReportsUnavailableStatisticsWithoutClaimingRetention(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	app.writeGatewayStartup(gatewayStartup{
+		StatisticsEnabled: true, StatisticsRetentionDays: 90, StatisticsUnavailable: true,
+	})
+	output := stdout.String()
+	if !strings.Contains(output, "Statistics") || !strings.Contains(output, "unavailable · inference unaffected") || strings.Contains(output, "daily totals") {
+		t.Fatalf("startup=%s", output)
 	}
 }
 
@@ -221,6 +264,41 @@ func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing
 	configuredPort := 18080
 	if got := gatewayIntSetting("", map[string]string{}, "GATEWAY_PORT", &configuredPort, config.DefaultGatewayPort); got != "18080" {
 		t.Fatalf("configured port=%q", got)
+	}
+}
+
+func TestGatewayStatisticsDefaultsConfigurationAndExplicitOverrides(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		args          []string
+		configured    config.GatewayStatisticsConfiguration
+		wantEnabled   bool
+		wantRetention int
+		wantError     bool
+	}{
+		{name: "default", wantEnabled: true, wantRetention: 90},
+		{name: "config", configured: config.GatewayStatisticsConfiguration{Enabled: new(false), RetentionDays: new(120)}, wantRetention: 120},
+		{name: "explicit enable", args: []string{"--statistics=true", "--statistics-retention-days", "30"}, configured: config.GatewayStatisticsConfiguration{Enabled: new(false), RetentionDays: new(120)}, wantEnabled: true, wantRetention: 30},
+		{name: "explicit disable", args: []string{"--statistics=false"}, configured: config.GatewayStatisticsConfiguration{Enabled: new(true)}, wantRetention: 90},
+		{name: "invalid", args: []string{"--statistics-retention-days", "29"}, wantError: true},
+		{name: "invalid disabled", args: []string{"--statistics=false", "--statistics-retention-days", "366"}, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app, _, _ := testApp(t, &commandRunner{})
+			set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
+			enabled := set.Bool("statistics", true, "fixture")
+			retention := set.Int("statistics-retention-days", config.DefaultStatisticsRetentionDays, "fixture")
+			if err := parseFlags(set, test.args); err != nil {
+				t.Fatal(err)
+			}
+			err := applyGatewayStatisticsConfiguration(set, test.configured, enabled, retention)
+			if (err != nil) != test.wantError {
+				t.Fatalf("error=%v", err)
+			}
+			if !test.wantError && (*enabled != test.wantEnabled || *retention != test.wantRetention) {
+				t.Fatalf("enabled=%v retention=%d", *enabled, *retention)
+			}
+		})
 	}
 }
 

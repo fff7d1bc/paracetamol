@@ -662,9 +662,9 @@ publishes one complete default file through the create-once atomic-file policy.
 Configuration lookup and dry-run resolution do not create either directory.
 The typed TOML surface is intentionally closed, all fields are optional, and
 unknown sections or keys fail closed. A schema-specific standard-library
-parser accepts the one-line strings, decimal integers, string arrays, comments,
-and table headers emitted by `config init`. It does not implement unrelated
-TOML features. Command flags win over corresponding environment variables,
+parser accepts the one-line strings, booleans, decimal integers, string arrays,
+comments and table headers emitted by `config init`. It does not implement
+unrelated TOML features. Command flags win over corresponding environment variables,
 which win over configuration, which wins over built-in defaults. Lists replace
 lower-precedence lists rather than merging them.
 
@@ -684,6 +684,8 @@ apps/
     home/ cache/ models.ini
   dwarfstar/
     home/
+  gateway/
+    statistics/                  private SQLite daily usage totals
   acceptance/
     results/                         checkpointed JSON and Markdown summaries
 content/
@@ -838,6 +840,16 @@ not estimate model memory from unified-memory GPU counters or alter power
 policy. See `docs/gateway.md` for
 the public surface and current limits.
 
+Durable statistics are separate from the in-memory request ledger. A bounded
+background writer in `internal/gateway/` receives only UTC completion dates,
+verified model/application IDs and numeric observations. SQLite stores daily
+aggregates, not individual requests or sessions. The `modernc.org/sqlite`
+driver needs neither a system SQLite installation nor CGO. The private database
+uses WAL on a local filesystem and a single-owner lock. Retention defaults to
+90 days. Storage failure or queue overflow never blocks inference, and the
+statistics surface reports unavailable or incomplete accounting. HTTP drains
+before the writer closes, so normal shutdown preserves completed work.
+
 The gateway also owns one private Unix control socket per host user. Its
 lock serializes startup and stale-socket recovery. Local `stop gateway` and
 `stop all` use that socket to request the same graceful drain as Ctrl-C;
@@ -862,6 +874,8 @@ provide transport encryption.
 these files as build inputs. The protected `/paracetamol/v1/ui` projection
 reuses the frozen registry, client preference policy and read-only residency
 probe. It does not sample host resources or inspect the request ledger.
+The separate protected `/paracetamol/v1/statistics` endpoint reads durable
+aggregates without consulting a backend or writing a request-ledger entry.
 The browser uses text nodes for inventory and export previews, performs only
 explicit reads, and never accepts credentials. It has no third-party assets,
 polling, lifecycle controls or browser storage. Browser-origin export URLs

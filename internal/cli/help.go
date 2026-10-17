@@ -61,6 +61,8 @@ var metavarByFlag = map[string]string{
 	"thinking":               "LEVEL",
 	"ubatch-size":            "TOKENS",
 	"version":                "ID",
+
+	"statistics-retention-days": "DAYS",
 }
 
 func flagMetavar(name string) string {

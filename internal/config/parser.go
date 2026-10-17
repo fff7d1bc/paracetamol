@@ -74,7 +74,7 @@ func parseConfigurationSection(line string) (string, error) {
 	}
 	section := strings.TrimSpace(line[1 : len(line)-1])
 	switch section {
-	case "storage", "gateway", "gateway.client", "gateway.llama-cpp":
+	case "storage", "gateway", "gateway.client", "gateway.llama-cpp", "gateway.statistics":
 		return section, nil
 	default:
 		return "", fmt.Errorf("unknown configuration section [%s]", section)
@@ -160,6 +160,18 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 			return invalidConfigurationValue(setting, err)
 		}
 		configuration.Gateway.LlamaCPP.Slots = &value
+	case "gateway.statistics.enabled":
+		if rawValue != "true" && rawValue != "false" {
+			return invalidConfigurationValue(setting, fmt.Errorf("expected a boolean (true or false)"))
+		}
+		value := rawValue == "true"
+		configuration.Gateway.Statistics.Enabled = &value
+	case "gateway.statistics.retention_days":
+		value, err := parseConfigurationInteger(rawValue)
+		if err != nil {
+			return invalidConfigurationValue(setting, err)
+		}
+		configuration.Gateway.Statistics.RetentionDays = &value
 	default:
 		return fmt.Errorf("unknown configuration setting %s", setting)
 	}

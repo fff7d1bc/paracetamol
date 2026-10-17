@@ -42,12 +42,14 @@ type Server struct {
 	resources       func() hostdoctor.ResourceSnapshot
 	auth            bearerAuth
 	llamaSlots      int
+	stats           *Statistics
 }
 
 type ServerOptions struct {
 	Resources  func() hostdoctor.ResourceSnapshot
 	APIKey     string
 	LlamaSlots int
+	Statistics *Statistics
 }
 
 type Status struct {
@@ -110,6 +112,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
 		resources:       options.Resources,
 		llamaSlots:      options.LlamaSlots,
+		stats:           options.Statistics,
 		auth:            auth,
 		residencyClient: &http.Client{Transport: residencyTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
@@ -146,6 +149,8 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.models(writer)
 	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/status":
 		server.status(writer, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/statistics":
+		server.statistics(writer, request)
 	case request.Method == http.MethodGet && (request.URL.Path == makiConfigPath+"providers.toml" || request.URL.Path == makiConfigPath+"init.lua"):
 		server.makiConfig(writer, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/v1/chat/completions":
@@ -401,6 +406,13 @@ func (server *Server) completeRequest(record *RequestRecord, started, waitStarte
 		record.Timing.GatewayWaitMilliseconds = elapsedMilliseconds(waitStarted, waitFinished)
 	}
 	server.requests.Add(*record)
+	// Only frozen inventory identities may reach durable storage. Rejected,
+	// arbitrary user-supplied model strings must never become persisted keys.
+	if model, known := server.registry.Lookup(record.Model); known {
+		persisted := *record
+		persisted.Model, persisted.Application = model.ID, model.Application
+		server.stats.Record(persisted)
+	}
 }
 
 func (server *Server) logRequestFinish(record RequestRecord) {

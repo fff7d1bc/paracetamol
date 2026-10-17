@@ -34,6 +34,7 @@ The main pin classes are:
 | Content download tools | `containers/content_tools/requirements.txt` | full exact dependency set |
 | Comfy dependencies | `applications/comfyui/constraints.txt` | transitive constraints |
 | Models and workflows | `catalog/` | full commits plus content hashes |
+| Host SQLite driver and transitive Go modules | `go.mod`, `go.sum` | exact module versions and checksums |
 
 AMD ROCm runtime packages belong to the lower tagged runtime; PyTorch, `pip`,
 and `wheel` policy belong to the higher shared base.
@@ -64,6 +65,22 @@ the selected target's build instructions while checking prerequisites through
 their normal layer cache and retaining downloaded Python packages. Use
 `--no-cache` for the final cold validation because it also cold-builds the
 prerequisite closure and bypasses the host package-download cache.
+
+## Upgrade the host SQLite driver
+
+`modernc.org/sqlite` is used only for local gateway usage statistics. Review
+both the driver release notes and the bundled SQLite security fixes. Keep the
+driver's required `modernc.org/libc` version together with it, inspect all
+transitive changes, and refresh `licenses/modernc-sqlite/` from the exact module
+release plus `THIRD_PARTY_NOTICES.md`. The full upstream notice distinguishes
+linked components from optional extensions and test/build dependencies.
+
+Run normal and static builds, gateway persistence tests, the race detector and
+browser acceptance. Verify reopen, retention and corruption behavior with
+temporary databases. Do not use a user's history as an upgrade fixture or
+silently recreate a database with an unknown schema. The driver is embedded in
+the host binary, so this upgrade needs no application image rebuild or system
+SQLite installation.
 
 ## Check native Maki compatibility
 

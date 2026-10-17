@@ -33,6 +33,10 @@ api_key_file = "/etc/paracetamol/client.key"
 backend = "vulkan"
 models_max = 2
 slots = 3
+
+[gateway.statistics]
+enabled = false
+retention_days = 180
 `
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
@@ -52,6 +56,9 @@ slots = 3
 		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 ||
 		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != 3 {
 		t.Fatalf("gateway=%#v", configuration.Gateway)
+	}
+	if configuration.Gateway.Statistics.Enabled == nil || *configuration.Gateway.Statistics.Enabled || configuration.Gateway.Statistics.RetentionDays == nil || *configuration.Gateway.Statistics.RetentionDays != 180 {
+		t.Fatalf("statistics=%#v", configuration.Gateway.Statistics)
 	}
 }
 
@@ -106,6 +113,12 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"slots zero":          {"[gateway.llama-cpp]\nslots = 0\n", "between 1 and 64"},
 		"slots overflow":      {"[gateway.llama-cpp]\nslots = 65\n", "between 1 and 64"},
 		"slots type":          {"[gateway.llama-cpp]\nslots = '4'\n", "decimal integer"},
+		"stats bool":          {"[gateway.statistics]\nenabled = 'false'\n", "boolean"},
+		"stats bool case":     {"[gateway.statistics]\nenabled = True\n", "boolean"},
+		"stats bool integer":  {"[gateway.statistics]\nenabled = 1\n", "boolean"},
+		"stats days type":     {"[gateway.statistics]\nretention_days = '90'\n", "decimal integer"},
+		"stats days small":    {"[gateway.statistics]\nretention_days = 29\n", "between 30 and 365"},
+		"stats days large":    {"[gateway.statistics]\nretention_days = 366\n", "between 30 and 365"},
 		"client scheme":       {"[gateway.client]\nurl = 'ftp://example.test/v1'\n", "credential-free HTTP(S)"},
 		"server key path":     {"[gateway]\napi_key_file = ''\n", "non-empty absolute path"},
 		"client key path":     {"[gateway.client]\napi_key_file = 'relative'\n", "non-empty absolute path"},
@@ -167,14 +180,14 @@ func TestLoadRejectsNonRegularAndOversizedFiles(t *testing.T) {
 
 func TestLoadTreatsEverySettingAsOptional(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("[storage]\n[gateway]\n[gateway.client]\n[gateway.llama-cpp]\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[storage]\n[gateway]\n[gateway.client]\n[gateway.llama-cpp]\n[gateway.statistics]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	configuration, err := Load(map[string]string{}, Selection{Path: path})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Profile != nil || configuration.Gateway.LlamaCPP.Backend != nil {
+	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Profile != nil || configuration.Gateway.LlamaCPP.Backend != nil || configuration.Gateway.Statistics.Enabled != nil || configuration.Gateway.Statistics.RetentionDays != nil {
 		t.Fatalf("configuration=%#v", configuration)
 	}
 }
@@ -215,6 +228,9 @@ func TestDefaultContentsIsCompleteAndRunnable(t *testing.T) {
 		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" ||
 		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != DefaultLlamaSlots {
 		t.Fatalf("configuration=%#v", configuration)
+	}
+	if configuration.Gateway.Statistics.Enabled == nil || !*configuration.Gateway.Statistics.Enabled || configuration.Gateway.Statistics.RetentionDays == nil || *configuration.Gateway.Statistics.RetentionDays != DefaultStatisticsRetentionDays {
+		t.Fatalf("statistics defaults=%#v", configuration.Gateway.Statistics)
 	}
 }
 
