@@ -29,9 +29,10 @@ func (c *statisticsClock) set(value string) {
 
 func testStatistics(t *testing.T, path string, clock *statisticsClock, capacity int) *Statistics {
 	t.Helper()
-	s := newStatistics(StatisticsOptions{Enabled: true, Path: path, RetentionDays: 30, Log: io.Discard}, clock.now, capacity)
+	var log bytes.Buffer
+	s := newStatistics(StatisticsOptions{Enabled: true, Path: path, RetentionDays: 30, Log: &log}, clock.now, capacity)
 	if s.failed.Load() {
-		t.Fatal("statistics initialization failed")
+		t.Fatalf("statistics initialization failed: %s", log.String())
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
@@ -49,6 +50,26 @@ func waitStatistics(t *testing.T, s *Statistics) {
 }
 
 func statisticsNumber(value int64) *int64 { return &value }
+
+func TestStatisticsCreatesPrivateDirectoryUnderBroadParent(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0755); err != nil {
+		t.Fatal(err)
+	}
+	clock := &statisticsClock{}
+	clock.set("2026-10-17T12:00:00Z")
+	private := filepath.Join(parent, "private")
+	testStatistics(t, filepath.Join(private, "usage.sqlite3"), clock, 1024)
+	for path, want := range map[string]os.FileMode{parent: 0755, private: 0700} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != want {
+			t.Fatalf("directory mode = %v, want %v", info.Mode().Perm(), want)
+		}
+	}
+}
 
 func TestStatisticsDailyUTCPeriodsRestartAndPrivacy(t *testing.T) {
 	clock := &statisticsClock{}
@@ -126,11 +147,20 @@ func TestStatisticsUnavailableDisabledAndUnsafePaths(t *testing.T) {
 	if _, err := disabled.Snapshot(context.Background(), 2); err == nil {
 		t.Fatal("accepted unsupported period")
 	}
-	for _, kind := range []string{"relative", "directory", "symlink", "hardlink", "sidecar-symlink", "broad-permissions", "corruption", "future-schema", "unknown-schema", "parent-symlink"} {
+	for _, kind := range []string{"relative", "directory", "symlink", "hardlink", "sidecar-symlink", "broad-permissions", "broad-directory-permissions", "corruption", "future-schema", "unknown-schema", "parent-symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
+			// TempDir's numbered child follows the process umask. Make the
+			// parent valid so each case reaches the intended rejection gate.
+			if err := os.Chmod(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			path := filepath.Join(dir, "usage.sqlite3")
 			switch kind {
+			case "broad-directory-permissions":
+				if err := os.Chmod(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
 			case "relative":
 				path = "relative.sqlite3"
 			case "directory":
@@ -208,7 +238,7 @@ func TestStatisticsUnavailableDisabledAndUnsafePaths(t *testing.T) {
 func TestStatisticsRetentionLossAndUncleanRestart(t *testing.T) {
 	clock := &statisticsClock{}
 	clock.set("2026-10-01T12:00:00Z")
-	path := filepath.Join(t.TempDir(), "usage.sqlite3")
+	path := filepath.Join(t.TempDir(), "private", "usage.sqlite3")
 	s := testStatistics(t, path, clock, 1)
 	// Hold only the database boundary: enqueue never waits for this lock.
 	s.dbMu.Lock()
@@ -256,7 +286,7 @@ func TestStatisticsRetentionLossAndUncleanRestart(t *testing.T) {
 func TestStatisticsIdleMaintenanceAndQueryFailure(t *testing.T) {
 	clock := &statisticsClock{}
 	clock.set("2026-10-01T12:00:00Z")
-	s := testStatistics(t, filepath.Join(t.TempDir(), "usage.sqlite3"), clock, 1024)
+	s := testStatistics(t, filepath.Join(t.TempDir(), "private", "usage.sqlite3"), clock, 1024)
 	s.Record(RequestRecord{Outcome: OutcomeSucceeded})
 	waitStatistics(t, s)
 	clock.set("2026-10-31T12:00:00Z")
@@ -291,7 +321,7 @@ func TestStatisticsIdleMaintenanceAndQueryFailure(t *testing.T) {
 func TestStatisticsSnapshotIsReadOnlyAndCancellationDoesNotPoisonStore(t *testing.T) {
 	clock := &statisticsClock{}
 	clock.set("2026-10-01T12:00:00Z")
-	s := testStatistics(t, filepath.Join(t.TempDir(), "usage.sqlite3"), clock, 1024)
+	s := testStatistics(t, filepath.Join(t.TempDir(), "private", "usage.sqlite3"), clock, 1024)
 	s.Record(RequestRecord{Outcome: OutcomeSucceeded})
 	waitStatistics(t, s)
 	s.dbMu.Lock()
@@ -326,7 +356,7 @@ func TestStatisticsSnapshotIsReadOnlyAndCancellationDoesNotPoisonStore(t *testin
 func TestStatisticsConcurrentShutdownAndDatabaseErrors(t *testing.T) {
 	clock := &statisticsClock{}
 	clock.set("2026-10-17T12:00:00Z")
-	path := filepath.Join(t.TempDir(), "usage.sqlite3")
+	path := filepath.Join(t.TempDir(), "private", "usage.sqlite3")
 	s := testStatistics(t, path, clock, 1024)
 	other := NewStatistics(StatisticsOptions{Enabled: true, Path: path, Log: io.Discard})
 	if !other.failed.Load() {
@@ -362,7 +392,7 @@ func TestStatisticsConcurrentShutdownAndDatabaseErrors(t *testing.T) {
 func TestStatisticsMetricValidityAndSaturation(t *testing.T) {
 	clock := &statisticsClock{}
 	clock.set("2026-10-17T12:00:00Z")
-	s := testStatistics(t, filepath.Join(t.TempDir(), "usage.sqlite3"), clock, 1024)
+	s := testStatistics(t, filepath.Join(t.TempDir(), "private", "usage.sqlite3"), clock, 1024)
 	s.Record(RequestRecord{Outcome: OutcomeSucceeded, Tokens: TokenUsage{Input: statisticsNumber(0), Output: statisticsNumber(-1), Cached: statisticsNumber(1), Reasoning: statisticsNumber(-2)}, Timing: RequestTiming{TotalMilliseconds: -1, FirstOutputMilliseconds: statisticsNumber(-1)}})
 	for range 2 {
 		s.Record(RequestRecord{Tokens: TokenUsage{Input: statisticsNumber(math.MaxInt64)}, Timing: RequestTiming{TotalMilliseconds: math.MaxInt64}})
