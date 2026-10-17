@@ -21,7 +21,7 @@ the address. Forwarded headers are ignored.
 ## Browser landing page
 
 Open the gateway's root address, such as `http://aion.local:7455/`.
-The embedded dark page has three tabs.
+The embedded dark page has four tabs.
 
 - **Overview** shows the OpenAI-compatible base URL and links to setup and models.
 - **Configuration** contains native Maki setup,
@@ -32,6 +32,9 @@ The embedded dark page has three tabs.
 - **Models** groups the frozen inventory by family, with search, exact IDs,
   publisher labels, configured context, residency and expandable reasoning
   details. It distinguishes Maki's preferred reasoning from the HTTP fallback.
+- **Statistics** shows local usage totals for today, seven days or thirty days,
+  a daily token chart and a per-model breakdown. It reads only when opened,
+  refreshed or given a different date range. It never starts a backend.
 
 Refresh is manual. A failed refresh marks retained information as stale.
 Pages reserve scrollbar space to avoid horizontal shifts. Expandable sections
@@ -556,6 +559,69 @@ The controller's `status gateway` command still accepts `--gateway-url`,
 probe checks the versioned gateway marker before trusting a response. These
 controller settings do not configure native Maki.
 
+## Durable usage statistics
+
+The gateway keeps daily per-model aggregates in a local SQLite database by
+default. This is separate from the process-lifetime status ledger described
+above. It survives ordinary gateway restarts without retaining individual
+requests or conversations.
+
+```toml
+[gateway.statistics]
+enabled = true
+retention_days = 90
+```
+
+`run gateway --statistics=false` disables database reads and writes for that
+run without deleting existing history. `--statistics-retention-days N`
+overrides configuration, with a supported range of 30 through 365 days.
+Expired daily aggregates are deleted automatically while statistics are
+enabled. The database belongs to the configured data root at
+`apps/gateway/statistics/usage.sqlite`. Its directory is private and its files
+are owner-only. Keep it on a local filesystem, not NFS or another network
+mount. SQLite manages its `-wal` and `-shm` sidecars. Stop the gateway before
+copying its statistics directory for a simple consistent backup.
+
+The Statistics tab uses UTC calendar days, including today. Seven days means
+today and the six preceding UTC dates, not the last 168 hours. Requests count
+on their completion date. A recording-start date makes a newly created
+history distinguishable from a full period with no traffic. Historical model
+IDs remain visible even when those models leave the current inventory.
+
+The protected read-only endpoint is
+`GET /paracetamol/v1/statistics?days=7`. It accepts only `1`, `7` or `30`, with
+seven days as the default, and returns the `paracetamol.statistics.v1` schema.
+It uses the same optional Bearer authentication as inference. Reads do not
+query model residency, sample the host or enter the request ledger. Without
+authentication, anyone who can reach the gateway can read these totals.
+
+Stored values are limited to UTC dates, exact known model/application IDs,
+request outcomes, token counters, timing totals and recording-health metadata.
+Neither the database nor its background queue receives prompts, answers, tool
+arguments, request/session IDs, addresses, User-Agent strings, sampler values
+or credentials. This still reveals which models were used and on which days.
+It is local accounting, not anonymous data or an encrypted vault. There is no
+external analytics service or telemetry.
+
+Counts come from observed backend usage, not estimates from text length.
+Input includes conversation history sent again on later requests, including
+cached input. Reasoning tokens are part of output, not additional output.
+Missing counts, especially on canceled streams, are unavailable rather than
+zero. Each metric retains its reporting count. Cache reuse divides matched
+cached-token totals by matched input-token totals, not the number of requests
+that happened to reuse some cache. Partial observations are labelled in the UI.
+
+A bounded background writer records completed-request totals, never individual
+stream chunks. The page reports pending writes. Shutdown drains accepted
+updates after HTTP requests finish. If storage fails or the queue fills,
+inference continues and statistics are marked incomplete. An unclean stop may
+lose queued updates without a known loss count, so this is not a billing ledger.
+Recording-health warnings cover the retained history rather than only the
+selected period, and expire with retention. A database failure makes the API
+unavailable until the gateway restarts after the storage problem is addressed.
+The gateway does not silently replace a corrupt or unsupported database.
+Session analytics and durable request-level history are deliberately absent.
+
 ## Deliberate current limits
 
 - DwarfStar uses the reviewed direct model only; DSpark remains a direct-server
@@ -567,10 +633,10 @@ controller settings do not configure native Maki.
   count-limited router retains its own idle-child LRU policy.
 - It does not add TLS, retries, request rewriting, or an
   arbitrary upstream registry.
-- The in-memory ledger and aggregates are not a persistent metrics store, full
-  traffic capture, Prometheus endpoint, or web UI.
-- It does not retain a persistent key-value history or provide a remote
-  backend-log API. Runtime logs remain attached to the foreground process.
+- The in-memory request ledger is not a persistent request archive, full
+  traffic capture or Prometheus endpoint.
+- Durable statistics contain aggregates only, not a queryable request history
+  or remote backend logs. Runtime logs remain attached to the foreground process.
 - Direct servers remain supported diagnostic surfaces, not hidden gateway
   dependencies.
 

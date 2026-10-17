@@ -27,3 +27,8 @@ backend = "rocm"
 models_max = 1
 # Simultaneous requests per loaded model, sharing its configured KV token pool.
 slots = 4
+
+[gateway.statistics]
+# Private daily totals only; no prompts, responses, or client identities.
+enabled = true
+retention_days = 90

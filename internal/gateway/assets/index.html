@@ -19,6 +19,7 @@
       <a href="#overview" id="tab-overview" role="tab" aria-controls="overview" aria-selected="true">Overview</a>
       <a href="#configuration" id="tab-configuration" role="tab" aria-controls="configuration" aria-selected="false" tabindex="-1">Configuration</a>
       <a href="#models" id="tab-models" role="tab" aria-controls="models" aria-selected="false" tabindex="-1">Models <span id="model-count" class="tab-count" hidden></span></a>
+      <a href="#statistics" id="tab-statistics" role="tab" aria-controls="statistics" aria-selected="false" tabindex="-1">Statistics</a>
     </nav>
     <div id="notice" class="notice" role="status" hidden></div>
     <noscript><p class="notice">JavaScript is needed for model browsing and address-specific commands. The API is at <code>/v1</code>. Maki configuration is available at <a href="/paracetamol/v1/clients/maki/providers.toml">providers.toml</a> and <a href="/paracetamol/v1/clients/maki/init.lua">init.lua</a>. Authenticated gateways require a Bearer header through curl. Review downloads before merging them into <code>~/.config/maki/</code>.</p></noscript>
@@ -72,6 +73,21 @@ maki</pre></div><p>Choose models in Maki’s picker and reasoning with <code>/th
         <p id="models-message" class="muted" role="status">Loading the model snapshot.</p>
         <div id="model-groups"></div>
         <aside class="footnote">Browsing and refreshing never load a model. New installations appear after the gateway restarts. Residency is checked only when this snapshot is refreshed.</aside>
+      </section>
+
+      <section id="statistics" role="tabpanel" aria-labelledby="tab-statistics" hidden>
+        <div class="page-heading compact"><p class="eyebrow">CONTENT-FREE AGGREGATES</p><h1>Usage, over time.</h1><p class="lead">Recorded gateway requests and backend-reported tokens. No prompts, responses or session history.</p></div>
+        <div class="statistics-toolbar"><div class="range-buttons" role="group" aria-label="Statistics period"><button type="button" class="button" data-days="1" aria-pressed="false">Today</button><button type="button" class="button" data-days="7" aria-pressed="true">Last 7 days</button><button type="button" class="button" data-days="30" aria-pressed="false">Last 30 days</button></div><button id="refresh-statistics" class="button" type="button">Refresh statistics</button></div>
+        <p class="muted">UTC calendar days, inclusive of today; not rolling hours. Refresh is manual and never loads a model.</p>
+        <p id="statistics-status" class="muted" role="status">Select Statistics to read usage.</p>
+        <div id="statistics-metadata" class="statistics-metadata" hidden><p id="statistics-period"></p><p id="statistics-recording"></p><p id="statistics-updated"></p></div>
+        <div id="statistics-warning" class="notice" role="status" hidden></div>
+        <div id="statistics-content" hidden>
+          <div id="statistics-summary" class="statistics-summary"></div>
+          <article class="panel statistics-panel"><div class="section-heading"><div><h2>Daily tokens</h2><p>Reported totals only. Hatched bars are unavailable, not zero.</p></div><div class="chart-legend" aria-hidden="true"><span class="input-key">Input</span><span class="output-key">Output</span></div></div><div id="statistics-chart" aria-hidden="true"></div><details><summary>Daily totals and observations</summary><div id="statistics-daily-table" class="table-scroll" tabindex="0" role="region" aria-label="Daily usage table"></div></details></article>
+          <article class="panel statistics-panel"><h2>By model</h2><p class="muted">Exact historical model IDs, including models no longer in the current inventory.</p><div id="statistics-model-table" class="table-scroll" tabindex="0" role="region" aria-label="Per-model usage table"></div></article>
+          <aside class="footnote">Tokens are backend observations, not estimates or billing amounts. Unavailable fields were not reported. Partial totals cover only the requests with observations; cache reuse uses paired input and cached-token observations.</aside>
+        </div>
       </section>
     </main>
     <footer><span>{{.}}</span><span>Locally built. Locally served.</span><button id="refresh-connect" class="text-button" type="button">Refresh connection</button></footer>

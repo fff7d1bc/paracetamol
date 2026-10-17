@@ -31,6 +31,14 @@ Podman command construction, persistent verification, and client-config exports.
 Add tests for behavior and failure paths, not merely new lines or parser
 choices.
 
+Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
+They cover UTC boundaries, retention, restart and shutdown draining, streaming
+and JSON usage, missing observations, queue overflow, corrupt stores, file
+permissions, and private-data sentinels in the database and WAL. Run the gateway
+race tests when changing the writer or shutdown lifecycle. Check both normal
+and static builds after updating the SQLite driver. No inference is needed to
+validate accounting.
+
 The small `tests/` Python suite exercises retained container-side policy at
 the source boundary: profile validation, resumable downloader confinement,
 and ComfyUI Manager patch fail-closed behavior. `make test` runs it after the
@@ -71,6 +79,9 @@ make test GO_PACKAGES=./internal/gateway
 This starts fixture HTTP servers, never inference. It checks mobile layout,
 configuration previews/downloads, model filtering, HTML-safe rendering,
 clipboard fallback, failed refresh and the instructions-only auth state.
+The Statistics tab also covers lazy reads, date-range races, historical model
+IDs, incomplete counts, missing versus zero observations, and disabled or
+unavailable storage.
 Screenshots and downloaded fixtures stay under `build/`. Manually inspect
 the images after layout changes. Browser automation is not a substitute for
 checking native client configuration or target GPU inference.

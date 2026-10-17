@@ -39,6 +39,8 @@ func (app *App) runGateway(args []string) (result error) {
 	slots := set.Int("slots", config.DefaultLlamaSlots, "llama.cpp simultaneous requests per loaded model")
 	startupTimeout := set.Duration("startup-timeout", gateway.DefaultStartupTimeout, "backend readiness timeout")
 	keyFile := set.String("api-key-file", "", "private file containing the optional gateway Bearer key")
+	statistics := set.Bool("statistics", true, "retain private daily usage totals; disable with --statistics=false")
+	statisticsRetention := set.Int("statistics-retention-days", config.DefaultStatisticsRetentionDays, "daily usage retention, from 30 through 365 days")
 	unconfined := set.Bool("unconfined", false, "disable backend seccomp")
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -58,6 +60,9 @@ func (app *App) runGateway(args []string) (result error) {
 		return err
 	}
 	gatewayConfiguration := configuration.Gateway
+	if err := applyGatewayStatisticsConfiguration(set, gatewayConfiguration.Statistics, statistics, statisticsRetention); err != nil {
+		return err
+	}
 	if err := applyGatewayConfiguration(set, app.Environment, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
 		return err
 	}
@@ -173,18 +178,6 @@ func (app *App) runGateway(args []string) (result error) {
 	if err != nil {
 		return err
 	}
-	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
-		LlamaSlots: *slots,
-		Resources:  func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
-		APIKey:     apiKey,
-	})
-	if err != nil {
-		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
-	}
-	server := &http.Server{
-		Handler: handler, ErrorLog: log.New(gatewayLog, "gateway | http: ", 0),
-		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
-	}
 	control, err := gateway.StartLocalControl(app.Environment)
 	if err != nil {
 		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
@@ -193,6 +186,32 @@ func (app *App) runGateway(args []string) (result error) {
 		result = errors.Join(result, control.Close())
 		control.Finish(result)
 	}()
+	// The local control lock owns the sole statistics writer. Closing after
+	// HTTP draining preserves final requests without making storage failures
+	// failures of an otherwise successfully stopped inference service.
+	stats := gateway.NewStatistics(gateway.StatisticsOptions{
+		Enabled: *statistics, RetentionDays: *statisticsRetention, Log: gatewayLog,
+		Path: filepath.Join((storage.Layout{Root: dataRoot}).Application("gateway"), "statistics", "usage.sqlite"),
+	})
+	defer func() {
+		if err := stats.Close(); err != nil {
+			fmt.Fprintln(gatewayLog, "gateway | warning: statistics could not be fully saved; inspect storage permissions and free space")
+		}
+	}()
+	_, statisticsErr := stats.Snapshot(contextWithoutCancel(), 1)
+	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
+		LlamaSlots: *slots,
+		Resources:  func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
+		APIKey:     apiKey,
+		Statistics: stats,
+	})
+	if err != nil {
+		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
+	}
+	server := &http.Server{
+		Handler: handler, ErrorLog: log.New(gatewayLog, "gateway | http: ", 0),
+		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
+	}
 	if !isLoopback(listen) {
 		if apiKey == "" {
 			fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
@@ -205,7 +224,9 @@ func (app *App) runGateway(args []string) (result error) {
 		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
 		Backend: *backend, ModelsMax: *modelsMax, Slots: *slots, Registry: registry, Configuration: configuration.Path,
-		Authenticated: apiKey != "",
+		Authenticated:     apiKey != "",
+		StatisticsEnabled: *statistics, StatisticsRetentionDays: *statisticsRetention,
+		StatisticsUnavailable: statisticsErr != nil,
 	})
 	serveResults := make(chan error, len(listeners))
 	for _, listener := range listeners {
@@ -232,18 +253,21 @@ func (app *App) runGateway(args []string) (result error) {
 }
 
 type gatewayStartup struct {
-	LocalEndpoint      string
-	AdditionalLabel    string
-	AdditionalEndpoint string
-	Applications       []string
-	Profile            string
-	RenderNodes        []string
-	Backend            string
-	ModelsMax          int
-	Slots              int
-	Registry           gateway.Registry
-	Configuration      string
-	Authenticated      bool
+	LocalEndpoint           string
+	AdditionalLabel         string
+	AdditionalEndpoint      string
+	Applications            []string
+	Profile                 string
+	RenderNodes             []string
+	Backend                 string
+	ModelsMax               int
+	Slots                   int
+	Registry                gateway.Registry
+	Configuration           string
+	Authenticated           bool
+	StatisticsEnabled       bool
+	StatisticsRetentionDays int
+	StatisticsUnavailable   bool
 }
 
 func collectGatewayServeErrors(results <-chan error, count int, initial error) error {
@@ -323,6 +347,19 @@ func applyGatewayConfiguration(set *commandFlags, environment map[string]string,
 	return nil
 }
 
+func applyGatewayStatisticsConfiguration(set *commandFlags, configured config.GatewayStatisticsConfiguration, enabled *bool, retentionDays *int) error {
+	if !set.changed("statistics") && configured.Enabled != nil {
+		*enabled = *configured.Enabled
+	}
+	if !set.changed("statistics-retention-days") && configured.RetentionDays != nil {
+		*retentionDays = *configured.RetentionDays
+	}
+	if *retentionDays < 30 || *retentionDays > 365 {
+		return controlerr.Usage("--statistics-retention-days must be between 30 and 365")
+	}
+	return nil
+}
+
 func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profile string, renderNodes []string, backend string) (gateway.Registry, []string, []gateway.Diagnostic, error) {
 	candidates, err := app.builtGatewayApplications()
 	if err != nil {
@@ -379,6 +416,14 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 		authentication = "Bearer key required"
 	}
 	rows = append(rows, [2]string{"Authentication", authentication})
+	statistics := "disabled"
+	if summary.StatisticsEnabled {
+		statistics = fmt.Sprintf("daily totals · %d days", summary.StatisticsRetentionDays)
+		if summary.StatisticsUnavailable {
+			statistics = "unavailable · inference unaffected"
+		}
+	}
+	rows = append(rows, [2]string{"Statistics", statistics})
 	if summary.Configuration != "" {
 		rows = append(rows, [2]string{"Configuration", summary.Configuration})
 	}

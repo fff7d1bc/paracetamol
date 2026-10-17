@@ -25,11 +25,12 @@ var (
 )
 
 const (
-	DefaultListen      = "127.0.0.1"
-	DefaultGatewayPort = 7455
-	DefaultGatewayURL  = "http://127.0.0.1:7455/v1"
-	DefaultLlamaSlots  = 4
-	maxFileSize        = 64 * 1024
+	DefaultListen                  = "127.0.0.1"
+	DefaultGatewayPort             = 7455
+	DefaultGatewayURL              = "http://127.0.0.1:7455/v1"
+	DefaultLlamaSlots              = 4
+	DefaultStatisticsRetentionDays = 90
+	maxFileSize                    = 64 * 1024
 )
 
 // Selection chooses the one host configuration source. An empty selection
@@ -61,6 +62,12 @@ type GatewayConfiguration struct {
 	APIKeyFile     *string
 	Client         GatewayClientConfiguration
 	LlamaCPP       GatewayLlamaConfiguration
+	Statistics     GatewayStatisticsConfiguration
+}
+
+type GatewayStatisticsConfiguration struct {
+	Enabled       *bool
+	RetentionDays *int
 }
 
 type GatewayClientConfiguration struct {
@@ -200,6 +207,9 @@ func validateConfiguration(configuration Configuration, path string) error {
 	if value := configuration.Gateway.LlamaCPP.Slots; value != nil && (*value < 1 || *value > 64) {
 		return controlerr.New("[gateway.llama-cpp].slots must be between 1 and 64: %s", path)
 	}
+	if value := configuration.Gateway.Statistics.RetentionDays; value != nil && (*value < 30 || *value > 365) {
+		return controlerr.New("[gateway.statistics].retention_days must be between 30 and 365: %s", path)
+	}
 	if value := configuration.Gateway.Client.URL; value != nil {
 		if _, err := NormalizeGatewayURL(*value); err != nil {
 			return controlerr.New("invalid [gateway.client].url in %s: %v", path, err)
@@ -271,7 +281,11 @@ func DefaultContents(dataDir string) []byte {
 		"backend = \"rocm\"\n" +
 		"models_max = 1\n" +
 		"# Simultaneous requests per loaded model, sharing its configured KV token pool.\n" +
-		"slots = 4\n")
+		"slots = 4\n\n" +
+		"[gateway.statistics]\n" +
+		"# Private daily totals only; no prompts, responses, or client identities.\n" +
+		"enabled = true\n" +
+		"retention_days = " + strconv.Itoa(DefaultStatisticsRetentionDays) + "\n")
 }
 
 // SelectGatewayClientURL applies the public client precedence and returns a

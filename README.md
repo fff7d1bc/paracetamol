@@ -426,6 +426,10 @@ Open `http://192.168.1.50:7455/` for connection instructions, Maki configuration
 downloads and a searchable model list. The page is embedded in the gateway
 and never loads a model. With authentication enabled, it shows instructions
 for authenticated curl instead of exposing inventory or asking for a key.
+The Statistics tab shows daily and per-model token totals, request outcomes
+and cache reuse. It keeps 90 days of local aggregates by default, without
+prompts, responses or session identities. See [usage statistics](docs/gateway.md#durable-usage-statistics)
+for retention and privacy details.
 
 Install Maki separately, then follow the [native Maki setup](docs/guides/remote-maki.md)
 to download `providers.toml` and `init.lua` from the gateway. Review and merge
