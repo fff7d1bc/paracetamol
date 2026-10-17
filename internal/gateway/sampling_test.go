@@ -217,18 +217,16 @@ func TestGatewayForwardsDefaultsAndRecordsTheirProvenance(t *testing.T) {
 				_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n")
 			}))
 			defer upstream.Close()
-			endpoint, _, server := testGatewayServer(t, upstream)
+			_, _, server := testGatewayServer(t, upstream)
 			model := samplingModel(t, backend)
 			server.registry = Registry{byID: map[string]Model{model.ID: model}}
 			body := `{"model":"` + model.ID + `","reasoning_effort":"none","stream":true,"temperature":0,"messages":[{"role":"user","content":"private"}]}`
-			response, err := http.Post(endpoint.URL+"/v1/chat/completions", "application/json", strings.NewReader(body))
-			if err != nil {
-				t.Fatal(err)
-			}
-			output, _ := io.ReadAll(response.Body)
-			response.Body.Close()
-			if response.StatusCode != 200 || !bytes.Contains(output, []byte("[DONE]")) {
-				t.Fatalf("response %d: %s", response.StatusCode, output)
+			// SSE bytes can reach an HTTP client before the handler records the
+			// completed request. Invoke it synchronously before checking provenance.
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+			if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte("[DONE]")) {
+				t.Fatalf("response %d: %s", response.Code, response.Body.String())
 			}
 			forwarded, _ := decodeJSONObject(<-requests)
 			if string(forwarded["temperature"]) != "0" || string(forwarded["top_p"]) != "0.8" || string(forwarded["presence_penalty"]) != "1.5" {
@@ -241,13 +239,10 @@ func TestGatewayForwardsDefaultsAndRecordsTheirProvenance(t *testing.T) {
 			if encoded, _ := json.Marshal(records); bytes.Contains(encoded, []byte("private")) {
 				t.Fatal("request ledger retained prompt text")
 			}
-			response, err = http.Post(endpoint.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"`+model.ID+`","reasoning_effort":"none","chat_template_kwargs":{"enable_thinking":true}}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			response.Body.Close()
-			if response.StatusCode != 400 || len(requests) != 0 {
-				t.Fatalf("invalid request reached backend, status=%d", response.StatusCode)
+			response = httptest.NewRecorder()
+			server.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model.ID+`","reasoning_effort":"none","chat_template_kwargs":{"enable_thinking":true}}`)))
+			if response.Code != http.StatusBadRequest || len(requests) != 0 {
+				t.Fatalf("invalid request reached backend, status=%d", response.Code)
 			}
 		})
 	}

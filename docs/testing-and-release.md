@@ -38,6 +38,14 @@ race tests when changing the writer or shutdown lifecycle. Check both normal
 and static builds after updating the SQLite driver. No inference is needed to
 validate accounting.
 
+CI explicitly uses umask `0022`. Statistics fixtures must create a dedicated
+private database directory rather than assume `t.TempDir()` itself is mode
+`0700`. Negative path tests must start with a valid private parent so they
+exercise the intended file or schema rejection instead of failing early on
+directory permissions. Streaming HTTP tests must synchronize with handler
+completion before asserting final request accounting, not just receipt of
+the last flushed response bytes.
+
 The small `tests/` Python suite exercises retained container-side policy at
 the source boundary: profile validation, resumable downloader confinement,
 and ComfyUI Manager patch fail-closed behavior. `make test` runs it after the
