@@ -62,7 +62,7 @@ func ManagedReferences() []string {
 func SelectedReferences(target string) ([]string, error) {
 	targets := []application.BuildID{application.BuildID(target)}
 	if target == "all" {
-		targets = []application.BuildID{application.BuildContentTools, application.BuildComfyUI, application.BuildLlamaCPP, application.BuildDwarfStar}
+		targets = []application.BuildID{application.BuildContentTools, application.BuildComfyUI, application.BuildLlamaCPP}
 	}
 	units, err := application.BuildClosure(targets)
 	if err != nil {

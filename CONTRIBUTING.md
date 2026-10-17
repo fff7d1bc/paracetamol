@@ -32,8 +32,7 @@ make test
 make static
 PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
-  applications/llama-cpp/entrypoint.sh \
-  applications/dwarfstar/entrypoint.sh
+  applications/llama-cpp/entrypoint.sh
 find catalog -type f -name '*.json' -print0 | \
   xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check

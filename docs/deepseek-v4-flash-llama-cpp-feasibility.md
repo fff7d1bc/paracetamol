@@ -1,5 +1,8 @@
 # DeepSeek V4 Flash llama.cpp feasibility snapshot
 
+DwarfStar was retired on 2026-10-17. References to its integration below
+describe the earlier experiment, not current support.
+
 This is a dated maintainer research record from 2026-08-09. It captures why
 the Unsloth DeepSeek V4 Flash 0731 GGUF was not added to Paracetamol's llama.cpp
 catalog after target-hardware testing, and what to repeat when the relevant

@@ -11,9 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
-	"paracetamol/internal/content"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
 	"paracetamol/internal/process"
@@ -26,12 +24,10 @@ const (
 )
 
 var gatewayContainerNames = map[Allocation]string{
-	AllocationLlamaCPP:  identity.Container("gateway-llama-cpp"),
-	AllocationDwarfStar: identity.Container("gateway-dwarfstar"),
+	AllocationLlamaCPP: identity.Container("gateway-llama-cpp"),
 }
 
 type LifecycleOptions struct {
-	Catalog           catalog.Catalog
 	Registry          Registry
 	DataRoot          string
 	Profile           string
@@ -89,23 +85,13 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 		options.Log = os.Stderr
 	}
 	options.Log = atomicLogWriter(options.Log)
-	llamaModels, dwarfModels := 0, 0
 	for _, model := range options.Registry.Models {
-		switch model.Backend {
-		case "llama-cpp":
-			llamaModels++
-		case "dwarfstar":
-			dwarfModels++
+		if model.Backend != "llama-cpp" {
+			return nil, fmt.Errorf("unsupported gateway backend %q", model.Backend)
 		}
 	}
-	if llamaModels > 0 && options.RouterPreset == "" {
+	if options.RouterPreset == "" {
 		return nil, fmt.Errorf("gateway llama.cpp inventory requires a router preset")
-	}
-	// DwarfStar serves one eagerly selected model per process. The catalog
-	// deliberately contains one non-DSpark preset; reject accidental expansion
-	// until allocations encode a DwarfStar model identity.
-	if dwarfModels > 1 {
-		return nil, fmt.Errorf("gateway supports exactly one DwarfStar preset")
 	}
 	return &ContainerLifecycle{
 		options: options,
@@ -255,35 +241,9 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 			ContainerName: name, ContainerRole: GatewayBackendRole, AutoRemove: true, DynamicHostPort: true,
 		}, lifecycle.options.VolumeSuffix)
 		return command, application.Port, "/health", err
-	case AllocationDwarfStar:
-		model, err := lifecycle.dwarfStarModel()
-		if err != nil {
-			return nil, 0, "", err
-		}
-		preset := lifecycle.options.Catalog.DwarfStarPresets[model.ID]
-		bundle := lifecycle.options.Catalog.Bundles[model.Bundle]
-		artifact := lifecycle.options.Catalog.Artifacts[bundle.Artifacts[0]]
-		command, err := runtime.DwarfStarCommand(runtime.DwarfStarOptions{
-			Image: application.Image, Mode: "server", DataDir: lifecycle.options.DataRoot,
-			Model: content.ArtifactPath(lifecycle.options.DataRoot, artifact), RenderNodes: lifecycle.options.RenderNodes,
-			Profile: lifecycle.options.Profile, Listen: "127.0.0.1", Port: application.Port,
-			Context: preset.DefaultContext, OutputTokens: preset.MaxOutputTokens, Detach: true,
-			Unconfined: lifecycle.options.Unconfined, ContainerName: name, ContainerRole: GatewayBackendRole,
-			DynamicHostPort: true,
-		}, lifecycle.options.VolumeSuffix)
-		return command, application.Port, "/v1/models", err
 	default:
 		return nil, 0, "", fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
-}
-
-func (lifecycle *ContainerLifecycle) dwarfStarModel() (Model, error) {
-	for _, model := range lifecycle.options.Registry.Models {
-		if model.Application == string(AllocationDwarfStar) {
-			return model, nil
-		}
-	}
-	return Model{}, fmt.Errorf("gateway registry has no DwarfStar model")
 }
 
 func (lifecycle *ContainerLifecycle) waitReady(ctx context.Context, allocation Allocation, endpoint *url.URL) error {

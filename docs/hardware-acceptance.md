@@ -5,6 +5,9 @@ successful build, CPU startup, or unit test is not GPU inference acceptance.
 This matrix defines a finite pre-release gate and prevents one convenient
 workflow from standing in for the complete target surface.
 
+DwarfStar was retired on 2026-10-17. Its dated results below remain historical
+evidence, not current setup instructions or required acceptance cases.
+
 Keep machine-specific logs, benchmark JSON, generated media, and measurements
 outside the source tree. When a row is accepted, record a short durable
 summary here with the date, Git commit, image tag, profile, and result
@@ -4523,9 +4526,7 @@ Start acceptance on a new or updated host with:
 ```
 
 The checkpointed suite covers exact GPU/CPU device isolation, short ComfyUI
-image and video workloads, one llama.cpp workload, and a bounded DwarfStar
-generation. DwarfStar is included by default on Strix Halo and must be
-selected explicitly elsewhere because of its memory footprint. Generated
+image and video workloads and one llama.cpp workload. Generated
 media requires explicit human review before its case becomes `PASS`; the
 review phase starts only after all selected automated workloads finish.
 Prompts and the Markdown report retain case-specific functional criteria so
@@ -4590,22 +4591,6 @@ local source image.
 | llama.cpp Huihui Flash-Next | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`, shared regular Flash-Next policy with off, low, medium and xhigh | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-10-16 on ROCm at 256K capacity and Vulkan at 32K input | ROCm N/P by model policy, Vulkan pending |
 | llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
 | llama.cpp Muse DFlash | `meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |
-| DwarfStar direct-answer smoke | DeepSeek V4 Flash 0731 Q2 imatrix (routed IQ2_XXS/Q2_K, Q8 attention/shared/output), 4K context, 64-token ceiling | N/P unless host memory offload is deliberately provisioned | pending | pending | pending |
-
-DwarfStar remains experimental after the bounded smoke. Before promoting it,
-also run the 128K server default, normal thinking and direct-answer requests,
-multi-turn cache reuse, a long enough generation to expose decode faults, and
-clean interruption/removal. Record model-load peak memory and sustained
-generation speed. On non-Halo profiles, invoke the smoke with
-`--application dwarfstar`; that explicit selection is a capacity opt-in, not
-evidence of prior acceptance. Record whether an APU host used the general 112
-GiB TTM/GTT starting point or DwarfStar's roughly 124 GiB upstream
-recommendation, and whether `amd_iommu=off` was enabled. The initial 112 GiB
-manual 128K run used
-it, so memory-capacity acceptance and IOMMU performance remain separate
-questions. The exact DSpark pair is an experimental opt-in contract; arbitrary
-MTP files, multi-GPU, distributed execution, and SSD streaming are not part of
-the current application contract.
 
 For the Qwen tool-protocol row, start the managed router and inspect `/props`
 for the expected template capabilities and context. Send a developer message

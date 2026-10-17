@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-
-	"paracetamol/internal/textmodel"
 )
 
 // applySamplingDefaults is the only request-rewriting policy in the gateway.
@@ -116,7 +114,7 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 		if isJSONNull(raw) || json.Unmarshal(raw, &value) != nil {
 			return fmt.Errorf("reasoning_effort must be a supported string")
 		}
-		if (topLevel || model.Backend == textmodel.BackendDwarfStar) && value == "none" {
+		if topLevel && value == "none" {
 			return selectMode(false)
 		}
 		levels := model.ReasoningLevels
@@ -136,30 +134,6 @@ func requestThinking(object map[string]json.RawMessage, model Model) (bool, erro
 	}
 	if err := selectEffort(object["reasoning_effort"], true); err != nil {
 		return false, err
-	}
-	if raw := object["think"]; raw != nil && model.Backend == textmodel.BackendDwarfStar {
-		if err := selectBool(raw); err != nil {
-			return false, err
-		}
-	}
-	if raw := object["thinking"]; raw != nil && model.Backend == textmodel.BackendDwarfStar {
-		if bytes.Equal(bytes.TrimSpace(raw), []byte("true")) || bytes.Equal(bytes.TrimSpace(raw), []byte("false")) {
-			if err := selectBool(raw); err != nil {
-				return false, err
-			}
-		} else {
-			settings, err := policyObject(raw)
-			if err != nil {
-				return false, err
-			}
-			var kind string
-			if json.Unmarshal(settings["type"], &kind) != nil || (kind != "enabled" && kind != "disabled") {
-				return false, fmt.Errorf("thinking.type must be enabled or disabled")
-			}
-			if err := selectMode(kind == "enabled"); err != nil {
-				return false, err
-			}
-		}
 	}
 	if raw := object["chat_template_kwargs"]; raw != nil {
 		kwargs, err := policyObject(raw)

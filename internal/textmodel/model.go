@@ -1,9 +1,8 @@
 // Package textmodel derives backend-neutral serving and client capabilities
-// from the application-specific catalog preset collections.
+// from the llama.cpp catalog presets.
 package textmodel
 
 import (
-	"fmt"
 	"sort"
 
 	"paracetamol/internal/catalog"
@@ -11,16 +10,12 @@ import (
 
 type Backend string
 
-const (
-	BackendLlamaCPP  Backend = "llama-cpp"
-	BackendDwarfStar Backend = "dwarfstar"
-)
+const BackendLlamaCPP Backend = "llama-cpp"
 
 type Model struct {
 	ID               string
 	Backend          Backend
 	Bundle           string
-	DSparkBundle     string
 	Context          int64
 	MaxOutputTokens  int64
 	AgentTools       bool
@@ -32,22 +27,9 @@ type Model struct {
 }
 
 func All(managed catalog.Catalog) ([]Model, error) {
-	byID := make(map[string]Model, len(managed.LlamaPresets)+len(managed.DwarfStarPresets))
+	byID := make(map[string]Model, len(managed.LlamaPresets))
 	for id, preset := range managed.LlamaPresets {
 		byID[id] = FromLlamaPreset(id, preset)
-	}
-	for id, preset := range managed.DwarfStarPresets {
-		if _, duplicate := byID[id]; duplicate {
-			return nil, fmt.Errorf("text model identifier %q is ambiguous", id)
-		}
-		byID[id] = Model{
-			ID: id, Backend: BackendDwarfStar, Bundle: preset.Bundle, DSparkBundle: preset.DSparkBundle,
-			Context: preset.DefaultContext, MaxOutputTokens: preset.MaxOutputTokens,
-			AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
-			ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
-			ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
-			SamplingPolicy: preset.SamplingPolicy,
-		}
 	}
 	identifiers := make([]string, 0, len(byID))
 	for id := range byID {

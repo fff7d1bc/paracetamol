@@ -69,8 +69,8 @@ func TestLoadValidNarrowPack(t *testing.T) {
 }
 
 func TestLoadApplicationTargetBoundary(t *testing.T) {
-	for application, group := range map[string]string{"llama-cpp": "llama", "dwarfstar": "dwarfstar", "comfyui": "comfyui"} {
-		for target, owner := range map[string]string{"llama-models": "llama-cpp", "dwarfstar-models": "dwarfstar", "models": "comfyui", "workflows": "comfyui", "unknown": ""} {
+	for application, group := range map[string]string{"llama-cpp": "llama", "comfyui": "comfyui"} {
+		for target, owner := range map[string]string{"llama-models": "llama-cpp", "models": "comfyui", "workflows": "comfyui", "unknown": ""} {
 			t.Run(application+"/"+target, func(t *testing.T) {
 				contents := strings.NewReplacer(
 					`"application": "llama-cpp"`, `"application": "`+application+`"`,
@@ -98,16 +98,15 @@ func TestLoadApplicationTargetBoundary(t *testing.T) {
 	}
 }
 
-func TestLoadDwarfStarRetainsNarrowPackPolicy(t *testing.T) {
-	valid := strings.NewReplacer(`"llama-cpp"`, `"dwarfstar"`, `"llama-models"`, `"dwarfstar-models"`, `"llama"`, `"dwarfstar"`).Replace(validPack)
+func TestLoadRejectsRetiredDwarfStarDeclarations(t *testing.T) {
 	for _, contents := range []string{
-		strings.Replace(valid, `["all", "dwarfstar"]`, `["all", "llama"]`, 1),
-		strings.Replace(valid, `"NOASSERTION"`, `"MIT"`, 1),
-		strings.Replace(valid, `"imported/model.gguf"`, `"../model.gguf"`, 1),
-		strings.Replace(valid, `"schema_version": 2,`, `"schema_version": 2, "dwarfstar_presets": {},`, 1),
+		strings.Replace(validPack, `"llama-cpp"`, `"dwarfstar"`, 1),
+		strings.Replace(validPack, `"llama-models"`, `"dwarfstar-models"`, 1),
+		strings.Replace(validPack, `["all", "llama"]`, `["all", "dwarfstar"]`, 1),
+		strings.Replace(validPack, `"schema_version": 2,`, `"schema_version": 2, "dwarfstar_presets": {},`, 1),
 	} {
 		if _, err := loadText(t, emptyCatalog(), contents); err == nil {
-			t.Fatalf("accepted invalid DwarfStar pack:\n%s", contents)
+			t.Fatalf("accepted retired DwarfStar declaration:\n%s", contents)
 		}
 	}
 }

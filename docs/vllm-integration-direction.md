@@ -13,7 +13,7 @@ currently build, install, advertise, or run vLLM.
 The intended application roles are:
 
 - llama.cpp remains the primary GGUF path and the proven ROCm path.
-- DwarfStar remains a separate model-specific experimental application.
+- llama.cpp is currently the only managed text-inference engine.
 - vLLM may add native model formats, CUDA execution, continuous batching, and
   tensor parallelism where measured results justify it.
 - The gateway remains the single client-facing endpoint across the supported
@@ -115,7 +115,7 @@ the CMP 170HX.
 ## Gateway integration
 
 The gateway should treat vLLM as another application allocation, using the
-same lifecycle rules already applied to llama.cpp and DwarfStar:
+same lifecycle rules already applied to llama.cpp:
 
 - startup freezes a receipt-verified inventory;
 - automatic discovery includes vLLM only when its image exists and at least
@@ -126,7 +126,7 @@ same lifecycle rules already applied to llama.cpp and DwarfStar:
 - exact ownership labels govern cleanup;
 - runtime output is followed with a `vllm |` prefix;
 - vLLM initially shares the gateway's one mutually exclusive GPU resource
-  pool with llama.cpp and DwarfStar.
+  pool with llama.cpp.
 
 The first version should target the gateway's existing Models and Chat
 Completions surface. Unknown request fields should continue to pass through.

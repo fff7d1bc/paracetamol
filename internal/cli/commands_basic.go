@@ -18,7 +18,6 @@ import (
 
 	"paracetamol/internal/application"
 	"paracetamol/internal/buildplan"
-	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
@@ -34,7 +33,7 @@ import (
 
 func (app *App) commandBuild(args []string) error {
 	set := app.flags("build", "Usage: "+identity.Command("build", "[TARGET]", "[--no-layer-cache | --no-cache]", "[--image TAG]"))
-	set.Argument("TARGET", "all, runtime, pytorch-base, content-tools, comfyui, llama-cpp, or dwarfstar")
+	set.Argument("TARGET", "all, runtime, pytorch-base, content-tools, comfyui, llama-cpp")
 	noLayerCache := set.Bool("no-layer-cache", false, "rebuild selected image layers")
 	noCache := set.Bool("no-cache", false, "cold-build selected images and prerequisites")
 	image := set.String("image", "", "override the selected image tag")
@@ -65,7 +64,6 @@ func (app *App) commandBuild(args []string) error {
 			application.BuildContentTools,
 			application.BuildComfyUI,
 			application.BuildLlamaCPP,
-			application.BuildDwarfStar,
 		}
 	}
 	if *image != "" && target == "all" {
@@ -180,7 +178,7 @@ func (app *App) guidedBuildTarget() (string, error) {
 
 func (app *App) commandGuide(args []string) error {
 	set := app.flags("guide", usage("guide", "[APPLICATION]"))
-	set.Argument("APPLICATION", "comfyui, llama-cpp, or dwarfstar; omit to list all")
+	set.Argument("APPLICATION", "comfyui, llama-cpp; omit to list all")
 	application, args := leadingPositional(args)
 	if err := parseFlags(set, args); err != nil {
 		return err
@@ -232,7 +230,7 @@ func (app *App) commandGuide(args []string) error {
 
 func (app *App) commandStatus(args []string) error {
 	set := app.flags("status", usage("status", "[APPLICATION]", "[OPTIONS]"))
-	set.Argument("APPLICATION", "comfyui, llama-cpp, dwarfstar, or gateway; omit for the host dashboard")
+	set.Argument("APPLICATION", "comfyui, llama-cpp, or gateway; omit for the host dashboard")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	model := set.String("model", "", "managed llama.cpp preset")
 	gatewayURL := set.String("gateway-url", "", "gateway OpenAI-compatible base URL")
@@ -461,20 +459,6 @@ func (app *App) commandRun(args []string) error {
 			return controlerr.Usage("choose llama.cpp mode server or cli")
 		}
 		return app.runLlama(args[1], args[2:])
-	case "dwarfstar":
-		if groupHelpRequested(args[1:]) {
-			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
-			return nil
-		}
-		if len(args) == 1 {
-			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
-			return controlerr.Usage("choose DwarfStar mode server or cli")
-		}
-		if strings.HasPrefix(args[1], "-") {
-			app.writeGroupHelp(usage("run", "dwarfstar", "MODE", "[OPTIONS]"), [2]string{"server", "start the OpenAI-compatible server"}, [2]string{"cli", "run an interactive or one-prompt conversation"})
-			return controlerr.Usage("choose DwarfStar mode server or cli")
-		}
-		return app.runDwarfStar(args[1], args[2:])
 	default:
 		writeHelp()
 		return controlerr.Usage("unknown application %q", application)
@@ -774,156 +758,6 @@ func (app *App) runLlama(mode string, args []string) error {
 		}
 		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Label("Configuration:"), terminal.Command(identity.Command(status...)))
 	}
-	if *dryRun {
-		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
-		return nil
-	}
-	return app.startManaged(application, options.Image, command, detach)
-}
-
-func (app *App) runDwarfStar(mode string, args []string) error {
-	if err := requireChoice(mode, "DwarfStar mode", "server", "cli"); err != nil {
-		return err
-	}
-	set := app.flags("run dwarfstar "+mode, usage("run", "dwarfstar", mode, "[OPTIONS]"))
-	modelFlag := set.String("model", "", "exact local DwarfStar-compatible GGUF; defaults to the managed model")
-	profileFlag := set.String("profile", "", "execution profile: auto, rdna4, strix-halo, or strix-point (default: auto)")
-	var nodes stringList
-	set.Var(&nodes, "render-node", "exact render node")
-	dataFlag := set.String("data-dir", "", "persistent data directory")
-	imageFlag := set.String("image", "", "override the managed local image tag")
-	contextSize := set.Int64("context", -1, "allocated context tokens (default: managed preset policy)")
-	outputTokens := set.Int64("output-tokens", -1, "default or CLI maximum output tokens (default: managed preset policy)")
-	dspark := set.Bool("dspark", false, "enable the exact managed DSpark support GGUF")
-	unconfined := set.Bool("unconfined", false, "disable the container seccomp filter")
-	dryRun := set.Bool("dry-run", false, "validate and print the resolved Podman command")
-	listen, portText := "", ""
-	detach := false
-	if mode == "server" {
-		set.StringVar(&listen, "listen", "", "host IP on which to publish the server (default: 127.0.0.1)")
-		set.StringVar(&portText, "port", "", "host server port (default: 8000)")
-		set.BoolVar(&detach, "detach", false, "run in background")
-	}
-	prompt := optionalString{}
-	noThinking := false
-	if mode == "cli" {
-		set.Var(&prompt, "prompt", "run one prompt; omit for an interactive conversation")
-		set.BoolVar(&noThinking, "no-thinking", false, "disable thinking and request a direct answer")
-	}
-	if err := parseFlags(set, args); err != nil {
-		return err
-	}
-	if len(set.Args()) > 0 {
-		return controlerr.Usage("run dwarfstar %s does not accept positional arguments", mode)
-	}
-	contextExplicit := setWasSet(set, "context")
-	outputExplicit := setWasSet(set, "output-tokens")
-	if contextExplicit && (*contextSize < 4096 || *contextSize > 1048576) {
-		return controlerr.Usage("--context must be between 4096 and 1048576")
-	}
-	if outputExplicit && *outputTokens < 1 {
-		return controlerr.Usage("--output-tokens must be positive and smaller than --context")
-	}
-	profileValue := firstNonEmpty(*profileFlag, config.EnvironmentValue(app.Environment, "PROFILE", "auto"))
-	if profileValue == "cpu" {
-		return controlerr.Usage("DwarfStar requires a supported GPU profile")
-	}
-	if err := platform.ValidateProfile(profileValue); err != nil {
-		return err
-	}
-	selectedNodes, err := app.resolveDevices(profileValue, nodes, nodes != nil)
-	if err != nil {
-		return err
-	}
-	if len(selectedNodes) != 1 {
-		return controlerr.Usage("DwarfStar requires exactly one render node")
-	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
-	if err != nil {
-		return err
-	}
-	if !*dryRun {
-		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("dwarfstar"); err != nil {
-			return err
-		}
-	}
-	managed, err := app.managedCatalog()
-	if err != nil {
-		return err
-	}
-	if len(managed.DwarfStarPresets) != 1 {
-		return fmt.Errorf("catalog must define exactly one default DwarfStar preset")
-	}
-	var preset catalog.DwarfStarPreset
-	for _, candidate := range managed.DwarfStarPresets {
-		preset = candidate
-	}
-	if !contextExplicit {
-		*contextSize = preset.DefaultContext
-	}
-	if !outputExplicit {
-		*outputTokens = preset.MaxOutputTokens
-	}
-	if *contextSize < 4096 || *contextSize > 1048576 {
-		return controlerr.Usage("--context must be between 4096 and 1048576")
-	}
-	if *outputTokens < 1 || *outputTokens >= *contextSize {
-		return controlerr.Usage("--output-tokens must be positive and smaller than --context")
-	}
-	model := ""
-	support := ""
-	if *dspark && *modelFlag != "" {
-		return controlerr.Usage("--dspark cannot be combined with --model")
-	}
-	if *modelFlag != "" {
-		model, err = regularFile(*modelFlag, "DwarfStar GGUF model")
-		if err != nil {
-			return err
-		}
-	} else {
-		bundleID := preset.Bundle
-		if *dspark {
-			bundleID = preset.DSparkBundle
-		}
-		bundle, ok := managed.Bundles[bundleID]
-		if !ok {
-			return fmt.Errorf("catalog lacks DwarfStar bundle %s", bundleID)
-		}
-		if _, err := content.RequireBundle(managed, bundle, dataRoot); err != nil {
-			return controlerr.New("DwarfStar model is not installed: %v", err)
-		}
-		model = content.ArtifactPath(dataRoot, managed.Artifacts[bundle.Artifacts[0]])
-		if *dspark && len(bundle.Artifacts) == 2 {
-			support = content.ArtifactPath(dataRoot, managed.Artifacts[bundle.Artifacts[1]])
-		}
-	}
-	application, _ := config.ApplicationByID("dwarfstar")
-	options := runtime.DwarfStarOptions{Image: firstNonEmpty(*imageFlag, application.Image), Mode: mode, DataDir: dataRoot, Model: model, SupportModel: support, DSpark: *dspark, RenderNodes: selectedNodes, Profile: profileValue, Context: *contextSize, OutputTokens: *outputTokens, NoThinking: noThinking, Detach: detach, Unconfined: *unconfined, Interactive: mode == "cli" && !prompt.set}
-	if prompt.set {
-		options.Prompt = &prompt.value
-	}
-	if mode == "server" {
-		options.Listen = firstNonEmpty(listen, config.EnvironmentValue(app.Environment, "LISTEN", config.DefaultListen))
-		if err := config.ValidateListenAddress(options.Listen); err != nil {
-			return err
-		}
-		options.Port, err = config.ValidatePort(firstNonEmpty(portText, config.EnvironmentValue(app.Environment, "PORT", fmt.Sprint(application.Port))))
-		if err != nil {
-			return err
-		}
-	}
-	if options.Interactive && !*dryRun && !terminalReader(app.Stdin) {
-		return controlerr.New("interactive DwarfStar CLI requires a terminal; pass --prompt")
-	}
-	command, err := runtime.DwarfStarCommand(options, app.podman().SELinuxVolumeSuffix(app.Context))
-	if err != nil {
-		return err
-	}
-	if mode == "server" && !isLoopback(options.Listen) {
-		fmt.Fprintf(app.Stderr, "%s DwarfStar is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
-	}
-	terminal := app.terminal(app.Stdout)
-	fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Label("Application data:"), (storage.Layout{Root: dataRoot}).Application("dwarfstar"), terminal.Label("Model:"), model)
 	if *dryRun {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil

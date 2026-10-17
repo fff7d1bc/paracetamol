@@ -81,7 +81,7 @@ var commandExampleArguments = map[string][][]string{
 		{"build", "llama-cpp"},
 		{"build", "comfyui", "--no-layer-cache"},
 	},
-	"guide":       {{"guide", "llama-cpp"}, {"guide", "dwarfstar"}},
+	"guide":       {{"guide", "llama-cpp"}, {"guide", "comfyui"}},
 	"doctor":      {{"doctor"}, {"doctor", "--render-node", "/dev/dri/renderD128"}},
 	"acceptance":  {{"acceptance", "--dry-run"}, {"acceptance", "--application", "llama-cpp"}},
 	"status":      {{"status"}, {"status", "llama-cpp"}, {"status", "gateway"}, {"status", "gateway", "--requests", "10"}},
@@ -95,9 +95,7 @@ var commandExampleArguments = map[string][][]string{
 		{"run", "llama-cpp", "cli", "--model", "/path/to/model.gguf"},
 		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--prompt", "Hello"},
 	},
-	"run dwarfstar server":            {{"run", "dwarfstar", "server"}, {"run", "dwarfstar", "server", "--dspark"}},
-	"run dwarfstar cli":               {{"run", "dwarfstar", "cli"}, {"run", "dwarfstar", "cli", "--no-thinking", "--prompt", "Say hello"}},
-	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp", "-a", "dwarfstar"}, {"run", "gateway", "--port", "18080"}},
+	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp"}, {"run", "gateway", "--port", "18080"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},
 	"logs":                            {{"logs", "llama-cpp", "--follow"}, {"logs", "comfyui", "--all"}},
 	"stop":                            {{"stop", "gateway"}, {"stop", "llama-cpp"}, {"stop", "all"}},
@@ -136,7 +134,6 @@ var groupExampleArguments = []struct {
 	examples [][]string
 }{
 	{"run llama-cpp", [][]string{{"run", "llama-cpp", "server", "--router"}, {"run", "llama-cpp", "cli", "--model", "/path/to/model.gguf"}}},
-	{"run dwarfstar", [][]string{{"run", "dwarfstar", "server"}, {"run", "dwarfstar", "cli"}}},
 	{"benchmark comfyui", [][]string{{"benchmark", "comfyui", "run", "BUNDLE", "--dry-run"}, {"benchmark", "comfyui", "suite", "--dry-run"}}},
 	{"benchmark llama-cpp", [][]string{{"benchmark", "llama-cpp", "throughput", "--preset", "PRESET", "--dry-run"}, {"benchmark", "llama-cpp", "speculative", "--preset", "PRESET", "--dry-run"}}},
 	{"content workflows", [][]string{{"content", "workflows", "list"}, {"content", "workflows", "status"}}},

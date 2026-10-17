@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"paracetamol/internal/catalog"
 	"paracetamol/internal/podman"
 	"paracetamol/internal/process"
 )
@@ -120,15 +119,9 @@ func llamaLifecycleFixture(t *testing.T, runner process.Runner, logs ...io.Write
 	if len(logs) > 0 {
 		logOutput = logs[0]
 	}
-	managed := catalog.Catalog{
-		Artifacts: map[string]catalog.Artifact{"model": {ID: "model", Destination: "model.gguf"}},
-		LlamaPresets: map[string]catalog.LlamaPreset{
-			"fixture": {ID: "fixture", Bundle: "bundle", Artifact: "model", DefaultContext: 4096},
-		},
-	}
 	registry := Registry{Models: []Model{{ID: "fixture", Application: "llama-cpp", Backend: "llama-cpp", Bundle: "bundle"}}}
 	lifecycle, err := NewContainerLifecycle(LifecycleOptions{
-		Catalog: managed, Registry: registry, DataRoot: t.TempDir(), Profile: "cpu",
+		Registry: registry, DataRoot: t.TempDir(), Profile: "cpu",
 		LlamaBackend: "rocm", LlamaModelsMax: 2, RouterPreset: "/data/models.ini",
 		VolumeSuffix: ":rw", Runner: runner, Log: logOutput,
 		StartupTimeout: time.Second, ReadinessInterval: time.Millisecond,
@@ -216,32 +209,5 @@ func TestContainerLifecycleReclaimsOnlyItsExactStaleContainer(t *testing.T) {
 	lifecycle = llamaLifecycleFixture(t, unmanaged)
 	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err == nil || !strings.Contains(err.Error(), "unmanaged") {
 		t.Fatalf("unmanaged exact-name collision err=%v", err)
-	}
-}
-
-func TestContainerLifecycleDwarfStarCommandDisablesDSpark(t *testing.T) {
-	managed := catalog.Catalog{
-		Artifacts: map[string]catalog.Artifact{"model": {ID: "model", Destination: "model.gguf", Target: "dwarfstar-models"}},
-		Bundles:   map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "dwarfstar", Artifacts: []string{"model"}}},
-		DwarfStarPresets: map[string]catalog.DwarfStarPreset{
-			"deepseek": {ID: "deepseek", Bundle: "bundle", DefaultContext: 131072, MaxOutputTokens: 16000},
-		},
-	}
-	registry := Registry{Models: []Model{{ID: "deepseek", Application: "dwarfstar", Backend: "dwarfstar", Bundle: "bundle"}}}
-	lifecycle, err := NewContainerLifecycle(LifecycleOptions{
-		Catalog: managed, Registry: registry, DataRoot: "/data", Profile: "strix-halo",
-		RenderNodes: []string{"/dev/dri/renderD128"}, LlamaBackend: "rocm", LlamaModelsMax: 2,
-		VolumeSuffix: ":rw", Runner: &lifecycleRunner{}, Log: io.Discard,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	command, _, _, err := lifecycle.command(AllocationDwarfStar)
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(command, " ")
-	if !strings.Contains(joined, "PARACETAMOL_DWARFSTAR_DSPARK=0") || strings.Contains(joined, "PARACETAMOL_DWARFSTAR_DSPARK_MODEL=") {
-		t.Fatalf("unexpected DwarfStar gateway command: %s", joined)
 	}
 }

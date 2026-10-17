@@ -18,7 +18,6 @@ For a shorter walkthrough made of copyable commands, use the built-in guide:
 ./paracetamol guide
 ./paracetamol guide comfyui
 ./paracetamol guide llama-cpp
-./paracetamol guide dwarfstar
 ```
 
 ## ComfyUI
@@ -583,26 +582,21 @@ point:
 ./paracetamol run gateway
 ```
 
-No application option discovers every built text application with at least one
-compatible verified model. Any explicit `-a` or `--application` options
-strictly replace discovery. Demand both applications when DwarfStar's verified
-model and image are expected to be present:
+With no application option, the gateway discovers llama.cpp when its image is
+built and at least one compatible verified model is present. Select it
+explicitly with `-a` or `--application` to require it:
 
 ```bash
-./paracetamol run gateway \
-  -a llama-cpp \
-  -a dwarfstar
+./paracetamol run gateway -a llama-cpp
 ```
 
 The gateway advertises a frozen receipt-verified snapshot, but starts no
-backend until the first Chat Completions request. It keeps only one application
-allocation resident: cross-application requests wait in FIFO order while
-active work drains and the private backend changes. The foreground terminal
+backend until the first Chat Completions request. It keeps one private llama.cpp
+router allocation resident. The foreground terminal
 follows the active container's output with an application prefix. `status
 gateway` reports the snapshot, current allocation, and process-lifetime
 privacy-safe usage totals. Add `--requests N` for recent session and request
-details. Direct llama.cpp and
-DwarfStar server commands remain useful for engine diagnostics, isolated
+details. Direct llama.cpp server commands remain useful for engine diagnostics, isolated
 benchmarks, and API features outside the gateway's intentionally small
 surface. The complete lifecycle and failure policy is in the [gateway
 design](../gateway.md).
@@ -1008,163 +1002,3 @@ UI are disabled. Non-loopback publication has no authentication unless
 On Strix Halo and Strix Point the entrypoint enables unified-memory policy and
 non-mmap model loading. RDNA 4 discrete GPUs use normal automatic layer
 placement.
-
-## DwarfStar
-
-DwarfStar is the deliberately narrow path for DeepSeek V4 Flash. Paracetamol
-compiles the CLI, HTTP server, and benchmark binary locally from one pinned
-`antirez/ds4` source commit against the same ROCm 10.1 runtime as the other
-applications. It does not run upstream host setup scripts or use upstream
-runtime binaries.
-
-The first manually exercised workload is the 0731 IQ2XXS imatrix GGUF on a
-128 GB Strix Halo. A 128 GB Strix Point host also completed a manual run at
-about 3.9 generated tokens per second. That establishes feasibility, not
-formal acceptance or a performance recommendation. The image contains HIP
-code for `gfx1150`, `gfx1151`, `gfx1200`, and `gfx1201`, and the launcher
-allows every corresponding Paracetamol profile. The exact 80.76 GiB model is
-downloaded from a pinned Hugging Face revision, checked by size and SHA-256,
-and mounted read-only. All architectures remain experimental until they
-complete the hardware acceptance matrix. The exact 0731 DSpark support GGUF
-is available as a separately installed, opt-in speculative-decoding path.
-Generic MTP files, multi-GPU execution, distributed execution, SSD streaming,
-and the native coding agent remain outside this integration.
-
-The regular `doctor` 112 GiB TTM/GTT result is the project's starting point
-for a nominal 128 GB Strix Halo. Strix Point also needs enough TTM/GTT mapping
-space for the resident model, context, and transient allocations. A discrete
-GPU may spill through ROCm into system memory, but that does not make a small
-VRAM host accepted or guarantee useful performance. During the manual Strix
-Halo run, the managed 128K server and a historical retired-client tool
-workflow passed at this setting. At 100 GiB, a 32K server could start but a
-roughly 6K-token tool prefill ran out of mapping space on a transient 320 MiB
-allocation. The bounded
-acceptance smoke still uses a 4K context so routine checks remain short. The
-[pinned upstream Strix Halo guide](https://github.com/antirez/ds4/blob/6289c516273979173abbc062209a81dd3706b804/docs/STRIX_HALO.md)
-uses `amdgpu.gttsize=126976`, `ttm.pages_limit=32505856`, and
-`ttm.page_pool_size=32505856`, which is roughly a 124 GiB ceiling. These are
-reference settings, not a requirement to copy them. The current guide warns
-against disabling the IOMMU merely to reproduce another host's configuration.
-Paracetamol does not change these host settings. The August 17 DSpark check
-passed at the ordinary 112 GiB ceiling with the IOMMU enabled.
-
-Build, install, and run it explicitly:
-
-```bash
-./paracetamol build dwarfstar
-./paracetamol content install dwarfstar flash-0731-q2-imatrix
-./paracetamol run dwarfstar server
-```
-
-The server listens on `127.0.0.1:8000` by default and exposes DwarfStar's
-OpenAI-compatible API. The DwarfStar process binds to `0.0.0.0` inside its
-private container namespace so Podman can forward the port, while Podman
-publishes it only on the selected host address. The default publication is
-therefore loopback-only, not LAN-accessible. Pass `--listen 0.0.0.0` or one
-exact non-loopback host address only when unauthenticated network publication
-is intentional.
-
-Without `--model`, Paracetamol selects the installed and verified
-`flash-0731-q2-imatrix` model. This is the 0731 chat-v2 imatrix GGUF with
-IQ2_XXS routed gate/up weights, Q2_K routed down weights, and Q8 attention
-projections, shared experts, and output. It is the upstream Q2 model intended
-for 96/128 GB machines, not a uniformly IQ2_XXS fallback.
-
-The pinned upstream Strix Halo guide selects this quantization layout and
-warns that mixed Q2/Q4 builds can put enough pressure on the ROCm path to
-trigger system OOM. Paracetamol therefore does not offer the larger mixed
-Q2/Q4, Q4, MXFP4, or PRO models as managed alternatives on this hardware
-class. DSpark is a separate experimental speculative-decoding aid, not a
-higher-quality model. Its separate managed bundle adds the exact 5.58 GiB
-0731 support GGUF to the same directory as the 80.76 GiB target:
-
-```bash
-./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
-./paracetamol run dwarfstar server --dspark
-```
-
-Normal launches remain DSpark-off and need only the original model. The
-DSpark launch accepts no arbitrary `--model`: the source revision, target,
-support GGUF, and engine flags are one reviewed compatibility unit. CLI mode
-forces temperature zero. Server clients must likewise send
-`"temperature": 0`; other sampling settings are not part of the accepted
-DSpark contract. The support model increases installed content to about
-86.34 GiB before context and working allocations. Treat any speed difference
-as hardware- and workload-specific, and check output quality rather than
-assuming speculative decoding is always faster.
-
-The [September 9 Strix Halo retest](../hardware-acceptance.md#fedora-44-strix-halo-dwarfstar-6289c51-update-2026-09-09)
-confirmed ordinary and DSpark operation at a 128K ceiling. The updated DSpark
-path took 26% less wall time than the previous DSpark build on three fixed
-256-token requests, but was only level with the updated ordinary path.
-It was slower on the tested 6K-token input. This is not a reason to enable it
-by default, and the outputs were not byte-identical. Measure the actual
-workload before choosing it.
-
-A different DwarfStar-compatible local GGUF can be selected explicitly; its
-containing directory is mounted read-only:
-
-```bash
-./paracetamol run dwarfstar server \
-  --model /path/to/deepseek-v4.gguf
-```
-
-Paracetamol does not scan a directory and guess which file is compatible. The
-managed starting point is 131072 context tokens with a 16000-token response
-ceiling, following the upstream exercised server configuration rather than
-assuming the model's largest possible context will fit beside an 80 GiB
-resident model. Reduce the allocation when diagnosing memory pressure:
-
-```bash
-./paracetamol run dwarfstar server --context 32768
-```
-
-For one local prompt, CLI mode uses thinking by default. Disable it for a
-short direct-answer check:
-
-```bash
-./paracetamol run dwarfstar cli --no-thinking \
-  --prompt 'Reply with exactly: DwarfStar ready'
-```
-
-The API chooses thinking behavior per request. A `deepseek-chat` model alias,
-`"think": false`, or `"thinking": {"type": "disabled"}` requests a direct
-answer; DwarfStar otherwise defaults to its normal thinking mode. Keep the
-server on loopback unless an authenticated trusted proxy protects it. An
-explicit non-loopback publication has no built-in authentication.
-
-When the server was started with `--dspark`, include `"temperature": 0` in
-every Chat Completions request. This sampling requirement is independent of
-the request's thinking choice.
-
-When automatic discovery includes DwarfStar, or the gateway was explicitly
-started with `-a dwarfstar`, both launchers include its reviewed model in the
-same `paracetamol` provider. Choose it explicitly in a client:
-
-```bash
-./paracetamol run gateway -a llama-cpp -a dwarfstar
-maki -m paracetamol/antirez-deepseek-v4-flash-0731-q2-imatrix
-```
-
-The harness model ID identifies the managed 0731 Q2 imatrix bundle rather
-than DwarfStar's generic `deepseek-v4-flash` discovery alias. The gateway's
-frozen `/v1/models` response therefore identifies the reviewed installed
-release and quantization instead of forwarding the engine-owned alias list.
-
-The export exposes direct and normal thinking behavior as off and high. The engine
-maps low, medium, and high to the same mode below its much larger Think Max
-context threshold, so Paracetamol does not expose three misleading labels. The
-managed 128K server also cannot activate the 384K-minimum Think Max mode.
-Maki exposes the same off and high behaviors through `/thinking`; adaptive
-selects high. Maki uses one gateway URL rather than separate ports for each
-backend. Refresh the [native configuration](remote-maki.md) after restarting
-the gateway with DwarfStar included.
-
-Run the hardware-bound smoke separately after initial setup. Outside Strix
-Halo, selecting DwarfStar explicitly is also the opt-in that prevents the
-80.76 GiB model from joining an ordinary default acceptance smoke:
-
-```bash
-./paracetamol acceptance --application dwarfstar --dry-run
-./paracetamol acceptance --application dwarfstar
-```

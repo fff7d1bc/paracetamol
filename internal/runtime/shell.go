@@ -14,8 +14,6 @@ func ShellCommand(image, dataDir, volumeSuffix, application string) []string {
 		volumes = append(volumes, "--volume", layout.ComfyModels()+":/content/models"+readOnly)
 	case "llama-cpp":
 		volumes = append(volumes, "--volume", layout.LlamaModels()+":/content/models"+readOnly)
-	case "dwarfstar":
-		volumes = append(volumes, "--volume", layout.DwarfStarModels()+":/content/models"+readOnly)
 	}
 	command := []string{"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(), "-it"}
 	command = append(command, podman.ManagedArguments(application, "shell")...)

@@ -190,7 +190,7 @@ func TestFlagErrorIsPrintedOnceWithUsageStatus(t *testing.T) {
 }
 
 func TestNestedCommandHelpIsAvailable(t *testing.T) {
-	for _, arguments := range [][]string{{"run", "llama-cpp", "--help"}, {"run", "dwarfstar", "--help"}, {"benchmark", "llama-cpp", "--help"}} {
+	for _, arguments := range [][]string{{"run", "llama-cpp", "--help"}, {"benchmark", "llama-cpp", "--help"}} {
 		t.Run(strings.Join(arguments, " "), func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if status := Main(context.Background(), arguments, strings.NewReader(""), &stdout, &stderr); status != 0 {
@@ -200,22 +200,6 @@ func TestNestedCommandHelpIsAvailable(t *testing.T) {
 				t.Fatalf("missing nested help: %q", stdout.String())
 			}
 		})
-	}
-}
-
-func TestDwarfStarHelpKeepsThinkingControlInCLIMode(t *testing.T) {
-	for _, test := range []struct {
-		mode string
-		want bool
-	}{{mode: "server", want: false}, {mode: "cli", want: true}} {
-		var stdout, stderr bytes.Buffer
-		status := Main(context.Background(), []string{"run", "dwarfstar", test.mode, "--help"}, strings.NewReader(""), &stdout, &stderr)
-		if status != 0 || stderr.Len() != 0 {
-			t.Fatalf("mode=%s status=%d stderr=%q", test.mode, status, stderr.String())
-		}
-		if got := strings.Contains(stdout.String(), "--no-thinking"); got != test.want {
-			t.Fatalf("mode=%s no-thinking=%t help=%s", test.mode, got, stdout.String())
-		}
 	}
 }
 
@@ -357,5 +341,20 @@ func TestExplicitZeroCivitaiVersionIsRejectedBeforeNetworkAccess(t *testing.T) {
 	status := Main(context.Background(), []string{"content", "import", "https://civitai.com/models/1", "--version", "0", "--non-interactive"}, strings.NewReader(""), &stdout, &stderr)
 	if status != 2 || !strings.Contains(stderr.String(), "--version must be positive") {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestRetiredApplicationCommandsAreRejected(t *testing.T) {
+	for _, arguments := range [][]string{
+		{"run", "dwarfstar", "server", "--dry-run"},
+		{"run", "dwarfstar", "cli", "--help"},
+		{"guide", "dwarfstar"},
+		{"build", "dwarfstar"},
+		{"acceptance", "--application", "dwarfstar", "--dry-run"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if status := Main(context.Background(), append([]string{"--no-config"}, arguments...), strings.NewReader(""), &stdout, &stderr); status != 2 {
+			t.Fatalf("%v status=%d stdout=%q stderr=%q", arguments, status, stdout.String(), stderr.String())
+		}
 	}
 }

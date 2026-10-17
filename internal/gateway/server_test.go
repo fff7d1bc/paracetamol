@@ -36,7 +36,7 @@ func testGatewayServer(t *testing.T, upstream *httptest.Server) (*httptest.Serve
 	if err != nil {
 		t.Fatal(err)
 	}
-	scheduler, err := NewScheduler(fixedLifecycle{url: parsed}, QueueLimit, map[Allocation]int{AllocationDwarfStar: 1})
+	scheduler, err := NewScheduler(fixedLifecycle{url: parsed}, QueueLimit, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +479,7 @@ func TestServerRecordsQueueFullAndQueuedCancellation(t *testing.T) {
 	}))
 	defer upstream.Close()
 	parsed, _ := url.Parse(upstream.URL)
-	scheduler, err := NewScheduler(fixedLifecycle{url: parsed}, 1, nil)
+	scheduler, err := NewScheduler(fixedLifecycle{url: parsed}, 1, map[Allocation]int{AllocationLlamaCPP: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,11 +490,9 @@ func TestServerRecordsQueueFullAndQueuedCancellation(t *testing.T) {
 	registry := Registry{
 		Models: []Model{
 			{ID: "llama", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP},
-			{ID: "dwarf", Application: "dwarfstar", Backend: textmodel.BackendDwarfStar},
 		},
 		byID: map[string]Model{
 			"llama": {ID: "llama", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP},
-			"dwarf": {ID: "dwarf", Application: "dwarfstar", Backend: textmodel.BackendDwarfStar},
 		},
 	}
 	handler, _ := NewServer(registry, scheduler, io.Discard, ServerOptions{})
@@ -506,7 +504,7 @@ func TestServerRecordsQueueFullAndQueuedCancellation(t *testing.T) {
 	}()
 
 	queuedContext, cancelQueued := context.WithCancel(context.Background())
-	queuedRequest, _ := http.NewRequestWithContext(queuedContext, http.MethodPost, server.URL+"/v1/chat/completions", strings.NewReader(`{"model":"dwarf","messages":[]}`))
+	queuedRequest, _ := http.NewRequestWithContext(queuedContext, http.MethodPost, server.URL+"/v1/chat/completions", strings.NewReader(`{"model":"llama","messages":[]}`))
 	queuedResult := make(chan error, 1)
 	go func() {
 		response, requestErr := http.DefaultClient.Do(queuedRequest)
@@ -517,7 +515,7 @@ func TestServerRecordsQueueFullAndQueuedCancellation(t *testing.T) {
 	}()
 	waitForStatus(t, scheduler, func(status SchedulerStatus) bool { return status.QueuedRequests == 1 })
 
-	response, err := http.Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"dwarf","messages":[]}`))
+	response, err := http.Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"llama","messages":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}

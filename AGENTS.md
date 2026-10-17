@@ -5,8 +5,8 @@
 Paracetamol bootstraps locally built, rootless ROCm application containers and
 verified persistent content for AMD `gfx1150` (Strix Point), `gfx1151` (Strix
 Halo), `gfx1200` (Radeon RX 9060 family), and `gfx1201` (Radeon AI PRO R9700
-and Radeon RX 9070 family). It currently manages ComfyUI, llama.cpp, and an
-experimental high-memory DwarfStar path for DeepSeek V4 Flash.
+and Radeon RX 9070 family). It currently manages ComfyUI and llama.cpp.
+llama.cpp is the only managed text-inference engine.
 
 The project does not publish or depend on prebuilt Paracetamol application
 images. A successful build or CPU startup is not evidence that GPU inference
@@ -332,8 +332,7 @@ make test
 make static
 PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
-  applications/llama-cpp/entrypoint.sh \
-  applications/dwarfstar/entrypoint.sh
+  applications/llama-cpp/entrypoint.sh
 find catalog -type f -name '*.json' -print0 | \
   xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check

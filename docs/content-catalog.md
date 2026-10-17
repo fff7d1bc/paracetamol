@@ -236,32 +236,6 @@ connect it to a stable router identity:
 }
 ```
 
-DwarfStar model files use `"target": "dwarfstar-models"`, application
-`dwarfstar`, and groups `all` and `dwarfstar`. They deliberately do not become
-llama.cpp presets. Give the reviewed serving identity its own validated policy:
-
-```json
-"dwarfstar_presets": {
-  "antirez-deepseek-v4-flash-0731-q2-imatrix": {
-    "bundle": "dwarfstar-target-bundle",
-    "dspark_bundle": "dwarfstar-target-and-support-bundle",
-    "default_context": 131072,
-    "max_output_tokens": 16000,
-    "agent_tools": true,
-    "reasoning_control": "effort",
-    "reasoning_levels": ["high"],
-    "reasoning_default": "high",
-    "reasoning_off": true
-  }
-}
-```
-
-The public DwarfStar recipe and runtime own one reviewed target-model identity.
-The gateway exposes only its non-DSpark bundle. The optional
-DSpark bundle contains that target first and its exact support GGUF second;
-the runtime accepts the pair only through `--dspark` and never treats the
-support file as another user-selectable model.
-
 `default_context` is Paracetamol's reviewed starting context for the preset. It
 may be the model's native context for agent-focused models or a smaller
 operational default for models aimed at constrained hardware or bounded tasks.
@@ -484,10 +458,9 @@ committing machine-specific or non-public metadata:
 The repository-root `local-content/` directory is ignored by Git and is the
 recommended location for packs and their companion manifests.
 
-Local packs can install ComfyUI, llama.cpp, or DwarfStar artifacts. DwarfStar
-bundles use application `dwarfstar`, groups `all` and `dwarfstar`, and the
-`dwarfstar-models` target. They retain the same explicit `NOASSERTION` gate,
-immutable file pins, verification, and application-specific storage boundary.
+Local packs can install ComfyUI or llama.cpp artifacts. They retain the same
+explicit `NOASSERTION` gate, immutable file pins, verification, and
+application-specific storage boundary.
 A local pack does not declare serving presets or add its model to the gateway.
 Use an exact local `--model` path for an isolated compatibility trial before
 proposing a reviewed built-in preset.

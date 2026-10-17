@@ -32,7 +32,3 @@
 !applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja
-!applications/dwarfstar/
-!applications/dwarfstar/entrypoint.sh
-!applications/dwarfstar/multiarch-wmma-fallback.patch
-!applications/dwarfstar/glm-tool-argument-types.patch

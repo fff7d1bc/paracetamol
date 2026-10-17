@@ -11,10 +11,7 @@ import (
 
 type Allocation string
 
-const (
-	AllocationLlamaCPP  Allocation = "llama-cpp"
-	AllocationDwarfStar Allocation = "dwarfstar"
-)
+const AllocationLlamaCPP Allocation = "llama-cpp"
 
 type AllocationState string
 
@@ -110,9 +107,12 @@ func NewScheduler(lifecycle Lifecycle, queueMax int, limits map[Allocation]int) 
 	if lifecycle == nil || queueMax < 1 {
 		return nil, fmt.Errorf("invalid gateway scheduler configuration")
 	}
+	// Production supplies only llama.cpp. Explicit limits can register other
+	// allocations so the scheduling state machine remains backend-independent;
+	// the registry and container lifecycle own supported-engine validation.
 	cloned := make(map[Allocation]int, len(limits))
 	for allocation, limit := range limits {
-		if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar || limit < 0 {
+		if allocation == "" || limit < 0 {
 			return nil, fmt.Errorf("invalid concurrency limit for %q", allocation)
 		}
 		cloned[allocation] = limit
@@ -129,7 +129,7 @@ func NewScheduler(lifecycle Lifecycle, queueMax int, limits map[Allocation]int) 
 }
 
 func (scheduler *Scheduler) Acquire(ctx context.Context, allocation Allocation) (*Lease, error) {
-	if allocation != AllocationLlamaCPP && allocation != AllocationDwarfStar {
+	if _, configured := scheduler.limits[allocation]; allocation != AllocationLlamaCPP && !configured {
 		return nil, fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
 	request := acquireRequest{id: scheduler.nextID.Add(1), ctx: ctx, allocation: allocation, reply: make(chan acquireResult)}

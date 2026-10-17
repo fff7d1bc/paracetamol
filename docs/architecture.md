@@ -73,7 +73,7 @@ packages so tests can replace them without invoking GPU inference.
 
 The command parser accepts launcher flags before or after positionals while
 preserving `--` as an explicit upstream boundary. A mode only defines flags it
-can honor: for example, llama.cpp and DwarfStar CLI mode do not accept server
+can honor: for example, llama.cpp CLI mode does not accept server
 publication or detach controls. Only ComfyUI currently accepts upstream
 arguments after `--`.
 
@@ -351,18 +351,6 @@ The application registry's `PyTorchBase` capability keeps the choice of the
 higher base explicit in build and image-archive planning; every GPU application still
 shares the lower runtime.
 
-`dwarfstar` follows the same native split without inheriting llama.cpp's
-Vulkan or HTTP dependencies. A shared `native-rocm-sdk` stage adds AMD's
-modular development payload to `ROCM_RUNTIME_IMAGE`. The DwarfStar builder
-fetches one full source commit, uses the upstream ROCm target while compiling
-HIP code for `gfx1150`, `gfx1151`, `gfx1200`, and `gfx1201`, and embeds RPATHs
-to the modular ROCm runtime libraries. Clang's per-architecture offload jobs
-share the bounded GNU Make jobserver, so the four device targets compile in
-parallel without creating a second, unbounded worker pool. The final image
-starts again from `ROCM_RUNTIME_IMAGE` and retains only `ds4`, `ds4-server`,
-`ds4-bench`, the license, and Paracetamol's constrained entrypoint. Upstream
-setup scripts and runtime binaries are not build inputs.
-
 All GPU applications follow the global `ROCM_VERSION`. The native llama.cpp
 builder changes the development dependency shape, not release policy. A ROCm
 update is therefore incomplete until the shared runtime, PyTorch base, and
@@ -421,24 +409,6 @@ ComfyUI Manager policy uses a strict build-time patch program. It matches
 expected upstream text exactly and refuses zero or multiple matches. An
 upstream upgrade causing a patch failure is a review request, not something
 to bypass with a looser replacement.
-
-The pinned DwarfStar source receives the fail-closed
-`applications/dwarfstar/multiarch-wmma-fallback.patch`. Upstream's direct
-256-bit WMMA prefill kernel is specific to the `gfx11` targets it was written
-for and does not compile for RDNA 4. The patch retains that optimized dispatch
-on `gfx1150` and `gfx1151`, while RDNA 4 uses the existing generic batched Q8
-path. Remove it only when a reviewed upstream pin selects a correct kernel by
-device capability itself.
-
-`applications/dwarfstar/glm-tool-argument-types.patch` carries upstream PR
-1016 at `9db96f0e96928e2245664b83e0498145e86a4c25`. GLM tool syntax lacks
-DeepSeek's explicit string flag. The parser uses the request's property types
-to preserve valid JSON literals, keeps strings and ambiguous schemas as text,
-and retains raw generated tool text for replay. This is type recovery, not
-schema validation. The image build runs model-free CPU server tests before
-building ROCm binaries. Remove the patch only after a reviewed upstream pin
-owns the correction and passes the same typed, streaming, and DeepSeek
-regressions. This patch does not add a managed GLM model or gateway policy.
 
 The pinned llama.cpp source receives the fail-closed
 `applications/llama-cpp/hip-apu-host-buffer.patch`, taken from upstream PR
@@ -529,16 +499,6 @@ an automatic profile needs resolving for inventory. Missing or ambiguous
 topology cannot opt into a restricted model. The direct entrypoint and router
 renderer also check the restriction against the profile detected inside the
 container. This is a safety gate, not a new hardware profile or backend.
-
-`applications/dwarfstar/entrypoint.sh` is intentionally smaller. It accepts
-only server or CLI mode, verifies that exactly one supported architecture is
-visible, resolves or checks the matching hardware profile, and constructs the
-reviewed model, context, output-limit, thinking, and bind arguments. It does
-not expose upstream arguments generically. One explicit `--dspark` path
-selects the exact managed 0731 target and support GGUF pair and applies the
-reviewed DSpark/MTP engine flags; normal launches remain unchanged. Arbitrary
-MTP files, distributed execution, SSD streaming, multi-GPU, benchmark,
-evaluation, and agent surfaces remain unavailable.
 
 ## Runtime isolation
 
@@ -682,8 +642,6 @@ apps/
     home/ cache/ benchmarks/
   llama-cpp/
     home/ cache/ models.ini
-  dwarfstar/
-    home/
   gateway/
     statistics/                  private SQLite daily usage totals
   acceptance/
@@ -691,14 +649,15 @@ apps/
 content/
   comfyui/models/               direct ComfyUI model files
   llama-cpp/models/             managed GGUF model files
-  dwarfstar/models/             managed DeepSeek V4 Flash GGUF
 staging/
-  comfyui/ llama-cpp/ dwarfstar/
+  comfyui/ llama-cpp/
   .cache/ .home/                downloader-only transient state
 ```
 
 Former `apps/pi/`, `apps/maki/` and `apps/agent-evaluation/` trees may still
 exist. They are preserved user data, not active runtime partitions.
+The retired `apps/dwarfstar/`, `content/dwarfstar/` and `staging/dwarfstar/`
+trees are also left untouched. Retirement does not delete old images or data.
 
 Managed `content/` and generated caches are reproducible from the catalog.
 Application `custom-loras`, `state`, `user`, `input`, `output`, and benchmark
@@ -730,7 +689,7 @@ destination roots are therefore required not to overlap.
 
 ## Catalog and workflow trust chain
 
-`catalog/catalog.json` is schema version 29. The loader in
+`catalog/catalog.json` is schema version 30. The loader in
 `internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.
@@ -739,8 +698,7 @@ The catalog supports direct artifacts and bounded archive collections:
 
 - A direct artifact is one remote file installed into its declared managed
   partition. ComfyUI artifacts use `content/comfyui/models`; managed GGUF
-  artifacts use `content/llama-cpp/models`; DwarfStar GGUFs use the separate
-  `content/dwarfstar/models` partition.
+  artifacts use `content/llama-cpp/models`.
 - An archive collection expands into direct artifacts that share one bounded
   archive transport while retaining independently verified member identities
   and destinations.
@@ -806,7 +764,7 @@ reasons; the reviewed template maps clients' unavoidable generic off value to
 Muse low without changing other model families.
 
 `internal/textmodel/` derives backend-neutral model capabilities from the
-application-specific llama.cpp and DwarfStar preset collections. The catalog
+llama.cpp preset collection. The catalog
 therefore remains the only owner of public model IDs, starting context, output
 limits, agent-tool eligibility, and reasoning choices.
 
@@ -817,7 +775,7 @@ listener. A concrete non-loopback publication adds one exact listener on the
 same port; an IPv4 wildcard listener already includes loopback. IPv6 listeners
 use an explicit `tcp6` socket beside IPv4 loopback so platform dual-stack
 policy cannot break managed local clients. A lazily started llama.cpp router
-or DwarfStar server remains in its normal constrained container and publishes
+remains in its normal constrained container and publishes
 only one ephemeral loopback port. With no application selection, the CLI
 discovers built applications that contribute at least one compatible
 receipt-verified model. Explicit selections replace discovery and retain
@@ -909,8 +867,6 @@ Ambiguous reasoning controls fail before allocation. Templates and native
 reasoning remain backend-owned. Direct engine endpoints retain native
 defaults, while direct benchmarks send and record the catalog tuple.
 
-DwarfStar is exported only when the gateway advertises a coding-capable preset.
-Its 128K model supports off and high, not the larger-context Think Max mode.
 A frozen registry proves receipt validity at startup, not backend residency.
 A new model still needs a complete function-tool round trip, not only a plain
 chat response, before being marked coding-capable.

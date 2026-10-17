@@ -16,8 +16,7 @@ make test
 make static
 PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
 bash -n applications/comfyui/entrypoint.sh \
-  applications/llama-cpp/entrypoint.sh \
-  applications/dwarfstar/entrypoint.sh
+  applications/llama-cpp/entrypoint.sh
 find catalog -type f -name '*.json' -print0 | \
   xargs -0 -n1 python3 -m json.tool >/dev/null
 git diff --check
@@ -144,7 +143,6 @@ Exercise user-visible composition:
 ./paracetamol content install llama-cpp qwen3.8 --dry-run
 ./paracetamol run llama-cpp server --router \
   --profile cpu --listen 127.0.0.1 --dry-run
-./paracetamol run dwarfstar server --profile strix-halo --dry-run
 ./paracetamol benchmark llama-cpp throughput \
   --preset qwen-qwen3-0.6b-q8-0 --profile cpu --dry-run
 ./paracetamol benchmark llama-cpp throughput \
@@ -234,25 +232,6 @@ unresolved `ldd` entries, link both `libggml-hip` and `libggml-vulkan`, and
 retain rocBLAS/hipBLASLt payloads only for `gfx1150`, `gfx1151`, `gfx1200`,
 and `gfx1201`. CPU startup is not GPU inference acceptance.
 
-For DwarfStar, run `ds4`, `ds4-server`, and `ds4-bench` help with the
-entrypoint overridden, inspect all three with `ldd`, and confirm that the
-final image has no `ds4-agent`, `ds4-eval`, GCC build toolchain, Git checkout,
-ROCm development wheel, or PyTorch package. The minimal ROCm core wheel owns
-the HIP compiler driver and LLVM runtime needed by the packaged runtime.
-Confirm the image label and HIP code cover the canonical four architectures.
-Then run `acceptance --application dwarfstar` on each memory-capable hardware
-class. Starting a source-built binary on the build host is not inference
-acceptance.
-
-For the optional DSpark path, first dry-run `run dwarfstar server --dspark`
-and confirm that it selects the exact managed target/support pair in one
-read-only mount. On target hardware, compare fixed temperature-zero prompts
-with DSpark off and on, verify the output rather than throughput alone, and
-exercise a 128K server request carrying `"temperature": 0`. Inspect kernel
-logs for mapping faults, GPU resets, and process crashes. DSpark CLI mode
-forces temperature zero; nonzero server sampling is outside the supported
-contract.
-
 Inspect image metadata and history when pins or licenses changed:
 
 ```bash
@@ -309,8 +288,8 @@ wait for gateway cleanup, leave no gateway listener or private backend, and
 remain idempotent. `stop gateway` must work without invoking Podman; `stop all`
 must drain the gateway before removing normal application containers.
 GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
-output, a streamed request, client cancellation, FIFO draining, and an
-application switch. Confirm `status gateway` derives llama.cpp child residency
+output, a streamed request, client cancellation, FIFO draining, and a
+router model switch. Confirm `status gateway` derives llama.cpp child residency
 from a read-only private `/models` probe without `reload`, filters foreign
 models and router arguments, and reports bounded fixed diagnostics on malformed
 or unavailable responses. Send native Maki and generic OpenAI-compatible
@@ -324,7 +303,7 @@ Paracetamol session header is not forwarded upstream. Exercise normal JSON,
 fragmented SSE, client disconnect,
 and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
-`gateway |`, `llama-cpp |`, or `dwarfstar |` prefix.
+`gateway |` or `llama-cpp |` prefix.
 
 For sampling-policy changes, test every catalog-backed Qwen mode with missing,
 null, partial, and explicit-zero sampler fields. Invalid or conflicting
@@ -411,8 +390,8 @@ Use Maki's native `always_thinking` Lua setting in print-mode tests. Its hidden
 On an available inference host, download the export to temporary native client
 state and complete a real file-read and shell-tool round trip over the LAN
 hostname. Check off and xhigh on regular Flash-Next and one other model family.
-For DwarfStar, test off and high and require reasoning history to survive the
-tool-result request. Inspect actual gateway request metadata and model output.
+Require reasoning history to survive the tool-result request. Inspect actual
+gateway request metadata and model output.
 Run a native macOS smoke separately when macOS is available. Linux fixtures
 do not establish DNS, permissions, keychain or runtime behavior on a Mac.
 

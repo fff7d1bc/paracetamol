@@ -336,19 +336,19 @@ func TestResponseObserverReadsFragmentedSSETimingsAndIgnoresMalformedFields(t *t
 	}
 }
 
-func TestRequestLedgerDerivesWeightedBackendRatesAndLeavesDwarfStarUnavailable(t *testing.T) {
+func TestRequestLedgerDerivesWeightedBackendRatesAndLeavesMissingTimingsUnavailable(t *testing.T) {
 	var ledger requestLedger
 	firstTokens, secondTokens := int64(100), int64(100)
 	firstMS, secondMS := 1000.0, 9000.0
 	ledger.Add(RequestRecord{Model: "qwen", Application: "llama-cpp", BackendTimings: BackendTimings{GeneratedTokens: &firstTokens, GeneratedMilliseconds: &firstMS}})
 	ledger.Add(RequestRecord{Model: "qwen", Application: "llama-cpp", BackendTimings: BackendTimings{GeneratedTokens: &secondTokens, GeneratedMilliseconds: &secondMS}})
-	ledger.Add(RequestRecord{Model: "deepseek", Application: "dwarfstar"})
+	ledger.Add(RequestRecord{Model: "fixture-missing-timings", Application: "llama-cpp"})
 	_, summary := ledger.Snapshot(0)
 	metric := summary.Overall.BackendTimings.TokenGeneration
 	if metric.TimedTokens != 198 || metric.Milliseconds != 10000 || metric.Observations != 2 || metric.TokensPerSecond == nil || *metric.TokensPerSecond != 19.8 {
 		t.Fatalf("weighted metric=%#v", metric)
 	}
-	if len(summary.Models) != 2 || summary.Models[0].Model != "deepseek" || summary.Models[0].Usage.BackendTimings.TokenGeneration.TokensPerSecond != nil {
+	if len(summary.Models) != 2 || summary.Models[0].Model != "fixture-missing-timings" || summary.Models[0].Usage.BackendTimings.TokenGeneration.TokensPerSecond != nil {
 		t.Fatalf("model aggregates=%#v", summary.Models)
 	}
 }
@@ -390,7 +390,7 @@ func TestControllerLogLineCannotInjectUnprefixedPhysicalLines(t *testing.T) {
 func TestSharedLogWriterDoesNotSpliceConcurrentPrefixes(t *testing.T) {
 	var output bytes.Buffer
 	shared := NewAtomicLogWriter(&output)
-	backend := newPrefixedLineWriter(shared, "dwarfstar | ")
+	backend := newPrefixedLineWriter(shared, "test-backend | ")
 	var workers sync.WaitGroup
 	for worker := 0; worker < 8; worker++ {
 		workers.Add(1)
@@ -408,7 +408,7 @@ func TestSharedLogWriterDoesNotSpliceConcurrentPrefixes(t *testing.T) {
 	workers.Wait()
 	backend.finish()
 	for _, line := range strings.Split(strings.TrimSpace(output.String()), "\n") {
-		if !strings.HasPrefix(line, "gateway | ") && !strings.HasPrefix(line, "dwarfstar | ") {
+		if !strings.HasPrefix(line, "gateway | ") && !strings.HasPrefix(line, "test-backend | ") {
 			t.Fatalf("interleaved log line=%q", line)
 		}
 	}

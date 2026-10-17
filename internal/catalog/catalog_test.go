@@ -22,8 +22,8 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 70 || len(loaded.Bundles) != 49 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 15 || len(loaded.DwarfStarPresets) != 1 {
-		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d dwarfstar_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets), len(loaded.DwarfStarPresets))
+	if len(loaded.Agreements) != 6 || len(loaded.Artifacts) != 68 || len(loaded.Bundles) != 47 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 15 {
+		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
@@ -43,9 +43,33 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 			}
 		}
 	}
-	dwarfstar := loaded.DwarfStarPresets["antirez-deepseek-v4-flash-0731-q2-imatrix"]
-	if dwarfstar.Bundle == "" || dwarfstar.DefaultContext != 131072 || dwarfstar.ReasoningDefault != "high" {
-		t.Fatalf("unexpected DwarfStar preset: %#v", dwarfstar)
+}
+
+func TestCatalogRejectsRetiredDwarfStarDeclarations(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, test := range map[string]struct {
+		old, replacement, message string
+	}{
+		"preset collection": {`"llama_presets": {`, `"dwarfstar_presets": {}, "llama_presets": {`, `unknown field "dwarfstar_presets"`},
+		"artifact target":   {`"target": "llama-models"`, `"target": "dwarfstar-models"`, `unsupported target "dwarfstar-models"`},
+		"application":       {`"application": "llama-cpp"`, `"application": "dwarfstar"`, `unknown application "dwarfstar"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			modified := strings.Replace(string(contents), test.old, test.replacement, 1)
+			if modified == string(contents) {
+				t.Fatal("catalog fixture no longer matches")
+			}
+			file := filepath.Join(t.TempDir(), "catalog.json")
+			if err := os.WriteFile(file, []byte(modified), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(file); err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatalf("retired declaration was not rejected at its boundary: %v", err)
+			}
+		})
 	}
 }
 
@@ -115,14 +139,6 @@ func TestPublicTextPresetIDsNameTheGGUFPublisher(t *testing.T) {
 			t.Errorf("preset %q and bundle %q should name GGUF publisher %q", id, preset.Bundle, publisher)
 		}
 	}
-	for id, preset := range loaded.DwarfStarPresets {
-		bundle := loaded.Bundles[preset.Bundle]
-		artifact := loaded.Artifacts[bundle.Artifacts[0]]
-		publisher := strings.ToLower(strings.SplitN(artifact.Source.Repository, "/", 2)[0])
-		if !strings.HasPrefix(id, publisher+"-") || !strings.HasPrefix(preset.Bundle, "dwarfstar-"+publisher+"-") {
-			t.Errorf("preset %q and bundle %q should name GGUF publisher %q", id, preset.Bundle, publisher)
-		}
-	}
 }
 
 func TestManagedTextArtifactsNameGGUFPublisher(t *testing.T) {
@@ -135,7 +151,7 @@ func TestManagedTextArtifactsNameGGUFPublisher(t *testing.T) {
 		t.Fatal(err)
 	}
 	for id, artifact := range loaded.Artifacts {
-		if artifact.Target != "llama-models" && artifact.Target != "dwarfstar-models" {
+		if artifact.Target != "llama-models" {
 			continue
 		}
 		publisher := strings.ToLower(strings.SplitN(artifact.Source.Repository, "/", 2)[0])
@@ -255,7 +271,7 @@ func TestSafeRelativeRejectsTraversal(t *testing.T) {
 }
 
 func TestBundleRequiresSelectorGroupsAndAllMembership(t *testing.T) {
-	for _, groups := range []string{`[]`, `["llama"]`, `["all", "all"]`, `["all", "unknown"]`} {
+	for _, groups := range []string{`[]`, `["llama"]`, `["all", "all"]`, `["all", "unknown"]`, `["all", "dwarfstar"]`} {
 		raw := json.RawMessage(`{"description":"fixture","application":"llama-cpp","artifacts":["artifact"],"groups":` + groups + `}`)
 		if _, err := loadBundle("fixture", raw); err == nil {
 			t.Fatalf("accepted invalid bundle groups %s", groups)

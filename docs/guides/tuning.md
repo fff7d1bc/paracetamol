@@ -140,9 +140,10 @@ starting point:
 
 Linux reports about 122.8 GiB usable on a typical nominal 128 GB host, so the
 largest ceiling leaves closer to 11 GiB in the absolute worst case. It does
-not reserve that memory. A manual DwarfStar run used the 112 GiB tier with its
-128K server context on Strix Halo; the observed working set remained below the
-ceiling. Formal acceptance remains tracked separately in the hardware matrix.
+not reserve that memory. A historical run of the now-retired DwarfStar used
+the 112 GiB tier with its 128K server context on Strix Halo. The observed working
+set remained below the ceiling. Formal acceptance remains tracked separately in
+the hardware matrix.
 
 When tuning is warranted it prints a host recipe using the active module name
 and host boot-management mechanism. On a current Ubuntu 128 GiB host, Doctor
@@ -186,9 +187,10 @@ host changes.
 These ceilings do not reserve their full values for the GPU. Leave headroom for
 the OS, CPU-side allocations, caches, and other services. At the 112 GiB tier,
 Paracetamol sets the GTT aperture, allocation limit, and page-pool limit together
-because that configuration ran the large DwarfStar workload successfully in
-manual testing. The smaller tiers need only the active TTM module's allocation
-limit. Paracetamol does not require AMD's optional `amd-ttm` userspace helper.
+because that configuration ran the large, now-retired DwarfStar workload
+successfully in manual testing. The smaller tiers need only the active TTM
+module's allocation limit. Paracetamol does not require AMD's optional `amd-ttm`
+userspace helper.
 
 `amd_iommu=off` is a separate performance experiment, not part of the memory
 capacity fix. The

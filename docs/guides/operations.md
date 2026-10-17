@@ -23,10 +23,7 @@ workloads across the maintained application paths:
 
 - ComfyUI Qwen Image FP8 Lightning at 768×768;
 - ComfyUI Wan FP8 Lightning T2V at 832×480 and five frames; and
-- llama.cpp Qwen3 0.6B with `pp32`, `tg16`, and one repetition; and
-- DwarfStar DeepSeek V4 Flash with a 4096-token context and a bounded
-  no-thinking reply. It runs by default on Strix Halo and is opt-in on other
-  profiles because its model alone is about 80.76 GiB.
+- llama.cpp Qwen3 0.6B with `pp32`, `tg16`, and one repetition.
 
 All automated workloads finish before the visual review pass begins, so you
 can start the suite and walk away. When it is done, each generated image or
@@ -37,7 +34,6 @@ Limit a diagnostic run with a repeatable `--application`:
 
 ```bash
 ./paracetamol acceptance --application llama-cpp
-./paracetamol acceptance --application dwarfstar
 ```
 
 If images or exact content bundles are missing, inspect the dry-run plan first.
