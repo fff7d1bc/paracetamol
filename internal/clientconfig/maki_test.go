@@ -63,6 +63,9 @@ func TestMakiExportDefaultsAuthenticationAndIsolation(t *testing.T) {
 	if !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+RecommendedModel))) || !bytes.Contains(files.Init, []byte(`always_thinking = "adaptive"`)) {
 		t.Fatalf("wrong startup defaults: %s", files.Init)
 	}
+	if !bytes.Contains(files.Init, []byte("task = { max_concurrent = 2 }")) {
+		t.Fatalf("wrong task concurrency: %s", files.Init)
+	}
 	for _, model := range models {
 		fields := MakiThinkingFields(model)
 		if model.ReasoningControl == "" {

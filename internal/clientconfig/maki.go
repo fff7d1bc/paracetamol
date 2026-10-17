@@ -112,7 +112,7 @@ func Maki(models []textmodel.Model, endpoint string, authenticated bool) (MakiFi
 		"maki.setup({\n" +
 		"    always_thinking = \"adaptive\",\n" +
 		"    provider = {\n        default_model = " + luaString(provider+"/"+defaultModel.ID) + ",\n    },\n" +
-		"    plugins = {\n        task = { max_concurrent = 1 },\n    },\n" +
+		"    plugins = {\n        task = { max_concurrent = 2 },\n    },\n" +
 		"})\n"
 	return MakiFiles{Providers: []byte(output.String()), Init: []byte(init)}, nil
 }

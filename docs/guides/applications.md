@@ -640,9 +640,9 @@ bubblewrap boundary. Keep backups and review executable project configuration.
 
 The example prefers regular Unsloth Flash-Next at xhigh, then dense Qwen3.8
 27B MTP Q8, then the first available coding-capable model. It limits concurrent
-task subagents to one but does not change saved tier assignments or other
-providers. Use Maki's model picker and `/thinking` to choose another model or
-reasoning mode.
+task subagents to two per Maki process but does not change saved tier
+assignments or other providers. Use Maki's model picker and `/thinking` to
+choose another model or reasoning mode.
 
 | Family | Native control | Choices | Default |
 | --- | --- | --- | --- |

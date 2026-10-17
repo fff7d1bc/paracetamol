@@ -87,8 +87,10 @@ Back up your configuration before merging.
 The defaults select regular Unsloth Qwen3.8 Flash-Next when available, then
 dense Qwen3.8 27B MTP Q8, then the first available reviewed model. Adaptive
 thinking selects xhigh for regular Flash-Next and the reviewed default for
-each other model. The example limits concurrent task subagents to one. Saved
-tier assignments are not reset.
+each other model. The example limits concurrent task subagents to two per
+Maki process, independently of the gateway's shared request slots. Saved tier
+assignments are not reset. Existing installations must update `max_concurrent`
+in their active `init.lua` to adopt this preference.
 
 Use Maki's native model picker and `/thinking` to change selections. Neither
 requires a Paracetamol wrapper. Gateway sampling defaults follow the requested
