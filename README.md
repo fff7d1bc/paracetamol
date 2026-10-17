@@ -23,9 +23,7 @@ Paracetamol currently manages these applications and services.
 - ComfyUI for image generation, image editing, and video on port 8188
 - llama.cpp as an OpenAI-compatible API server and interactive GGUF CLI on
   port 8080, with selectable ROCm and Vulkan backends
-- DwarfStar as an experimental, high-memory DeepSeek V4 Flash server and CLI
-  on port 8000
-- Paracetamol's lazy gateway for the verified llama.cpp and DwarfStar
+- Paracetamol's lazy gateway for the verified llama.cpp
   inventory through one OpenAI-compatible API on port 7455
 
 ## Hardware exercised so far
@@ -33,6 +31,7 @@ Paracetamol currently manages these applications and services.
 These machines are used during development. The last column records what was
 actually exercised. It is useful evidence, not a claim that every row in the
 [target-hardware acceptance matrix](docs/hardware-acceptance.md) has passed.
+Some recorded workloads, including DwarfStar and Qwen3.6, are now retired.
 
 | Host | GPU target | Workloads exercised |
 | --- | --- | --- |
@@ -110,6 +109,11 @@ and evaluation results are left untouched. Use native Maki with the
 [gateway configuration export](docs/guides/remote-maki.md). It runs with your
 normal user access, not the former launcher isolation.
 
+DwarfStar is retired. llama.cpp is now the only managed text-inference engine.
+Stop any running DwarfStar instance with the old checkout before updating.
+Remove `dwarfstar` from saved application selections and content packs before
+upgrading. Existing DwarfStar models, state and images are left untouched.
+
 ## Quick start
 
 Clone the source and inspect the host. Paracetamol does not publish prebuilt
@@ -132,7 +136,7 @@ recipe.
 ./paracetamol content install
 ```
 
-`build all` builds ComfyUI, llama.cpp, and the experimental DwarfStar image.
+`build all` builds ComfyUI and llama.cpp.
 Build one application instead when that is all you need. Models range from
 hundreds of MiB to more than 100 GiB, so inspect a dry run before a large
 installation.
@@ -146,7 +150,6 @@ The built-in guides provide short, copyable walkthroughs.
 ```bash
 ./paracetamol guide comfyui
 ./paracetamol guide llama-cpp
-./paracetamol guide dwarfstar
 ```
 
 ### ComfyUI
@@ -292,32 +295,6 @@ the Llama 3.3 terms.
   --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
 ```
 
-### DwarfStar
-
-DwarfStar serves the pinned DeepSeek V4 Flash 0731 Q2 imatrix model. It uses
-IQ2_XXS for routed gate/up weights, Q2_K for routed down weights, and Q8 for
-attention projections, shared experts, and output. The model is about 80.76
-GiB before context and working allocations, so this path is for a host with
-enough GPU-mapped memory.
-
-```bash
-./paracetamol build dwarfstar
-./paracetamol content install dwarfstar flash-0731-q2-imatrix
-./paracetamol run dwarfstar server
-```
-
-The separate 5.58 GiB DSpark support GGUF is an opt-in speculative-decoding
-path. It does not replace the default model or improve its quality.
-
-```bash
-./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
-./paracetamol run dwarfstar server --dspark
-```
-
-The [DwarfStar guide](docs/guides/applications.md#dwarfstar) covers its 128K
-managed context, memory setup, optional DSpark path, API, agent-client
-providers, and bounded acceptance.
-
 ## Everyday use
 
 Inspect local state, start an installed application, and let `auto` select the
@@ -390,15 +367,11 @@ Both take precedence over configuration values.
 selects loopback for that invocation. Supply both options to change a remote
 publication.
 
-Automatic discovery includes DwarfStar when its image and compatible verified
-model are present. Use `-a llama-cpp` for a llama.cpp-only gateway, `-a
-dwarfstar` for DwarfStar only, or repeat `-a` to demand both. The first request
-lazily starts the matching private backend. Its container output then appears
-in the gateway terminal.
+The gateway uses llama.cpp when its image and compatible verified models are
+present. `-a llama-cpp` selects it explicitly. The first request lazily starts
+the private backend, whose container output then appears in the gateway terminal.
 
-Only one backend application stays resident. A request for the other
-application drains active work, stops the current backend, and starts the new
-one. Queued requests remain FIFO. llama.cpp keeps one model loaded by default
+llama.cpp keeps one model loaded by default
 because its router limit counts models without considering their memory use.
 Use `--models-max` only for a larger set known to fit.
 
@@ -578,7 +551,7 @@ The complete [documentation index](docs/README.md) includes user guides,
 maintainer references, research snapshots, and source-of-truth pointers.
 
 - [Applications](docs/guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, managed models, APIs, Maki, and multi-GPU
+  managed models, APIs, Maki, and multi-GPU
   workloads.
 - [Content](docs/guides/content.md) covers recipes, exact bundles, licenses,
   verification, resumable downloads, mirrors, imports, and workflows.

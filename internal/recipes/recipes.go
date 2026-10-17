@@ -34,10 +34,6 @@ var byApplication = map[string][]Recipe{
 		{ID: "translation-gemma", Application: "llama-cpp", Description: "mradermacher TranslateGemma 27B IT Q8_0 manually prompted translator", Bundles: []string{"llama-mradermacher-translategemma-27b-it-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "mradermacher-translategemma-27b-it-q8-0"}},
 		{ID: "shisa-v2.1", Application: "llama-cpp", Description: "mradermacher Shisa V2.1 Llama 3.3 70B Q8_0 Japanese/English translator", Bundles: []string{"llama-mradermacher-shisa-v2.1-llama3.3-70b-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "mradermacher-shisa-v2.1-llama3.3-70b-q8-0"}},
 	},
-	"dwarfstar": {
-		{ID: "flash-0731-q2-imatrix", Application: "dwarfstar", Description: "antirez DeepSeek V4 Flash 0731 chat-v2 imatrix", Bundles: []string{"dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix"}, Next: []string{"run", "dwarfstar", "server"}},
-		{ID: "flash-0731-q2-imatrix-dspark", Application: "dwarfstar", Description: "antirez DeepSeek V4 Flash 0731 Q2 imatrix with opt-in DSpark", Bundles: []string{"dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark"}, Next: []string{"run", "dwarfstar", "server", "--dspark"}},
-	},
 }
 
 func Applications() []string {

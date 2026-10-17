@@ -14,16 +14,14 @@ type ID string
 type BuildID string
 
 const (
-	ComfyUI   ID = "comfyui"
-	LlamaCPP  ID = "llama-cpp"
-	DwarfStar ID = "dwarfstar"
+	ComfyUI  ID = "comfyui"
+	LlamaCPP ID = "llama-cpp"
 
 	BuildRuntime      BuildID = "runtime"
 	BuildPyTorchBase  BuildID = "pytorch-base"
 	BuildContentTools BuildID = "content-tools"
 	BuildComfyUI      BuildID = "comfyui"
 	BuildLlamaCPP     BuildID = "llama-cpp"
-	BuildDwarfStar    BuildID = "dwarfstar"
 )
 
 type Action struct {
@@ -82,15 +80,6 @@ var specs = []Spec{
 			Description: "start the default direct-model server",
 		}},
 	},
-	{
-		ID: string(DwarfStar), DisplayName: "DwarfStar",
-		Summary:       "experimental high-memory DeepSeek V4 Flash inference",
-		Image:         identity.Image("dwarfstar-ubuntu26.04-rocm10.1-0aaea5a-r12"),
-		ContainerName: identity.Container("dwarfstar"), Build: BuildDwarfStar, Port: 8000,
-		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true,
-		AfterBuild:   []Action{{Arguments: []string{"content", "install", "dwarfstar", "flash-0731-q2-imatrix"}, Description: "install the reviewed high-memory model"}},
-		AfterContent: []Action{{Arguments: []string{"run", "dwarfstar", "server"}, Description: "start the model server"}},
-	},
 }
 
 var units = []BuildUnit{
@@ -99,7 +88,6 @@ var units = []BuildUnit{
 	{ID: BuildContentTools, DisplayName: "content tools", Target: "content-tools", Image: identity.Image("content-ubuntu26.04-huggingface1.27-r1")},
 	{ID: BuildComfyUI, DisplayName: "ComfyUI", Target: "comfyui", Image: specs[0].Image, Prerequisites: []BuildID{BuildPyTorchBase}, Application: string(ComfyUI)},
 	{ID: BuildLlamaCPP, DisplayName: "llama.cpp", Target: "llama-cpp", Image: specs[1].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(LlamaCPP)},
-	{ID: BuildDwarfStar, DisplayName: "DwarfStar", Target: "dwarfstar", Image: specs[2].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(DwarfStar)},
 }
 
 func All() []Spec {

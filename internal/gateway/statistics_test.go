@@ -62,7 +62,8 @@ func TestStatisticsDailyUTCPeriodsRestartAndPrivacy(t *testing.T) {
 		Controls: RequestControls{SamplingMode: "PRIVACY_SENTINEL_CONTROLS"}}
 	s.Record(record)
 	*record.Tokens.Input = 9999 // numeric values were copied before enqueue
-	s.Record(RequestRecord{Model: "new-model", Application: "dwarfstar", Outcome: OutcomeCanceled, FinishedAt: "2026-10-17T12:00:00Z", Timing: RequestTiming{TotalMilliseconds: -1}})
+	// Retired application labels remain exact historical data, independent of the live registry.
+	s.Record(RequestRecord{Model: "antirez-deepseek-v4-flash-0731-q2-imatrix", Application: "dwarfstar", Outcome: OutcomeCanceled, FinishedAt: "2026-10-17T12:00:00Z", Timing: RequestTiming{TotalMilliseconds: -1}})
 	waitStatistics(t, s)
 	for _, days := range []int{1, 7, 30} {
 		snapshot, err := s.Snapshot(context.Background(), days)
@@ -101,6 +102,15 @@ func TestStatisticsDailyUTCPeriodsRestartAndPrivacy(t *testing.T) {
 	snapshot, err := s.Snapshot(context.Background(), 7)
 	if err != nil || snapshot.Overall.Requests != 2 || snapshot.Incomplete || len(snapshot.Models) != 2 {
 		t.Fatalf("restart lost history or reported false loss: %+v %v", snapshot, err)
+	}
+	foundRetired := false
+	for _, model := range snapshot.Models {
+		if model.Model == "antirez-deepseek-v4-flash-0731-q2-imatrix" && model.Application == "dwarfstar" {
+			foundRetired = model.Usage.Requests == 1 && model.Usage.Canceled == 1
+		}
+	}
+	if !foundRetired {
+		t.Fatalf("restart lost or renamed retired application/model history: %+v", snapshot.Models)
 	}
 }
 

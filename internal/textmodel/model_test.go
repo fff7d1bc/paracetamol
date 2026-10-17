@@ -42,11 +42,14 @@ func TestRepositoryModelsHaveUniqueBackendNeutralIdentities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) != len(managed.LlamaPresets)+len(managed.DwarfStarPresets) {
+	if len(models) != len(managed.LlamaPresets) {
 		t.Fatalf("models=%d", len(models))
 	}
 	last := ""
 	for _, model := range models {
+		if model.Backend != BackendLlamaCPP {
+			t.Fatalf("unexpected text inference engine: %q", model.Backend)
+		}
 		if model.ID <= last {
 			t.Fatalf("models are not uniquely sorted: %q after %q", model.ID, last)
 		}

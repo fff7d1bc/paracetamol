@@ -170,6 +170,11 @@ func Load(environment map[string]string, selection Selection) (Configuration, er
 }
 
 func validateConfiguration(configuration Configuration, path string) error {
+	for _, application := range configuration.Gateway.Applications {
+		if application != "llama-cpp" {
+			return controlerr.New("[gateway].applications supports only llama-cpp, got %q: %s", application, path)
+		}
+	}
 	for _, setting := range []struct {
 		name  string
 		value *string

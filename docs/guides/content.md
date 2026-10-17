@@ -32,8 +32,6 @@ llama-cpp
   qwen3.8  qwen3.8-flash-next
   kat-coder  muse-glimmer
   shisa-v2.1  translation-gemma  translation-hy
-dwarfstar
-  flash-0731-q2-imatrix  flash-0731-q2-imatrix-dspark
 ```
 
 Install interactively, or select one recipe explicitly:
@@ -47,8 +45,6 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install llama-cpp muse-glimmer
 ./paracetamol content install llama-cpp shisa-v2.1 --accept-license
 ./paracetamol content install llama-cpp translation-gemma --accept-license
-./paracetamol content install dwarfstar flash-0731-q2-imatrix
-./paracetamol content install dwarfstar flash-0731-q2-imatrix-dspark
 ```
 
 Qwen3.6 has been retired from the managed catalog. Old downloads are left
@@ -132,7 +128,6 @@ menu because it can be hundreds of gigabytes:
 ```bash
 ./paracetamol content install llama-cpp all --dry-run
 ./paracetamol content install llama-cpp all
-./paracetamol content install dwarfstar all
 ```
 
 The command uses the normal resumable installer. Existing verified models are
@@ -249,30 +244,26 @@ audit that hashes every installed byte again and does not update receipts.
 Running `content install` is the way to migrate or refresh stale receipts.
 
 `content status` answers whether a catalog recipe is complete. For the more
-practical question of what can be run, list the managed llama.cpp and
-DwarfStar choices alongside local llama.cpp GGUFs found on disk:
+practical question of what can be run, list the managed llama.cpp choices
+alongside local llama.cpp GGUFs found on disk:
 
 ```bash
 ./paracetamol content list models
 ./paracetamol content list models --application llama-cpp
-./paracetamol content list models --application dwarfstar
 ./paracetamol content list models --details
 ```
 
 Every managed model is shown even when it is not installed. Missing rows use
 the expected catalog size so the inventory is useful before a download. A
-llama.cpp managed row is named by its preset; a DwarfStar row is named by its
-installable bundle. The DSpark row includes the target and exact support GGUF
-and reports their combined size. Imported and manually copied GGUFs below the
-llama.cpp model root are shown as local files, and split GGUFs are grouped into
+llama.cpp managed row is named by its preset. Imported and manually copied GGUFs
+below the llama.cpp model root are shown as local files, and split GGUFs are grouped into
 one model instead of one row per shard. An incomplete split set or a catalog
 size mismatch is called out rather than presented as runnable.
 
 Use `--details` when choosing between managed llama.cpp presets. It shows the
 exact bundle and preset IDs, catalog file count and total size, conservative
-starting context, chat-template policy, MTP setup, and profile-specific Flash
-Attention policy. DwarfStar details show its target model, optional support
-file, bundle, combined size, and copyable install and run commands. These are
+starting context, chat-template policy, MTP setup, profile-specific Flash
+Attention policy, and copyable install and run commands. These are
 properties Paracetamol needs to launch a model correctly, not task descriptions
 or claims about which model is best.
 
@@ -299,7 +290,6 @@ Managed content lives below the selected data directory:
 content/
   comfyui/models/
   llama-cpp/models/
-  dwarfstar/models/
 ```
 
 ## Local mirror migration
@@ -331,7 +321,7 @@ paths but does not hash hundreds of GiB, so its download total is worst-case.
 
 For an in-place catalog destination rename, move only the exact managed GGUFs
 to a separate mirror. Leave application state, staging, and local experiments
-in the active data directory. Reinstall the affected llama.cpp and DwarfStar
+in the active data directory. Reinstall the affected llama.cpp
 bundles from that mirror, check that they are ready, and remove only empty
 retired model directories afterward.
 

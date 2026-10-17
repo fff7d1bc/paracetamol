@@ -28,6 +28,12 @@ func TestPlanBuildsOnlyDependencyClosure(t *testing.T) {
 	}
 }
 
+func TestPlanRejectsRetiredApplication(t *testing.T) {
+	if _, err := Plan(Request{ProjectRoot: "/src", Targets: []application.BuildID{"dwarfstar"}}); err == nil {
+		t.Fatal("retired DwarfStar build target was accepted")
+	}
+}
+
 func TestPlanNoLayerCacheTouchesOnlySelectedUnit(t *testing.T) {
 	steps, err := Plan(Request{ProjectRoot: "/src", Targets: []application.BuildID{application.BuildComfyUI}, PipCache: "/cache", VolumeSuffix: ":rw", NoLayerCache: true})
 	if err != nil {

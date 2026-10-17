@@ -165,9 +165,6 @@ func TestCLIModesDoNotDefineServerFlags(t *testing.T) {
 	if err := app.runLlama("cli", []string{"--router"}); err == nil {
 		t.Fatal("llama.cpp CLI accepted --router")
 	}
-	if err := app.runDwarfStar("cli", []string{"--listen", "0.0.0.0"}); err == nil {
-		t.Fatal("DwarfStar CLI accepted --listen")
-	}
 }
 
 func TestExplicitRuntimeSentinelsAreRejectedAsUserValues(t *testing.T) {
@@ -178,8 +175,6 @@ func TestExplicitRuntimeSentinelsAreRejectedAsUserValues(t *testing.T) {
 	}{
 		{name: "llama context", run: func() error { return app.runLlama("server", []string{"--model", "missing.gguf", "--context", "-1"}) }},
 		{name: "llama router limit", run: func() error { return app.runLlama("server", []string{"--router", "--models-max", "0"}) }},
-		{name: "DwarfStar context", run: func() error { return app.runDwarfStar("server", []string{"--context", "-1"}) }},
-		{name: "DwarfStar output", run: func() error { return app.runDwarfStar("server", []string{"--output-tokens", "-1"}) }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := test.run(); err == nil {

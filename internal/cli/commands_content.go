@@ -93,7 +93,7 @@ func (app *App) contentList(args []string) error {
 	}
 	if view == "models" {
 		if *application != "" {
-			if err := requireChoice(*application, "model inventory application", "llama-cpp", "dwarfstar"); err != nil {
+			if err := requireChoice(*application, "model inventory application", "llama-cpp"); err != nil {
 				return err
 			}
 		}
@@ -104,7 +104,7 @@ func (app *App) contentList(args []string) error {
 		if err != nil {
 			return err
 		}
-		return app.printModelInventory(managed, dataRoot, scans, *details, *application)
+		return app.printModelInventory(managed, dataRoot, scans, *details)
 	}
 	if *application != "" && view != "bundles" {
 		return controlerr.Usage("--application requires the bundles or models view")
@@ -165,7 +165,7 @@ func (app *App) contentList(args []string) error {
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Applications:"))
-	for applicationIndex, applicationID := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
+	for applicationIndex, applicationID := range []string{"comfyui", "llama-cpp"} {
 		values, _ := recipes.ForApplication(applicationID)
 		if applicationIndex > 0 {
 			fmt.Fprintln(app.Stdout)
@@ -519,7 +519,7 @@ func (app *App) guidedContentSelection(managed catalog.Catalog, application stri
 	var choices []topChoice
 	var rows [][]string
 	terminal := app.terminal(app.Stdout)
-	for _, application := range []string{"comfyui", "llama-cpp", "dwarfstar"} {
+	for _, application := range []string{"comfyui", "llama-cpp"} {
 		spec, _ := config.ApplicationByID(application)
 		choices = append(choices, topChoice{application: application})
 		rows = append(rows, []string{terminal.Command(application), spec.DisplayName + " reviewed recipes"})
@@ -735,34 +735,16 @@ func stringSliceContains(values []string, wanted string) bool {
 	return false
 }
 
-func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool, selectedApplication string) error {
-	applications := []string{"llama-cpp", "dwarfstar"}
-	if selectedApplication != "" {
-		applications = []string{selectedApplication}
-	}
-	for index, application := range applications {
-		if index > 0 {
-			fmt.Fprintln(app.Stdout)
-		}
-		if application == "llama-cpp" {
-			if err := app.printLlamaModelInventory(managed, dataRoot, scans, details); err != nil {
-				return err
-			}
-		} else if err := app.printDwarfStarModelInventory(managed, dataRoot, details); err != nil {
-			return err
-		}
+func (app *App) printModelInventory(managed catalog.Catalog, dataRoot string, scans []string, details bool) error {
+	if err := app.printLlamaModelInventory(managed, dataRoot, scans, details); err != nil {
+		return err
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout)
 	if !details {
 		fmt.Fprintln(app.Stdout, terminal.Muted("Use --details to find install commands and managed runtime policy."))
 	}
-	if selectedApplication == "" || selectedApplication == "llama-cpp" {
-		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready llama.cpp preset with --preset; use a local GGUF row's absolute path with --model."))
-	}
-	if selectedApplication == "" || selectedApplication == "dwarfstar" {
-		fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready DwarfStar model with 'run dwarfstar server'."))
-	}
+	fmt.Fprintln(app.Stdout, terminal.Muted("Run a ready llama.cpp preset with --preset; use a local GGUF row's absolute path with --model."))
 	return nil
 }
 
@@ -873,88 +855,6 @@ func llamaModelLoadInventoryPolicy(policy map[string]string) string {
 		}
 	}
 	return llamaProfilePolicy(values)
-}
-
-func (app *App) printDwarfStarModelInventory(managed catalog.Catalog, dataRoot string, details bool) error {
-	store, err := verification.Load(dataRoot)
-	if err != nil {
-		return err
-	}
-	var bundles []catalog.Bundle
-	for _, bundle := range managed.Bundles {
-		if bundle.Application == "dwarfstar" {
-			bundles = append(bundles, bundle)
-		}
-	}
-	sort.Slice(bundles, func(i, j int) bool { return bundles[i].ID < bundles[j].ID })
-	terminal := app.terminal(app.Stdout)
-	fmt.Fprintln(app.Stdout, terminal.Heading("DwarfStar models"))
-	fmt.Fprintf(app.Stdout, "  %s  %s\n\n", terminal.Label("Model root"), (storage.Layout{Root: dataRoot}).DwarfStarModels())
-	rows := [][]string{{terminal.Label("Status"), terminal.Label("Size"), terminal.Label("Bundle")}}
-	for _, bundle := range bundles {
-		statuses, inspectErr := content.InspectBundle(store, managed, bundle, dataRoot, false)
-		if inspectErr != nil {
-			return inspectErr
-		}
-		rows = append(rows, []string{terminal.State(bundleModelState(statuses)), humanSize(managed.BundleSize(bundle)), terminal.Command(bundle.ID)})
-	}
-	lines, _ := ui.ColumnLines(rows, []ui.Column{{}, {Right: true}, {}}, "  ")
-	for _, line := range lines {
-		fmt.Fprintln(app.Stdout, line)
-	}
-	if !details {
-		return nil
-	}
-	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Heading("Managed DwarfStar model details"))
-	for _, bundle := range bundles {
-		fmt.Fprintf(app.Stdout, "\n  %s\n", terminal.Command(bundle.ID))
-		rows := make([][2]string, 0, len(bundle.Artifacts)+4)
-		for index, artifactID := range bundle.Artifacts {
-			label := "Support"
-			if index == 0 {
-				label = "Model"
-			}
-			rows = append(rows, [2]string{label, managed.Artifacts[artifactID].Destination})
-		}
-		run := identity.Command("run", "dwarfstar", "server")
-		if len(bundle.Artifacts) > 1 {
-			run += " --dspark"
-		}
-		rows = append(rows,
-			[2]string{"Catalog size", humanSize(managed.BundleSize(bundle))},
-			[2]string{"Files", strconv.Itoa(len(bundle.Artifacts))},
-			[2]string{"Install", identity.Command("content", "install", bundle.ID)},
-			[2]string{"Run", run},
-		)
-		writeDetailRows(app.Stdout, terminal, rows)
-	}
-	return nil
-}
-
-func bundleModelState(statuses []content.ArtifactStatus) string {
-	missing := 0
-	for _, status := range statuses {
-		switch status.State {
-		case content.Unexpected:
-			return "user-file"
-		case content.HashMismatch, content.SizeMismatch:
-			return string(status.State)
-		case content.Missing:
-			missing++
-		}
-	}
-	if missing == len(statuses) {
-		return "missing"
-	}
-	if missing > 0 {
-		return "partial"
-	}
-	for _, status := range statuses {
-		if status.State == content.Unverified {
-			return "unverified"
-		}
-	}
-	return "ready"
 }
 
 func writeDetailRows(output io.Writer, terminal ui.Terminal, rows [][2]string) {

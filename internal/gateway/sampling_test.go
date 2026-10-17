@@ -203,23 +203,6 @@ func TestSamplingRejectsAmbiguousOrInvalidReasoning(t *testing.T) {
 	}
 }
 
-func TestDwarfStarNativeThinkingControlsWhenPolicyIsDeclared(t *testing.T) {
-	// The shipped DeepSeek preset deliberately has no policy. This fixture
-	// checks the shared mechanism without inventing new DeepSeek defaults.
-	model := samplingModel(t, textmodel.BackendLlamaCPP)
-	model.Backend = textmodel.BackendDwarfStar
-	model.ReasoningLevels, model.ReasoningDefault = []string{"high"}, "high"
-	for _, field := range []string{
-		`"think":false`, `"thinking":false`, `"thinking":{"type":"disabled"}`,
-		`"reasoning_effort":"none"`, `"chat_template_kwargs":{"reasoning_effort":"none"}`,
-	} {
-		_, controls, err := normalizedSampling(t, `{"model":"fixture",`+field+`}`, model)
-		if err != nil || controls.SamplingMode != "non_thinking" {
-			t.Fatalf("%s: %+v %v", field, controls, err)
-		}
-	}
-}
-
 func TestGatewayForwardsDefaultsAndRecordsTheirProvenance(t *testing.T) {
 	for _, backend := range []textmodel.Backend{textmodel.BackendLlamaCPP} {
 		t.Run(string(backend), func(t *testing.T) {

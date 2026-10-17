@@ -32,8 +32,8 @@ func TestRunHelpIncludesGateway(t *testing.T) {
 func TestRetiredGatewayApplicationRejectedBeforeHostProbes(t *testing.T) {
 	runner := &commandRunner{}
 	app, _, _ := testApp(t, runner)
-	err := app.runGateway([]string{"-a", "gufo"})
-	if err == nil || !strings.Contains(err.Error(), "gateway application must be one of llama-cpp, dwarfstar") {
+	err := app.runGateway([]string{"-a", "dwarfstar"})
+	if err == nil || !strings.Contains(err.Error(), "gateway application must be one of llama-cpp") {
 		t.Fatalf("retired application error=%v", err)
 	}
 	if len(runner.commands) != 0 {
@@ -199,10 +199,10 @@ func TestGatewayApplicationFlagSupportsShortAndLongForms(t *testing.T) {
 	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
 	var applications stringList
 	set.VarWithShort(&applications, "application", "a", "fixture")
-	if err := parseFlags(set, []string{"-a", "llama-cpp", "--application", "dwarfstar"}); err != nil {
+	if err := parseFlags(set, []string{"-a", "llama-cpp", "--application", "llama-cpp"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(applications, ","); got != "llama-cpp,dwarfstar" {
+	if got := strings.Join(applications, ","); got != "llama-cpp,llama-cpp" {
 		t.Fatalf("applications=%q", got)
 	}
 }
@@ -225,7 +225,7 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 	configuredSlots := 2
 	configuredTimeout := "45m"
 	configuration := config.Configuration{Path: "/profiles/aion.toml", Gateway: config.GatewayConfiguration{
-		Applications: []string{"dwarfstar"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
+		Applications: []string{"llama-cpp"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
 		LlamaCPP: config.GatewayLlamaConfiguration{Backend: &configuredBackend, ModelsMax: &configuredModels, Slots: &configuredSlots},
 	}}
 	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {

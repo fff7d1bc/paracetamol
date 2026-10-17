@@ -102,25 +102,6 @@ revisions recorded in `catalog/catalog.json`.
   HC gate folding derives from llama.cpp PR 30602 at
   `681ae40b5688343dd1a2c6c44b903ba8d5e5ac68`, also under MIT. It is adapted
   to preserve the existing combined normalization and injection path.
-- DwarfStar is built locally from the MIT-licensed `antirez/ds4` repository at
-  commit `0aaea5a238fb41a35106a551e73c8409dfb751ac`. The final image keeps only
-  its CLI, HTTP server, benchmark binary, and licenses. Its upstream MIT notice
-  includes the vendored ggml kernel authors and DeepSeek. The separately
-  bundled Iris image decoder's MIT notice is retained as `iris.LICENSE`
-  alongside the DwarfStar license under
-  `/usr/local/share/licenses/paracetamol/dwarfstar`.
-  The local build also carries the MIT-licensed GLM tool-argument correction
-  from upstream PR 1016 at commit
-  `9db96f0e96928e2245664b83e0498145e86a4c25`. It uses the request's declared
-  property types to preserve JSON arguments without guessing types for
-  strings or unknown schemas.
-  The managed DeepSeek V4 Flash 0731 IQ2XXS GGUF is downloaded separately from
-  `antirez/deepseek-v4-gguf` revision
-  `1cd7b564460821938add0475a60b942c409295e0`, which declares MIT. Paracetamol
-  records its exact size and SHA-256 and does not redistribute it. The
-  optional DSpark support GGUF comes from the same MIT-licensed repository at
-  revision `86bb38ce2ba7a98ab0e550359fec5f48859dc723` and is independently pinned
-  by exact size and SHA-256.
 - PyTorch is BSD-3-Clause. ROCm components have component-specific licenses
   supplied with AMD's packages. Python packages retain the license metadata
   installed with their distributions.

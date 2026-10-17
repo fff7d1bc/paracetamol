@@ -39,8 +39,7 @@ jobs:
         run: |
           bash -n paracetamol bin/paracetamol \
             applications/comfyui/entrypoint.sh \
-            applications/llama-cpp/entrypoint.sh \
-            applications/dwarfstar/entrypoint.sh
+            applications/llama-cpp/entrypoint.sh
 
       - name: Validate catalog JSON
         run: |

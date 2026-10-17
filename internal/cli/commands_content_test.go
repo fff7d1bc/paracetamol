@@ -74,24 +74,17 @@ func TestGuidedContentCanBrowseExactApplicationBundles(t *testing.T) {
 	}
 }
 
-func TestContentModelInventoryIncludesAliasesDwarfStarAndDetailedPolicy(t *testing.T) {
+func TestContentModelInventoryIncludesAliasesAndDetailedPolicy(t *testing.T) {
 	dataRoot := t.TempDir()
 	llama := catalog.Artifact{ID: "llama", Destination: "qwen/model.gguf", Target: "llama-models", Size: 1024, SHA256: "0"}
-	dwarf := catalog.Artifact{ID: "dwarf", Destination: "deepseek/model.gguf", Target: "dwarfstar-models", Size: 2048, SHA256: "0"}
-	support := catalog.Artifact{ID: "support", Destination: "deepseek/support.gguf", Target: "dwarfstar-models", Size: 512, SHA256: "0"}
 	managed := catalog.Catalog{
-		Artifacts: map[string]catalog.Artifact{"llama": llama, "dwarf": dwarf, "support": support},
+		Artifacts: map[string]catalog.Artifact{"llama": llama},
 		Bundles: map[string]catalog.Bundle{
-			"qwen":         {ID: "qwen", Application: "llama-cpp", Artifacts: []string{"llama"}},
-			"deepseek":     {ID: "deepseek", Application: "dwarfstar", Artifacts: []string{"dwarf"}},
-			"deepseek-mtp": {ID: "deepseek-mtp", Application: "dwarfstar", Artifacts: []string{"dwarf", "support"}},
+			"qwen": {ID: "qwen", Application: "llama-cpp", Artifacts: []string{"llama"}},
 		},
 		LlamaPresets: map[string]catalog.LlamaPreset{
 			"qwen-base": {ID: "qwen-base", Bundle: "qwen", Artifact: "llama", DefaultContext: 65536, Jinja: true},
 			"qwen-mtp":  {ID: "qwen-mtp", Bundle: "qwen", Artifact: "llama", DefaultContext: 131072, SpeculativeType: "draft-mtp", DraftTokens: 3, SamplingPolicy: "qwen-policy"},
-		},
-		DwarfStarPresets: map[string]catalog.DwarfStarPreset{
-			"deepseek": {ID: "deepseek", Bundle: "deepseek", DSparkBundle: "deepseek-mtp"},
 		},
 	}
 	var stdout, stderr bytes.Buffer
@@ -100,8 +93,8 @@ func TestContentModelInventoryIncludesAliasesDwarfStarAndDetailedPolicy(t *testi
 		t.Fatal(err)
 	}
 	for _, expected := range []string{
-		"llama.cpp models", "qwen-base, qwen-mtp", "DwarfStar models", "deepseek-mtp", "Managed preset details",
-		"Default context", "131072 tokens", "Sampling", "gateway policy qwen-policy", "content install deepseek-mtp", "run dwarfstar server --dspark",
+		"llama.cpp models", "qwen-base, qwen-mtp", "Managed preset details",
+		"Default context", "131072 tokens", "Sampling", "gateway policy qwen-policy",
 	} {
 		if !bytes.Contains(stdout.Bytes(), []byte(expected)) {
 			t.Fatalf("inventory lacks %q:\n%s", expected, stdout.String())
@@ -121,8 +114,8 @@ func TestLlamaModelLoadInventoryPolicyIncludesResidentStrixDefaults(t *testing.T
 }
 
 func TestContentListValidatesApplicationFilters(t *testing.T) {
-	managed := catalog.Catalog{Bundles: map[string]catalog.Bundle{}, LlamaPresets: map[string]catalog.LlamaPreset{}, DwarfStarPresets: map[string]catalog.DwarfStarPreset{}}
-	for _, arguments := range [][]string{{"models", "--application", "comfyui", "--data-dir", t.TempDir()}, {"bundles", "--application", "unknown"}} {
+	managed := catalog.Catalog{Bundles: map[string]catalog.Bundle{}, LlamaPresets: map[string]catalog.LlamaPreset{}}
+	for _, arguments := range [][]string{{"models", "--application", "comfyui", "--data-dir", t.TempDir()}, {"models", "--application", "dwarfstar"}, {"bundles", "--application", "dwarfstar"}, {"bundles", "--application", "unknown"}} {
 		var stdout, stderr bytes.Buffer
 		app := App{Context: context.Background(), Environment: map[string]string{}, Stdout: &stdout, Stderr: &stderr, catalog: &managed}
 		if err := app.contentList(arguments); err == nil {

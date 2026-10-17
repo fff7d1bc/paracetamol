@@ -40,8 +40,6 @@ func ArtifactPath(dataRoot string, artifact catalog.Artifact) string {
 		root = layout.ComfyModels()
 	case "llama-models":
 		root = layout.LlamaModels()
-	case "dwarfstar-models":
-		root = layout.DwarfStarModels()
 	case "workflows":
 		root = filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "imported")
 	}

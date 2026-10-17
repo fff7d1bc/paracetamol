@@ -35,3 +35,20 @@ func TestQwen36RecipeIsRetired(t *testing.T) {
 		t.Fatal("retired recipe remains selectable")
 	}
 }
+
+func TestDwarfStarRecipesAreRetired(t *testing.T) {
+	if IsApplication("dwarfstar") {
+		t.Fatal("retired application remains selectable")
+	}
+	if _, err := ForApplication("dwarfstar"); err == nil {
+		t.Fatal("retired application still has recipes")
+	}
+	for _, id := range []string{"flash-0731-q2-imatrix", "flash-0731-q2-imatrix-dspark"} {
+		if _, err := Find("dwarfstar", id); err == nil {
+			t.Fatalf("retired recipe remains selectable: %s", id)
+		}
+	}
+	if got := Applications(); !reflect.DeepEqual(got, []string{"comfyui", "llama-cpp"}) {
+		t.Fatalf("unexpected content applications: %v", got)
+	}
+}

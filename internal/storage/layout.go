@@ -21,9 +21,6 @@ func (layout Layout) ComfyModels() string {
 func (layout Layout) LlamaModels() string {
 	return filepath.Join(layout.Root, "content", "llama-cpp", "models")
 }
-func (layout Layout) DwarfStarModels() string {
-	return filepath.Join(layout.Root, "content", "dwarfstar", "models")
-}
 func (layout Layout) CuratedWorkflows() string {
 	return filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "curated")
 }
@@ -51,8 +48,6 @@ func (layout Layout) PrepareRuntime(application string) error {
 		paths = append(paths, layout.ComfyModels())
 	case "llama-cpp":
 		paths = append(paths, layout.LlamaModels())
-	case "dwarfstar":
-		paths = append(paths, layout.DwarfStarModels())
 	}
 	for _, path := range paths {
 		if err := os.MkdirAll(path, 0o755); err != nil {

@@ -86,9 +86,11 @@ func waitForStatus(t *testing.T, scheduler *Scheduler, predicate func(SchedulerS
 	return SchedulerStatus{}
 }
 
+const testAllocation Allocation = "test-backend"
+
 func TestSchedulerPermitsCompatibleConcurrency(t *testing.T) {
 	fake := &fakeLifecycle{}
-	scheduler, err := NewScheduler(fake, 64, map[Allocation]int{AllocationDwarfStar: 1})
+	scheduler, err := NewScheduler(fake, 64, map[Allocation]int{testAllocation: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,23 +109,23 @@ func TestSchedulerPermitsCompatibleConcurrency(t *testing.T) {
 
 func TestSchedulerDrainsInFIFOOrderAcrossAllocations(t *testing.T) {
 	fake := &fakeLifecycle{}
-	scheduler, _ := NewScheduler(fake, 64, map[Allocation]int{AllocationDwarfStar: 1})
+	scheduler, _ := NewScheduler(fake, 64, map[Allocation]int{testAllocation: 1})
 	llama := receiveLease(t, acquireAsync(scheduler, AllocationLlamaCPP))
-	dwarfResult := acquireAsync(scheduler, AllocationDwarfStar)
+	otherResult := acquireAsync(scheduler, testAllocation)
 	waitForStatus(t, scheduler, func(status SchedulerStatus) bool { return status.QueuedRequests == 1 && status.State == StateDraining })
 	lateLlamaResult := acquireAsync(scheduler, AllocationLlamaCPP)
-	assertWaiting(t, dwarfResult)
+	assertWaiting(t, otherResult)
 	assertWaiting(t, lateLlamaResult)
 	llama.Release()
-	dwarf := receiveLease(t, dwarfResult)
+	other := receiveLease(t, otherResult)
 	assertWaiting(t, lateLlamaResult)
-	dwarf.Release()
+	other.Release()
 	lateLlama := receiveLease(t, lateLlamaResult)
 	lateLlama.Release()
 	if err := scheduler.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	want := "[start llama-cpp stop llama-cpp start dwarfstar stop dwarfstar start llama-cpp stop llama-cpp]"
+	want := "[start llama-cpp stop llama-cpp start test-backend stop test-backend start llama-cpp stop llama-cpp]"
 	if got := fmt.Sprint(fake.Events()); got != want {
 		t.Fatalf("events=%s, want %s", got, want)
 	}
@@ -131,11 +133,11 @@ func TestSchedulerDrainsInFIFOOrderAcrossAllocations(t *testing.T) {
 
 func TestSchedulerRemovesCancelledQueuedRequest(t *testing.T) {
 	fake := &fakeLifecycle{}
-	scheduler, _ := NewScheduler(fake, 64, map[Allocation]int{AllocationDwarfStar: 1})
+	scheduler, _ := NewScheduler(fake, 64, map[Allocation]int{testAllocation: 1})
 	llama := receiveLease(t, acquireAsync(scheduler, AllocationLlamaCPP))
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
-	go func() { _, err := scheduler.Acquire(ctx, AllocationDwarfStar); result <- err }()
+	go func() { _, err := scheduler.Acquire(ctx, testAllocation); result <- err }()
 	cancel()
 	if err := <-result; !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
@@ -150,9 +152,9 @@ func TestSchedulerRemovesCancelledQueuedRequest(t *testing.T) {
 }
 
 func TestSchedulerReturnsStartFailureAndCanServeAnotherAllocation(t *testing.T) {
-	fake := &fakeLifecycle{startErr: map[Allocation]error{AllocationDwarfStar: errors.New("load failed")}}
-	scheduler, _ := NewScheduler(fake, 64, nil)
-	if _, err := scheduler.Acquire(context.Background(), AllocationDwarfStar); err == nil {
+	fake := &fakeLifecycle{startErr: map[Allocation]error{testAllocation: errors.New("load failed")}}
+	scheduler, _ := NewScheduler(fake, 64, map[Allocation]int{testAllocation: 1})
+	if _, err := scheduler.Acquire(context.Background(), testAllocation); err == nil {
 		t.Fatal("backend start failure was hidden")
 	}
 	lease := receiveLease(t, acquireAsync(scheduler, AllocationLlamaCPP))
@@ -164,16 +166,16 @@ func TestSchedulerReturnsStartFailureAndCanServeAnotherAllocation(t *testing.T) 
 
 func TestSchedulerBoundsWaitingQueue(t *testing.T) {
 	fake := &fakeLifecycle{}
-	scheduler, _ := NewScheduler(fake, 1, map[Allocation]int{AllocationDwarfStar: 1})
+	scheduler, _ := NewScheduler(fake, 1, map[Allocation]int{testAllocation: 1})
 	llama := receiveLease(t, acquireAsync(scheduler, AllocationLlamaCPP))
-	waiting := acquireAsync(scheduler, AllocationDwarfStar)
+	waiting := acquireAsync(scheduler, testAllocation)
 	waitForStatus(t, scheduler, func(status SchedulerStatus) bool { return status.QueuedRequests == 1 })
 	if _, err := scheduler.Acquire(context.Background(), AllocationLlamaCPP); !errors.Is(err, ErrQueueFull) {
 		t.Fatalf("queue overflow err=%v", err)
 	}
 	llama.Release()
-	dwarf := receiveLease(t, waiting)
-	dwarf.Release()
+	other := receiveLease(t, waiting)
+	other.Release()
 	if err := scheduler.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -27,7 +27,7 @@ import (
 func (app *App) runGateway(args []string) (result error) {
 	set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
 	var applications stringList
-	set.VarWithShort(&applications, "application", "a", "restrict to llama-cpp or dwarfstar; repeatable; default discovers runnable applications")
+	set.VarWithShort(&applications, "application", "a", "restrict to llama-cpp; default discovers runnable applications")
 	profileFlag := set.String("profile", "", "auto, rdna4, strix-halo, or strix-point (default: auto)")
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
@@ -67,7 +67,7 @@ func (app *App) runGateway(args []string) (result error) {
 		return err
 	}
 	for _, application := range applications {
-		if err := requireChoice(application, "gateway application", "llama-cpp", "dwarfstar"); err != nil {
+		if err := requireChoice(application, "gateway application", "llama-cpp"); err != nil {
 			return err
 		}
 	}
@@ -143,7 +143,7 @@ func (app *App) runGateway(args []string) (result error) {
 	}
 	gatewayLog := gateway.NewAtomicLogWriter(app.Stderr)
 	lifecycle, err := gateway.NewContainerLifecycle(gateway.LifecycleOptions{
-		Catalog: managed, Registry: registry, DataRoot: dataRoot, Profile: profile,
+		Registry: registry, DataRoot: dataRoot, Profile: profile,
 		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax, LlamaSlots: *slots,
 		RouterPreset: routerPath, SourceRevision: app.projectRevision(),
 		VolumeSuffix: app.podman().SELinuxVolumeSuffix(app.Context), Unconfined: *unconfined,
@@ -174,7 +174,7 @@ func (app *App) runGateway(args []string) (result error) {
 			return fmt.Errorf("llama.cpp router path changed during gateway preparation")
 		}
 	}
-	scheduler, err := gateway.NewScheduler(lifecycle, gateway.QueueLimit, map[gateway.Allocation]int{gateway.AllocationDwarfStar: 1})
+	scheduler, err := gateway.NewScheduler(lifecycle, gateway.QueueLimit, nil)
 	if err != nil {
 		return err
 	}
@@ -366,14 +366,14 @@ func (app *App) discoverGatewayRegistry(managed catalog.Catalog, dataRoot, profi
 		return gateway.Registry{}, nil, nil, err
 	}
 	if len(candidates) == 0 {
-		return gateway.Registry{}, nil, nil, fmt.Errorf("no gateway application image is built; build llama-cpp or dwarfstar first")
+		return gateway.Registry{}, nil, nil, fmt.Errorf("no gateway application image is built; build llama-cpp first")
 	}
 	return gateway.DiscoverRegistry(managed, dataRoot, candidates, profile, renderNodes, backend)
 }
 
 func (app *App) builtGatewayApplications() ([]string, error) {
-	applications := make([]string, 0, 2)
-	for _, identifier := range []string{string(textmodel.BackendLlamaCPP), string(textmodel.BackendDwarfStar)} {
+	applications := make([]string, 0, 1)
+	for _, identifier := range []string{string(textmodel.BackendLlamaCPP)} {
 		application, _ := config.ApplicationByID(identifier)
 		present, err := app.podman().Exists(app.Context, "image", application.Image)
 		if err != nil {

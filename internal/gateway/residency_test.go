@@ -22,7 +22,6 @@ func residencyServer(t *testing.T, handler http.Handler) (*Server, *httptest.Ser
 			{ID: "loaded", Application: "llama-cpp", Context: 262144, Backend: textmodel.BackendLlamaCPP},
 			{ID: "sleeping", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP},
 			{ID: "failed", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP},
-			{ID: "dwarf", Application: "dwarfstar", Backend: textmodel.BackendDwarfStar},
 		},
 		byID: map[string]Model{},
 	}
@@ -118,28 +117,6 @@ func TestDecodeRouterModelRuntimeKeepsValidAllowlistedFieldsOnly(t *testing.T) {
 	}
 	if got := decodeRouterModelRuntime([]byte(`{"model_path":"/private/model.gguf"}`)); got != nil {
 		t.Fatalf("unlisted metadata produced runtime=%#v", got)
-	}
-}
-
-func TestModelStatusDerivesDwarfStarResidencyFromAllocation(t *testing.T) {
-	server, upstream := residencyServer(t, http.NotFoundHandler())
-	defer upstream.Close()
-	for _, test := range []struct {
-		allocation AllocationState
-		want       ModelState
-	}{
-		{StateStarting, ModelLoading},
-		{StateReady, ModelLoaded},
-		{StateDraining, ModelLoaded},
-		{StateStopping, ModelUnknown},
-		{StateFailed, ModelFailed},
-	} {
-		models := server.modelStatus(context.Background(), SchedulerStatus{Allocation: AllocationDwarfStar, State: test.allocation})
-		for _, model := range models {
-			if model.ID == "dwarf" && model.State != test.want {
-				t.Fatalf("allocation=%s state=%s want=%s", test.allocation, model.State, test.want)
-			}
-		}
 	}
 }
 

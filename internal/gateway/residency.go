@@ -57,14 +57,6 @@ func (server *Server) modelStatus(ctx context.Context, scheduler SchedulerStatus
 		return models
 	}
 	switch scheduler.Allocation {
-	case AllocationDwarfStar:
-		state, diagnostic := singleModelState(scheduler.State, string(scheduler.Allocation))
-		for index := range models {
-			if string(server.registry.Models[index].Backend) == string(scheduler.Allocation) {
-				models[index].State = state
-				models[index].Diagnostic = diagnostic
-			}
-		}
 	case AllocationLlamaCPP:
 		if scheduler.Upstream == "" {
 			for index := range models {
@@ -87,21 +79,6 @@ func (server *Server) modelStatus(ctx context.Context, scheduler SchedulerStatus
 		}
 	}
 	return models
-}
-
-func singleModelState(state AllocationState, application string) (ModelState, string) {
-	switch state {
-	case StateStarting:
-		return ModelLoading, ""
-	case StateReady, StateDraining:
-		return ModelLoaded, ""
-	case StateFailed:
-		return ModelFailed, ""
-	case StateStopping:
-		return ModelUnknown, application + " residency is unavailable while the backend stops"
-	default:
-		return ModelUnknown, application + " residency is unavailable"
-	}
 }
 
 // probeLlamaResidency deliberately constructs the router's read-only /models

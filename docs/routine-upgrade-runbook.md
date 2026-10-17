@@ -41,7 +41,7 @@ Check primary upstream sources for:
 - AMD ROCm/PyTorch packages and all supported device extras;
 - content download tooling;
 - ComfyUI, ComfyUI-GGUF, and rgthree-comfy;
-- llama.cpp and DwarfStar with their native build toolchains at the project
+- llama.cpp with its native build toolchain at the project
   ROCm version; and
 - important pinned application dependencies and security advisories.
 
@@ -108,7 +108,6 @@ Use the matching guide:
 | ROCm and PyTorch | [Upgrade ROCm and PyTorch](upgrading.md#upgrade-rocm-and-pytorch) |
 | Content download tools | [Upgrade content download tools](upgrading.md#upgrade-content-download-tools) |
 | llama.cpp | [Upgrade llama.cpp](upgrading.md#upgrade-llamacpp) |
-| DwarfStar | [Upgrade DwarfStar](upgrading.md#upgrade-dwarfstar) |
 | ComfyUI | [Upgrade ComfyUI](upgrading.md#upgrade-comfyui) |
 | Bundled ComfyUI extensions | [Upgrade bundled ComfyUI extensions](upgrading.md#upgrade-bundled-comfyui-extensions) |
 | Python dependencies | [Upgrade ordinary Python dependencies](upgrading.md#upgrade-ordinary-python-dependencies) |

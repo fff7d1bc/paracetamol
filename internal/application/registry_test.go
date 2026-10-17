@@ -3,7 +3,7 @@ package application
 import "testing"
 
 func TestManagedApplicationSet(t *testing.T) {
-	want := []string{"comfyui", "llama-cpp", "dwarfstar"}
+	want := []string{"comfyui", "llama-cpp"}
 	got := All()
 	if len(got) != len(want) {
 		t.Fatalf("applications=%v", got)
@@ -13,11 +13,16 @@ func TestManagedApplicationSet(t *testing.T) {
 			t.Fatalf("application[%d]=%s, want %s", i, got[i].ID, id)
 		}
 	}
-	if _, ok := ByID("gufo"); ok {
-		t.Fatal("retired application is still registered")
-	}
-	if _, ok := BuildUnitByID("gufo"); ok {
-		t.Fatal("retired application is still buildable")
+	for _, retired := range []string{"gufo", "dwarfstar"} {
+		if _, ok := ByID(retired); ok {
+			t.Fatalf("retired application %s is still registered", retired)
+		}
+		if _, ok := BuildUnitByID(retired); ok {
+			t.Fatalf("retired application %s is still buildable", retired)
+		}
+		if _, err := BuildClosure([]BuildID{BuildID(retired)}); err == nil {
+			t.Fatalf("retired application %s has a build closure", retired)
+		}
 	}
 }
 

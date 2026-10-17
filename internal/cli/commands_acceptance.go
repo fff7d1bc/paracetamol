@@ -161,7 +161,7 @@ func (app *App) commandAcceptance(args []string) error {
 		return err
 	}
 	for _, application := range applications {
-		if err := requireChoice(application, "application", "comfyui", "llama-cpp", "dwarfstar"); err != nil {
+		if err := requireChoice(application, "application", "comfyui", "llama-cpp"); err != nil {
 			return err
 		}
 	}
@@ -271,16 +271,6 @@ func (app *App) commandAcceptance(args []string) error {
 			return err
 		}
 		return controlerr.New("CPU device-isolation probe returned incomplete output")
-	}
-	explicitDwarf := containsString(applications, "dwarfstar")
-	if detected.ID != "strix-halo" && !explicitDwarf {
-		filtered := cases[:0]
-		for _, candidate := range cases {
-			if candidate.application != "dwarfstar" {
-				filtered = append(filtered, candidate)
-			}
-		}
-		cases = filtered
 	}
 	requiredBundles := acceptanceBundles(managed, cases)
 	if err := app.requireBenchmarkAgreements(managed, requiredBundles, *acceptLicense, false, *nonInteractive); err != nil {
@@ -577,7 +567,7 @@ func captureAcceptanceArtifact(path string) (acceptanceArtifact, error) {
 }
 
 func selectedAcceptanceCases(applications []string) []acceptanceCase {
-	all := []acceptanceCase{{"host-gpu", "GPU operation and exact device isolation", "", "", false}, {"comfyui-image", "ComfyUI Qwen Image FP8 Lightning generation", "comfyui", "qwen-image-2512-fp8-lightning", true}, {"comfyui-video", "ComfyUI Wan 2.2 FP8 Lightning five-frame generation", "comfyui", "wan-2.2-t2v-14b-fp8-lightning", true}, {"llama-cpp", "llama.cpp Qwen3 0.6B GPU offload benchmark", "llama-cpp", "llama-qwen-qwen3-0.6b-q8-0", false}, {"dwarfstar", "DwarfStar direct-answer generation", "dwarfstar", "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix", false}}
+	all := []acceptanceCase{{"host-gpu", "GPU operation and exact device isolation", "", "", false}, {"comfyui-image", "ComfyUI Qwen Image FP8 Lightning generation", "comfyui", "qwen-image-2512-fp8-lightning", true}, {"comfyui-video", "ComfyUI Wan 2.2 FP8 Lightning five-frame generation", "comfyui", "wan-2.2-t2v-14b-fp8-lightning", true}, {"llama-cpp", "llama.cpp Qwen3 0.6B GPU offload benchmark", "llama-cpp", "llama-qwen-qwen3-0.6b-q8-0", false}}
 	if len(applications) == 0 {
 		return all
 	}
@@ -678,16 +668,6 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 			return nil, err
 		}
 		return []string{path}, nil
-	case "dwarfstar":
-		bundle := managed.Bundles[candidate.bundle]
-		artifact := managed.Artifacts[bundle.Artifacts[0]]
-		prompt := "Reply with exactly: DwarfStar acceptance passed"
-		command, err := runtime.DwarfStarCommand(runtime.DwarfStarOptions{Image: configApplicationImage("dwarfstar"), Mode: "cli", DataDir: dataRoot, Model: content.ArtifactPath(dataRoot, artifact), RenderNodes: []string{renderNode}, Profile: profile, Context: 4096, OutputTokens: 64, Prompt: &prompt, NoThinking: true}, app.podman().SELinuxVolumeSuffix(app.Context))
-		if err != nil {
-			return nil, err
-		}
-		_, err = app.run(command, false)
-		return []string{}, err
 	default:
 		return nil, fmt.Errorf("unknown acceptance case %q", candidate.id)
 	}

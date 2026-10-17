@@ -31,7 +31,7 @@ func TestSamplingPolicyValidatesNumbersAtCatalogBoundary(t *testing.T) {
 	}
 }
 
-func TestSamplingPoliciesPreserveReviewedEngineDifferences(t *testing.T) {
+func TestSamplingPoliciesPreserveReviewedModelDifferences(t *testing.T) {
 	managed, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -60,28 +60,12 @@ func TestSamplingPoliciesPreserveReviewedEngineDifferences(t *testing.T) {
 			}
 		}
 	}
-	for _, application := range []string{"llama-cpp", "dwarfstar"} {
-		t.Run(application+" unknown reference", func(t *testing.T) {
-			copy, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			switch application {
-			case "llama-cpp":
-				for id, preset := range copy.LlamaPresets {
-					preset.SamplingPolicy = "missing"
-					copy.LlamaPresets[id] = preset
-					break
-				}
-			case "dwarfstar":
-				for id, preset := range copy.DwarfStarPresets {
-					preset.SamplingPolicy = "missing"
-					copy.DwarfStarPresets[id] = preset
-				}
-			}
-			if err := copy.validateRelationships(); err == nil {
-				t.Fatal("unknown sampling policy accepted")
-			}
-		})
+	for id, preset := range managed.LlamaPresets {
+		preset.SamplingPolicy = "missing"
+		managed.LlamaPresets[id] = preset
+		break
+	}
+	if err := managed.validateRelationships(); err == nil {
+		t.Fatal("unknown sampling policy accepted")
 	}
 }

@@ -47,8 +47,6 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   client surface without inventing cross-model reasoning levels.
   `sampling_policy` optionally references one catalog policy when the model's
   authoritative sampling differs between thinking and non-thinking requests.
-- `dwarfstar_presets` may also reference a `sampling_policy`. The current
-  DeepSeek preset does not, so its request body remains unchanged.
 
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination
@@ -56,9 +54,8 @@ collisions.
 
 ## Included content
 
-The catalog currently covers ComfyUI image, edit, and video stacks; managed
-llama.cpp GGUF presets; and the high-memory DwarfStar model with its optional
-DSpark support artifact. Do not maintain a second inventory in this file.
+The catalog currently covers ComfyUI image, edit, and video stacks and managed
+llama.cpp GGUF presets. Do not maintain a second inventory in this file.
 Inspect the catalog through the same public commands users run:
 
 ```bash

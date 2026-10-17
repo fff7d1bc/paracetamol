@@ -519,8 +519,6 @@ func artifactRoot(dataRoot string, artifact catalog.Artifact) string {
 		return layout.ComfyModels()
 	case "llama-models":
 		return layout.LlamaModels()
-	case "dwarfstar-models":
-		return layout.DwarfStarModels()
 	case "workflows":
 		return filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "imported")
 	default:
@@ -532,8 +530,6 @@ func stagingPartition(dataRoot string, artifact catalog.Artifact) string {
 	application := "comfyui"
 	if artifact.Target == "llama-models" {
 		application = "llama-cpp"
-	} else if artifact.Target == "dwarfstar-models" {
-		application = "dwarfstar"
 	}
 	return filepath.Join((storage.Layout{Root: dataRoot}).Staging(), application)
 }

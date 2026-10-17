@@ -62,8 +62,8 @@ func TestLlamaServerExposesOnlySelectedGPUAndOnePort(t *testing.T) {
 	}
 }
 
-func TestGatewayBackendsUseDynamicLoopbackPortsAndOwnedRole(t *testing.T) {
-	llama, err := LlamaCommand(LlamaOptions{
+func TestGatewayBackendUsesDynamicLoopbackPortAndOwnedRole(t *testing.T) {
+	command, err := LlamaCommand(LlamaOptions{
 		Image: "llama-image", Profile: "strix-halo", Mode: "server", Backend: "rocm",
 		DataDir: "/data", RouterPreset: "/data/models.ini", ModelsMax: 2,
 		RenderNodes: []string{"/dev/dri/renderD129"}, Listen: "127.0.0.1", Port: 8080,
@@ -73,22 +73,10 @@ func TestGatewayBackendsUseDynamicLoopbackPortsAndOwnedRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dwarf, err := DwarfStarCommand(DwarfStarOptions{
-		Image: "dwarf-image", Mode: "server", DataDir: "/data", Model: "/models/model.gguf",
-		RenderNodes: []string{"/dev/dri/renderD129"}, Profile: "strix-halo",
-		Listen: "127.0.0.1", Port: 8000, Context: 131072, OutputTokens: 16000,
-		ContainerName: "gateway-dwarf", ContainerRole: "gateway-backend", Detach: true,
-		DynamicHostPort: true,
-	}, ":rw")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, command := range map[string][]string{"llama.cpp": llama, "DwarfStar": dwarf} {
-		joined := strings.Join(command, " ")
-		for _, required := range []string{"--publish 127.0.0.1::", "gateway-backend", "--detach"} {
-			if !strings.Contains(joined, required) {
-				t.Fatalf("%s command lacks %q: %s", name, required, joined)
-			}
+	joined := strings.Join(command, " ")
+	for _, required := range []string{"--publish 127.0.0.1::8080/tcp", "gateway-backend", "--detach"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("command lacks %q: %s", required, joined)
 		}
 	}
 }
@@ -240,32 +228,5 @@ func TestReasoningHistoryPolicyIsExplicitForDirectAndRouter(t *testing.T) {
 func TestReadOnlySharedMountUsesSharedSELinuxCategory(t *testing.T) {
 	if got := readOnlySharedSuffix(":rw,Z"); got != ":ro,z" {
 		t.Fatalf("suffix=%q", got)
-	}
-}
-
-func TestDwarfStarCLIAppliesPrivateServerDefaultsWithoutPublishing(t *testing.T) {
-	prompt := "test"
-	command, err := DwarfStarCommand(DwarfStarOptions{
-		Image:        "image",
-		Mode:         "cli",
-		DataDir:      "/data",
-		Model:        "/models/model.gguf",
-		RenderNodes:  []string{"/dev/dri/renderD128"},
-		Profile:      "strix-halo",
-		Context:      4096,
-		OutputTokens: 64,
-		Prompt:       &prompt,
-	}, ":rw")
-	if err != nil {
-		t.Fatal(err)
-	}
-	joined := strings.Join(command, " ")
-	for _, expected := range []string{"--network none", "PARACETAMOL_HOST_LISTEN=127.0.0.1", "PARACETAMOL_PORT=8000"} {
-		if !strings.Contains(joined, expected) {
-			t.Fatalf("command lacks %q: %s", expected, joined)
-		}
-	}
-	if strings.Contains(joined, "--publish") {
-		t.Fatalf("CLI command publishes a port: %s", joined)
 	}
 }

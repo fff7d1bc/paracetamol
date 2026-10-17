@@ -60,8 +60,6 @@ func TestInstalledMaki(t *testing.T) {
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "adaptive", "reasoning_effort", "medium", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "adaptive", "reasoning_strength", "high", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "off", "reasoning_strength", "low", true},
-		{"antirez-deepseek-v4-flash-0731-q2-imatrix", "adaptive", "reasoning_effort", "high", true},
-		{"antirez-deepseek-v4-flash-0731-q2-imatrix", "off", "reasoning_effort", "none", true},
 	} {
 		t.Run(fmt.Sprintf("%s/%s/auth=%t", test.model, test.mode, test.authenticated), func(t *testing.T) {
 			var selected []textmodel.Model

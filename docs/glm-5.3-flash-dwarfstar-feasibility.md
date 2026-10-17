@@ -1,5 +1,8 @@
 # GLM-5.3 Flash DwarfStar feasibility
 
+DwarfStar was retired on 2026-10-17. This page preserves the earlier findings
+and commands as historical evidence, not current installation guidance.
+
 This is a dated Strix Halo research record from 2026-09-10 with a parser
 follow-up on 2026-09-11, not a declaration of managed model support. The model
 is **GLM-5.3 Flash**, not full GLM-5.3.

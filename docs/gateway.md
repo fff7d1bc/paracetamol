@@ -1,7 +1,7 @@
 # Native inference gateway
 
 Paracetamol's gateway is the normal shared API entry point for managed text
-inference. It presents verified llama.cpp and DwarfStar models on one port,
+inference. It presents verified llama.cpp models on one port,
 loads no model at startup, and owns one mutually exclusive GPU resource pool.
 It is native Go code in the host control-plane binary. It does not embed
 llama-swap, run a gateway container, or receive the Podman socket.
@@ -71,17 +71,14 @@ extra selection:
 ./paracetamol run gateway
 ```
 
-Automatic discovery considers llama.cpp and DwarfStar, then includes an
+Automatic discovery considers llama.cpp and includes the
 application only when its image is built and it contributes at least one
 compatible receipt-verified model. Any explicit `-a` or `--application`
 options replace discovery and are strict: a missing image or model fails
-startup. Use one for an exact single-application endpoint or repeat it to
-demand both applications:
+startup. To select llama.cpp explicitly:
 
 ```bash
 ./paracetamol run gateway -a llama-cpp
-./paracetamol run gateway -a dwarfstar
-./paracetamol run gateway -a llama-cpp -a dwarfstar
 ```
 
 ## Configuration
@@ -282,12 +279,11 @@ fingerprint for the exact snapshot.
 
 ## Scheduling and lifecycle
 
-llama.cpp models share one private router allocation. DwarfStar v1 exposes its
-single reviewed non-DSpark preset as a separate allocation. The first Chat
+llama.cpp models share one private router allocation. The first Chat
 Completions request starts the required application in a constrained,
 Paracetamol-owned container with an ephemeral loopback host port. That port is
 never the public interface. Once started, the container's stdout and stderr are
-followed in the foreground terminal with a `llama-cpp |` or `dwarfstar |`
+followed in the foreground terminal with a `llama-cpp |`
 prefix. The log follower changes with the allocation and is joined during
 backend stop, so it cannot outlive the gateway-owned container.
 
@@ -304,11 +300,9 @@ than forwarding it. It also recognizes `X-Session-Affinity` and `X-Session-ID`
 from compatible clients. Invalid values are ignored, and the gateway never
 fingerprints messages or other request content to infer a session.
 
-Requests compatible with the active allocation run concurrently, subject to
-the backend's own slots. DwarfStar allows one active request. A request
-for another allocation enters the bounded FIFO queue. Once existing requests
-finish, the scheduler removes the current backend, starts the requested one,
-waits for its readiness endpoint, and forwards the request. The gateway fills
+Requests run concurrently through the one llama.cpp allocation, subject to
+the backend's own slots. During startup, requests wait in a bounded FIFO queue
+until the backend passes its readiness check. The gateway fills
 missing sampling fields only for models with a reviewed catalog policy, as
 described below. Messages, tools, and unknown fields retain their values.
 SSE responses stream without aggregation.
@@ -328,8 +322,7 @@ child.
 Request concurrency is a separate setting. Each loaded llama.cpp model has
 four request slots by default. Use `--slots N` or
 `[gateway.llama-cpp].slots = N` to change it. A fifth request waits for a slot
-without loading another copy of the model. DwarfStar still serves one request
-at a time.
+without loading another copy of the model.
 
 With multiple slots, llama.cpp shares the preset's KV token pool. A 256K
 preset is **256K total across active conversations**, not four independent
@@ -403,7 +396,7 @@ send and record the catalog tuple explicitly for their fixed reasoning mode.
 Backends retain the normal rootless, read-only, capability-free runtime
 policy, exact GPU device set, application data mount, and read-only content
 mount. They publish only an ephemeral `127.0.0.1` port. The gateway never
-guesses render nodes and DwarfStar still requires exactly one GPU.
+guesses render nodes.
 
 The backend publication is explicitly
 `127.0.0.1::CONTAINER_PORT`, where the empty host-port field asks Podman for
@@ -507,10 +500,6 @@ because they do not cover every unified-memory allocation on Strix Halo.
 The [kernel's amdgpu power sensors](https://docs.kernel.org/gpu/amdgpu/thermal.html#hwmon-interfaces)
 include CPU power on APUs and are not wall-socket readings.
 
-DwarfStar residency follows its single allocation lifecycle. An unavailable,
-malformed, missing, or contradictory result becomes `unknown` with a fixed
-diagnostic rather than leaking backend detail.
-
 Recent-request history is opt-in. `--requests N`, where N is 1 through 64,
 requests `/paracetamol/v1/status?requests=N` and prints the newest completed
 records from a fixed 64-entry in-memory ring. A record contains its correlation
@@ -521,9 +510,8 @@ counts when the upstream reports them. Stream records may also contain observed
 first-output latency. llama.cpp records may also contain
 prompt and generation token counts with their durations, plus drafted and
 accepted token counts. A malformed or missing timing field makes only that
-measurement unavailable. DwarfStar currently reports no compatible inference
-timings. Reasoning tokens are a detail within output tokens rather than an
-additional token total. The record also
+measurement unavailable. Reasoning tokens are a detail within output tokens
+rather than an additional token total. The record also
 distinguishes explicit client values for `temperature`, `top_p`, `top_k`,
 `min_p`, `presence_penalty`, `repeat_penalty`, `reasoning_effort`,
 `reasoning_strength`, and the reviewed `chat_template_kwargs` reasoning fields
@@ -624,13 +612,11 @@ Session analytics and durable request-level history are deliberately absent.
 
 ## Deliberate current limits
 
-- DwarfStar uses the reviewed direct model only; DSpark remains a direct-server
-  and benchmark option.
-- The gateway owns one resource pool and does not keep llama.cpp and DwarfStar
-  resident together.
-- It adds no manual unload operation or gateway idle timer. Allocation switches
-  and foreground shutdown retain their existing lifecycle, while llama.cpp's
-  count-limited router retains its own idle-child LRU policy.
+- llama.cpp is the only managed text-inference engine. The gateway owns one
+  resource pool and one private router allocation.
+- It adds no manual unload operation or gateway idle timer. Foreground shutdown
+  stops the private backend, while llama.cpp's count-limited router retains its
+  own idle-child LRU policy.
 - It does not add TLS, retries, request rewriting, or an
   arbitrary upstream registry.
 - The in-memory request ledger is not a persistent request archive, full

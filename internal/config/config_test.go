@@ -17,7 +17,7 @@ func TestLoadDecodesCompleteConfiguration(t *testing.T) {
 data_dir = "/srv/ai"
 
 [gateway]
-applications = ["llama-cpp", "dwarfstar"]
+applications = ["llama-cpp"]
 profile = "strix-halo"
 render_nodes = ["/dev/dri/renderD128"]
 listen = "192.168.1.50"
@@ -48,7 +48,7 @@ retention_days = 180
 	if !configuration.Loaded || configuration.Path != path || configuration.Storage.DataDir == nil || *configuration.Storage.DataDir != "/srv/ai" {
 		t.Fatalf("configuration=%#v", configuration)
 	}
-	if !reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama-cpp", "dwarfstar"}) ||
+	if !reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama-cpp"}) ||
 		configuration.Gateway.APIKeyFile == nil || *configuration.Gateway.APIKeyFile != "/etc/paracetamol/server.key" ||
 		configuration.Gateway.Client.APIKeyFile == nil || *configuration.Gateway.Client.APIKeyFile != "/etc/paracetamol/client.key" ||
 		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128"}) ||
@@ -69,9 +69,9 @@ func TestLoadDecodesSupportedTOMLForms(t *testing.T) {
 data_dir = '/srv/ai#literal'
 
 [gateway]
-applications = ["llama,cpp", 'dwarf#star', "quoted\"name",] # array comment
+applications = ["llama-cpp",] # array comment
 profile = "strix\u002dhalo"
-render_nodes = ["/dev/dri/renderD128=primary"]
+render_nodes = ["/dev/dri/renderD128=primary", 'literal#node', "quoted\"name",]
 listen = "127.0.0.1"
 port = 7_455
 startup_timeout = "30m"
@@ -88,9 +88,9 @@ models_max = +2
 		t.Fatal(err)
 	}
 	if configuration.Storage.DataDir == nil || *configuration.Storage.DataDir != "/srv/ai#literal" ||
-		!reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama,cpp", "dwarf#star", `quoted"name`}) ||
+		!reflect.DeepEqual(configuration.Gateway.Applications, []string{"llama-cpp"}) ||
 		configuration.Gateway.Profile == nil || *configuration.Gateway.Profile != "strix-halo" ||
-		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128=primary"}) ||
+		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128=primary", "literal#node", `quoted"name`}) ||
 		configuration.Gateway.Port == nil || *configuration.Gateway.Port != 7455 ||
 		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" ||
 		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 {
@@ -103,6 +103,8 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		contents string
 		contains string
 	}{
+		"retired application": {"[gateway]\napplications = ['dwarfstar']\n", "supports only llama-cpp"},
+		"retired section":     {"[gateway.dwarfstar]\n", "unknown configuration section"},
 		"unknown section":     {"[other]\n", "unknown configuration section"},
 		"unknown setting":     {"[gateway]\nmodelz_max = 2\n", "unknown configuration setting"},
 		"removed mixed math":  {"[gateway.llama-cpp]\nqwen4exp_math = 'mixed'\n", "unknown configuration setting"},
@@ -136,7 +138,7 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"unsupported escape":  {"[gateway]\nprofile = \"a\\x62\"\n", "unsupported escape sequence"},
 		"unterminated string": {"[gateway]\nprofile = \"auto\n", "unterminated quoted value"},
 		"numeric array item":  {"[gateway]\napplications = [1]\n", "quoted string"},
-		"missing array comma": {"[gateway]\napplications = [\"llama-cpp\" \"dwarfstar\"]\n", "comma"},
+		"missing array comma": {"[gateway]\napplications = [\"llama-cpp\" \"llama-cpp\"]\n", "comma"},
 		"multiline array":     {"[gateway]\napplications = [\n  \"llama-cpp\",\n]\n", "one-line string array"},
 		"leading zero":        {"[gateway]\nport = 07455\n", "leading zero"},
 		"bad separator":       {"[gateway]\nport = 7__455\n", "decimal integer"},

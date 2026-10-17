@@ -1,5 +1,5 @@
 {
-  "schema_version": 29,
+  "schema_version": 30,
   "agreements": {
     "ltx-2-community-license": {
       "name": "LTX-2 Community License",
@@ -1336,40 +1336,6 @@
         "status": "verified",
         "url": "https://huggingface.co/ggml-org/gemma-4-31B-it-GGUF/blob/4fa4fdf38bee237b5c9e8a5b4e72cf39404c9dcc/README.md"
       }
-    },
-    "antirez-deepseek-v4-flash-0731-iq2xxs-gguf": {
-      "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix GGUF with routed gate/up IQ2_XXS, routed down Q2_K, and Q8 attention projections/shared experts/output",
-      "source": {
-        "repository": "antirez/deepseek-v4-gguf",
-        "revision": "1cd7b564460821938add0475a60b942c409295e0",
-        "path": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf"
-      },
-      "destination": "antirez-deepseek-v4-flash-0731/antirez-DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
-      "target": "dwarfstar-models",
-      "size": 86720111488,
-      "sha256": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
-      "license": {
-        "spdx": "MIT",
-        "status": "verified",
-        "url": "https://huggingface.co/antirez/deepseek-v4-gguf/tree/1cd7b564460821938add0475a60b942c409295e0"
-      }
-    },
-    "antirez-deepseek-v4-flash-0731-dspark-support-gguf": {
-      "description": "DeepSeek V4 Flash 0731 DSpark speculative-decoding support GGUF",
-      "source": {
-        "repository": "antirez/deepseek-v4-gguf",
-        "revision": "86bb38ce2ba7a98ab0e550359fec5f48859dc723",
-        "path": "DeepSeek-V4-Flash-DSpark-support-0731.gguf"
-      },
-      "destination": "antirez-deepseek-v4-flash-0731/antirez-DeepSeek-V4-Flash-DSpark-support-0731.gguf",
-      "target": "dwarfstar-models",
-      "size": 5989114272,
-      "sha256": "7e319924541db3f7a163ed7e11d7532a70d48228ab59d36cb81e1d4511885360",
-      "license": {
-        "spdx": "MIT",
-        "status": "verified",
-        "url": "https://huggingface.co/antirez/deepseek-v4-gguf/tree/86bb38ce2ba7a98ab0e550359fec5f48859dc723"
-      }
     }
   },
   "archive_collections": {},
@@ -2052,29 +2018,6 @@
         "all",
         "llama"
       ]
-    },
-    "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix": {
-      "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix; routed IQ2_XXS/Q2_K with Q8 attention/shared/output",
-      "application": "dwarfstar",
-      "artifacts": [
-        "antirez-deepseek-v4-flash-0731-iq2xxs-gguf"
-      ],
-      "groups": [
-        "all",
-        "dwarfstar"
-      ]
-    },
-    "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark": {
-      "description": "DeepSeek V4 Flash 0731 chat-v2 imatrix with the exact 0731 DSpark support GGUF",
-      "application": "dwarfstar",
-      "artifacts": [
-        "antirez-deepseek-v4-flash-0731-iq2xxs-gguf",
-        "antirez-deepseek-v4-flash-0731-dspark-support-gguf"
-      ],
-      "groups": [
-        "all",
-        "dwarfstar"
-      ]
     }
   },
   "workflows": {
@@ -2597,21 +2540,6 @@
         "presence_penalty": 1.5,
         "repeat_penalty": 1.0
       }
-    }
-  },
-  "dwarfstar_presets": {
-    "antirez-deepseek-v4-flash-0731-q2-imatrix": {
-      "bundle": "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix",
-      "dspark_bundle": "dwarfstar-antirez-deepseek-v4-flash-0731-q2-imatrix-dspark",
-      "default_context": 131072,
-      "max_output_tokens": 16000,
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": [
-        "high"
-      ],
-      "reasoning_default": "high",
-      "reasoning_off": true
     }
   },
   "llama_presets": {

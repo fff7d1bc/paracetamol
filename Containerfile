@@ -8,7 +8,6 @@ ARG TORCH_VERSION=2.13.0
 ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2
 ARG LLAMA_CPP_COMMIT=623c16393c7d53a37df8bb69c6ea8ed6e5171f62
-ARG DWARFSTAR_COMMIT=0aaea5a238fb41a35106a551e73c8409dfb751ac
 
 FROM ${UBUNTU_IMAGE} AS content-tools
 
@@ -413,84 +412,3 @@ WORKDIR /data
 EXPOSE 8080
 STOPSIGNAL SIGINT
 ENTRYPOINT ["/usr/local/bin/paracetamol-llama-entrypoint"]
-
-# DwarfStar is deliberately narrower than upstream's complete build surface:
-# one locally compiled multi-architecture ROCm engine, with only its CLI, HTTP
-# server, and benchmark binary retained. Model acquisition remains entirely
-# outside the image and goes through Paracetamol's verified content catalog.
-FROM native-rocm-sdk AS dwarfstar-builder
-
-ARG DWARFSTAR_COMMIT
-
-COPY applications/dwarfstar/multiarch-wmma-fallback.patch \
-    /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch
-COPY applications/dwarfstar/glm-tool-argument-types.patch \
-    /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch
-# The model-free CPU server tests cover schema-aware tool arguments and
-# streaming before the ROCm target rebuilds its objects. No test binary ships.
-WORKDIR /opt/dwarfstar
-RUN git init . && \
-    git remote add origin https://github.com/antirez/ds4.git && \
-    git fetch --depth=1 origin "${DWARFSTAR_COMMIT}" && \
-    git checkout --detach FETCH_HEAD && \
-    test "$(git rev-parse HEAD)" = "${DWARFSTAR_COMMIT}" && \
-    git apply --check \
-        /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch && \
-    git apply /opt/paracetamol/dwarfstar-multiarch-wmma-fallback.patch && \
-    git apply --check \
-        /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch && \
-    git apply /opt/paracetamol/dwarfstar-glm-tool-argument-types.patch && \
-    make -j"$(nproc)" ds4_test NATIVE_CPU_FLAG=-march=x86-64-v3 \
-        CFLAGS='-O2 -march=x86-64-v3 -fno-finite-math-only -pthread -D_GNU_SOURCE -DDS4_NO_GPU' \
-        'CORE_OBJS=$(CPU_CORE_OBJS)' 'DS4_LINK=$(CC)' \
-        'DS4_LINK_LIBS=$(LDLIBS)' && \
-    ./ds4_test --server && \
-    site_packages="$(python -c \
-        'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
-    runtime_rpath="${site_packages}/_rocm_sdk_core/lib:\
-${site_packages}/_rocm_sdk_libraries/lib" && \
-    make -j"$(nproc)" strix-halo \
-        NATIVE_CPU_FLAG=-march=x86-64-v3 \
-        ROCM_CFLAGS='-O3 -ffast-math -fno-finite-math-only -fPIE -pthread -D__HIP_PLATFORM_AMD__ -Wno-unused-command-line-argument --offload-jobs=jobserver --offload-arch=gfx1150 --offload-arch=gfx1151 --offload-arch=gfx1200 --offload-arch=gfx1201' \
-        ROCM_LDLIBS="-lm -pthread -lhipblas -lhipblaslt -lrocblas -lamdhip64 \
--Wl,-rpath,${runtime_rpath}" && \
-    ./ds4 --help >/dev/null && \
-    ./ds4-server --help >/dev/null && \
-    ./ds4-bench --help >/dev/null && \
-    mkdir -p \
-        /opt/dwarfstar-install/bin \
-        /opt/dwarfstar-install/share/licenses/paracetamol/dwarfstar && \
-    install -m 0755 ds4 ds4-server ds4-bench \
-        /opt/dwarfstar-install/bin/ && \
-    install -m 0444 LICENSE \
-        /opt/dwarfstar-install/share/licenses/paracetamol/dwarfstar/LICENSE && \
-    install -m 0444 third_party/iris/LICENSE \
-        /opt/dwarfstar-install/share/licenses/paracetamol/dwarfstar/iris.LICENSE && \
-    ldd /opt/dwarfstar-install/bin/ds4-server | \
-        tee /tmp/dwarfstar-ldd.txt && \
-    ! grep -q 'not found' /tmp/dwarfstar-ldd.txt
-
-FROM ${ROCM_RUNTIME_IMAGE} AS dwarfstar
-
-ARG DWARFSTAR_COMMIT
-ARG ROCM_VERSION
-
-COPY --from=dwarfstar-builder /opt/dwarfstar-install/ /usr/local/
-COPY applications/dwarfstar/entrypoint.sh \
-    /usr/local/bin/paracetamol-dwarfstar-entrypoint
-RUN chmod 0755 /usr/local/bin/paracetamol-dwarfstar-entrypoint
-
-ENV HOME=/data/home \
-    XDG_CACHE_HOME=/tmp
-
-LABEL org.opencontainers.image.title="Paracetamol DwarfStar" \
-      org.opencontainers.image.description="Locally built DwarfStar server and CLI for DeepSeek V4 Flash on supported AMD GPUs" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.revision="${DWARFSTAR_COMMIT}" \
-      io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
-
-WORKDIR /data
-EXPOSE 8000
-STOPSIGNAL SIGINT
-ENTRYPOINT ["/usr/local/bin/paracetamol-dwarfstar-entrypoint"]

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"paracetamol/internal/config"
+	"paracetamol/internal/identity"
 )
 
 func writeArchive(t *testing.T, unsafe bool) string {
@@ -80,6 +81,34 @@ func TestSelectedReferencesUseBuildClosure(t *testing.T) {
 	}
 	if _, err := SelectedReferences("base"); err == nil {
 		t.Fatal("retired base target still accepted")
+	}
+	if _, err := SelectedReferences("dwarfstar"); err == nil {
+		t.Fatal("retired DwarfStar export target still accepted")
+	}
+}
+
+func TestAllReferencesContainOnlyCurrentBuildUnits(t *testing.T) {
+	want := []string{
+		config.ContentToolsImage, config.ROCmRuntimeImage, config.ROCmBaseImage,
+		mustApplicationImage(t, "comfyui"), mustApplicationImage(t, "llama-cpp"),
+	}
+	references, err := SelectedReferences("all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(references, want) {
+		t.Fatalf("references=%q want=%q", references, want)
+	}
+	if !reflect.DeepEqual(ManagedReferences(), want) {
+		t.Fatalf("managed references=%q want=%q", ManagedReferences(), want)
+	}
+}
+
+func TestValidateManagedRejectsRetiredApplicationImage(t *testing.T) {
+	reference := identity.Image("dwarfstar-ubuntu26.04-rocm10.1-0aaea5a-r12")
+	archive := Archive{Images: []Image{{Reference: reference, OperatingSystem: "linux", Architecture: runtime.GOARCH}}}
+	if err := ValidateManaged(archive, []string{reference}); err == nil {
+		t.Fatal("retired DwarfStar archive image was accepted")
 	}
 }
 

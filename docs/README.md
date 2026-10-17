@@ -7,7 +7,7 @@ then choose a user guide or maintainer reference below.
 ## User guides
 
 - [Applications](guides/applications.md) covers ComfyUI, llama.cpp,
-  DwarfStar, managed models, APIs, coding-agent clients, and multi-GPU runs.
+  managed models, APIs, coding-agent clients, and multi-GPU runs.
 - [Content](guides/content.md) covers recipes, exact bundles, licensing,
   verification, resumable downloads, mirrors, imports, and workflows.
 - [Operations](guides/operations.md) covers hardware acceptance, builds,
@@ -30,7 +30,6 @@ built-in guide:
 ./paracetamol guide
 ./paracetamol guide comfyui
 ./paracetamol guide llama-cpp
-./paracetamol guide dwarfstar
 ```
 
 Command-specific `--help` output remains the authoritative interface
@@ -53,7 +52,6 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    cat containers/content_tools/requirements.txt
    cat applications/comfyui/constraints.txt
    cat applications/llama-cpp/hip-apu-host-buffer.patch
-   sed -n '1,220p' applications/dwarfstar/entrypoint.sh
    jq '.schema_version' catalog/catalog.json
    ```
 
@@ -80,8 +78,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
    make static
    PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
    bash -n applications/comfyui/entrypoint.sh \
-     applications/llama-cpp/entrypoint.sh \
-     applications/dwarfstar/entrypoint.sh
+     applications/llama-cpp/entrypoint.sh
    find catalog -type f -name '*.json' -print0 | \
      xargs -0 -n1 python3 -m json.tool >/dev/null
    git diff --check
@@ -100,7 +97,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      direction](vllm-integration-direction.md)
    - [DeepSeek V4 Flash llama.cpp feasibility
      snapshot](deepseek-v4-flash-llama-cpp-feasibility.md)
-   - [GLM-5.3 Flash DwarfStar feasibility and tool-parser
+   - [Historical GLM-5.3 Flash DwarfStar feasibility and tool-parser
      follow-up](glm-5.3-flash-dwarfstar-feasibility.md)
    - [Muse Glimmer llama.cpp agent feasibility
      snapshot](muse-glimmer-llama-cpp-agent-feasibility.md)
