@@ -29,6 +29,110 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Flash-Next runtime cache and microbatch screen (2026-10-17)
+
+**Keep the managed defaults.** Smaller microbatches helped one history-edit
+case but slowed fresh prefill, without improving ordinary tool-result appends
+or decode. A bounded prompt archive did recover an evicted conversation
+quickly, but that is a narrower benefit than faster inference or better
+near-256K caching. No production setting, model, image or host policy changed.
+
+The screen used controller checkout `9679846`, the accepted llama.cpp
+`623c16393c7d53a37df8bb69c6ea8ed6e5171f62` / ROCm 10.1 image
+`llama-cpp-ubuntu26.04-rocm10.1-623c163-r56`, image ID
+`1cef96272e13dbd09891cbecdce98c9dc56129189b584217ec6a48c95037cfc7`.
+The acceptance host retained kernel `7.2.10-200.fc44.x86_64`, balanced platform profile,
+`balance_performance` CPU preference and the 112 GiB TTM ceiling.
+The model remained Unsloth's
+`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with F16 KV, Flash
+Attention, the direct embedding reader, preserved reasoning and no MTP.
+Every request explicitly selected xhigh, temperature 1, top_p 0.95,
+top_k 20, min_p 0.05 and seed 42.
+
+An isolated rootless container reproduced the managed confinement and used
+the same locally built image. Native argument overrides varied only the
+microbatch size and archive controls. Effective process arguments were
+captured rather than trusting the entrypoint's pre-override policy banner.
+The gateway and user client configuration were not involved or modified.
+Probe source, requests, timestamped streaming events, effective arguments,
+results and memory samples are retained outside Git at
+`build/cache-runtime-20261017/` on the acceptance host and the development host.
+
+The workload was a fixed synthetic coding transcript with tool definitions,
+a source-like tool result and dispersed retrieval keys. It was not a live
+Maki coding benchmark. There was one serial client and four shared slots,
+with the unchanged 262144-token total pool. Actual prompts were approximately
+32.4K tokens, not populated 256K contexts. Model loading was excluded and the
+filesystem cache was not flushed. Timing requests forced 256 output tokens
+and are deliberately truncated, not code-quality scores. Separate xhigh
+retrieval requests required a complete correct six-key answer.
+First output includes reasoning or tool-call output, not only final-answer
+text.
+
+#### Microbatch tradeoff
+
+Logical batch size stayed at 2048 and the archive stayed disabled. Each arm
+started a fresh backend, then ran identical fresh, exact-repeat, appended-tool,
+last-user-edit and old-tool-result-edit requests. The 2048 fresh-prompt result
+was repeated after the smaller settings. Two different edits near the end of
+the old tool result exercised checkpoint rewind rather than an ordinary
+append at a message boundary.
+
+| Physical microbatch | Fresh prompt to first output | Ordinary tool append to first output | Edited old tool result to first output | Tokens reprocessed after that edit |
+| --- | --- | --- | --- | --- |
+| 2048, current | 44.21 / 44.86 s | 0.74 / 0.72 s | 3.19 / 3.19 s | 2048 |
+| 1024 | 49.28 s | 0.73 s | 1.94 / 1.92 s | 1028 |
+| 512 | 62.07 s | 0.75 s | 1.37 / 1.37 s | 516 |
+
+Exact repeats reused 32420 of 32424 input tokens and began output in about
+0.13–0.14 seconds. The appended tool result processed only 122 new tokens.
+Single-resident-conversation decode remained approximately 22 tokens/s across
+settings. The 512 setting saved about 1.8 seconds on the specific old-history
+edit, but added roughly 18 seconds to fresh prefill. Normal appended tool
+results did not get that benefit. This does not justify replacing 2048 for
+general coding use, and is not a populated-256K microbatch comparison.
+
+#### Prompt archive
+
+`--cache-ram 0` leaves live-prefix reuse enabled. With four resident slots,
+A/B/A switching already returned to A in about 0.13 seconds. An A/B/C/D/E/A
+sequence displaced A, making its return process 32006 tokens and take
+50.36 seconds to first output, or 63.00 seconds for the whole 256-token reply.
+
+A 1024 MiB archive with upstream's default idle-slot caching was worse for
+simple A/B/A switching. The backend reported a 1521.745 MiB conversation
+state, too large for the cap. Its unified-KV idle-slot path nevertheless
+cleared the live copy after the failed save. Returning to A then processed
+all 32424 input tokens and took 44.02 seconds to first output. A 512 MiB
+archive was not run because the measured entry already exceeded 1024 MiB.
+The same 1024 MiB cap with `--no-cache-idle-slots` retained the resident A
+and returned to it in 0.14 seconds, processing only four tokens. This control
+isolates the idle-slot clearing regression from the archive's mere presence;
+it does not show that 1024 MiB can save an evicted history.
+
+`--cache-ram 4096 --no-cache-idle-slots` retained ordinary resident-cache
+reuse and recovered the displaced A in the same full request sequence.
+It reused 32420 tokens, processed only four, and took **0.58 seconds to first
+output and 12.89 seconds for the whole reply**. This is an eviction-recovery
+gain, not a decode-speed gain. Minimum sampled available RAM was 23.47 GiB,
+compared with 25.02 GiB in the archive-disabled full sequence. The 8 GiB
+memory guard did not fire.
+
+Archive capacity must include checkpoints and the outgoing state saved before
+the requested state is restored. Fitting one conversation is not necessarily
+enough. These results do not establish that 4 GiB can archive much longer
+histories, recover every eviction caused by shared-pool pressure, or improve
+concurrent throughput. The archive is a candidate for further multi-session
+acceptance, not an enabled managed option. No public CLI passthrough for these
+native switches was added.
+
+All 60 requests completed without request errors, including seven correct
+complete retrieval checks. No memory guard fired and the kernel journal had
+no new entries during the test window. Every test container was stopped and
+removed, leaving the acceptance host idle as it was initially. Tier 1 Go, static-build,
+Python, shell and catalog checks passed. Other hardware classes, live Maki
+task completion and concurrent clients were not tested in this screen.
+
 ### Four llama.cpp request slots on Strix Halo (2026-10-16)
 
 The request-slot delivery starts from controller `bbbf0a07881afa4e58f2a52d189cfb59389207e9`.
