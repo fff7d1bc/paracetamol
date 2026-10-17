@@ -29,6 +29,62 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Flash-Next long-context concurrency screen (2026-10-17)
+
+**Concurrent sessions improved total throughput, but each reply slowed down.**
+Two warmed ~100K sessions finished their fixed-length replies about 35% sooner
+together than sequentially. Three ~80K sessions finished about 48% sooner.
+Use concurrency for independent work, not to accelerate one urgent reply.
+No production defaults, model bytes, image or host settings changed.
+
+Controller `f28d44b` used the same Strix Halo host, llama.cpp `623c163`,
+ROCm 10.1 and accepted `623c163-r56` image identified in the cache screen below.
+The model was `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with
+xhigh reasoning, F16 KV, no MTP, batch/microbatch 2048, RAM prompt archive
+disabled and four unified-KV slots sharing 262144 tokens. Sampling was
+temperature 1, top_p 0.95, top_k 20, min_p 0.05 and seed 42.
+An isolated rootless direct server reproduced managed confinement on loopback.
+The gateway, Maki configuration and user sessions were not involved.
+
+Each session had a different synthetic source/tool transcript with six unique
+retrieval keys. Actual retrieval prompts were 100440–100450 tokens in the
+two-session arm and 80454–80464 in the three-session arm. Three independent
+100K histories would exceed the existing pool, so the three-way arm deliberately
+used shorter histories. These are separate comparisons, not identical-context
+scaling from one through three clients.
+
+Each backend first warmed A and measured it alone, then warmed the remaining
+histories. With all histories resident, one serial client issued the timing
+requests sequentially, followed by two rounds with two or three synchronized
+clients. Each timing reply forced exactly 256 output tokens. All measured
+requests reused their entire prompt except four tokens. Streaming timestamps
+and backend slot logs confirmed concurrent generation.
+
+| Histories | A alone before other histories loaded | All replies sequentially | All replies concurrently, two rounds | Concurrent aggregate tokens/s | Each concurrent reply |
+| --- | --- | --- | --- | --- | --- |
+| 2 × ~100K | 20.6 tokens/s, 12.4 s | 27.4 s | 18.1 / 17.7 s | 28.4 / 28.9 | 17.7–18.1 s, about 14.2–14.5 tokens/s |
+| 3 × ~80K | 21.1 tokens/s, 12.1 s | 43.0 s | 22.3 / 22.0 s | 34.4 / 34.9 | 22.0–22.3 s, about 11.5–11.7 tokens/s |
+
+Aggregate throughput is total generated tokens divided by group wall time,
+not the sum of per-request rates. Sequential replies with all histories
+resident took about 13.7 seconds each in the two-way arm and 14.3 seconds in
+the three-way arm. The A-alone baseline was faster, but this small fixed-order
+screen does not isolate residency, warmup or run-order effects.
+
+All ten complete six-key retrieval checks passed before and after concurrency.
+Timing streams were deliberately truncated reasoning, not completed coding
+answers or a quality benchmark. Fresh prefill, model loading, long agent tasks
+and simultaneous cold arrivals are outside the timing comparison. The result
+does not promise that adding a new uncached session leaves another responsive.
+Available RAM stayed above 23.06 GiB and 21.25 GiB respectively. No memory guard
+fired or new kernel journal entry appeared. Both containers were removed.
+
+Probe source, exact requests, SSE timestamps, effective commands, image
+identity, results and memory samples are retained outside Git at
+`build/long-concurrency-20261017/` on the test and development hosts.
+Both arm summaries passed. Routine Go, static-build, Python, shell and catalog
+checks also passed. Other hardware and live Maki task quality were not tested.
+
 ### Flash-Next runtime cache and microbatch screen (2026-10-17)
 
 **Keep the managed defaults.** Smaller microbatches helped one history-edit
