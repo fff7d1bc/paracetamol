@@ -209,6 +209,10 @@ mutation safety, verification, licensing, isolation, or testing requirements.
 - Prefer the smallest direct design that satisfies the current need. Do not
   add speculative layers, flags, configuration, applications, or dependency
   machinery for possible future use.
+- Delegate suitable independent work to `gpt-6.1-sol` subagents at `high`
+  reasoning effort without asking each time. The main agent owns the plan,
+  integration, review, and acceptance, and should handle work itself when
+  delegation would not help. Keep worker file ownership explicit.
 - Fix a shared invariant at its owning boundary rather than duplicating
   defensive checks at callers.
 - Preserve Go 1.26 compatibility. The host control plane should prefer the Go
