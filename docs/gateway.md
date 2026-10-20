@@ -288,8 +288,8 @@ prefix. The log follower changes with the allocation and is joined during
 backend stop, so it cannot outlive the gateway-owned container.
 
 Gateway controller and HTTP lines use the `gateway |` prefix. Each accepted
-Chat Completions request receives a process-local correlation ID and matching
-start/finish lines; an early rejection receives one reject line. Backend and
+Chat Completions request receives an opaque, restart-safe correlation ID and
+matching start/finish lines; an early rejection receives one reject line. Backend and
 controller prefixes are emitted as complete physical lines, so concurrent
 output cannot splice one prefix into another.
 
@@ -425,6 +425,7 @@ The initial public surface is deliberately small:
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `GET /paracetamol/v1/status`
+- `GET /paracetamol/v1/requests/REQUEST_ID`
 - `GET /paracetamol/v1/clients/maki/providers.toml`
 - `GET /paracetamol/v1/clients/maki/init.lua`
 
@@ -444,9 +445,10 @@ Use the human status client for the versioned endpoint:
 ./paracetamol status gateway --requests 10
 ```
 
-The v6 status schema reports the frozen applications, active allocation,
+The v7 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
-exact per-model residency. Every model reports its catalog-configured context.
+exact per-model residency. It also includes the current random `instance_id`.
+Every model reports its catalog-configured context.
 For a resident llama.cpp allocation, the gateway performs a bounded read-only
 `GET /models` against the private router. Loaded models may also provide
 effective context, training context, parameter count, model byte size, and
@@ -530,6 +532,9 @@ changing their bytes or flushing. Proxied SSE responses add
 `X-Accel-Buffering: no` so compatible reverse proxies do not coalesce events.
 Missing or malformed usage data is simply reported as unavailable. Chat
 responses carry `X-Paracetamol-Request-ID` for correlation.
+Every response also carries `X-Paracetamol-Instance-ID`. Request IDs contain
+that instance identity and a sequence number, so an ID from before a restart
+cannot resolve to a different request. Treat the complete ID as opaque.
 At most 64 session aggregates are retained, with least-recently-used eviction;
 `--requests` returns the lifetime-since-gateway-start aggregates for sessions
 represented in that recent request window. Omitting `--requests` excludes both
@@ -546,6 +551,79 @@ The controller's `status gateway` command still accepts `--gateway-url`,
 `PARACETAMOL_GATEWAY_URL` and `[gateway.client].url`. Its bounded metadata
 probe checks the versioned gateway marker before trusting a response. These
 controller settings do not configure native Maki.
+
+## Request reports for testing
+
+Use `GET /paracetamol/v1/requests/REQUEST_ID` to retrieve one request without
+scanning recent history, probing model residency or sampling host resources.
+It uses the ordinary authentication policy and sends `Cache-Control: no-store`.
+There is no special testing mode and no alternate sampling or scheduling path.
+
+For example, send a normal request with sampler fields omitted:
+
+```bash
+curl --fail-with-body -i http://gateway.example:7455/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl","reasoning_effort":"none","max_tokens":64,"messages":[{"role":"user","content":"Reply exactly true."}]}'
+```
+
+Copy its `X-Paracetamol-Request-ID` response header, then replace `REQUEST_ID`:
+
+```bash
+curl --fail-with-body http://gateway.example:7455/paracetamol/v1/requests/REQUEST_ID
+```
+
+Use the same Bearer credential as inference when authentication is enabled.
+The versioned `paracetamol.request-report.v1` envelope contains the gateway
+instance, frozen inventory fingerprint, retention limits and one of:
+
+- `state: active`, with an `active` metadata snapshot and `phase` of
+  `receiving`, `waiting` or `upstream`.
+- `state: completed`, with the ordinary completed `record`, including resolved
+  samplers and their provenance, tokens, native timings and completion evidence.
+
+These phases describe the gateway only. `waiting` covers allocation and
+readiness. `upstream` can include native model loading, slot queues, prefill
+and generation. It is not proof that GPU work has started. Active reports do
+not invent final durations, token counts or outcomes. The stream setting is
+omitted while the request body is still being received. Probes can poll until a
+report is completed using their own cancellation policy.
+
+The gateway retains the most recent 64 completed requests and at most 128
+active metadata snapshots. Active tracking is best-effort and never limits
+inference admission. Read reports promptly and save any required benchmark
+evidence on the client. HTTP 404 with `request_not_retained` covers unknown,
+evicted, other-instance and currently untracked IDs. It is not evidence of
+success, cancellation or an idle backend. Malformed selectors and query
+parameters return HTTP 400. There are no tombstones or durable request records.
+
+`record.completion` separates observed model completion from HTTP transport:
+
+- `finish_reasons` retains at most 16 choice indexes with `stop`, `length`,
+  `tool_calls`, `function_call`, `content_filter` or the fixed marker `other`.
+- `stream_done` is present only for streaming responses and records whether
+  the SSE `[DONE]` marker was observed.
+- `observation` is `available`, `partial` or `unavailable`. Missing, malformed,
+  oversized, conflicting or incomplete observations are not promoted to a
+  successful model finish.
+
+HTTP success alone is not a completed-task quality result. A `length` finish
+reports an output limit, not proof of context loss or its exact cause. A
+canceled gateway request does not prove that its native slot has become idle.
+Prompts, answers, tools and arbitrary backend strings are never retained.
+Reports use the existing completion ring, not a second telemetry store.
+The Go control plane exposes `gateway.FetchRequestReport` for reusable probes.
+It checks the gateway marker, schema and exact request/instance correlation,
+does not follow redirects, and makes no inference or backend-diagnostic calls.
+
+For truthful comparisons, retain the request controls, inventory fingerprint,
+native timings, cache observations and finish evidence together. Benchmark
+fixtures must check their own answers. The inventory fingerprint identifies
+frozen models and policies, not the executing image or hardware. Record the
+image ID, profile, runtime arguments and fixture identity separately when
+comparing engine builds. Direct engine and numerical tests
+remain separate from production-gateway tests. No slot/metrics polling,
+runtime log parser or request-level backend-phase attribution is enabled.
 
 ## Durable usage statistics
 

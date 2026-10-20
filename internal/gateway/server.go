@@ -3,6 +3,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -24,9 +27,10 @@ import (
 const (
 	MaxRequestBytes = 16 * 1024 * 1024
 	QueueLimit      = 64
-	StatusSchema    = "paracetamol.gateway-status.v6"
+	StatusSchema    = "paracetamol.gateway-status.v7"
 	IdentityHeader  = "X-Paracetamol-Gateway"
 	IdentityValue   = "paracetamol.gateway.v1"
+	InstanceHeader  = "X-Paracetamol-Instance-ID"
 )
 
 type Server struct {
@@ -36,6 +40,7 @@ type Server struct {
 	residencyClient *http.Client
 	log             io.Writer
 	started         time.Time
+	instanceID      string
 	accepting       atomic.Bool
 	nextRequestID   atomic.Uint64
 	requests        requestLedger
@@ -57,6 +62,7 @@ type Status struct {
 	Gateway               string                       `json:"gateway"`
 	InventoryFingerprint  string                       `json:"inventory_fingerprint"`
 	StartedAt             string                       `json:"started_at"`
+	InstanceID            string                       `json:"instance_id"`
 	Applications          []string                     `json:"applications"`
 	Models                []StatusModel                `json:"models"`
 	Scheduler             SchedulerStatus              `json:"scheduler"`
@@ -101,6 +107,12 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 		return nil, err
 	}
 	sharedLog := atomicLogWriter(log)
+	// Request reports must never resolve an old process's ID to a different
+	// request after a restart. The opaque nonce is correlation, not a secret.
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, fmt.Errorf("cannot initialize gateway request identity: %w", err)
+	}
 	transport := &http.Transport{
 		Proxy:             http.ProxyFromEnvironment,
 		DialContext:       (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -109,7 +121,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	residencyTransport := transport.Clone()
 	residencyTransport.Proxy = nil
 	server := &Server{
-		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), transport: transport,
+		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), instanceID: hex.EncodeToString(nonce[:]), transport: transport,
 		resources:       options.Resources,
 		llamaSlots:      options.LlamaSlots,
 		stats:           options.Statistics,
@@ -131,6 +143,7 @@ func (server *Server) BeginShutdown() {
 func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Server", identity.CommandName+"/"+identity.Version)
 	writer.Header().Set(IdentityHeader, IdentityValue)
+	writer.Header().Set(InstanceHeader, server.instanceID)
 	if server.serveWeb(writer, request) {
 		return
 	}
@@ -149,6 +162,8 @@ func (server *Server) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 		server.models(writer)
 	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/status":
 		server.status(writer, request)
+	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, requestReportPath):
+		server.requestReport(writer, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/paracetamol/v1/statistics":
 		server.statistics(writer, request)
 	case request.Method == http.MethodGet && (request.URL.Path == makiConfigPath+"providers.toml" || request.URL.Path == makiConfigPath+"init.lua"):
@@ -210,7 +225,7 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 	}
 	writeJSON(writer, http.StatusOK, Status{
 		Schema: StatusSchema, Gateway: gatewayState, InventoryFingerprint: server.registry.Fingerprint,
-		StartedAt: server.started.Format(time.RFC3339), Applications: applications,
+		StartedAt: server.started.Format(time.RFC3339), InstanceID: server.instanceID, Applications: applications,
 		Models: server.modelStatus(request.Context(), schedulerStatus), Scheduler: schedulerStatus, Usage: usage,
 		RecentRequests: recentRequests, Resources: resources, AuthenticationEnabled: server.auth.enabled,
 	})
@@ -219,10 +234,13 @@ func (server *Server) status(writer http.ResponseWriter, request *http.Request) 
 func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	started := time.Now()
 	record := RequestRecord{
-		ID: fmt.Sprintf("r%08x", server.nextRequestID.Add(1)), SessionID: requestSessionID(request), Peer: requestPeer(request),
+		ID: fmt.Sprintf("r%s-%016x", server.instanceID, server.nextRequestID.Add(1)), SessionID: requestSessionID(request), Peer: requestPeer(request),
 		UserAgent: boundedText(request.UserAgent(), maxObservedTextRunes), StartedAt: started.UTC().Format(time.RFC3339Nano),
+		Completion: CompletionMetadata{Observation: CompletionUnavailable},
 	}
 	writer.Header().Set(RequestIDHeader, record.ID)
+	server.requests.Track(record, "receiving")
+	defer server.requests.Untrack(record.ID)
 	reject := func(status int, outcome RequestOutcome, kind, code, message string) {
 		writeAPIError(writer, status, kind, code, message)
 		record.Outcome, record.HTTPStatus = outcome, status
@@ -270,6 +288,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	logLine(server.log, "gateway | request %s start session=%s model=%s application=%s peer=%s stream=%t %s",
 		record.ID, firstNonEmptyLog(record.SessionID, "none"), model.ID, model.Application, firstNonEmptyLog(record.Peer, "unknown"), record.Stream, controlsLogSummary(record.Controls))
 	waitStarted := time.Now()
+	server.requests.Track(record, "waiting")
 	lease, err := server.scheduler.Acquire(request.Context(), Allocation(model.Backend))
 	waitFinished := time.Now()
 	if err != nil {
@@ -317,6 +336,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		// backend served this request.
 		response.Header.Del("Server")
 		response.Header.Del(IdentityHeader)
+		response.Header.Del(InstanceHeader)
 		response.Header.Set(RequestIDHeader, record.ID)
 		if isEventStream(response.Header.Get("Content-Type")) {
 			response.Header.Set("X-Accel-Buffering", "no")
@@ -336,6 +356,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		writeAPIError(output, http.StatusBadGateway, "gateway_error", "upstream_error", "The selected model backend disconnected")
 	}
 	upstreamStarted := time.Now()
+	server.requests.Track(record, "upstream")
 	proxyAborted := serveReverseProxy(proxy, observedWriter, request)
 	upstreamFinished := time.Now()
 	if proxyAborted && request.Context().Err() == nil {
@@ -346,6 +367,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	if observer != nil {
 		observation := observer.Finish()
 		record.Tokens, record.BackendTimings = observation.Tokens, observation.Timings
+		record.Completion = observation.Completion
 		if !observation.FirstOutputAt.IsZero() && observedWriter.status >= 200 && observedWriter.status < 300 {
 			milliseconds := elapsedMilliseconds(started, observation.FirstOutputAt)
 			record.Timing.FirstOutputMilliseconds = &milliseconds

@@ -91,24 +91,26 @@ type responseObservation struct {
 	Tokens        TokenUsage
 	Timings       BackendTimings
 	FirstOutputAt time.Time
+	Completion    CompletionMetadata
 }
 
 type RequestRecord struct {
-	ID             string          `json:"id"`
-	SessionID      string          `json:"session_id,omitempty"`
-	Model          string          `json:"model,omitempty"`
-	Application    string          `json:"application,omitempty"`
-	Peer           string          `json:"peer,omitempty"`
-	UserAgent      string          `json:"user_agent,omitempty"`
-	Stream         bool            `json:"stream"`
-	Outcome        RequestOutcome  `json:"outcome"`
-	HTTPStatus     int             `json:"http_status,omitempty"`
-	StartedAt      string          `json:"started_at"`
-	FinishedAt     string          `json:"finished_at"`
-	Timing         RequestTiming   `json:"timing"`
-	Tokens         TokenUsage      `json:"tokens"`
-	BackendTimings BackendTimings  `json:"backend_timings"`
-	Controls       RequestControls `json:"controls"`
+	ID             string             `json:"id"`
+	SessionID      string             `json:"session_id,omitempty"`
+	Model          string             `json:"model,omitempty"`
+	Application    string             `json:"application,omitempty"`
+	Peer           string             `json:"peer,omitempty"`
+	UserAgent      string             `json:"user_agent,omitempty"`
+	Stream         bool               `json:"stream"`
+	Outcome        RequestOutcome     `json:"outcome"`
+	HTTPStatus     int                `json:"http_status,omitempty"`
+	StartedAt      string             `json:"started_at"`
+	FinishedAt     string             `json:"finished_at"`
+	Timing         RequestTiming      `json:"timing"`
+	Tokens         TokenUsage         `json:"tokens"`
+	BackendTimings BackendTimings     `json:"backend_timings"`
+	Controls       RequestControls    `json:"controls"`
+	Completion     CompletionMetadata `json:"completion"`
 }
 
 type requestLedgerEntry struct {
@@ -120,6 +122,7 @@ type requestLedger struct {
 	mu       sync.Mutex
 	sequence uint64
 	entries  [RecentRequestLimit]requestLedgerEntry
+	active   map[string]activeRequestEntry
 	overall  RequestAggregate
 	models   map[string]ModelAggregate
 	sessions map[string]sessionLedgerEntry
@@ -131,6 +134,7 @@ func (ledger *requestLedger) Add(record RequestRecord) {
 	ledger.sequence++
 	index := (ledger.sequence - 1) % RecentRequestLimit
 	ledger.entries[index] = requestLedgerEntry{sequence: ledger.sequence, record: record}
+	delete(ledger.active, record.ID)
 	ledger.addUsage(record)
 }
 
@@ -451,6 +455,7 @@ type responseObserver struct {
 	now            func() time.Time
 	firstOutputAt  time.Time
 	cacheFromUsage bool
+	completion     completionCollector
 }
 
 func newResponseObserver(contentType string) *responseObserver {
@@ -473,6 +478,7 @@ func (observer *responseObserver) Observe(value []byte) {
 	if len(observer.jsonBuffer)+len(value) > maxObservedJSONBytes {
 		observer.jsonBuffer = nil
 		observer.jsonOversized = true
+		observer.completion.markPartial()
 		return
 	}
 	observer.jsonBuffer = append(observer.jsonBuffer, value...)
@@ -480,6 +486,11 @@ func (observer *responseObserver) Observe(value []byte) {
 
 func (observer *responseObserver) Finish() responseObservation {
 	if observer.stream {
+		// EOF without an event delimiter may still contain parseable JSON, but
+		// it is incomplete SSE framing, not proof of a complete response.
+		if len(observer.line) > 0 || len(observer.event) > 0 || observer.eventOversize {
+			observer.completion.markPartial()
+		}
 		if len(observer.line) > 0 {
 			observer.consumeSSELine(observer.line)
 			observer.line = nil
@@ -507,7 +518,7 @@ func (observer *responseObserver) Finish() responseObservation {
 	if tokens.Output == nil {
 		tokens.Output = observer.timings.GeneratedTokens
 	}
-	return responseObservation{Tokens: tokens, Timings: observer.timings, FirstOutputAt: observer.firstOutputAt}
+	return responseObservation{Tokens: tokens, Timings: observer.timings, FirstOutputAt: observer.firstOutputAt, Completion: observer.completion.metadata(observer.stream)}
 }
 
 func (observer *responseObserver) observeSSE(value []byte) {
@@ -519,6 +530,7 @@ func (observer *responseObserver) observeSSE(value []byte) {
 			} else {
 				observer.line = nil
 				observer.eventOversize = true
+				observer.completion.markPartial()
 			}
 			return
 		}
@@ -527,6 +539,7 @@ func (observer *responseObserver) observeSSE(value []byte) {
 			observer.consumeSSELine(observer.line)
 		} else {
 			observer.eventOversize = true
+			observer.completion.markPartial()
 		}
 		observer.line = nil
 		value = value[newline+1:]
@@ -553,6 +566,7 @@ func (observer *responseObserver) consumeSSELine(line []byte) {
 	if len(observer.event)+additional > maxObservedSSEEventBytes {
 		observer.event = nil
 		observer.eventOversize = true
+		observer.completion.markPartial()
 		return
 	}
 	if len(observer.event) > 0 {
@@ -562,8 +576,12 @@ func (observer *responseObserver) consumeSSELine(line []byte) {
 }
 
 func (observer *responseObserver) consumeSSEEvent() {
-	if !observer.eventOversize && len(observer.event) > 0 && !bytes.Equal(bytes.TrimSpace(observer.event), []byte("[DONE]")) {
-		observer.observeJSON(observer.event)
+	if !observer.eventOversize && len(observer.event) > 0 {
+		if bytes.Equal(bytes.TrimSpace(observer.event), []byte("[DONE]")) {
+			observer.completion.markStreamDone()
+		} else {
+			observer.observeJSON(observer.event)
+		}
 	}
 	observer.event = nil
 	observer.eventOversize = false
@@ -572,8 +590,10 @@ func (observer *responseObserver) consumeSSEEvent() {
 func (observer *responseObserver) observeJSON(value []byte) {
 	object, ok := responseObject(value)
 	if !ok {
+		observer.completion.markPartial()
 		return
 	}
+	observer.completion.observeResponse(value, object)
 	// Role-only chunks, keepalives and usage metadata are not generation.
 	// Non-streaming JSON cannot reveal when its first token was produced.
 	if observer.stream && observer.firstOutputAt.IsZero() && hasGeneratedDelta(object["choices"]) {

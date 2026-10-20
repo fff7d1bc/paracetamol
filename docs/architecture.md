@@ -798,6 +798,16 @@ not estimate model memory from unified-memory GPU counters or alter power
 policy. See `docs/gateway.md` for
 the public surface and current limits.
 
+Request reports use the ordinary authentication policy and read that same
+completion ring directly, without residency probes or resource sampling.
+A random gateway-instance prefix makes request IDs restart-safe. A separate
+bounded cache holds metadata for up to
+128 active requests, without controlling admission or retaining payloads.
+Completed reports retain allowlisted model finish reasons and SSE termination
+evidence separately from HTTP outcomes. The response observer's existing byte
+limits apply, and incomplete observations remain explicit. This is not a log
+archive, a native slot-state oracle or a second persistent telemetry system.
+
 Durable statistics are separate from the in-memory request ledger. A bounded
 background writer in `internal/gateway/` receives only UTC completion dates,
 verified model/application IDs and numeric observations. SQLite stores daily

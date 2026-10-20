@@ -18,6 +18,12 @@ import (
 // to the explicitly selected endpoint, not to a service it redirects us to.
 var metadataHTTPClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
+type metadataHTTPError struct{ StatusCode int }
+
+func (err *metadataHTTPError) Error() string {
+	return fmt.Sprintf("gateway returned HTTP %d", err.StatusCode)
+}
+
 func fetchMetadata(ctx context.Context, endpoint, key, path string, query url.Values) ([]byte, error) {
 	normalized, err := config.NormalizeGatewayURL(endpoint)
 	if err != nil {
@@ -50,7 +56,7 @@ func fetchMetadata(ctx context.Context, endpoint, key, path string, query url.Va
 		return nil, fmt.Errorf("gateway authentication failed (HTTP 401). Configure --gateway-api-key-file or [gateway.client].api_key_file with the matching key")
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("gateway returned HTTP %d", response.StatusCode)
+		return nil, &metadataHTTPError{StatusCode: response.StatusCode}
 	}
 	const limit = 2 * 1024 * 1024
 	contents, err := io.ReadAll(io.LimitReader(response.Body, limit+1))

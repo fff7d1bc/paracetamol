@@ -313,6 +313,19 @@ and concurrent backend/controller logs; correlation IDs must match start and
 finish/reject lines and every physical line must retain one complete
 `gateway |` or `llama-cpp |` prefix.
 
+Request-report checks must use the ordinary inference path. Obtain the opaque
+`X-Paracetamol-Request-ID`, then fetch its authenticated
+`/paracetamol/v1/requests/REQUEST_ID` report. Verify receiving/waiting/upstream
+metadata where observable, atomic completion, restart-safe identities, bounded
+active/completed retention and explicit not-retained errors. Report reads must
+not query the scheduler, start a backend, probe residency or sample resources.
+Check sampler provenance alongside forwarded values, terminal `stop`/`length`
+or tool finishes, SSE `[DONE]`, missing metadata, malformed/oversized events,
+multiple choices and cancellation. HTTP success and gateway cancellation are
+not native completion or slot-idle oracles. Preserve proxied bytes, flushing
+and credential stripping, and check privacy sentinels in reports and status.
+Run the gateway race tests for active/completed lookup and observer changes.
+
 For sampling-policy changes, test every catalog-backed Qwen mode with missing,
 null, partial, and explicit-zero sampler fields. Invalid or conflicting
 thinking controls must return HTTP 400 before allocation. Unknown fields,
