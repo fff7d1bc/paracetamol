@@ -36,7 +36,8 @@ diff --git a/tools/server/server-queue.cpp b/tools/server/server-queue.cpp
 diff --git a/tools/server/tests/unit/test_router.py b/tools/server/tests/unit/test_router.py
 --- a/tools/server/tests/unit/test_router.py
 +++ b/tools/server/tests/unit/test_router.py
-@@ -1,3 +1,4 @@
+@@ -1,4 +1,5 @@
+ import shutil
 +import socket
  import threading
  import pytest

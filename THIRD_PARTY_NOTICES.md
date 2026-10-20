@@ -36,10 +36,11 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `623c16393c7d53a37df8bb69c6ea8ed6e5171f62`. The license is installed
+  commit `dd002b91f583af0b80140f9a140dc04856bfc2e0`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
-  the server, CLI, and benchmark binaries locally with RPC and remote UI
-  assets disabled. It applies the narrowly scoped host-buffer correction from
+  the server, CLI, and benchmark binaries locally. RPC, remote UI assets and
+  optional prebuilt llama-connect helper downloads are disabled. It applies
+  the narrowly scoped host-buffer correction from
   upstream PR 25863 at commit
   `ce82541acbaf5c532c0727d6ccb6de2b0b0c948d` to avoid unsafe direct
   `ROCm_Host` computation on integrated HIP devices while preserving pinned

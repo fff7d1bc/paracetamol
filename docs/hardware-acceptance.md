@@ -29,6 +29,181 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp refresh and isolated PR screens (2026-10-20)
+
+**The upstream refresh passes on the tested Strix Halo host without a
+material Flash-Next performance regression.** Neither optional PR is adopted.
+The projection reshape's small gain was not compelling, and the recurrent
+guard did not pass its complete actual-model oracle. Experimental screening
+and final production-image checks are recorded separately below. This is not
+all-architecture acceptance.
+
+**Final production acceptance: PASS on `gfx1151`.** The normal locally built
+`llama-cpp-ubuntu26.04-rocm10.1-dd002b9-r57` cold build completed as image
+`cff15b671e605a000087f1bf61efd408366b0e9ebad5b02d196a103c26b9a1f4`.
+
+The final image has passed runtime dependency closure, CPU CLI/router startup,
+GPU CLI and managed smoke checks, tiny ROCm/Vulkan servers and same-socket
+stream reuse. Matching-source probes preserve the installed production
+libraries and pass 1149 HIP operator cases, eight lifetime cases, populated
+synthetic state restore, F16/Q8/Q4 state-copy checks and 54 generic attention
+cases per backend. Model checks cover Flash-Next through both backends,
+dense Q8 with and without MTP, and Muse DFlash. The additional dense Q8
+32K native benchmarks pass with F16 and Q8 KV on both backends. Q8 KV here is
+a non-default compatibility check, not a precision-policy change.
+
+The ordinary gateway and native Maki off/xhigh file-tool checks pass, including
+lazy exports, model switchback, all six catalog sampler defaults, an explicit
+temperature override and streaming/non-streaming cancellation observed at the
+actual child slot. Request-ledger values are compared numerically, not by
+JSON number spelling. An earlier Maki off task copied the correct random
+token but omitted its final LF and failed the exact-byte check. One separately
+named variant explicitly requested that LF and passed both modes with the
+same exact-byte oracle. Preserve that limitation rather than claiming general
+task-quality equivalence. Earlier probe-only mistakes and all failed attempts
+remain in the retained evidence.
+
+The final matched control starts a fresh old or new server, runs two 32K
+retrievals, then the near-ceiling retrieval and three continuations. Canonical
+request bodies are identical between images, including all sampler fields.
+Both images pass every complete six-key retrieval and the fresh follow-up.
+Actual input is 32184 tokens at the smaller size and 247182 near the ceiling.
+
+| Final matched control | Accepted `623c163-r56` | Cold production `dd002b9-r57` |
+| --- | --- | --- |
+| 32K native prefill seconds, two runs | 43.697 / 42.826 | 42.646 / 42.711 |
+| 32K native generation tokens/s, two runs | 21.79 / 21.91 | 22.37 / 22.41 |
+| 247K native prefill seconds, one run | 402.919 | 399.530 |
+| Near-ceiling warmed generation tokens/s, two exact repeats | 17.31 / 17.30 | 17.38 / 17.44 |
+
+The warmed repeats process four uncached tokens each before generating 256.
+This small fixed-order control supports retained performance, not a general
+speedup claim. An earlier final-image run after the much larger history-edit
+and slot-churn matrix took about 600 seconds for near-ceiling prefill. Its
+different preceding state is not a matched regression measurement and remains
+in the evidence. No memory guard fired, the final kernel journal was clean,
+and all test containers and the temporary gateway were stopped and removed.
+
+The frozen upstream is `dd002b91f583af0b80140f9a140dc04856bfc2e0`, 59
+commits after `623c163`. All fourteen downstream patches remain: twelve
+apply unchanged, while the router-disconnect import and quantized-KV
+full-tile-loop hunks require context-only rebases. The selected patched tree
+is `c4e55816745fe3f5b7e98ffb3ec501b474b8026a` (C4 below).
+`LLAMA_CONNECT=OFF` disables the new floating prebuilt-binary helper.
+The controller checkouts began at `962daee` and `4711d79`; exact source,
+commands, requests, images, logs and measurements are retained outside Git
+under `build/llama-refresh-20261020-p9WtTJ/` on the test/development hosts.
+
+The host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, Ryzen AI Max+
+395, `gfx1151`, 128 GB LPDDR5X-8000, balanced platform profile,
+`balance_performance` CPU preference and the 112 GiB TTM ceiling.
+No host configuration, ROCm 10.1 tuple, catalog/model bytes or precision
+policy changed. These results do not accept `gfx1150`, `gfx1200` or `gfx1201`.
+
+All image suffixes below are under `localhost/paracetamol:`:
+
+| Screening arm | Image suffix | Image ID |
+| --- | --- | --- |
+| Accepted baseline | `llama-cpp-ubuntu26.04-rocm10.1-623c163-r56` | `1cef96272e13dbd09891cbecdce98c9dc56129189b584217ec6a48c95037cfc7` |
+| Upstream + retained stack, C4 | `exp-refresh-upstream-20261020` | `5679f71c25f4f0cf8ee0cb9f29ede0786965e168ad9cbbec146c79cb2ff25179` |
+| Independent projection candidate | `exp-refresh-shape-20261020` | `917faaa73dd70e828205d2c64fc46d45cdc14b77933ca33f91792fc27ee238a4` |
+
+The model remains the managed
+`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` GGUF, F16 KV, no MTP,
+four unified-KV slots sharing 262144 tokens, batch/microbatch 2048 and RAM
+prompt archive disabled. Long-conversation requests explicitly use xhigh,
+temperature 1, top_p 0.95, top_k 20, min_p 0.05 and seed 42.
+Rootless isolated direct servers preserve managed confinement and loopback
+publication. Complete six-key retrievals pass before and after each
+concurrency arm. Timing replies force 256 tokens and are deliberately
+truncated reasoning/code, not completed-task quality scores.
+
+| Resident histories | Accepted baseline aggregate tokens/s, two rounds | C4 aggregate tokens/s, two rounds |
+| --- | --- | --- |
+| 2 × approximately 100K | 28.328 / 28.194 | 27.951 / 28.364 |
+| 3 × approximately 80K | Not rerun in this paired screen | 35.292 / 35.145 |
+
+Aggregate rate is total generated tokens divided by group wall time, not a
+sum of individual rates. Generation overlap is established by streaming
+timestamps; the different history lengths are not identical-context scaling.
+The paired two-session result is effectively unchanged. C4 also passes seven
+parser/chat programs, eight lifetime cases, all 1149 selected HIP operators,
+reasoning/tool/template/stream/cache/cancellation checks and the four-slot
+marker, overflow and concurrent-xhigh screens. Fast and full populated native
+state restore/causal-transition/clear comparisons have NMSE zero. That native
+fixture uses synthetic token IDs; real-text HTTP retrieval is separate.
+
+The original legacy 32K retrieval's first C4 answer recovered all six values
+in order but added ordinal prefixes, failing the unchanged exact-format
+grader. That failure is preserved; the second original answer passed.
+Two bounded original-body repeats per image then both passed: original-body
+totals are baseline **4/4**, C4 **3/4** strict-format passes, with **all eight**
+answers recovering all six values. This was not a retry-until-pass loop.
+The original and repeated requests use medium effort, temperature zero and
+seed 42.
+
+A sampler audit checked all six native generation settings in 18 saved
+responses across Flash-Next and dense Qwen, including off, low, medium and
+xhigh. They match the explicit requests, allowing F32 serialization rounding.
+The main direct retrieval probe copies the catalog tuple for the selected
+mode, then deliberately overrides temperature to zero. The older frozen slot
+microbench instead uses min_p zero and a thinking-style tuple even when
+reasoning is off. It also spells `repetition_penalty` instead of the accepted
+`repeat_penalty`; the native default is already the intended 1.0. Its matched
+arms remain controlled protocol/timing checks, not recommended-sampling or
+completed-task quality comparisons. The separate long-concurrency probe sends
+the complete catalog thinking tuple.
+
+A separately named, clearer values-only final instruction passed **2/2 per
+image**, using the same archive, temperature zero, seed 42 and medium effort,
+with the same exact grader still rejecting ordinal labels. It has 32184
+actual input tokens, not a populated 256K context. These fixed, bounded
+requests establish format-compliance evidence, not random-sampling or general
+quality equivalence; they do not erase the legacy-format miss.
+
+| Clearer 32K request | Accepted baseline | C4 |
+| --- | --- | --- |
+| Fresh native prefill seconds, two runs | 42.622 / 42.722 | 43.060 / 43.197 |
+| Native generation tokens/s, two runs | 22.27 / 22.23 | 22.40 / 22.44 |
+
+PR 30823, frozen at `71a6482a3ac183034c4e475ff2545d46f2516cc8`, was
+screened independently on tree `2059f8dbcc8ab41a83ed28e9835f9f49ed7f4e66`.
+Both baseline and candidate pass all 31 serial-versus-joint comparisons
+within their own image with NMSE zero and matching top tokens, including
+1→3→1→4 active-sequence transitions. These are **not cross-image numerical
+comparisons**. Runtime callbacks establish split versus flattened projection
+geometry; separate profiler traces establish actual
+`gdn_decode_fused_cuda` and `gdn_decode_norm_cuda` dispatch. Populated synthetic
+state restore and the short functional/retrieval screens also pass.
+
+| Projection-candidate histories | Aggregate tokens/s, two warmed rounds |
+| --- | --- |
+| 2 × approximately 100K | 28.373 / 28.667 |
+| 3 × approximately 80K | 35.777 / 36.254 |
+
+The approximately 1–3% gains over C4 in these bounded, fixed-order comparisons
+and unchanged single-session timing do not justify carrying the candidate.
+A brief Go launcher rebuild during a dry run at **06:49 UTC** overlapped
+the third 80K history's fresh prefill: **exclude that C-prefill measurement**
+from performance comparisons. The warmed serial/parallel rounds started after
+the rebuild finished and were unaffected. Profiling was separate from timing.
+
+PR 30311, frozen at `af3b1c2769945670f8e972d1aaa5ee919d3be96c`, is also
+held. Four unsafe model-free CPU metadata cases fail the negative control
+and pass with the guard; valid rollback and zero-snapshot controls remain
+valid. On the actual dense-Q8 GPU model with eight rollback snapshots, the
+guarded rollback case passes,
+but idle-sequence replay still fails its exact-zero continuation oracle.
+That failure does not report the idle error magnitude or top-token agreement;
+it is not sufficient to claim model corruption or a particular root cause.
+Default no-MTP Flash-Next has zero rollback snapshots and does not exercise
+this snapshot bookkeeping. Neither optional PR enters the selected stack.
+
+All completed long arms retain their retrieval checks and memory samples;
+no 8 GiB memory guard fired. The recorded screening kernel journal was clean.
+Failed helper/prelaunch attempts and the strict-format failure remain in the
+artifact root alongside the completed final cold-image acceptance.
+
 ### Flash-Next long-context concurrency screen (2026-10-17)
 
 **Concurrent sessions improved total throughput, but each reply slowed down.**
@@ -102,8 +277,11 @@ The acceptance host retained kernel `7.2.10-200.fc44.x86_64`, balanced platform 
 The model remained Unsloth's
 `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with F16 KV, Flash
 Attention, the direct embedding reader, preserved reasoning and no MTP.
-Every request explicitly selected xhigh, temperature 1, top_p 0.95,
-top_k 20, min_p 0.05 and seed 42.
+Timed and thinking-retrieval requests explicitly selected xhigh,
+temperature 1, top_p 0.95, top_k 20, min_p 0.05 and seed 42, with
+presence_penalty 0 and repeat_penalty 1. The separate nonthinking sanity
+request kept that same sampler tuple. It checked retrieval only, not the
+gateway's recommended nonthinking policy or normal client behavior.
 
 An isolated rootless container reproduced the managed confinement and used
 the same locally built image. Native argument overrides varied only the

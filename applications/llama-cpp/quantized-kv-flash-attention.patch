@@ -252,7 +252,7 @@ diff --git a/ggml/src/ggml-cuda/fattn-tile.cuh b/ggml/src/ggml-cuda/fattn-tile.c
      const float slope = ncols2 == 1 ? get_alibi_slope(max_bias, head0, n_head_log2, m0, m1) : 1.0f;
 @@ -957,24 +1061,24 @@ static __global__ void flash_attn_tile(
          int k_VKQ_0 = blockIdx.y*nbatch_fa;
-         while (k_VKQ_0 < k_VKQ_max - nbatch_fa) {
+         while (k_VKQ_0 <= k_VKQ_max - nbatch_fa) {
              constexpr bool oob_check = false;
 -            flash_attn_tile_iter<warp_size, nwarps, ncols1, ncols2, DKQ, DV, nbatch_fa, nbatch_K, use_logit_softcap, oob_check>
 -                (Q_tmp, K_h2, V_h2, maskh, ne01, logit_softcap, slope, KQ, KV_tmp,

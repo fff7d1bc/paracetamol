@@ -283,6 +283,58 @@ protected behavior is fixed.
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 
+The October 20 refresh selects the frozen upstream commit
+`dd002b91f583af0b80140f9a140dc04856bfc2e0`, 59 commits after `623c163`.
+The image is `dd002b9-r57`. All fourteen existing patches remain. Twelve
+apply unchanged; `router-disconnect.patch` follows a new import, and
+`quantized-kv-flash-attention.patch` follows the upstream inclusive full-tile
+loop condition. Both rebases change context only. The build explicitly sets
+`LLAMA_CONNECT=OFF`: the new upstream helper can download a prebuilt binary
+from a floating release, outside the managed locally built application surface.
+RPC and remote UI assets remain disabled.
+
+Upstream now contains the post-only HC gate fusion from
+[PR 30602](https://github.com/ggml-org/llama.cpp/pull/30602), merged as
+`ff5a23376725e5a889fa0bfb987b7541dc304da0`. The downstream matcher still
+runs first on eligible `gfx1151` graphs, retaining the larger normalization
+and injection fusion and its accepted F32 reduction ordering. A merged
+sub-operation does not satisfy that patch's removal gate. Neither this merge
+nor the other upstream changes establish equivalent behavior and the required
+hardware evidence for removing the host-buffer, graph-recapture, router,
+reader or quantized-state-copy protections. No patch removal gate is met.
+
+Two proposals are screened separately rather than folded into the refresh:
+
+- The recurrent rollback guard from
+  [PR 30311](https://github.com/ggml-org/llama.cpp/pull/30311), frozen at
+  `af3b1c2769945670f8e972d1aaa5ee919d3be96c`, is **held**. It fixes four
+  unsafe model-free CPU metadata cases, and the actual-model GPU rollback
+  case passes. The idle-sequence continuation still fails the exact-zero
+  logit oracle. That failure does not print its magnitude or top-token
+  comparison, so this zero-tolerance failure alone neither proves model
+  corruption nor isolates a root cause. The guard is not carried. Default
+  non-MTP Flash-Next uses zero rollback snapshots and does not exercise the
+  new snapshot bookkeeping.
+- The multi-sequence output-projection reshape from
+  [PR 30823](https://github.com/ggml-org/llama.cpp/pull/30823), frozen at
+  `71a6482a3ac183034c4e475ff2545d46f2516cc8`, passes the screened correctness
+  and activation gates, including populated state checks, but is **held**.
+  Two short fixed-order warmed long-context concurrency comparisons show
+  roughly 1–3% gains, with unchanged single-request rates and no compelling
+  fresh-prefill improvement. This limited screen does not establish a broader
+  performance gain or justify another independently carried patch. The
+  production stack and numerical defaults remain unchanged.
+
+The [October 20 hardware record](hardware-acceptance.md#strix-halo-llamacpp-refresh-and-isolated-pr-screens-2026-10-20)
+separates the upstream refresh from both held proposals and records the
+paired measurements and acceptance limits.
+
+Compile every native fixture against its exact candidate source and libraries,
+including fixtures whose API appears unchanged. The retained native
+Flash-Next state fixture uses synthetic tokens; its exact restore checks do
+not establish natural-text retrieval. Real-text HTTP retrieval, history edits,
+tools and client round trips remain separate acceptance gates.
+
 The October 16 update pins `623c16393c7d53a37df8bb69c6ea8ed6e5171f62`,
 37 upstream commits after `e36df60`, in image `r53`. Twelve patches apply
 unchanged. `hip-qwen4exp-pipeline.patch` and `hip-qwen4exp-decode.patch` are

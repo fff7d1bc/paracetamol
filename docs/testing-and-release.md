@@ -322,6 +322,17 @@ generation settings on real requests, not only gateway logs. Direct benchmarks
 must send and record the same catalog tuple now that engine startup carries
 no sampling patch or option.
 
+Keep production-path acceptance separate from controlled engine measurements.
+An external HTTP probe should use the ordinary gateway, omit sampler fields
+to exercise its defaults, then send explicit overrides and inspect the
+resolved policy and field provenance in the request ledger. No special gateway
+test mode should bypass normalization, scheduling or backend ownership.
+Direct engine probes remain useful for isolating native changes, but must
+record the complete sampler tuple and any deliberate departures, such as
+temperature zero. A fixed seed does not make those tests equivalent to normal
+client sampling. Native `llama-bench` throughput tests do not sample language
+responses and belong to the engine layer.
+
 For llama.cpp cancellation, cover both streaming and non-streaming requests
 through the native router and through the gateway. Wait until a child slot
 has actually generated tokens, disconnect that client, and observe the slot
