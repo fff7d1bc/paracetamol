@@ -26,9 +26,9 @@ ordinary unified-memory allocation path.
 The follow-up starts from Paracetamol
 `ea461859adccc12f7201918d1fbc584c970dcb33` and builds the normal `r37` image
 from the same llama.cpp and ROCm pins. The final runtime image is
-`62409b7ee2e07ff17741cf4023d48fdfb311a4fc6e38430b81b4c226bf0ed4fb`.
-Model bytes, F16 KV, reasoning history, mode-dependent sampling and all
-ordinary model presets remain unchanged. The same the acceptance host kernel, device and
+`62409b7ee2e07ff17741cf4023d48fdfb311a4fc6e38430b81b4c226bf0ed4fb`. Model
+bytes, F16 KV, reasoning history, mode-dependent sampling and all ordinary
+model presets remain unchanged. The same acceptance-host kernel, device and
 balanced power policy are retained.
 
 The carried reader patch omits upstream's Gemma4 hooks. Only Qwen4exp with
@@ -141,12 +141,12 @@ those hooks.
 ## Matched conditions
 
 The starting checkout was Paracetamol
-`01492e62986bdab408b5c46195635b540f4be805`. The acceptance host was the 128 GB Framework
-Desktop with Ryzen AI Max+ 395, LPDDR5X-8000 and `gfx1151`, running Fedora 44
-and kernel `7.1.7-200.fc44.x86_64`. The kernel remained unchanged, with roughly
-34 days of uptime at the start. No reboot, GPU reset, power-policy or memory
-limit change was made. Platform profile remained balanced and CPU EPP
-remained `balance_performance`.
+`01492e62986bdab408b5c46195635b540f4be805`. The Strix Halo acceptance host was
+the 128 GB Framework Desktop with Ryzen AI Max+ 395, LPDDR5X-8000 and
+`gfx1151`, running Fedora 44 and kernel `7.1.7-200.fc44.x86_64`. The kernel
+remained unchanged, with roughly 34 days of uptime at the start. No reboot, GPU
+reset, power-policy or memory limit change was made. Platform profile remained
+balanced and CPU EPP remained `balance_performance`.
 
 The control was the current `8172e65-r36` llama.cpp image, ID
 `a034d9f0fe848d7d21e1a0facd00c46f70aebc09635714a21ae4c91cdb3f6196`.

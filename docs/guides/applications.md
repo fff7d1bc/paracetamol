@@ -11,6 +11,8 @@ build  ->  content install  ->  run
 Use the [README quick start](../../README.md#quick-start) when you just want one
 working setup. This page is for choosing between the applications and
 understanding the bits that differ once they are running.
+Network examples use the documentation address `192.0.2.10` and hostname
+`gateway.example`; substitute your server's real address.
 
 For a shorter walkthrough made of copyable commands, use the built-in guide:
 
@@ -42,7 +44,7 @@ flag after the argument separator:
 ```bash
 ./paracetamol run comfyui -- --enable-manager
 ./paracetamol run comfyui \
-  --listen 192.168.1.50 \
+  --listen 192.0.2.10 \
   -- --enable-manager
 ```
 
@@ -78,7 +80,7 @@ through SSH:
 ./paracetamol run comfyui -- --enable-manager
 
 # On the workstation where the browser runs:
-ssh -N -L 8188:127.0.0.1:8188 gpu-host.local
+ssh -N -L 8188:127.0.0.1:8188 gateway.example
 ```
 
 Then open `http://127.0.0.1:8188`. Stop ComfyUI before switching between this
@@ -620,7 +622,7 @@ Publish on one trusted LAN address and restrict its port with the host
 firewall. The same port remains available on local IPv4 loopback.
 
 ```bash
-./paracetamol run gateway --listen 192.168.1.50 --port 7455
+./paracetamol run gateway --listen 192.0.2.10 --port 7455
 ```
 
 Using `--port` without `--listen` selects loopback for that invocation, even

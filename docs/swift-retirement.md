@@ -6,7 +6,8 @@ universally broken. The trusted dense Qwen3.8 27B default was unchanged by
 that removal. On 2026-10-16, regular Unsloth Flash-Next became the harness
 default at xhigh. See the [current model guide](guides/applications.md#choosing-a-managed-qwen-preset).
 
-The deciding observation was a real Pi coding session on the acceptance host at `xhigh`.
+The deciding observation was a real Pi coding session on the Strix Halo
+acceptance host at `xhigh`.
 The prompt asked for a small Python script that calculates pi accurately to
 a user-supplied number of digits. The Unsloth Qwen3.8 Flash-Next Dynamic
 Q4_K_XL session finished in about 38 minutes with a script and tests. The

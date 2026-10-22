@@ -138,25 +138,23 @@ The gateway must never advertise a model merely because vLLM can see its
 files. The catalog, verification receipt, application compatibility, selected
 profile, selected devices, and built image must all agree.
 
-## Strix Halo research snapshot
+## Strix Halo acceptance-host research snapshot
 
-An exploratory vLLM 0.28.0 run on the `gfx1151` the acceptance host host established that the
-control-plane shape is feasible. It did not establish a reason to integrate
-vLLM for AMD.
+An exploratory vLLM 0.28.0 run on the `gfx1151` acceptance host established
+that the control-plane shape is feasible. It did not establish a reason to
+integrate vLLM for AMD.
 
 At an 8K context, the exact Qwen3.8 27B Unsloth Dynamic Q8 GGUF produced about
 7.0 to 7.4 generated tokens per second through vLLM. Paracetamol's current
 llama.cpp ROCm path produced 7.16 generated tokens per second on the same
 single-stream class of request. The result was parity, not an improvement.
 
-That vLLM GGUF run also required the still-open
-[text-only Qwen GGUF plugin change][qwen-gguf-pr].
-The native Qwen3.8 FP8 path loaded its weights quickly, then reported missing
-tuned W8A8 configuration for the acceptance host's GPU. The matching
-[upstream Radeon issue][radeon-fp8-issue]
-records the resulting first-run compilation and performance problem. A
-separate [long-context ROCm split-KV change][rocm-split-kv-pr]
-also remains open.
+That vLLM GGUF run also required the still-open [text-only Qwen GGUF plugin
+change][qwen-gguf-pr]. The native Qwen3.8 FP8 path loaded its weights quickly,
+then reported missing tuned W8A8 configuration for the acceptance host's GPU.
+The matching [upstream Radeon issue][radeon-fp8-issue] records the resulting
+first-run compilation and performance problem. A separate [long-context ROCm
+split-KV change][rocm-split-kv-pr] also remains open.
 
 The exploratory allocator reported enough KV capacity for a 256K context, but
 no 256K inference acceptance was run because the tested software path depended

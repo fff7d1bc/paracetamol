@@ -58,8 +58,8 @@ tuning, new model files, or unfinished matrix kernels.
 
 ## Matched conditions
 
-The acceptance host ran a Framework Desktop with Ryzen AI Max+ 395, 128 GB
-LPDDR5X-8000 and `gfx1151`, running Fedora 44. Both images used the same
+The Strix Halo acceptance host was a Framework Desktop with Ryzen AI Max+ 395,
+128 GB LPDDR5X-8000 and `gfx1151`, running Fedora 44. Both images used the same
 ROCm 10.0 runtime, `/dev/dri/renderD128`, balanced platform profile and
 `balance_performance` CPU EPP. No other inference or build ran alongside
 timing. The original gateway was stopped for the comparison.

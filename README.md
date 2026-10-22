@@ -319,9 +319,11 @@ Override the profile only when testing or diagnosing.
 
 Web applications publish on `127.0.0.1` by default. Select one exact LAN or
 Tailscale address only when unauthenticated network access is intentional.
+The examples use the documentation address `192.0.2.10` and hostname
+`gateway.example`; substitute your server's real address.
 
 ```bash
-./paracetamol run comfyui --listen 192.168.1.50
+./paracetamol run comfyui --listen 192.0.2.10
 ```
 
 For local or remote coding-agent work, start the gateway and connect a native
@@ -377,10 +379,10 @@ Maki can run on macOS or Linux while the gateway runs on the GPU host. The
 gateway retains its loopback endpoint when you add a LAN publication.
 
 ```bash
-./paracetamol run gateway --listen 192.168.1.50 --port 7455
+./paracetamol run gateway --listen 192.0.2.10 --port 7455
 ```
 
-Open `http://192.168.1.50:7455/` for connection instructions, Maki configuration
+Open `http://192.0.2.10:7455/` for connection instructions, Maki configuration
 downloads and a searchable model list. The page is embedded in the gateway
 and never loads a model. With authentication enabled, it shows instructions
 for authenticated curl instead of exposing inventory or asking for a key.

@@ -206,6 +206,11 @@ mutation safety, verification, licensing, isolation, or testing requirements.
 
 - Preserve existing user changes and untracked files. Inspect
   `git status --short` before editing and keep unrelated work out of the diff.
+- Keep personal infrastructure details out of tracked files and commit
+  messages, including examples, tests, logs, and research notes. Use fictional
+  addresses and generic paths unless publication is explicitly requested.
+  Permission to access a machine or inspect local data does not imply
+  permission to publish its identifiers.
 - Prefer the smallest direct design that satisfies the current need. Do not
   add speculative layers, flags, configuration, applications, or dependency
   machinery for possible future use.

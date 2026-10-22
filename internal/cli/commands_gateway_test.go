@@ -250,15 +250,15 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 }
 
 func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing.T) {
-	configuredListen := "192.168.1.50"
-	environment := map[string]string{"PARACETAMOL_GATEWAY_LISTEN": "192.168.1.60"}
-	if got := gatewayStringSetting("192.168.1.70", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.70" {
+	configuredListen := "192.0.2.10"
+	environment := map[string]string{"PARACETAMOL_GATEWAY_LISTEN": "192.0.2.20"}
+	if got := gatewayStringSetting("192.0.2.30", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.30" {
 		t.Fatalf("flag precedence=%q", got)
 	}
-	if got := gatewayStringSetting("", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.60" {
+	if got := gatewayStringSetting("", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.20" {
 		t.Fatalf("environment precedence=%q", got)
 	}
-	if got := gatewayStringSetting("", map[string]string{}, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.168.1.50" {
+	if got := gatewayStringSetting("", map[string]string{}, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.10" {
 		t.Fatalf("configuration precedence=%q", got)
 	}
 	configuredPort := 18080
@@ -303,9 +303,9 @@ func TestGatewayStatisticsDefaultsConfigurationAndExplicitOverrides(t *testing.T
 }
 
 func TestGatewayExplicitPortWithoutListenForcesLoopback(t *testing.T) {
-	configuredListen := "192.168.1.50"
+	configuredListen := "192.0.2.10"
 	environment := map[string]string{
-		"PARACETAMOL_GATEWAY_LISTEN": "192.168.1.60",
+		"PARACETAMOL_GATEWAY_LISTEN": "192.0.2.20",
 		"PARACETAMOL_GATEWAY_PORT":   "17070",
 	}
 	tests := []struct {
@@ -313,10 +313,10 @@ func TestGatewayExplicitPortWithoutListenForcesLoopback(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "resolved settings remain published", want: "192.168.1.60"},
+		{name: "resolved settings remain published", want: "192.0.2.20"},
 		{name: "port only", args: []string{"--port", "18080"}, want: config.DefaultListen},
-		{name: "listen only", args: []string{"--listen", "192.168.1.70"}, want: "192.168.1.70"},
-		{name: "listen and port", args: []string{"--port", "18080", "--listen", "192.168.1.70"}, want: "192.168.1.70"},
+		{name: "listen only", args: []string{"--listen", "192.0.2.30"}, want: "192.0.2.30"},
+		{name: "listen and port", args: []string{"--port", "18080", "--listen", "192.0.2.30"}, want: "192.0.2.30"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

@@ -422,11 +422,13 @@ is replaced with the selected upstream pin's eight-lane F32 ordering. Only
 the reviewed single-token Qwen4exp geometry is eligible. There is no private
 HIP runtime, asynchronous embedding reader or lower-precision matrix path.
 
-The HC change adapts [upstream PR 30602](https://github.com/ggml-org/llama.cpp/pull/30602)
-at `681ae40b5688343dd1a2c6c44b903ba8d5e5ac68` to the existing downstream
+The HC change adapts [upstream PR
+30602](https://github.com/ggml-org/llama.cpp/pull/30602) at
+`681ae40b5688343dd1a2c6c44b903ba8d5e5ac68` to the existing downstream
 norm/injection fusion. Applying its post-only fusion unchanged loses that
-larger fusion and slows prefill on the acceptance host. Preserve this ordering when rebasing.
-The [hardware record](hardware-acceptance.md#strix-halo-flash-next-decode-follow-up-2026-10-15)
+larger fusion and slows prefill on the acceptance host. Preserve this ordering
+when rebasing. The [hardware
+record](hardware-acceptance.md#strix-halo-flash-next-decode-follow-up-2026-10-15)
 separates the independent candidate screens from the combined result.
 
 At that October 15 screen, the pooled-input view change in
@@ -459,18 +461,18 @@ The [October 15 hardware record](hardware-acceptance.md#fedora-44-strix-halo-lla
 records the checkpoint-memory measurements, both backend comparisons and
 the hardware acceptance limits.
 
-The separate recurrent-state-copy experiment,
-[PR 30139](https://github.com/ggml-org/llama.cpp/pull/30139) at
-`10a57dd921c19152bc9121e1ff5aafba32169843`, is **not carried**. It passes
-the bounded state and 4K/32K request screens, with identical request and
-response-choice objects across eighteen paired requests. On the acceptance host, shallow
-dense Q8 non-MTP decode improves from 7.222 to 7.290 tokens/s, about 0.95%.
-The default dense Q8 MTP HTTP control changes from 15.60 to 15.51 tokens/s.
-Flash-Next changes from 21.53 to 21.79 tokens/s, while its 32K prefill takes
-about 4.2% longer. These small, mixed results do not justify another carried
-graph-state patch. The in-place shortcut also excludes speculative rollback
-snapshots. Revisit it when upstream merges or the evidence changes, not as a
-known-bad proposal or an accepted long-context optimization.
+The separate recurrent-state-copy experiment, [PR
+30139](https://github.com/ggml-org/llama.cpp/pull/30139) at
+`10a57dd921c19152bc9121e1ff5aafba32169843`, is **not carried**. It passes the
+bounded state and 4K/32K request screens, with identical request and
+response-choice objects across eighteen paired requests. On the acceptance
+host, shallow dense Q8 non-MTP decode improves from 7.222 to 7.290 tokens/s,
+about 0.95%. The default dense Q8 MTP HTTP control changes from 15.60 to 15.51
+tokens/s. Flash-Next changes from 21.53 to 21.79 tokens/s, while its 32K
+prefill takes about 4.2% longer. These small, mixed results do not justify
+another carried graph-state patch. The in-place shortcut also excludes
+speculative rollback snapshots. Revisit it when upstream merges or the evidence
+changes, not as a known-bad proposal or an accepted long-context optimization.
 
 The October 14 refresh pinned
 `23deec025587a58469bdf0120313ff88a1ddcc7b`, 345 upstream commits after

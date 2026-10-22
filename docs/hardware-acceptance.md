@@ -101,11 +101,12 @@ attempt changes production client configuration or relaxes the task oracle.
 
 KAT-Coder, Shisa V2.1, TranslateGemma and HY-MT1.5 are removed from the
 catalog, recipes, current guides and client inventory. The explicitly
-authorized cleanup on the acceptance host removes only their four verified GGUFs and empty
-immediate directories, freeing 148,579,663,072 bytes. Only their four receipt
-records are pruned. All other records, including the new Huihui receipt, are
-unchanged. The development host has no matching weights or records. Sessions, statistics,
-other models and historical evaluation evidence are preserved.
+authorized cleanup on the acceptance host removes only their four verified
+GGUFs and empty immediate directories, freeing 148,579,663,072 bytes. Only
+their four receipt records are pruned. All other records, including the new
+Huihui receipt, are unchanged. The development host has no matching weights or
+records. Sessions, statistics, other models and historical evaluation evidence
+are preserved.
 
 Final kernel-journal and cleanup checks find no kernel events in the test
 window, leftover test container, inference process or test listener. Balanced
@@ -523,26 +524,25 @@ near-256K caching. No production setting, model, image or host policy changed.
 The screen used controller checkout `9679846`, the accepted llama.cpp
 `623c16393c7d53a37df8bb69c6ea8ed6e5171f62` / ROCm 10.1 image
 `llama-cpp-ubuntu26.04-rocm10.1-623c163-r56`, image ID
-`1cef96272e13dbd09891cbecdce98c9dc56129189b584217ec6a48c95037cfc7`.
-The acceptance host retained kernel `7.2.10-200.fc44.x86_64`, balanced platform profile,
-`balance_performance` CPU preference and the 112 GiB TTM ceiling.
-The model remained Unsloth's
-`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with F16 KV, Flash
-Attention, the direct embedding reader, preserved reasoning and no MTP.
-Timed and thinking-retrieval requests explicitly selected xhigh,
+`1cef96272e13dbd09891cbecdce98c9dc56129189b584217ec6a48c95037cfc7`. The
+acceptance host retained kernel `7.2.10-200.fc44.x86_64`, balanced platform
+profile, `balance_performance` CPU preference and the 112 GiB TTM ceiling. The
+model remained Unsloth's `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with
+F16 KV, Flash Attention, the direct embedding reader, preserved reasoning and
+no MTP. Timed and thinking-retrieval requests explicitly selected xhigh,
 temperature 1, top_p 0.95, top_k 20, min_p 0.05 and seed 42, with
 presence_penalty 0 and repeat_penalty 1. The separate nonthinking sanity
 request kept that same sampler tuple. It checked retrieval only, not the
 gateway's recommended nonthinking policy or normal client behavior.
 
-An isolated rootless container reproduced the managed confinement and used
-the same locally built image. Native argument overrides varied only the
-microbatch size and archive controls. Effective process arguments were
-captured rather than trusting the entrypoint's pre-override policy banner.
-The gateway and user client configuration were not involved or modified.
-Probe source, requests, timestamped streaming events, effective arguments,
-results and memory samples are retained outside Git at
-`build/cache-runtime-20261017/` on the acceptance host and the development host.
+An isolated rootless container reproduced the managed confinement and used the
+same locally built image. Native argument overrides varied only the microbatch
+size and archive controls. Effective process arguments were captured rather
+than trusting the entrypoint's pre-override policy banner. The gateway and user
+client configuration were not involved or modified. Probe source, requests,
+timestamped streaming events, effective arguments, results and memory samples
+are retained outside Git at `build/cache-runtime-20261017/` on the acceptance
+host and the development host.
 
 The workload was a fixed synthetic coding transcript with tool definitions,
 a source-like tool result and dispersed retrieval keys. It was not a live
@@ -613,11 +613,12 @@ acceptance, not an enabled managed option. No public CLI passthrough for these
 native switches was added.
 
 All 60 requests completed without request errors, including seven correct
-complete retrieval checks. No memory guard fired and the kernel journal had
-no new entries during the test window. Every test container was stopped and
-removed, leaving the acceptance host idle as it was initially. Tier 1 Go, static-build,
-Python, shell and catalog checks passed. Other hardware classes, live Maki
-task completion and concurrent clients were not tested in this screen.
+complete retrieval checks. No memory guard fired and the kernel journal had no
+new entries during the test window. Every test container was stopped and
+removed, leaving the acceptance host idle as it was initially. Tier 1 Go,
+static-build, Python, shell and catalog checks passed. Other hardware classes,
+live Maki task completion and concurrent clients were not tested in this
+screen.
 
 ### Four llama.cpp request slots on Strix Halo (2026-10-16)
 
@@ -936,10 +937,11 @@ The gateway advertises no Qwen3.6 models, starts unloaded and keeps its child
 on an ephemeral loopback port.
 
 Host checks pass `make check`, `make test`, `make static`, forced Go rebuild,
-all fourteen Pi extension tests, Python compilation, shell syntax, catalog
-JSON and full-install dry-run validation. No new kernel GPU, SVM, OOM or
+all fourteen Pi extension tests, Python compilation, shell syntax, catalog JSON
+and full-install dry-run validation. No new kernel GPU, SVM, OOM or
 protection-fault event is recorded. Test containers and listeners are removed.
-Raw evidence, including the initial Maki test mistake, is retained on the acceptance host at
+Raw evidence, including the initial Maki test mistake, is retained on the
+acceptance host at
 `~/.local/share/paracetamol/apps/acceptance/results/20261016-flash-next-models/`
 with a SHA-256 manifest. Inference on `gfx1150`, `gfx1200` and `gfx1201` is
 **NOT PERFORMED** for this variant.
@@ -1077,8 +1079,9 @@ validation. No new kernel GPU, SVM, OOM or protection-fault event is recorded.
 Raw logs, scripts, image/source identities and numerical vectors are retained
 outside the checkout at
 `~/.local/share/paracetamol/apps/acceptance/results/20261016-llama-upstream/`
-on the acceptance host, with a SHA-256 manifest. The machine is left idle. Inference acceptance
-on `gfx1150`, `gfx1200` and `gfx1201` remains **NOT PERFORMED**.
+on the acceptance host, with a SHA-256 manifest. The machine is left idle.
+Inference acceptance on `gfx1150`, `gfx1200` and `gfx1201` remains **NOT
+PERFORMED**.
 
 ### Managed Pi 1.2.0 (2026-10-15)
 
@@ -1088,20 +1091,22 @@ removed Chord and its esbuild dependency. Registry origins, integrity values,
 licenses and Node requirements remain validated. Installation still disables
 package lifecycle scripts. The Node minimum remains 22.19.0.
 
-Disposable and normal managed installations succeed on the development host with system
-Node 22.22.1 and the acceptance host with system Node 24.18.0. All 14 extension tests pass on
-both. The added picker tests exercise the installed Pi components, including
-family grouping, deduplication, supported reasoning choices, native search,
-cancellation and non-interactive isolation. The reasoning wrapper now forwards
-focus and input to the native component instead of bypassing its search box.
+Disposable and normal managed installations succeed on the development host
+with system Node 22.22.1 and the acceptance host with system Node 24.18.0. All
+14 extension tests pass on both. The added picker tests exercise the installed
+Pi components, including family grouping, deduplication, supported reasoning
+choices, native search, cancellation and non-interactive isolation. The
+reasoning wrapper now forwards focus and input to the native component instead
+of bypassing its search box.
 
-Six sandboxed the acceptance host sessions complete actual file-read and shell-tool round
-trips through the gateway and the unchanged `e36df60-r51` ROCm llama.cpp image.
-Qwen3.8 dense Q8 MTP passes off, low, medium and xhigh. Qwen3.6 dense Q8 MTP
-passes off and high. Captured HTTP requests show Qwen3.8 off maps to `none`
-and Qwen3.6 uses `enable_thinking: false`, with `preserve_thinking: true`.
-Both off cases have no reasoning blocks. Gateway request records confirm
-non-thinking sampler defaults, with no sampler overrides from Pi.
+Six sandboxed sessions on the acceptance host complete actual file-read and
+shell-tool round trips through the gateway and the unchanged `e36df60-r51` ROCm
+llama.cpp image. Qwen3.8 dense Q8 MTP passes off, low, medium and xhigh.
+Qwen3.6 dense Q8 MTP passes off and high. Captured HTTP requests show Qwen3.8
+off maps to `none` and Qwen3.6 uses `enable_thinking: false`, with
+`preserve_thinking: true`. Both off cases have no reasoning blocks. Gateway
+request records confirm non-thinking sampler defaults, with no sampler
+overrides from Pi.
 
 An actual TUI checks `/model`, Ctrl+L, family grouping and immediate reasoning
 selection after changing models, including an exact `/model PROVIDER/MODEL`
@@ -1127,18 +1132,18 @@ are stopped afterward. Raw local evidence is under ignored
 effectively unchanged. This is an incremental gain, not the fork's
 whole-branch headline, and introduces no reduced-precision matrix arithmetic.
 
-The baseline is the existing thirteen-patch `e36df60-r51` image, rebuilt on
-The acceptance host as `a8f8f81b515c`, with source tree
+The baseline is the existing thirteen-patch `e36df60-r51` image, rebuilt on the
+acceptance host as `a8f8f81b515c`, with source tree
 `c22ae0041d26d7380f29169ddaaad9d74f1de818`. The controller starts at `ffc6273`.
 The delivered image is
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-e36df60-r52`, ID
-`7313e700a594d3dcf43504c86ce8bfc585e8423d5daed77d0884f465e669fc73`.
-Its fourteenth patch combines the two accepted candidates. The source tree
-`43f80efb641e51fe73a0e2398ef00ad19c545a10` is checked against the actual
-cold builder. The controller revision is the commit adding this record.
-The test host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, ROCm 10.0,
-`gfx1151`, 128 GB LPDDR5X-8000, balanced platform policy and
-`balance_performance` CPU EPP. No host configuration or model content changes.
+`7313e700a594d3dcf43504c86ce8bfc585e8423d5daed77d0884f465e669fc73`. Its
+fourteenth patch combines the two accepted candidates. The source tree
+`43f80efb641e51fe73a0e2398ef00ad19c545a10` is checked against the actual cold
+builder. The controller revision is the commit adding this record. The test
+host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, ROCm 10.0, `gfx1151`,
+128 GB LPDDR5X-8000, balanced platform policy and `balance_performance` CPU
+EPP. No host configuration or model content changes.
 
 All candidates use the same four Unsloth Dynamic UD-Q4_K_XL shards of
 Qwen3.8-Flash-Next, non-MTP, F16 K/V, the direct embedding reader and the
@@ -1239,17 +1244,17 @@ reasoning output. The initial Maki command retained a removed `--no-rtk`
 flag, so it exited before inference. The corrected supported invocation
 passes without a product-code workaround.
 
-The full-day kernel log shows no GPU faults, resets or OOM events. The acceptance host is
-left idle with all test services stopped. Weights, default model, sampling
-policy, F16 KV settings, kernel options, memory limits and power policy are
-unchanged.
-This is bounded numerical and service acceptance, not proof of identical
-answers on every prompt or a new coding-quality benchmark. `gfx1150`,
-`gfx1200` and `gfx1201` remain **N/P** in this pass because those target
-devices were not used. The new dispatch is restricted to exact `gfx1151`.
+The full-day kernel log shows no GPU faults, resets or OOM events. The
+acceptance host is left idle with all test services stopped. Weights, default
+model, sampling policy, F16 KV settings, kernel options, memory limits and
+power policy are unchanged. This is bounded numerical and service acceptance,
+not proof of identical answers on every prompt or a new coding-quality
+benchmark. `gfx1150`, `gfx1200` and `gfx1201` remain **N/P** in this pass
+because those target devices were not used. The new dispatch is restricted to
+exact `gfx1151`.
 
-Raw requests, outputs, numerical controls, scripts, source patches, build
-logs and image identities are retained with checksums on the acceptance host under
+Raw requests, outputs, numerical controls, scripts, source patches, build logs
+and image identities are retained with checksums on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20261015-strix-decode/`.
 
 ### Fedora 44 Strix Halo llama.cpp upstream follow-up (2026-10-15)
@@ -1273,13 +1278,13 @@ cold builder. The image is
 `aa1dc81155b2a1435173a009d503c1f1a3c86139636a9c87eef8aea39687d095`.
 The baseline is the accepted `23deec0-r50` image from October 14.
 
-The acceptance host remains Fedora 44, kernel `7.2.10-200.fc44.x86_64`, `gfx1151`,
-128 GB LPDDR5X-8000 and ROCm 10.0. The 112 GiB GPU allowance, balanced
-platform profile and CPU EPP are unchanged. No host packages, kernel options,
-memory limits, power settings or services were reconfigured. Models,
+The acceptance host remains on Fedora 44, kernel `7.2.10-200.fc44.x86_64`,
+`gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0. The 112 GiB GPU allowance,
+balanced platform profile and CPU EPP are unchanged. No host packages, kernel
+options, memory limits, power settings or services were reconfigured. Models,
 catalog pins, templates, samplers, F16 KV and the dense Q8 MTP default are
-unchanged. Flash-Next remains non-MTP. No private reduced-precision matrix
-path is added.
+unchanged. Flash-Next remains non-MTP. No private reduced-precision matrix path
+is added.
 
 The native dense Qwen3.8 Unsloth UD-Q8_K_XL comparison uses **non-MTP**
 generation, `pp512`, `tg128`, batch/microbatch 2048/512, flash attention and three
@@ -1417,12 +1422,12 @@ context. The exact source and rationale are in the
 [upgrade ledger](upgrading.md#upgrade-llamacpp).
 
 The exact source, build logs, raw requests and responses, numerical results,
-paired benchmarks, checkpoint traces, client transcripts and delivery diff
-are retained with checksums on the acceptance host under
+paired benchmarks, checkpoint traces, client transcripts and delivery diff are
+retained with checksums on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20261015-llama-followup/`.
-The previous acceptance archives are untouched. The acceptance host started idle and is
-left idle, with no gateway or test container running. The new image is built
-and ready for normal use.
+The previous acceptance archives are untouched. The acceptance host started
+idle and is left idle, with no gateway or test container running. The new image
+is built and ready for normal use.
 
 `gfx1150`, `gfx1200` and `gfx1201` remain **N/P for hardware acceptance of
 this update** because representative hardware was unavailable. The final
@@ -1445,12 +1450,12 @@ builder, not just an experimental source checkout. The image is
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-23deec0-r50`, ID
 `1107526be13744cd1ab08ad91f149298d2319c7099ffcf29570b34a762bd72e7`.
 
-The acceptance host runs Fedora 44, kernel `7.2.10-200.fc44.x86_64`, `gfx1151`,
-128 GB LPDDR5X-8000 and ROCm 10.0. The 112 GiB GPU allowance, balanced
-platform profile and CPU EPP are unchanged. No host packages, kernel options,
-memory limits, power policy or services were reconfigured. GGUFs, catalog
-pins, templates, gateway samplers, the dense Q8 MTP default and F16 KV caches
-are unchanged. Flash-Next remains non-MTP.
+The Strix Halo acceptance host runs Fedora 44, kernel `7.2.10-200.fc44.x86_64`,
+`gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0. The 112 GiB GPU allowance,
+balanced platform profile and CPU EPP are unchanged. No host packages, kernel
+options, memory limits, power policy or services were reconfigured. GGUFs,
+catalog pins, templates, gateway samplers, the dense Q8 MTP default and F16 KV
+caches are unchanged. Flash-Next remains non-MTP.
 
 The earlier partial rebase below did not retain enough of the accepted
 pipeline. This update restores the scoped F32 fusions and Q8 scheduling,
@@ -1587,9 +1592,9 @@ The cold build, exact patched source, numerical/state controls, raw requests,
 responses, benchmark JSON, live slot evidence and client transcripts are
 retained on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20261014-llama-update/`,
-with checksums and the delivery diff. The earlier held screen's archive is
-left intact. The acceptance host started idle and is left idle with no gateway or test
-container running. The final image is built and available for normal use.
+with checksums and the delivery diff. The earlier held screen's archive is left
+intact. The acceptance host started idle and is left idle with no gateway or
+test container running. The final image is built and available for normal use.
 
 `gfx1150`, `gfx1200` and `gfx1201` are **N/P for hardware acceptance of this
 update** because representative hardware was unavailable for this run.
@@ -1607,14 +1612,14 @@ the corrected partial port took about 28% longer than production on the
 `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, image `r49`, with no experimental
 patch, arithmetic mode, sampler change or model update enabled at that point.
 
-This run follows the host owner's system upgrade and reboot. The acceptance host is still
-Fedora 44, `gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0, now with kernel
-`7.2.10-200.fc44.x86_64`. The 112 GiB GPU allowance, balanced platform profile
-and CPU EPP were left alone. No packages, kernel parameters, memory limits,
-power settings or system services were changed. The GPU doctor and existing
-tiny-model acceptance passed. The Python GPU probe emitted two split-lock
-notices, a pattern also recorded before the host upgrade. The subsequent
-llama.cpp inference runs produced no new kernel warnings.
+This run follows the host owner's system upgrade and reboot. The acceptance
+host is still Fedora 44, `gfx1151`, 128 GB LPDDR5X-8000 and ROCm 10.0, now with
+kernel `7.2.10-200.fc44.x86_64`. The 112 GiB GPU allowance, balanced platform
+profile and CPU EPP were left alone. No packages, kernel parameters, memory
+limits, power settings or system services were changed. The GPU doctor and
+existing tiny-model acceptance passed. The Python GPU probe emitted two
+split-lock notices, a pattern also recorded before the host upgrade. The
+subsequent llama.cpp inference runs produced no new kernel warnings.
 
 The first experiment repeats the October 6 isolation at the new upstream
 pin. The direct-reader-only build still fails clear/restore, with logit NMSE
@@ -1681,16 +1686,16 @@ endpoint all passed. This is a small protocol check of production, not
 acceptance of the new candidate. All test containers were stopped afterward.
 
 The controller source for this run is `24cff7f`. Production image ID is
-`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`.
-The seven-patch image is
-`c932c89217b64eba2f891054594b34cef5ba91d46c47f601a607bc4f25554c20`,
-and the corrected candidate with order tests is
-`83ba16072c1d774754b9907d8d4bea8d8ecb5c77cbae04196badd0e76b436865`.
-These are isolated locally built experiments, not managed image tags. Private
-evidence is retained under
-`apps/acceptance/results/20261014-llama-refresh/` on the acceptance host, including the exact
-candidate patches, image recipes, source snapshot, fixtures, requests,
-responses, runtime/build logs and checksum manifest.
+`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`. The
+seven-patch image is
+`c932c89217b64eba2f891054594b34cef5ba91d46c47f601a607bc4f25554c20`, and the
+corrected candidate with order tests is
+`83ba16072c1d774754b9907d8d4bea8d8ecb5c77cbae04196badd0e76b436865`. These are
+isolated locally built experiments, not managed image tags. Private evidence is
+retained under `apps/acceptance/results/20261014-llama-refresh/` on the
+acceptance host, including the exact candidate patches, image recipes, source
+snapshot, fixtures, requests, responses, runtime/build logs and checksum
+manifest.
 
 ### Gufo retirement (2026-10-14)
 
@@ -1711,13 +1716,14 @@ retry limit in Gufo's xhigh EINTR fix. A separate boundary test failed that
 patch and passed the other three EINTR patches. Its time is not time to an
 approved fix, and this small sample does not establish an engine quality gap.
 
-Generation accounted for roughly 94% of wall time. Populated prompts peaked
-at 7K to 36K tokens despite a 256K ceiling, so these are not full-context
+Generation accounted for roughly 94% of wall time. Populated prompts peaked at
+7K to 36K tokens despite a 256K ceiling, so these are not full-context
 throughput measurements. The measured benefit did not justify maintaining a
 second Flash-Next engine for the current workload. The earlier acceptance
 records below are historical, not descriptions of today's supported engines.
 Private evidence remains under
-`apps/agent-evaluation/experiments/20261011-gufo-llamacpp-pi/` on the acceptance host.
+`apps/agent-evaluation/experiments/20261011-gufo-llamacpp-pi/` on the
+acceptance host.
 
 ### Fedora 44 Strix Halo gateway sampling ownership (2026-10-11)
 
@@ -1732,10 +1738,10 @@ The controller revision is the commit adding this record. The llama.cpp pin
 remains `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`. Removing only
 `reasoning-controls.patch` leaves thirteen source patches and produces
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-2090f60-r49`, image
-`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`.
-Gufo retains source `665fc182445dc2685f2a9b2b4314aa7d92a858c2` and image
-`d6a3385df7cc9dcef94ad589bf3176430d16f01f68be9d9ef603d026c32ee179`.
-The acceptance host runs Fedora 44, kernel `7.1.7-200.fc44.x86_64`, `gfx1151`,
+`3283bd83444111fc8c5dca240d2124d330320dace47062d6135226c6d467aee9`. Gufo
+retains source `665fc182445dc2685f2a9b2b4314aa7d92a858c2` and image
+`d6a3385df7cc9dcef94ad589bf3176430d16f01f68be9d9ef603d026c32ee179`. The Strix
+Halo acceptance host runs Fedora 44, kernel `7.1.7-200.fc44.x86_64`, `gfx1151`,
 128 GB LPDDR5X-8000, with unchanged balanced power policy and ROCm 10.0.
 
 The HTTP matrix covers dense Qwen3.8 Q8 and Q4 MTP, Qwen3.6 dense and sparse
@@ -1793,13 +1799,13 @@ unchanged, and automated GPU acceptance and runtime checks passed again.
 No downstream Gufo patch was needed. The engine and HIP kernels are compiled
 from source, not taken from an upstream image or binary distribution.
 
-The acceptance host runs Fedora 44, kernel `7.1.7-200.fc44.x86_64`, `gfx1151`,
-128 GB LPDDR5X-8000, 112 GiB GPU allowance, balanced platform profile and
-balance_performance EPP. The model is the existing four-shard Unsloth
-Flash-Next UD-Q4_K_XL at revision
-`c8b5954a88c2775c546b92593eda40ea041d3176`. Gufo references those same
-verified files. There is no second download, quant conversion, projector,
-draft model, or MTP sidecar.
+The Strix Halo acceptance host runs Fedora 44, kernel `7.1.7-200.fc44.x86_64`,
+`gfx1151`, 128 GB LPDDR5X-8000, 112 GiB GPU allowance, balanced platform
+profile and balance_performance EPP. The model is the existing four-shard
+Unsloth Flash-Next UD-Q4_K_XL at revision
+`c8b5954a88c2775c546b92593eda40ea041d3176`. Gufo references those same verified
+files. There is no second download, quant conversion, projector, draft model,
+or MTP sidecar.
 
 The managed policy is 262,144 context tokens, F16 K/V, one session, medium
 reasoning by default, a 28 GiB RAM snapshot budget, no disk cache, and
@@ -1850,8 +1856,8 @@ part of this change.
 Evidence is retained on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20261010-gufo-integration/`.
 It includes exact requests and responses, client transcripts, sampling
-comparisons, image/container inspection, memory samples, kernel logs,
-automated acceptance, build logs, helper sources, and the delivered patch.
+comparisons, image/container inspection, memory samples, kernel logs, automated
+acceptance, build logs, helper sources, and the delivered patch.
 
 ### Fedora 44 Strix Halo Flash-Next state isolation (2026-10-06)
 
@@ -2029,11 +2035,11 @@ Gufo and the custom HIP runtime remain experiments, not new applications or
 runtime defaults. The trusted dense Qwen3.8 27B Q8 MTP default is unchanged.
 
 All GPU runs use the acceptance host's `gfx1151`, Fedora 44, kernel
-`7.1.7-200.fc44.x86_64`, ROCm 10.0, 128 GB LPDDR5X-8000 and existing
-112 GiB GPU allowance. The platform remains `balanced`, with
-`balance_performance` CPU EPP. Builds and GPU timings do not overlap.
-No model download, host tuning, kernel update or system ROCm replacement is
-part of this investigation. Other GPU architectures remain untested.
+`7.1.7-200.fc44.x86_64`, ROCm 10.0, 128 GB LPDDR5X-8000 and existing 112 GiB
+GPU allowance. The platform remains `balanced`, with `balance_performance` CPU
+EPP. Builds and GPU timings do not overlap. No model download, host tuning,
+kernel update or system ROCm replacement is part of this investigation. Other
+GPU architectures remain untested.
 
 #### llama.cpp refresh held on populated-state restore
 
@@ -2185,10 +2191,10 @@ Flash-Next's existing no-unified-memory, non-MTP path. It does not test or
 change the default dense Q8 MTP path. A custom runtime requires wider
 correctness, model and maintenance review before production adoption.
 
-The final kernel window contains no GPU fault, SVM failure, reset or OOM
-event. It contains the Python split-lock notices documented in the
-DwarfStar update below. All experiment containers are stopped and removed,
-and the acceptance host is left idle with its original host settings and main checkout.
+The final kernel window contains no GPU fault, SVM failure, reset or OOM event.
+It contains the Python split-lock notices documented in the DwarfStar update
+below. All experiment containers are stopped and removed, and the acceptance
+host is left idle with its original host settings and main checkout.
 
 Raw requests, exact source diffs, build inputs, images, logs and results are
 retained on the acceptance host under
@@ -2204,11 +2210,11 @@ Paracetamol `757ba19`. The delivery is identified by this section's
 introducing commit. ROCm 10.0, Ubuntu 26.04, managed model bytes, context
 defaults and DSpark policy are unchanged.
 
-The acceptance host remains on Fedora 44, kernel `7.1.7-200.fc44.x86_64`, Ryzen AI Max+ 395
-`gfx1151`, `/dev/dri/renderD128`, 128 GB LPDDR5X-8000 and its existing
-112 GiB GPU allowance. Platform profile is `balanced` and CPU EPP is
-`balance_performance`. No host setting changes or overlapping GPU workloads
-are part of these measurements.
+The acceptance host remains on Fedora 44, kernel `7.1.7-200.fc44.x86_64`, Ryzen
+AI Max+ 395 `gfx1151`, `/dev/dri/renderD128`, 128 GB LPDDR5X-8000 and its
+existing 112 GiB GPU allowance. Platform profile is `balanced` and CPU EPP is
+`balance_performance`. No host setting changes or overlapping GPU workloads are
+part of these measurements.
 
 The final `--no-layer-cache` build produces
 `localhost/paracetamol:dwarfstar-ubuntu26.04-rocm10.0-0aaea5a-r11`, image ID
@@ -2274,11 +2280,12 @@ experiments from this accepted DwarfStar update.
 
 ### Managed Pi 1.0.2 and sandbox networking (2026-10-04)
 
-Client acceptance is `PASS` on the acceptance host with the unchanged `r48` llama.cpp image
-and managed model files. Pi advances from 0.84.2 to 1.0.2, with all 146 npm
-packages pinned by registry integrity and license metadata. Installation
-passes on the development host's Node.js 22.22.1 and the acceptance host's Node.js 24.18.0 without package
-lifecycle scripts. No host package or inference setting changes.
+Client acceptance is `PASS` on the acceptance host with the unchanged `r48`
+llama.cpp image and managed model files. Pi advances from 0.84.2 to 1.0.2, with
+all 146 npm packages pinned by registry integrity and license metadata.
+Installation passes on the development host's Node.js 22.22.1 and the
+acceptance host's Node.js 24.18.0 without package lifecycle scripts. No host
+package or inference setting changes.
 
 Ten live managed-Pi runs cover Qwen3.8 dense Q8 MTP at off, low, medium and
 xhigh, Qwen3.6 dense Q8 MTP at off and high, and Muse DFlash 256K at low,
@@ -2298,15 +2305,16 @@ reasoning selector and the settled-run completion divider. The sandbox hides
 the host SSH directory and GPU device while keeping its project and private
 state writable. No sandbox tier, search service or plugin is added.
 
-These are client integration checks, not a model-performance comparison or
-new GPU-architecture acceptance. Commands, raw requests, Pi events and
-network comparisons are retained on the acceptance host under
+These are client integration checks, not a model-performance comparison or new
+GPU-architecture acceptance. Commands, raw requests, Pi events and network
+comparisons are retained on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20261004-pi-refresh/`.
 
 ### Fedora 44 Strix Halo router cancellation (2026-10-01)
 
-Router cancellation is `PASS` on the acceptance host's `gfx1151`. The accepted change adds
-[upstream PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at
+Router cancellation is `PASS` on the acceptance host's `gfx1151`. The accepted
+change adds [upstream PR
+29707](https://github.com/ggml-org/llama.cpp/pull/29707) at
 `31b5b49bf600d43ea3b95a52f6b05650a71679c9` to Paracetamol
 `d58a7fc03479630c2e7916c96ed8e3a1a74f3567`. The llama.cpp source pin remains
 `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`.
@@ -2349,33 +2357,35 @@ unchanged. The earlier 247K acceptance is not repeated for this
 server-lifecycle change. Other candidate performance patches are not
 included.
 
-September 30 host Tier 1 checks, the forced normal build and the Go race
-pass succeed. No new kernel errors appear during the final acceptance
-interval. The acceptance host remains on kernel `7.1.7-200.fc44.x86_64`, balanced platform
+September 30 host Tier 1 checks, the forced normal build and the Go race pass
+succeed. No new kernel errors appear during the final acceptance interval. The
+acceptance host remains on kernel `7.1.7-200.fc44.x86_64`, balanced platform
 profile, `balance_performance` CPU EPP and its existing 112 GiB GPU memory
-allowance. Other GPU architectures have no new hardware acceptance from
-this change.
+allowance. Other GPU architectures have no new hardware acceptance from this
+change.
 
 The source snapshots, baseline failure, raw requests, image and library
-manifests, build output and regression logs are retained on the acceptance host below
+manifests, build output and regression logs are retained on the acceptance host
+below
 `~/.local/share/paracetamol/apps/acceptance/results/20260930-llama-pr-trials/`.
 
-The October 1 delivery repeats the gateway checks on that exact image. All
-18 disconnects pass in 0.21–0.73 seconds, as do dense → Flash-Next → dense
-tool exchanges, Pi/Maki tool execution, clean shutdown, CPU-only startup and
-runtime dependency checks. Host Tier 1, the forced normal build and the Go
-race pass also succeed. No new kernel journal entries appear, and the acceptance host is
+The October 1 delivery repeats the gateway checks on that exact image. All 18
+disconnects pass in 0.21–0.73 seconds, as do dense → Flash-Next → dense tool
+exchanges, Pi/Maki tool execution, clean shutdown, CPU-only startup and runtime
+dependency checks. Host Tier 1, the forced normal build and the Go race pass
+also succeed. No new kernel journal entries appear, and the acceptance host is
 left idle. Delivery logs are retained beside the earlier archive under
 `20261001-router-cancellation/`.
 
 ### Fedora 44 Strix Halo llama.cpp source refresh (2026-09-30)
 
-Acceptance is `PASS` on the acceptance host's `gfx1151`. This refresh advances llama.cpp from `7ab4ee7`
-to `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193 upstream commits, on top
-of Paracetamol `574dc693ef15cf57015fc6e9f8b2a86371804a9f`. All 13 downstream
-patches remain. Eight apply unchanged and five are rebased. The
-[patch ledger](upgrading.md#llamacpp-downstream-patch-ledger) records the
-upstream audit and the API changes preserved during rebasing.
+Acceptance is `PASS` on the acceptance host's `gfx1151`. This refresh advances
+llama.cpp from `7ab4ee7` to `2090f60f0b60b67b3bcc96573c6e68a0c33f30c7`, 193
+upstream commits, on top of Paracetamol
+`574dc693ef15cf57015fc6e9f8b2a86371804a9f`. All 13 downstream patches remain.
+Eight apply unchanged and five are rebased. The [patch
+ledger](upgrading.md#llamacpp-downstream-patch-ledger) records the upstream
+audit and the API changes preserved during rebasing.
 
 The image is
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-2090f60-r47`, ID
@@ -2385,14 +2395,14 @@ Vulkan. ROCm 10.0, Ubuntu 26.04, model artifacts, templates, samplers, default
 dense Q8 MTP model and F16 K/V are unchanged. The retired mixed-arithmetic
 feature is not reintroduced.
 
-On the acceptance host's `gfx1151`, native operator checks pass 165 QSA/Qwen GPU cases,
-41 CPU reference cases, 18 selection-disabled cases, 75 GDN cases, both
-prefix policies and prepared-key invalidation tests. The nine selected
+On the acceptance host's `gfx1151`, native operator checks pass 165 QSA/Qwen
+GPU cases, 41 CPU reference cases, 18 selection-disabled cases, 75 GDN cases,
+both prefix policies and prepared-key invalidation tests. The nine selected
 model-free upstream tests pass. Runtime library closure, four-target code
 objects and `pip check` pass. Managed Qwen3 0.6B GPU acceptance passes.
-Upstream HC numerical controls pass 38 HIP and 26 Vulkan cases, including
-the new gated post-combine fusion. Installed OS and Python package versions
-match the baseline image.
+Upstream HC numerical controls pass 38 HIP and 26 Vulkan cases, including the
+new gated post-combine fusion. Installed OS and Python package versions match
+the baseline image.
 
 A new hardware fixture populates the real Flash-Next cache beyond 4K tokens,
 seeds its derived keys and compares logits after restore, a non-causal then
@@ -2411,9 +2421,9 @@ was a model-output failure, and neither fix changes production arithmetic.
 
 Paired timings use the previous `r46` image, identical managed Unsloth Qwen3.8
 27B Dynamic Q8_K_XL bytes, batch 2048, microbatch 512, F16 K/V and three
-repetitions. These native cases do not use MTP. Each measures 512 prompt
-tokens or 128 generated tokens, with either empty context or 32768 cached
-tokens. The acceptance host remains on its balanced platform profile and
+repetitions. These native cases do not use MTP. Each measures 512 prompt tokens
+or 128 generated tokens, with either empty context or 32768 cached tokens. The
+acceptance host remains on its balanced platform profile and
 `balance_performance` CPU EPP.
 
 | Backend and cached depth | Old prompt tokens/s | New prompt tokens/s | Old decode tokens/s | New decode tokens/s |
@@ -2485,21 +2495,21 @@ removes its owned backend. The exact final image also passes CPU-only empty
 router startup with a read-only root and no GPU devices.
 
 Host Tier 1 checks and the forced normal build pass. The full source-file
-manifest is verified against the acceptance host's checkout, since its Git metadata predates
-this delivery. All test containers are stopped and removed, the previous
-image is retained, and no gateway was running before the tests to restore.
-The kernel remains `7.1.7-200.fc44.x86_64` with the same 112 GiB GPU memory
-allowance and balanced power policy. No new AMDGPU fault or reset is logged.
-The journal retains the initial failed operator fixture's libc trap and a
-Python diagnostic's CPU split-lock notification, rather than being reported
+manifest is verified against the acceptance host's checkout, since its Git
+metadata predates this delivery. All test containers are stopped and removed,
+the previous image is retained, and no gateway was running before the tests to
+restore. The kernel remains `7.1.7-200.fc44.x86_64` with the same 112 GiB GPU
+memory allowance and balanced power policy. No new AMDGPU fault or reset is
+logged. The journal retains the initial failed operator fixture's libc trap and
+a Python diagnostic's CPU split-lock notification, rather than being reported
 as entirely empty.
 
 Actual GPU acceptance of this source update on `gfx1150`, `gfx1200` and
-`gfx1201` is `BLOCKED` by unavailable hardware. Their code-object builds do
-not replace inference evidence. The extracted Flash-Next fast paths remain
-disabled outside their accepted `gfx1151` dispatch. Raw results, initial
-failures, test drivers, source manifest and image identities are retained on
-The acceptance host under
+`gfx1201` is `BLOCKED` by unavailable hardware. Their code-object builds do not
+replace inference evidence. The extracted Flash-Next fast paths remain disabled
+outside their accepted `gfx1151` dispatch. Raw results, initial failures, test
+drivers, source manifest and image identities are retained on the acceptance
+host under
 `~/.local/share/paracetamol/apps/acceptance/results/20260930-llama-upstream-refresh/`.
 
 ### Fedora 44 Strix Halo mixed-math removal (2026-09-30)
@@ -2541,15 +2551,15 @@ requests and stops cleanly. Vulkan passes 4K Flash-Next retrieval. CPU-only
 startup retains its read-only root, no GPU devices, zero effective/bounding
 capabilities and `no-new-privileges`.
 
-These fresh checks are `PASS` on the acceptance host's `gfx1151`. Other GPU classes remain
-`N/P` for the extracted fast paths because dispatch is disabled there. No
-near-256K run was repeated for this removal because the image is identical
-to the already accepted one. All test containers were removed. The kernel
-journal has no new entries during the 11:40–11:47 CEST acceptance window.
-Balanced platform power and `balance_performance` CPU EPP remain unchanged.
-Host Tier 1 checks, forced normal build and the race detector pass. Rejected
-removed-flag/config tests pass. Raw results, image identity, test drivers and
-the source diff are retained on the acceptance host under
+These fresh checks are `PASS` on the acceptance host's `gfx1151`. Other GPU
+classes remain `N/P` for the extracted fast paths because dispatch is disabled
+there. No near-256K run was repeated for this removal because the image is
+identical to the already accepted one. All test containers were removed. The
+kernel journal has no new entries during the 11:40–11:47 CEST acceptance
+window. Balanced platform power and `balance_performance` CPU EPP remain
+unchanged. Host Tier 1 checks, forced normal build and the race detector pass.
+Rejected removed-flag/config tests pass. Raw results, image identity, test
+drivers and the source diff are retained on the acceptance host under
 `~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-removal/`.
 
 ### Fedora 44 Strix Halo retired mixed arithmetic experiment (2026-09-30)
@@ -2684,23 +2694,23 @@ Vulkan with default math passes its 4K Flash-Next retrieval. CPU-only startup
 passes the read-only root, no GPU devices, zero effective/bounding
 capabilities and `no-new-privileges` checks.
 
-The public gateway also passes dense → Flash-Next → dense tool exchanges
-with mixed math enabled, reports six successful requests and stops cleanly.
-All test containers are removed. The uninstrumented production acceptance
-window from 09:43 through 10:52 CEST has no new kernel-journal entries.
-Earlier profiler bus-lock/exit warnings remain in the experimental evidence
-and are not presented as clean production runs. The acceptance host remains on balanced
+The public gateway also passes dense → Flash-Next → dense tool exchanges with
+mixed math enabled, reports six successful requests and stops cleanly. All test
+containers are removed. The uninstrumented production acceptance window from
+09:43 through 10:52 CEST has no new kernel-journal entries. Earlier profiler
+bus-lock/exit warnings remain in the experimental evidence and are not
+presented as clean production runs. The acceptance host remains on balanced
 platform power and `balance_performance` CPU EPP.
 
 The retired opt-in passed this finite acceptance screen for the pinned
-Flash-Next model on the acceptance host's `gfx1151`.
-Other GPU classes are `N/P` because dispatch is disabled there, despite their
-successful compilation. This does not accept future Qwen4 models, Flash-Next
-MTP or broad task-quality equivalence. Both the default dense model and
-default arithmetic remained unchanged. Host Tier 1 checks, forced normal build
-and the race detector pass. Raw results, frozen graders, numerical logs,
-source snapshots, diagnostic ablations and provenance are retained on the acceptance host
-under `~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-math/`.
+Flash-Next model on the acceptance host's `gfx1151`. Other GPU classes are
+`N/P` because dispatch is disabled there, despite their successful compilation.
+This does not accept future Qwen4 models, Flash-Next MTP or broad task-quality
+equivalence. Both the default dense model and default arithmetic remained
+unchanged. Host Tier 1 checks, forced normal build and the race detector pass.
+Raw results, frozen graders, numerical logs, source snapshots, diagnostic
+ablations and provenance are retained on the acceptance host under
+`~/.local/share/paracetamol/apps/acceptance/results/20260930-qwen4exp-mixed-math/`.
 
 ### Fedora 44 Strix Halo Qwen4exp selection extraction (2026-09-30)
 
@@ -2867,14 +2877,15 @@ mixed-math records above supersede that remaining-gap assessment and document
 the rejected cache experiments. Only the precision-preserving extractions
 remain in the supported image.
 
-The pinned Flash-Next ROCm path is `PASS` on the acceptance host's `gfx1151`, not acceptance
-for future Qwen4 models or Flash-Next MTP. Other GPU classes are `N/P` for
-these optimizations because their dispatch is disabled there. The production
-kernel-journal window is clear. Earlier instrumented profiling caused CPU
-bus-lock traps, and two test-fixture crashes were fixed. Those diagnostic logs
-are retained and are not represented as a clean full experiment. Performance
-rates come only from uninstrumented runs. All test containers are removed,
-and the acceptance host is left idle on its original balanced power settings.
+The pinned Flash-Next ROCm path is `PASS` on the acceptance host's `gfx1151`,
+not acceptance for future Qwen4 models or Flash-Next MTP. Other GPU classes are
+`N/P` for these optimizations because their dispatch is disabled there. The
+production kernel-journal window is clear. Earlier instrumented profiling
+caused CPU bus-lock traps, and two test-fixture crashes were fixed. Those
+diagnostic logs are retained and are not represented as a clean full
+experiment. Performance rates come only from uninstrumented runs. All test
+containers are removed, and the acceptance host is left idle on its original
+balanced power settings.
 
 Detailed sources, commands, image identities, numerical tests and measurements
 are retained on the acceptance host at
@@ -2901,11 +2912,12 @@ and changes neither F16 K/V nor weights, residual precision or sampling.
 The matched comparison uses the same final image with
 `PARACETAMOL_QWEN4EXP_QSA_CACHE=0` and `=1`. The first two optimizations remain
 enabled in both. The pinned Unsloth Flash-Next Dynamic Q4_K_XL runs at 262144
-context, F16 K/V, 2048 batch and microbatch, one slot and one sequential client.
-Temperature is zero, seed is 42 and reasoning is off. Other sampler settings
-are upstream defaults for this isolated comparison, not the managed preset's
-mode-dependent defaults. The buffered direct reader and allocation policy
-are unchanged. The acceptance host remains on its balanced platform profile.
+context, F16 K/V, 2048 batch and microbatch, one slot and one sequential
+client. Temperature is zero, seed is 42 and reasoning is off. Other sampler
+settings are upstream defaults for this isolated comparison, not the managed
+preset's mode-dependent defaults. The buffered direct reader and allocation
+policy are unchanged. The acceptance host remains on its balanced platform
+profile.
 
 | Matched 246701-token request | Cache off | Cache on |
 | --- | ---: | ---: |
@@ -2958,12 +2970,12 @@ continuations with one loaded model allowed. Vulkan Flash-Next returns the
 correct 4K retrieval code. CPU startup passes with no GPU device arguments,
 a read-only root, dropped capabilities and `no-new-privileges`.
 
-The pinned Flash-Next ROCm path is `PASS` on the acceptance host's `gfx1151`. This is not
-acceptance for future Qwen4 models or Flash-Next MTP. Other GPU classes are
-`N/P` for this optimization because the entrypoint gates it off there. The
-root kernel journal has no new entries during the production tests. All
-test containers are removed and the acceptance host is left idle on its original balanced
-power settings.
+The pinned Flash-Next ROCm path is `PASS` on the acceptance host's `gfx1151`.
+This is not acceptance for future Qwen4 models or Flash-Next MTP. Other GPU
+classes are `N/P` for this optimization because the entrypoint gates it off
+there. The root kernel journal has no new entries during the production tests.
+All test containers are removed and the acceptance host is left idle on its
+original balanced power settings.
 
 Q8 matrix prefetch was tested separately and excluded. One version regressed
 prefill. A tile-adjusted version needed a coupled warp-mapping correction to
@@ -2977,13 +2989,13 @@ Detailed results are retained on the acceptance host at
 ### Fedora 44 Strix Halo Qwen4exp graph optimizations (2026-09-29)
 
 The second extraction from the Strix fork builds on the selected-key kernels
-below. Paracetamol commit `e18bc898e1573f055b155b20d1d512feddb2608f` keeps
-the first patch intact and adds compact single-prefix selection, scorer strips, ordered F32 pooling
-and score fusions, scoped Q8 matvec prefetch and small expert-matrix tiles.
-It does not import the fork as another engine. The image is
-`localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r41`, ID
-`bcc2eacd59e7daf50055621977dcb47597178f2b2e050e891cb5e35d5a62ab61`.
-The pinned Unsloth Flash-Next Dynamic Q4_K_XL is `PASS` on the acceptance host's `gfx1151`
+below. Paracetamol commit `e18bc898e1573f055b155b20d1d512feddb2608f` keeps the
+first patch intact and adds compact single-prefix selection, scorer strips,
+ordered F32 pooling and score fusions, scoped Q8 matvec prefetch and small
+expert-matrix tiles. It does not import the fork as another engine. The image
+is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r41`, ID
+`bcc2eacd59e7daf50055621977dcb47597178f2b2e050e891cb5e35d5a62ab61`. The pinned
+Unsloth Flash-Next Dynamic Q4_K_XL is `PASS` on the acceptance host's `gfx1151`
 ROCm path. This is not acceptance for future Qwen4 models or Flash-Next MTP.
 
 The paired comparison uses this same image with
@@ -3063,14 +3075,14 @@ Detailed results are retained on the acceptance host at
 ### Fedora 44 Strix Halo Qwen4exp selected-key kernels (2026-09-29)
 
 The scoped Qwen4exp HIP attention change in Paracetamol commit
-`734811e11505147d6427dbc6a8f88fb30fb52a6e` is `PASS` for the pinned
-Unsloth Qwen3.8 Flash-Next Dynamic Q4_K_XL GGUF on the acceptance host's `gfx1151` ROCm
+`734811e11505147d6427dbc6a8f88fb30fb52a6e` is `PASS` for the pinned Unsloth
+Qwen3.8 Flash-Next Dynamic Q4_K_XL GGUF on the acceptance host's `gfx1151` ROCm
 path. It is not acceptance for future Qwen4 models or MTP. The locally built
-image is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r40`,
-ID `175803f83890045015f4a337d316c00830475803af2241d91d874b96bf52deeb`.
-The llama.cpp pin, GGUF, 262144 context, F16 K/V cache, direct model reader,
-and allocation policy are unchanged. Only exact Strix Halo ROCm receives the
-new selected-key kernels. Vulkan and older Qwen models retain their previous
+image is `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r40`, ID
+`175803f83890045015f4a337d316c00830475803af2241d91d874b96bf52deeb`. The
+llama.cpp pin, GGUF, 262144 context, F16 K/V cache, direct model reader, and
+allocation policy are unchanged. Only exact Strix Halo ROCm receives the new
+selected-key kernels. Vulkan and older Qwen models retain their previous
 attention paths.
 
 The paired runs use the same experimental binary with
@@ -3104,7 +3116,8 @@ during the test interval.
 
 The five selected-key operator cases passed on ROCm against the CPU reference,
 including poisoned masked cells, duplicate key IDs, and an FP64 oracle for
-short-query decode. The detailed run notes are retained on the acceptance host at
+short-query decode. The detailed run notes are retained on the acceptance host
+at
 `~/.local/share/paracetamol/apps/acceptance/results/20260929-qwen4exp-qsa-kernels/results.md`.
 Other hardware classes are `N/P` for this optimization because dispatch is
 intentionally gated to `gfx1151`. The general application matrix below remains
@@ -3124,15 +3137,15 @@ allocation policy. The final cold-built image is
 `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.0-7ab4ee7-r39`, ID
 `b9b51434825c4b147240990a2d1a4ecd5c31365e074b1b5cbf98539440731d7a`.
 
-On the acceptance host's 128 GB Ryzen AI Max+ 395, the matched ROCm control uses the same
-earlier `r39` image ID
-`dfcec82e5b52d7636149b23ff87e17dd41208a574a113ba4aa21d4b91c7c1e17`.
-The only container-command difference is `QWEN4EXP_QSA_GATHER=0` for the
-control. The final cold build has byte-identical `llama-server`, `libllama`,
-and all five ggml shared libraries to that measured image. Both runs use the
-managed Strix Halo ROCm preset, one slot, F16 K/V, 262144 context, one
-sequential client, medium reasoning, temperature zero and seed 42. The
-247165-token prompt is assembled from the same 143-file public corpus, SHA-256
+On the acceptance host's 128 GB Ryzen AI Max+ 395, the matched ROCm control
+uses the same earlier `r39` image ID
+`dfcec82e5b52d7636149b23ff87e17dd41208a574a113ba4aa21d4b91c7c1e17`. The only
+container-command difference is `QWEN4EXP_QSA_GATHER=0` for the control. The
+final cold build has byte-identical `llama-server`, `libllama`, and all five
+ggml shared libraries to that measured image. Both runs use the managed Strix
+Halo ROCm preset, one slot, F16 K/V, 262144 context, one sequential client,
+medium reasoning, temperature zero and seed 42. The 247165-token prompt is
+assembled from the same 143-file public corpus, SHA-256
 `fd8ef9463952604f8a497b0d99b66d2e50d63394cf39e8e48d00f855f49b2b6b`.
 
 | Matched 247K ROCm measure | Gather on | Gather off |
@@ -3703,9 +3716,9 @@ Vulkan-only restriction remain unchanged. Inference acceptance on `gfx1150`,
 `gfx1200` and `gfx1201` remains blocked by unavailable representative hardware.
 The normal gateway is restored using the updated image selection.
 
-Raw commands, image IDs, build and backend logs, native benchmark JSON,
-HTTP requests and responses, client events, memory samples and kernel windows
-are retained on the acceptance host and the development host under
+Raw commands, image IDs, build and backend logs, native benchmark JSON, HTTP
+requests and responses, client events, memory samples and kernel windows are
+retained on the acceptance host and the development host under
 `~/.local/share/paracetamol/apps/acceptance/results/20260911-llama-upgrade/`.
 Its result manifest distinguishes accepted paths from intentionally failed
 diagnostics. One-off probe sources are retained there, without compiled Go
@@ -4091,8 +4104,8 @@ IQ4_XS. These are logit-fidelity measurements rather than downstream agent
 scores, but they establish a material quantization improvement. Q5_K_XL is
 43.73 GiB larger than Q4_K_XL, exceeding the Q4 run's 34 GiB available-memory
 margin before changed runtime allocation. Q4_K_XL is therefore the highest
-accepted reasonable Flash-Next quant on this the acceptance host configuration; IQ4_XS
-is retained here only as a historical accepted comparison.
+accepted reasonable Flash-Next quant on this acceptance-host configuration;
+IQ4_XS is retained here only as a historical accepted comparison.
 
 ROCm is `FAIL` for this exact Flash-Next tuple. It loaded the same shards and
 could return a short retrieval key, but meaningful shallow responses became

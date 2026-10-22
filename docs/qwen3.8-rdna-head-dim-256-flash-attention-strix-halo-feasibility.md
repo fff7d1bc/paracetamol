@@ -146,16 +146,17 @@ pinned Qwen3.8 artifact and F16 cache policy, retain decode and output checks,
 and scope any resulting patch or runtime selection to the architectures that
 actually benefit.
 
-The raw benchmark JSON remains outside version control on the test host:
+The raw benchmark JSON remains outside version control on the acceptance
+host. The retained artifact directory contains these files (relative names):
 
 ```text
-RESULTS_DIR/baseline-d4096.json
-RESULTS_DIR/baseline-d32768.json
-RESULTS_DIR/baseline-d131072.json
-RESULTS_DIR/baseline-d258048.json
-RESULTS_DIR/candidate-d4096.json
-RESULTS_DIR/candidate-d32768.json
-RESULTS_DIR/candidate-d131072.json
+baseline-d4096.json
+baseline-d32768.json
+baseline-d131072.json
+baseline-d258048.json
+candidate-d4096.json
+candidate-d32768.json
+candidate-d131072.json
 ```
 
 No candidate 258,048-token JSON exists. The interrupted run was excluded from

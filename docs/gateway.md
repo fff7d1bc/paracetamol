@@ -21,6 +21,7 @@ the address. Forwarded headers are ignored.
 ## Browser landing page
 
 Open the gateway's root address, such as `http://gateway.example:7455/`.
+Replace `gateway.example` in these examples with your server's real address.
 The embedded dark page has four tabs.
 
 - **Overview** shows the OpenAI-compatible base URL and links to setup and models.
@@ -216,7 +217,7 @@ in the [client guide](guides/remote-maki.md#authentication).
 
 ```toml
 [gateway.client]
-url = "http://gpu-host.local:7455/v1"
+url = "http://gateway.example:7455/v1"
 api_key_file = "/home/USER/.config/paracetamol/gateway.key"
 ```
 
@@ -234,7 +235,7 @@ arguments.
 
 ```bash
 printf 'Authorization: Bearer %s\n' "$(< "$HOME/.config/paracetamol/gateway.key")" |
-  curl --fail --header @- http://gpu-host.local:7455/v1/models
+  curl --fail --header @- http://gateway.example:7455/v1/models
 ```
 
 The server reads its key once at startup and retains only a SHA-256 digest for
