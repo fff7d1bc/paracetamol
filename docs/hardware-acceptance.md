@@ -29,6 +29,171 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp source refresh (2026-10-22)
+
+**Refresh acceptance: PASS on `gfx1151`.** The paired ordinary-gateway
+comparison retains Flash-Next retrieval correctness and performance at 32K
+and near 256K. A pre-existing off-mode tool-output formatting failure remains
+and is recorded below. No new optional patch, precision mode or runtime
+default is introduced.
+
+The frozen source is `e197cef4554d466e0becac20e453a355daba8e5d`, 63
+commits after `dd002b9`. The normal cold build produces
+`llama-cpp-ubuntu26.04-rocm10.1-e197cef-r58`, image
+`90c671566af05c85336e3a426e1262a89c5960b10593d2e2844edde67c22f1d4`.
+Thirteen source patches remain. Twelve are unchanged, the compact Qwen4exp
+graph patch needs a semantic rebase, and the router disconnect correction is
+now upstream. The selected patched tree is
+`ac5f0aedd95d3bf4b24e3de851c2305e573d5778`. The
+[patch ledger](upgrading.md#llamacpp-downstream-patch-ledger) records why a
+cleanly applying graph patch still needed adjustment.
+
+The host is the same Fedora 44 Strix Halo machine and kernel
+`7.2.10-200.fc44.x86_64` used on October 20. Its balanced power policy is
+unchanged. No host configuration, ROCm 10.1 tuple, model bytes, templates,
+sampling policy or precision defaults change. This screen does not accept
+`gfx1150`, `gfx1200` or `gfx1201`.
+
+The old image was rebuilt independently after the previous acceptance. This
+comparison uses its actual image ID
+`e909d3fe6953e6f1954597f24fa750180292e209c87589fa4d6f9c53851411c6`,
+not the October 20 build's ID. Frozen old and new ordinary controllers select
+their respective compiled image tags without retagging native images or
+adding an experimental inference route. Source, image identities, commands,
+requests, raw responses, request reports and failed attempts are retained
+under `build/llama-refresh-20261022-A2vIyM/` on the development and test hosts.
+
+The production image passes dependency closure, CPU and ROCm/Vulkan tiny
+CLI checks and three streaming requests followed by health checks over one
+TCP connection per backend. Matching-source probes retain the production
+libraries and pass seven parser/chat test programs, 1149 HIP operator cases,
+eight allocation-lifetime cases, populated state restore/causal-transition/
+clear tests, 31 serial-versus-joint projection comparisons, F16/Q8_0/Q4_0
+device-state copy checks and 54 generic attention cases per backend.
+The new fused selection-mask operation passes 24 CPU and 24 ROCm cases.
+Fourteen CPU GELU lengths retain true F32 arithmetic. Runtime callbacks
+confirm that compact and graph-disabled selected-key attention both execute,
+rather than silently falling back to the new upstream dense-mask path.
+
+An exploratory independent-process compact-versus-fallback logit comparison
+does not meet the unchanged `1e-6` comparator. A separate matching portable
+fixture rebuilt against each exact production library resolves the source
+comparison. Old and new full-vocabulary vectors match bit-for-bit within
+both compact and graph-disabled selected-key modes, as does a repeated old
+compact run. Both images reproduce the same cross-mode NMSE
+`0.0298801653373` and maximum absolute difference `1.69963407516`, with the
+same top token. All within-process restore and clear checks retain NMSE zero.
+This identifies a pre-existing difference for this diagnostic workload, not
+universal equivalence between modes or whole-model bit identity. The original
+instrumented fixture's compact/masked NMSE `0.0254942738048` and compact/dense
+NMSE `0.0196252255934` remain separate retained diagnostics. No tolerance is
+relaxed and neither number is a task-quality score.
+
+Native Maki 0.6.3 passes separate off and xhigh file-tool tasks against the
+new ordinary gateway. Each reads a fresh random file value, writes exact bytes
+including the final LF, reads the result and returns the value. Nine total
+requests complete without output-limit truncation. Saved sessions establish
+the actual tools and replay, and request reports establish the chosen effort
+and all six omitted sampler fields receiving gateway defaults. Only temporary
+client metadata is capped to 16K context and 4096 output tokens. The backend
+retains its normal 262144-token unified pool, four slots and F16 cache.
+Tiny managed ROCm and Vulkan throughput runs also pass. These native synthetic
+benchmarks are compatibility checks, not completed-task quality scores.
+
+The short gateway matrix completes 22 requests per image, covering omitted
+and explicit sampler values, off/medium/xhigh reasoning, tool calls and full
+assistant replay, streaming, cancellation, five clients sharing four slots,
+dense-Q8 MTP selection and Flash-Next switchback. Request reports agree with
+the actual native sampler settings. All fourteen non-streaming native sampler
+tuples and assistant messages match between images, apart from generated
+tool-call correlation IDs. All four native slots are observed
+generating concurrently. Slot polling makes this a protocol check, not a
+clean throughput comparison. After early disconnect, the new image's native
+slots become idle in about 0.108 seconds for streaming and 0.541 seconds for
+non-streaming. This accepts the upstream router correction's protected
+behavior on this host.
+
+Do not read that protocol result as a perfect task score. Both images return
+`ALDER_937261`, a stray closing thinking tag, then the same value again in
+the off-mode tool-replay case. The unchanged exact-output oracle rejects it.
+The old build reproduces that same miss in all three preserved attempts from
+earlier partial matrices. Other exact short-answer checks and medium/xhigh
+tool replays pass. The baseline's complete short subset is retained inside
+an arm that later stopped on a cache-accounting oracle mistake. Read-only
+replay validates that subset without rewriting its incomplete matrix report.
+Earlier helper mistakes about sampler presence, omitted F16
+arguments and first changed-prompt cache reuse are retained as failed probe
+attempts, not relabeled as inference failures or silently removed.
+
+Fresh paired gateway phases each complete fifteen requests with protocol and
+quality passing. All eight six-key retrieval answers per image are exact,
+including changed-history checks at both depths. The managed model remains
+`unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, with F16 KV, four slots
+sharing 262144 tokens, batch/microbatch 2048, no MTP and RAM prompt archive
+disabled. Generated requests use the ordinary gateway and omit all six
+samplers. Medium retrieval and non-thinking timing therefore receive their
+respective catalog defaults, checked against actual native settings.
+Canonical request bodies and before/after archive hashes match between arms.
+
+| Fresh paired control | Rebuilt `dd002b9-r57` | Cold production `e197cef-r58` |
+| --- | --- | --- |
+| 32K cold native prefill seconds | 46.849 | 46.452 |
+| 247K cold native prefill seconds | 408.620 | 406.448 |
+| 32K cached native generation tokens/s, two repeats | 21.912 / 21.870 | 21.949 / 21.951 |
+| 247K cached native generation tokens/s, two repeats | 17.688 / 17.682 | 17.698 / 17.538 |
+
+Quality requests contain 32936 or 247168 actual input tokens. Their unchanged
+repeats reuse all but four tokens. Changed histories correctly return the new
+value but fully reprocess the input on both builds. The first timing request
+also changes the suffix and thinking mode and legitimately reprocesses the
+whole prompt. Subsequent identical timing requests reuse 32924 of 32928 or
+247156 of 247160 input tokens. Each generates exactly 256 tokens with a
+deliberate `length` finish. These are timing probes, not completed coding
+tasks or quality scores. Rates above are the native reported rates, which
+account for first-token timing differently from dividing output count by
+generation duration.
+
+This small fixed-order comparison supports retained performance, not a
+general speedup claim. The short quality fixture's known off-tool miss is
+unchanged, and the numerical, retrieval and live-client checks do not prove
+universal task-quality equivalence. Thinking-output lengths vary, so quality
+request wall times are not treated as fixed-work generation measurements.
+Minimum host available memory is 20.620 GiB for the old arm and 19.443 GiB for
+the new arm, above the 8 GiB guard. This is not an isolated model-residency
+measurement. Native idle-slot reclamation while the
+247K request outgrows earlier 32K cache entries occurs on both images and is
+not a GPU out-of-memory failure.
+
+The new image's separate Vulkan 32K gateway matrix passes all six requests,
+including three exact retrieval answers with the edited value. Native
+settings, sampling provenance, non-truncation and identical-prefix reuse are
+checked there too. This is bounded Vulkan compatibility, not a paired Vulkan
+performance comparison or near-256K Vulkan acceptance.
+
+Four further gateway requests pass dense Q8 without MTP and Muse DFlash,
+including Muse's tool call and complete assistant replay. Dense uses its
+catalog sampler defaults. Muse keeps the native defaults and six
+unprovided native-default observations without a gateway sampling policy.
+Actual child arguments establish four slots, F16 cache, no speculation for
+the plain dense model and the reviewed draft/max-15 DFlash pair for Muse.
+
+The four dense-Q8 32K native benchmark controls pass with F16 and Q8_0 KV
+on both ROCm and Vulkan. These one-repetition compatibility checks use the
+managed benchmark path and actual device selection. Q8_0 is not a new cache
+default, and these checks do not establish task quality or a speedup.
+
+Actual CPU-only router startup also passes through the normal controller.
+Health and model metadata respond over loopback, all children stay unloaded,
+and live inspection confirms a non-root process, zero capabilities and no
+GPU devices. Stop and removal close the published port. This is startup and
+confinement acceptance, not CPU inference evidence.
+
+Final checks find no kernel journal entries during the test window, no test
+containers, gateway or native inference processes, and no test listeners.
+Balanced platform policy and `balance_performance` CPU preference remain
+unchanged. The host is left idle. Other GPU architectures still require their
+own acceptance.
+
 ### Strix Halo llama.cpp refresh and isolated PR screens (2026-10-20)
 
 **The upstream refresh passes on the tested Strix Halo host without a

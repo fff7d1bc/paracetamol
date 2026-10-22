@@ -36,7 +36,7 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `dd002b91f583af0b80140f9a140dc04856bfc2e0`. The license is installed
+  commit `e197cef4554d466e0becac20e453a355daba8e5d`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally. RPC, remote UI assets and
   optional prebuilt llama-connect helper downloads are disabled. It applies
@@ -45,10 +45,10 @@ revisions recorded in `catalog/catalog.json`.
   `ce82541acbaf5c532c0727d6ccb6de2b0b0c948d` to avoid unsafe direct
   `ROCm_Host` computation on integrated HIP devices while preserving pinned
   host allocation.
-  The router disconnect correction and its upstream regression test come
-  from llama.cpp PR 29707 at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`,
-  also under MIT. It closes the child connection when the proxy request ends
-  and bounds the response queue's wait across unrelated wakeups.
+  The router disconnect correction is included upstream through PR 29707 at
+  `4e201388c319fc9f747fbe6a666793e2dc2a6d8e`. It closes the child connection
+  when the proxy request ends and bounds the response queue's wait across
+  unrelated wakeups. No separate router source patch is applied.
   The quantized on-device KV-state copy correction comes from upstream
   PR 30541 at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`, also under MIT.
   It counts tensor elements rather than quantization blocks when copying

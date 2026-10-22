@@ -2,6 +2,9 @@ Local compact Qwen4exp selected-ID intersection over upstream pooled-cache
 state and visibility filtering. Unsupported layouts retain upstream masking.
 CPU fallback honors the intersection and unsupported accelerators decline it.
 This replaces the private prefix, prepared-key-cache and selection machinery.
+The upstream fused dense selection-mask path remains available only when
+selected-key attention is disabled; its early return must not bypass the
+accepted compact path or the graph-disabled selected-key control.
 
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 index c3d79037f..c9c6653ac 100644
@@ -107,12 +110,13 @@ diff --git a/src/models/models.h b/src/models/models.h
 index 6d220837c..c46f53b51 100644
 --- a/src/models/models.h
 +++ b/src/models/models.h
-@@ -2618,7 +2618,8 @@ struct llama_model_qwen4exp : public llama_model_base {
+@@ -2618,7 +2618,9 @@ struct llama_model_qwen4exp : public llama_model_base {
                      ggml_tensor * kq_mask,
                              int * sections,
                              int   il,
 -                    ggml_tensor ** selected_ids);
 +                    ggml_tensor ** selected_ids,
++                           bool   selected_keys,
 +                           bool   compact_selection);
  
          ggml_tensor * build_layer_attn_linear(
@@ -121,16 +125,29 @@ diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
 index b6b9a99eb..14a2fb07c 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -776,7 +776,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+@@ -776,7 +776,9 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
          ggml_tensor *                           kq_mask,
          int *                                   sections,
          int                                     il,
 -        ggml_tensor **                          selected_ids) {
 +        ggml_tensor **                          selected_ids,
++        bool                                    selected_keys,
 +        bool                                    compact_selection) {
      const llama_kv_cache_context * mctx_idx = mctx_hyb->get_idx();
  
      const int64_t idx_dim = hparams.indexer_head_size;
+@@ -854,7 +856,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+     cb(top_k, "indexer_top_k", il);
+ 
+     // keep the kq_mask cells of the live picked pools and the tail, -inf elsewhere
+-    if (cparams.fused_top_k_mask) {
++    // The fused dense mask returns before selected IDs are constructed. Keep
++    // the accepted selected-key path (including its graph-disabled control)
++    // authoritative; other layouts retain the upstream fused mask.
++    if (cparams.fused_top_k_mask && !selected_keys) {
+         GGML_ASSERT(kpool*n_top_pool + inp_kpool->tail_idxs->ne[0] == inp_kpool->n_sel);
+ 
+         ggml_tensor * sel = build_fused_top_k_mask(kq_mask, top_k, score, inp_kpool->pool_idxs, inp_kpool->tail_idxs, il);
 @@ -893,6 +894,15 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
      // Keep the full upstream mask authoritative for every fallback backend.
      *selected_ids = sel_idx;
@@ -182,7 +199,7 @@ index b6b9a99eb..14a2fb07c 100644
      ggml_tensor * selected_ids = nullptr;
 -    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->get_kq_mask(), sections, il, &selected_ids) : nullptr;
 +    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, causal,
-+            sections, il, &selected_ids, compact_selection) : nullptr;
++            sections, il, &selected_ids, selected_keys, compact_selection) : nullptr;
  
      // Qwen3Next uses a single Q projection that outputs query + gate
      ggml_tensor * Qcur_full = build_lora_mm(model.layers[il].wq, cur, model.layers[il].wq_s); // [ (n_embd_head * 2) * n_head, n_tokens ]

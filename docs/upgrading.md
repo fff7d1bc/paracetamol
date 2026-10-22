@@ -269,7 +269,6 @@ protected behavior is fixed.
 | Patch | Protected behavior and scope | Removal gate |
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
-| `router-disconnect.patch` | Carries [PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707) at `31b5b49bf600d43ea3b95a52f6b05650a71679c9`. Stops the child HTTP connection when its proxy closes and uses one response-wait deadline across wakeups. Includes the upstream non-streaming disconnect regression. | Upstream passes both streaming and non-streaming disconnects through the router and gateway. Observe the child slot becoming idle, not just a successful follow-up request. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
 | `hip-strix-halo-graph-recapture.patch` | Reinstantiates the HIP executable after a changed capture on exact `gfx1151`, retaining ordinary graph replay. This corrects the populated direct-reader clear/restore failure isolated during the October source screens. Other architectures retain upstream executable updates. | The unpatched upstream path passes populated ordinary, causal-transition and clear/restore logit checks with the managed reader, followed by long-context and older-model checks. |
 | `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
@@ -283,7 +282,48 @@ protected behavior is fixed.
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 
-The October 20 refresh selects the frozen upstream commit
+The October 22 refresh selects frozen upstream
+`e197cef4554d466e0becac20e453a355daba8e5d`, 63 commits after `dd002b9`,
+in image `e197cef-r58`. Thirteen patches remain. Twelve apply unchanged;
+the compact Qwen4exp graph patch needs a semantic rebase despite applying
+cleanly. Upstream's new fused dense selection-mask operation from
+[PR 30640](https://github.com/ggml-org/llama.cpp/pull/30640), merged as
+`d454a204ef2b63af357744809c05af897611a72e`, returns before constructing
+the selected IDs used by the accepted Strix Halo attention kernels.
+Allow that early return only when selected-key attention is disabled.
+Both the compact kernel-on/graph-on path and kernel-on/graph-off control
+must retain selected-ID generation. Other supported layouts keep upstream's
+new mask operation. No matrix, residual or KV precision policy changes.
+
+The router disconnect fix is now upstream through
+[PR 29707](https://github.com/ggml-org/llama.cpp/pull/29707), merged as
+`4e201388c319fc9f747fbe6a666793e2dc2a6d8e`. Its separate source patch is
+retired. The merge contains both child-connection closure and the single
+response-wait deadline, but deliberately omits its timing-sensitive test.
+Retain streaming and non-streaming router/gateway disconnect-to-child-idle
+checks in source-update acceptance, rather than treating a successful
+follow-up request as proof that abandoned work stopped.
+
+The Qwen output-projection reshape from
+[PR 30823](https://github.com/ggml-org/llama.cpp/pull/30823), held as an
+optional patch in the October 20 screen below, is now upstream at
+`839a572a4cdecdb80d211297b8e7d7323a6e99d2`. It enters with the source
+refresh, not as another carried patch. Recheck dense/MTP and concurrent
+Flash-Next requests. Upstream's legacy-pool graph invalidation is not the
+same correction as the retained `gfx1151` executable-recapture workaround.
+Keep its populated restore/clear numerical gate. PR 30311 remains unchanged
+and held outside the selected stack. The MIT license is unchanged.
+
+The [October 22 acceptance record](hardware-acceptance.md#strix-halo-llamacpp-source-refresh-2026-10-22)
+accepts the cold production image on `gfx1151`. It covers matching-source
+numerical checks, ordinary-gateway sampling and cancellation, native Maki,
+paired 32K/near-256K retrieval and bounded older-model/Vulkan compatibility.
+No material Flash-Next regression is observed in that small paired control.
+The existing off-mode tool-output formatting miss remains documented rather
+than counted as an exact-output pass. Other GPU architectures are not accepted
+by this screen.
+
+The October 20 refresh selected the frozen upstream commit
 `dd002b91f583af0b80140f9a140dc04856bfc2e0`, 59 commits after `623c163`.
 The image is `dd002b9-r57`. All fourteen existing patches remain. Twelve
 apply unchanged; `router-disconnect.patch` follows a new import, and
@@ -303,7 +343,7 @@ nor the other upstream changes establish equivalent behavior and the required
 hardware evidence for removing the host-buffer, graph-recapture, router,
 reader or quantized-state-copy protections. No patch removal gate is met.
 
-Two proposals are screened separately rather than folded into the refresh:
+Two proposals were screened separately rather than folded into the October 20 refresh:
 
 - The recurrent rollback guard from
   [PR 30311](https://github.com/ggml-org/llama.cpp/pull/30311), frozen at
@@ -318,7 +358,7 @@ Two proposals are screened separately rather than folded into the refresh:
 - The multi-sequence output-projection reshape from
   [PR 30823](https://github.com/ggml-org/llama.cpp/pull/30823), frozen at
   `71a6482a3ac183034c4e475ff2545d46f2516cc8`, passes the screened correctness
-  and activation gates, including populated state checks, but is **held**.
+  and activation gates, including populated state checks, but was **held** at that screen.
   Two short fixed-order warmed long-context concurrency comparisons show
   roughly 1–3% gains, with unchanged single-request rates and no compelling
   fresh-prefill improvement. This limited screen does not establish a broader

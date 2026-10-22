@@ -7,7 +7,7 @@ ARG ROCM_VERSION=10.1.0
 ARG TORCH_VERSION=2.13.0
 ARG TORCHVISION_VERSION=0.28.0
 ARG TORCHAUDIO_VERSION=2.11.0.2
-ARG LLAMA_CPP_COMMIT=dd002b91f583af0b80140f9a140dc04856bfc2e0
+ARG LLAMA_CPP_COMMIT=e197cef4554d466e0becac20e453a355daba8e5d
 
 FROM ${UBUNTU_IMAGE} AS content-tools
 
@@ -259,8 +259,6 @@ ARG LLAMA_CPP_COMMIT
 WORKDIR /opt/llama.cpp
 COPY applications/llama-cpp/hip-apu-host-buffer.patch \
     /opt/paracetamol/llama-hip-apu-host-buffer.patch
-COPY applications/llama-cpp/router-disconnect.patch \
-    /opt/paracetamol/llama-router-disconnect.patch
 COPY applications/llama-cpp/quantized-kv-flash-attention.patch \
     /opt/paracetamol/llama-quantized-kv-flash-attention.patch
 COPY applications/llama-cpp/hip-strix-halo-tiled-gdn.patch \
@@ -293,8 +291,6 @@ RUN git init . && \
     git submodule update --init --recursive --depth=1 && \
     git apply --check /opt/paracetamol/llama-hip-apu-host-buffer.patch && \
     git apply /opt/paracetamol/llama-hip-apu-host-buffer.patch && \
-    git apply --check /opt/paracetamol/llama-router-disconnect.patch && \
-    git apply /opt/paracetamol/llama-router-disconnect.patch && \
     git apply --check /opt/paracetamol/llama-quantized-kv-flash-attention.patch && \
     git apply /opt/paracetamol/llama-quantized-kv-flash-attention.patch && \
     git apply --check /opt/paracetamol/llama-qwen4exp-direct-reader.patch && \
@@ -406,7 +402,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,router-disconnect,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data
