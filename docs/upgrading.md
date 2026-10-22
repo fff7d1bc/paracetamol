@@ -923,16 +923,6 @@ metadata, and tensor payload independently, then repeat direct and router
 rendering plus a complete structured tool round trip before changing or
 removing the override.
 
-The bundled `kat-coder-v2.5.jinja` is byte-for-byte Kwaipilot's template from
-base-model revision `3a7d874090df0cd4399401982eca67df2c5a7e82`, SHA-256
-`e409e9daee03f51b2612d96f0a253027baec06abd1c2429e184380479662d416`.
-The official Bartowski GGUF predates its one-line non-leading-system-message
-fix. On an upgrade, test template rendering with a system message after the
-first turn, then complete a multi-turn structured tool exchange. Do not infer
-that the template's optional historical-thinking support should be enabled:
-the 2026-08-12 trial described in the hardware-acceptance record did not
-establish a quality benefit from reasoning preservation.
-
 Qwen3.6 and its dedicated template were retired on 2026-10-16. Historical
 acceptance records remain available, but there is no current Qwen3.6 policy
 to rebase or preserve.

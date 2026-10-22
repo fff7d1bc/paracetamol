@@ -28,11 +28,7 @@ var byApplication = map[string][]Recipe{
 	"llama-cpp": {
 		{ID: "qwen3.8", Application: "llama-cpp", Description: "Unsloth Qwen3.8 dense 27B Dynamic Q8_K_XL with MTP", Bundles: []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"}},
 		{ID: "qwen3.8-flash-next", Application: "llama-cpp", Description: "Unsloth Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL for experimental Strix Halo SSD-backed loading", Bundles: []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}},
-		{ID: "kat-coder", Application: "llama-cpp", Description: "Bartowski KAT-Coder V2.5 Dev 35B Q8_0 coding and agent model", Bundles: []string{"llama-bartowski-kat-coder-v2.5-dev-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "bartowski-kat-coder-v2.5-dev-q8-0"}},
 		{ID: "muse-glimmer", Application: "llama-cpp", Description: "Meta Muse Glimmer 30B Dynamic Q4_K_XL with DFlash", Bundles: []string{"llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash"}, Next: []string{"run", "llama-cpp", "server", "--preset", "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k"}},
-		{ID: "translation-hy", Application: "llama-cpp", Description: "Tencent HY-MT1.5 7B Q8_0 multilingual translator", Bundles: []string{"llama-tencent-hy-mt1.5-7b-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "tencent-hy-mt1.5-7b-q8-0"}},
-		{ID: "translation-gemma", Application: "llama-cpp", Description: "mradermacher TranslateGemma 27B IT Q8_0 manually prompted translator", Bundles: []string{"llama-mradermacher-translategemma-27b-it-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "mradermacher-translategemma-27b-it-q8-0"}},
-		{ID: "shisa-v2.1", Application: "llama-cpp", Description: "mradermacher Shisa V2.1 Llama 3.3 70B Q8_0 Japanese/English translator", Bundles: []string{"llama-mradermacher-shisa-v2.1-llama3.3-70b-q8-0"}, Next: []string{"run", "llama-cpp", "server", "--preset", "mradermacher-shisa-v2.1-llama3.3-70b-q8-0"}},
 	},
 }
 

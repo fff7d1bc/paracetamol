@@ -394,9 +394,8 @@ installed presets, ignores wholly missing presets, and refuses partial
 managed installs.
 
 The public llama.cpp recipes include the single-artifact Qwen3.8 dense target
-with optional embedded-MTP runtime, KAT-Coder, Muse Glimmer's one Dynamic
-target/draft pair, high-memory Japanese and English Shisa V2.1, and the
-focused HY and Gemma translation families. The Unsloth Flash-Next conversion
+with optional embedded-MTP runtime and Muse Glimmer's one Dynamic
+target/draft pair. The Unsloth Flash-Next conversion
 keeps its own recipe because it has a distinct architecture and memory policy.
 Muse's forced-256K DFlash preset is the recipe launch; its 128K base and DFlash
 controls share the installed pair. Regular Flash-Next at xhigh is the
@@ -404,6 +403,10 @@ exported Maki default when advertised by the gateway. This harness preference
 does not change the catalog or template's medium HTTP fallback. Huihui's
 abliterated v2 is a separate exact bundle and preset, using the same template,
 sampling and runtime policy without joining the regular recipe download.
+The optional Huihui dense 27B abliterated UD-Q8_K_XL follows the same rule,
+sharing the regular dense non-MTP policy and its sampling-policy reference.
+Its exact pinned model card declares Apache-2.0 independently of the
+Flash-Next variant's unresolved licensing.
 Qwen3.6 is retired. Unrelated models retain separate family recipes instead
 of being grouped under a subjective coding role.
 Non-MTP dense Qwen controls, the smoke-test

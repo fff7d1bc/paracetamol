@@ -179,8 +179,8 @@ Use 128K or 64K when memory matters more than the full native window:
 
 In router mode, `--context` overrides every loaded preset, not only the model
 named by the next request. That is reasonable for a router containing only
-256K agent presets. Omit it for a mixed router so TranslateGemma and other
-bounded-task models retain their catalog-owned limits.
+256K agent presets. Omit it for a mixed router so smaller-context presets
+retain their catalog-owned limits.
 
 The generated agent-client model maps describe the 256K catalog default. Keep
 the server at that default when using a launcher; a manual server override
@@ -199,9 +199,8 @@ A model and a Paracetamol preset are related, but they are not interchangeable:
 
 The API calls the router selector `model`, but its value is a Paracetamol preset
 identifier. It selects both the GGUF and the runtime policy Paracetamol has
-validated for it. The `mradermacher-translategemma-27b-it-q8-0` preset adds
-only a thin string template around the model. The translation direction and
-output rules remain part of the user message.
+validated for it. The task instructions and output rules remain part of the
+request messages.
 
 Text preset IDs start with the pinned GGUF publisher's Hugging Face account.
 For example, `unsloth-` identifies Unsloth's Qwen conversion, and `meta-models-`
@@ -222,6 +221,7 @@ Existing Qwen3.6 files are not deleted automatically.
 | --- | --- | --- |
 | `qwen-qwen3-0.6b-q8-0` | Tiny 0.6B model | Startup, API, and GPU-offload smoke tests |
 | `unsloth-qwen3.8-27b-ud-q8-k-xl` | Dense 27B Dynamic Q8_K_XL | Qwen3.8 non-speculative control |
+| `huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl` | Huihui modified weights from Unsloth's Dynamic Q8_K_XL | Optional non-MTP dense variant with the same runtime policy |
 | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` | Same GGUF using its embedded MTP heads | Dense coding-agent alternative |
 | `unsloth-qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
@@ -235,6 +235,25 @@ The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
 `./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
+
+Huihui's dense 27B variant is a separate 29.30 GiB download, not a patch to
+the installed Unsloth model:
+
+```bash
+./paracetamol content install llama-huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl
+```
+
+Select `huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl` in Maki or an HTTP
+request after restarting the gateway. It shares the regular dense model's
+managed template, off/low/medium/xhigh reasoning, preserved history,
+mode-dependent sampling, 256K context and F16 KV. This preset does not use
+MTP. The [pinned model card](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF/blob/1c69098e9c32db6dc06fc48f1d6cc75ad07da89e/README.md)
+identifies its Unsloth UD lineage and declares Apache-2.0. It is not the
+Swift-derived variant. Modified weights can change task quality even when
+the serving policy is identical. Regular Flash-Next remains the default.
+The [acceptance record](../hardware-acceptance.md#huihui-dense-qwen-and-catalog-retirement-2026-10-22)
+includes a native Maki xhigh task that produced the correct file but the wrong
+final answer. API compatibility is not a claim of equal coding reliability.
 
 The previously curated Swift adaptations were retired after a long Pi coding
 session failed to finish while the Unsloth Flash-Next completed the same
@@ -435,29 +454,6 @@ policy well beyond Paracetamol's medium-default adaptation; even its `high`
 choice aliases to Qwen3.8 `xhigh`. Paracetamol therefore measures the pinned
 official-template adaptation first. A community-template run belongs in a
 later, explicitly labelled A/B with the same model bytes and runtime inputs.
-
-### KAT-Coder
-
-KAT-Coder has a separate family-oriented recipe and can be installed
-independently on a high-memory host:
-
-```bash
-./paracetamol content install llama-cpp kat-coder
-```
-
-| Preset | Source | Current role |
-| --- | --- | --- |
-| `bartowski-kat-coder-v2.5-dev-q8-0` | Bartowski's plain Q8_0 conversion of Kwaipilot's public text-only checkpoint | Newer agentic-coding candidate kept separate from APEX and MTP derivatives |
-
-The preset uses its native 256K context and the later pinned upstream template
-that accepts system messages introduced by an agent after the first turn.
-It appears in all managed client model pickers after installation, but does
-not replace Paracetamol's Qwen3.8 default. Treat benchmark claims as leads,
-then compare tool-call correctness, task completion, repetition, wall time,
-and recovery from long sessions on the same repositories. Paracetamol does not
-catalog the community APEX mixed-precision or grafted-MTP variants because
-the Q8 baselines fit the maintained high-memory target and provide a clearer
-quality control.
 
 MTP is a decoding optimization, not a reasoning mode or a more capable model.
 Its prediction heads propose several future tokens and the main model verifies
@@ -682,128 +678,6 @@ edit, command and tool-result loop. A plain chat response does not validate
 tool handling. Other clients can use the same API without the Maki example.
 Clients may send a UUID in `X-Paracetamol-Session-ID` for correlation, but the
 export deliberately does not insert a shared or invented session identifier.
-
-### Japanese and English translation
-
-There are three focused translation models. Shisa V2.1 is the quality-first
-Japanese and English choice for a high-memory host. This is a 69.83 GiB Q8_0
-quant of the Llama 3.3 70B model:
-
-```bash
-./paracetamol content install llama-cpp shisa-v2.1 --accept-license
-./paracetamol run llama-cpp server \
-  --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
-```
-
-The preset starts at 16384 tokens. That is enough for a glossary, speaker and
-scene notes, several nearby lines, and the requested translation without
-committing a large KV cache to every server run. Raise it with `--context`
-only after measuring the complete workload. The model supports ordinary
-`system`, `user`, and `assistant` messages through its embedded Jinja template.
-For a visual-novel translation request, put stable rules and the glossary in a
-system message, then give each user message the source text plus only the
-local context needed to disambiguate it.
-
-Start deterministic evaluation at temperature zero. If the literal result is
-correct but stiff, compare a small nonzero value such as `0.2` against the same
-fixed test set. Keep names, control codes, terminology, and output shape under
-validation rather than relying on sampling to preserve them. The installer
-requires acknowledgment of the Llama 3.3 Community License Agreement.
-
-TranslateGemma is the smaller 27B IT Q8_0 choice for constrained, manually
-prompted translation:
-
-```bash
-./paracetamol content install llama-cpp translation-gemma --accept-license
-./paracetamol run llama-cpp server \
-  --preset mradermacher-translategemma-27b-it-q8-0
-```
-
-The preset supplies Gemma's turn markers but does not choose a language
-direction or hide a translation instruction. Put the direction, output rules,
-and source text together in the user message:
-
-```bash
-curl -sS http://127.0.0.1:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "messages": [
-      {
-        "role": "user",
-        "content": "Translate the following English text into Japanese. Produce only the Japanese translation, without commentary.\n\nThis is the text to translate."
-      }
-    ],
-    "temperature": 0,
-    "max_tokens": 512
-  }' | jq -r '.choices[0].message.content'
-```
-
-Use the same running server for Japanese-to-English or another supported
-language pair by changing that first instruction. TranslateGemma accepts only
-`user` and `assistant` roles, so keep the instruction in the user message
-rather than sending a separate `system` message. HTTP requests do not inherit
-earlier messages. Repeat the instruction in each standalone request, or resend
-the complete conversation beginning with that first user message.
-
-Google documents a 2K-token input limit for TranslateGemma. Paracetamol starts
-the server with 4096 tokens so the translation has room to finish, but that
-does not make longer source text supported. Split long documents at sensible
-boundaries.
-
-For a large translation job, use one running server and a bounded pool of
-independent HTTP requests. The current llama.cpp server chooses its number of
-slots automatically and enables continuous batching. Check what the running
-model received before choosing a client worker count:
-
-```bash
-curl -sS http://127.0.0.1:8080/props |
-  jq '{slots: .total_slots, context: .default_generation_settings.n_ctx}'
-```
-
-Start by comparing one, two, and four requests in flight on a representative
-set of source lines. More requests can improve total throughput by batching
-generation across sequences, but each individual request may take longer and
-additional slots consume KV-cache capacity. Measure total generated tokens
-divided by the whole job's wall time, along with lines per second and request
-latency. Do not add the per-request token rates together.
-
-Give every source item an ID, accept responses in any order, validate empty or
-truncated output, and restore source order when writing the result. Repeat the
-translation rules, relevant glossary, and a small scene context in each
-request. Do not build one ever-growing conversation merely to give independent
-lines context. Paracetamol does not currently expose an explicit server slot
-setting, so keep the worker count configurable and measure it again after a
-llama.cpp, backend, model, or context change.
-
-Tencent HY-MT1.5 is the smaller 7.43 GiB multilingual option. Its prompt
-chooses the target language at request time:
-
-```bash
-./paracetamol content install llama-cpp translation-hy --accept-license
-./paracetamol run llama-cpp server --preset tencent-hy-mt1.5-7b-q8-0
-
-curl -sS http://127.0.0.1:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "messages": [
-      {
-        "role": "user",
-        "content": "Translate the following segment into Japanese, without additional explanation.\n\nThis is the text to translate."
-      }
-    ],
-    "temperature": 0.7,
-    "top_k": 20,
-    "top_p": 0.6,
-    "repeat_penalty": 1.05,
-    "max_tokens": 512
-  }' | jq -r '.choices[0].message.content'
-```
-
-The Tencent HY Community License excludes the EU, United Kingdom, and South
-Korea from its territory and says use outside that territory is unauthorized.
-The installer shows the complete license link and requires
-`--accept-license`, but that switch is an acknowledgment, not a way around the
-restriction. In Poland, use TranslateGemma instead.
 
 ### Backend selection
 

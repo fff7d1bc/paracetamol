@@ -29,6 +29,93 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Huihui dense Qwen and catalog retirement (2026-10-22)
+
+**Serving integration passes on `gfx1151`, with a recorded xhigh task-quality
+miss.** The variant stays optional and does not replace regular Unsloth.
+
+Huihui's optional dense Qwen3.8 27B variant uses the exact
+`Huihui-Qwen3.8-27B-abliterated-UD-Q8_K_XL.gguf` from revision
+`1c69098e9c32db6dc06fc48f1d6cc75ad07da89e`. The normal installer verifies
+all 31,457,991,680 bytes against SHA-256
+`b4a19bbd0bb094d6a70f00b807955fd61606dd054f167a04a6599332c7827048`.
+Its own pinned card declares Apache-2.0 and distinguishes the Unsloth UD
+series from Swift, GSQ-RCO, DW and ternary variants.
+
+All metadata, tokenizer data, the embedded template and 866 tensor
+descriptors match the managed Unsloth Q8 file. Changed weight payloads have a
+separate artifact identity. The preset shares the regular dense model's
+managed template, reasoning controls, sampling policy, 256K context and F16
+KV. It deliberately does not use the embedded MTP heads. No new engine patch
+or template fork is added, and regular Flash-Next at xhigh remains the Maki
+default. Header compatibility does not establish equivalent task quality.
+
+The locally rebuilt image is `llama-cpp-ubuntu26.04-rocm10.1-e197cef-r59`,
+ID `bc5f15265c08610fb782b1a47430176847a7f99f3b851c52f4f529b01652ba86`.
+The source and thirteen patches are unchanged from the refresh below. This
+revision removes the unused KAT and TranslateGemma templates and their
+entrypoint allowlist entries. Dependency closure, all four compiled HIP
+target identities and actual CPU-only router startup pass. Only the three
+retained templates are present in the image.
+
+The ordinary ROCm gateway passes fifteen requests. Off, low, medium, xhigh
+and omitted-effort short answers, explicit sampler overrides, off/xhigh
+function-tool calls with complete assistant replay and a terminal stream all
+pass. Actual native generation settings agree with the gateway's six sampler
+observations. Off emits no reasoning text; omitted effort follows medium.
+Native child arguments retain four slots sharing a 262144-token F16 pool,
+without speculation.
+
+Three six-key retrieval answers at 32936 input tokens are exact, including a
+late history edit returning the updated value. The repeated prompt reuses
+32932 tokens. The edit fully reprocesses the history and still returns the
+correct replacement. There is no context or output-limit truncation. Minimum
+host available memory is 72.174 GiB, above the 8 GiB guard. This verifies
+256K allocation capacity with populated 32K requests, not near-ceiling
+retrieval quality.
+
+The separate Vulkan gateway passes the twelve-request short matrix with the
+same reasoning, sampling, tool replay and stream checks. No Vulkan 32K or
+near-ceiling quality claim follows from that shorter control.
+
+Native Maki 0.6.3 completes the off-mode file-tool task in four requests,
+including exact final-LF bytes and the correct final token. All four request
+reports confirm the six omitted samplers receiving non-thinking defaults.
+The xhigh task also performs the required read/write/read sequence and
+produces the correct file, but its final answer is `read` instead of the
+requested token. It fails the unchanged hidden-token oracle. The four
+xhigh native requests stay below the temporary output ceiling, and backend
+logs show no context truncation. The helper stops on the quality failure
+before collecting their request reports. Preserve the saved
+session and backend log rather than claiming complete request-report
+coverage or a universal client pass.
+No matched ordinary-Unsloth Maki control was run, so this single miss cannot
+be attributed specifically to abliteration.
+
+Only disposable Maki client metadata is capped to 16K context and 4096 output
+tokens. The backend remains at 256K. The native `--model` flag selects the
+candidate without changing the generated default. An earlier helper attempt
+stops before inference because it assumes quoted Lua instead of the export's
+long-bracket string. That failed probe is retained separately. Neither
+attempt changes production client configuration or relaxes the task oracle.
+
+KAT-Coder, Shisa V2.1, TranslateGemma and HY-MT1.5 are removed from the
+catalog, recipes, current guides and client inventory. The explicitly
+authorized cleanup on the acceptance host removes only their four verified GGUFs and empty
+immediate directories, freeing 148,579,663,072 bytes. Only their four receipt
+records are pruned. All other records, including the new Huihui receipt, are
+unchanged. The development host has no matching weights or records. Sessions, statistics,
+other models and historical evaluation evidence are preserved.
+
+Final kernel-journal and cleanup checks find no kernel events in the test
+window, leftover test container, inference process or test listener. Balanced
+platform policy and `balance_performance` CPU preference are unchanged.
+
+Exact commands, input snapshots, raw responses and receipts are retained
+under `build/huihui27-retirement-20261022/` on the development and test hosts.
+This integration does not accept another GPU architecture or establish a
+model-quality or speed advantage over ordinary Unsloth weights.
+
 ### Strix Halo llama.cpp source refresh (2026-10-22)
 
 **Refresh acceptance: PASS on `gfx1151`.** The paired ordinary-gateway
@@ -5091,6 +5178,7 @@ local source image.
 | Hunyuan I2V | `hunyuan-video-1.5-i2v-480p-step-distilled` | pending | pending | pending | pending |
 | llama.cpp offload smoke | `llama-qwen-qwen3-0.6b-q8-0` | pending | pending | pending | pending |
 | llama.cpp Qwen3.8 tool protocol | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, complete nested tool round trip at 256K with off, low, medium, and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
+| llama.cpp Huihui dense Qwen3.8 | `huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl`, ordinary dense policy without MTP | pending | pending | accepted 2026-10-22 for ROCm 32K retrieval and short Vulkan/API compatibility at 256K allocation; native Maki off passes, xhigh final-answer miss recorded | pending |
 | llama.cpp Huihui Flash-Next | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`, shared regular Flash-Next policy with off, low, medium and xhigh | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-10-16 on ROCm at 256K capacity and Vulkan at 32K input | ROCm N/P by model policy, Vulkan pending |
 | llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
 | llama.cpp Muse DFlash | `meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |

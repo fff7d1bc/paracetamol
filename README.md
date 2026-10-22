@@ -277,23 +277,8 @@ Use the managed router to serve several installed presets.
 ```
 
 The [llama.cpp guide](docs/guides/applications.md#llamacpp) explains presets,
-contexts, MTP, DFlash, translations, the terminal CLI, tool calling, and
-choosing between the managed Qwen variants. High-memory hosts can also install
-the KAT-Coder Q8 coding-agent candidate without changing the default.
-
-```bash
-./paracetamol content install llama-cpp kat-coder
-```
-
-For Japanese and English translation on a high-memory host, the separate
-Shisa V2.1 recipe installs the 70B Q8_0 model and requires acknowledgment of
-the Llama 3.3 terms.
-
-```bash
-./paracetamol content install llama-cpp shisa-v2.1 --accept-license
-./paracetamol run llama-cpp server \
-  --preset mradermacher-shisa-v2.1-llama3.3-70b-q8-0
-```
+contexts, MTP, DFlash, the terminal CLI, tool calling, and choosing between
+the managed Qwen variants.
 
 ## Everyday use
 

@@ -75,6 +75,14 @@ Flash-Next's template and runtime policy, with a separate artifact identity.
 Its missing license text is recorded as `NOASSERTION`, requiring explicit
 acknowledgment. Qwen3.6 is no longer in the managed catalog.
 
+Huihui dense Qwen3.8 27B abliterated UD-Q8_K_XL is another optional exact
+bundle, separate from the ordinary Unsloth recipe. It shares the dense Qwen
+template, reasoning, sampling and 256K runtime policy without MTP. This
+repository's pinned model card declares Apache-2.0. KAT-Coder, Shisa V2.1,
+TranslateGemma and HY-MT1.5 are retired. Their unused templates and the
+Llama 3.3 and Tencent HY agreements are removed. Gemma terms remain for the
+ComfyUI text encoder that still needs them.
+
 ## Import policy
 
 New artifacts must be traced to their direct source and immutable revision.

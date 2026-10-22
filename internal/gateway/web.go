@@ -132,10 +132,6 @@ func modelPresentation(id string) (name, family, publisher string) {
 		{"qwen3.8-27b-", "Qwen 3.8 27B"},
 		{"muse-glimmer-", "Muse Glimmer"},
 		{"gemma4-", "Gemma 4"},
-		{"kat-coder-", "KAT Coder"},
-		{"shisa-", "Shisa"},
-		{"translategemma-", "TranslateGemma"},
-		{"hy-mt", "HY-MT"},
 		{"qwen3-", "Qwen 3"},
 	} {
 		if strings.HasPrefix(name, group[0]) {

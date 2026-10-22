@@ -30,8 +30,7 @@ comfyui
   image  edit  t2v  i2v
 llama-cpp
   qwen3.8  qwen3.8-flash-next
-  kat-coder  muse-glimmer
-  shisa-v2.1  translation-gemma  translation-hy
+  muse-glimmer
 ```
 
 Install interactively, or select one recipe explicitly:
@@ -43,12 +42,11 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol content install llama-cpp muse-glimmer
-./paracetamol content install llama-cpp shisa-v2.1 --accept-license
-./paracetamol content install llama-cpp translation-gemma --accept-license
 ```
 
-Qwen3.6 has been retired from the managed catalog. Old downloads are left
-in place, but no longer appear in the gateway or generated client lists.
+Qwen3.6, KAT-Coder, Shisa V2.1, TranslateGemma, and HY-MT1.5 have been retired
+from the managed catalog. Old downloads are left in place, but no longer
+appear in the gateway or generated client lists.
 
 The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
 That file contains the dense 27B target and its trained MTP prediction heads,
@@ -68,6 +66,18 @@ second quantization:
 Its base and embedded-MTP presets start at a reviewed 128K context for more
 constrained hardware. The smaller quantization is optional and never
 changes the managed-client default.
+
+The optional Huihui dense 27B abliterated UD-Q8_K_XL also stays outside the
+guided recipe. It is a full 29.30 GiB Unsloth-derived weight file with a
+separate publisher-prefixed identity, not a Swift model or an in-place edit:
+
+```bash
+./paracetamol content install llama-huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl
+```
+
+It shares regular dense Qwen's template, reasoning and sampling policy at
+256K with F16 KV and no MTP. Its pinned card declares Apache-2.0. It remains
+non-default. See the [application guide](applications.md#choosing-a-managed-qwen-preset).
 
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
 Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a

@@ -121,6 +121,14 @@ revisions recorded in `catalog/catalog.json`.
   from base-model revision
   `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`; it changes the omitted-effort
   fallback from native xhigh to native medium.
+- Huihui Qwen3.8 27B abliterated UD-Q8_K_XL is downloaded from
+  `huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF` at
+  `1c69098e9c32db6dc06fc48f1d6cc75ad07da89e`. That repository's pinned
+  model card declares Apache-2.0 and identifies Unsloth's UD conversion as
+  its source, separately from Swift and other series in the same repository.
+  Its modified weights have a separate size/hash identity and reuse the
+  managed dense Qwen3.8 template. Paracetamol does not redistribute weights
+  or claim that abliteration preserves the original model's quality.
 - Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL is downloaded in four shards
   from one full pinned Unsloth revision.
   That repository declares the Qwen
@@ -140,14 +148,6 @@ revisions recorded in `catalog/catalog.json`.
   gate. The official Qwen license is recorded as lineage only. Every shard
   has its own size and SHA-256 pin. Paracetamol does not redistribute the
   weights, and uses its existing Qwen3.8 template without modification.
-- KAT-Coder V2.5 Dev Q8_0 is downloaded from one full pinned Bartowski GGUF
-  revision derived from Kwaipilot's public text-only checkpoint. The
-  conversion repository declares Apache-2.0 and records its upstream model
-  lineage. Paracetamol records the exact size and SHA-256 and does not
-  redistribute the model. The llama.cpp image includes Kwaipilot's Apache-2.0
-  chat template from base-model revision
-  `3a7d874090df0cd4399401982eca67df2c5a7e82`, which accepts non-leading system
-  messages instead of rejecting the agent conversation.
 - The managed Gemma 4 31B IT Q8_0 target and matching Q8_0 MTP draft are
   downloaded together from one full pinned llama.cpp project revision. The
   repository declares Apache-2.0. Paracetamol records both files' exact sizes
@@ -159,22 +159,6 @@ revisions recorded in `catalog/catalog.json`.
   Muse Glimmer ATEM chat template from base-model revision
   `a4e59da52a7bc87ae7251dd5545c0dd437c44b68` so the unchanged GGUF receives
   Meta's later duplicate-reasoning-directive correction.
-- Tencent's official HY-MT1.5 7B Q8_0 GGUF is downloaded from one full pinned
-  revision under the Tencent HY Community License. That license excludes the
-  EU, United Kingdom, and South Korea from its territory. Paracetamol requires
-  explicit terms acceptance and does not redistribute the weights.
-- TranslateGemma 27B Q8_0 is downloaded from one full pinned
-  `mradermacher/translategemma-27b-it-GGUF` revision. The repository declares
-  the Gemma license and identifies Google's TranslateGemma 27B instruction
-  model as its base. Paracetamol requires acceptance of the Gemma terms, adds a
-  string-only Gemma turn adapter for manually prompted text translation, and
-  does not redistribute the weights.
-- Shisa V2.1 Llama 3.3 70B Q8_0 is downloaded from one full pinned
-  `mradermacher/shisa-v2.1-llama3.3-70b-GGUF` revision. The conversion
-  repository declares the Llama 3.3 license and identifies Shisa V2.1 Llama
-  3.3 70B as its base. Paracetamol records the exact size and SHA-256, requires
-  acceptance of the Llama 3.3 Community License Agreement, and does not
-  redistribute the weights.
 - lightx2v's Wan 2.2 Lightning LoRAs declare Apache-2.0. The Comfy-Org
   FP8/FP16 repack used by optional ComfyUI Wan bundles does not currently
   declare a license. Paracetamol records it as `NOASSERTION`, retains its

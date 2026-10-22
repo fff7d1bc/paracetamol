@@ -36,6 +36,16 @@ func TestQwen36RecipeIsRetired(t *testing.T) {
 	}
 }
 
+func TestRetiredTextRecipesAreUnavailable(t *testing.T) {
+	for _, id := range []string{"kat-coder", "shisa-v2.1", "translation-gemma", "translation-hy"} {
+		t.Run(id, func(t *testing.T) {
+			if _, err := Find("llama-cpp", id); err == nil {
+				t.Fatal("retired recipe remains selectable")
+			}
+		})
+	}
+}
+
 func TestDwarfStarRecipesAreRetired(t *testing.T) {
 	if IsApplication("dwarfstar") {
 		t.Fatal("retired application remains selectable")
