@@ -377,7 +377,7 @@ It rejects conflicting reasoning selectors before scheduling. Policy fields
 are a closed numeric allowlist with range checks, not arbitrary request
 overrides. Direct engine startup and router INI files do not carry the policy.
 
-Qwen3.8's dense MTP and non-MTP variants share their family policy.
+Qwen3.8's dense variants share their family policy.
 Regular and Huihui Flash-Next share one policy with thinking min-p 0.05.
 Generated clients omit static tuples for these
 models so every request can select its own thinking mode. Direct benchmark
@@ -402,13 +402,11 @@ installed presets, ignores wholly missing target families or an absent
 optional separate draft beside verified targets, and refuses partial
 managed installs.
 
-The public llama.cpp recipes include the single-artifact Qwen3.8 dense target
-with optional embedded-MTP runtime and Muse Glimmer's one Dynamic
-target/draft pair. The Unsloth Flash-Next conversion
-keeps its own recipe because it has a distinct architecture and memory policy.
-Muse's forced-256K DFlash preset is the recipe launch; its 128K base and DFlash
-controls share the installed pair. Regular Flash-Next at xhigh is the
-exported Maki default when advertised by the gateway. This harness preference
+The public llama.cpp recipes include the single-artifact plain Qwen3.8 dense
+target and the Unsloth Flash-Next target with its shared Inco DFlash2 draft.
+Flash-Next keeps its own recipe because it has a distinct architecture and
+memory policy. Regular Flash-Next DFlash2 at xhigh is the exported Maki
+default when advertised by the gateway. This harness preference
 does not change the catalog or template's medium HTTP fallback. Huihui's
 abliterated v2 is a separate exact bundle and preset, using the same template,
 sampling and runtime policy without joining the regular recipe download.
@@ -416,9 +414,11 @@ The optional Huihui dense 27B abliterated UD-Q8_K_XL follows the same rule,
 sharing the regular dense non-MTP policy and its sampling-policy reference.
 Its exact pinned model card declares Apache-2.0 independently of the
 Flash-Next variant's unresolved licensing.
-Qwen3.6 is retired. Unrelated models retain separate family recipes instead
+Qwen3.6, Muse Glimmer and dense Qwen MTP aliases are retired. The generic MTP
+schema remains for the separately maintained Gemma preset.
+Unrelated models retain separate family recipes instead
 of being grouped under a subjective coding role.
-Non-MTP dense Qwen controls, the smoke-test
+Plain dense Qwen controls, the smoke-test
 model, and other deliberately large models remain exact bundles and presets
 rather than multiplying beginner choices.
 The mandatory internal `all` and `llama` tags still support the literal global

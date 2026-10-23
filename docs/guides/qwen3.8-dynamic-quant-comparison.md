@@ -15,9 +15,10 @@
 The preset IDs shown below use the current `unsloth-` prefix for convenience.
 The original runs used the same GGUF publisher before IDs exposed provenance.
 
-Default recommendations below describe this dense-model comparison. As of
-2026-10-16, managed Pi and Maki prefer regular Flash-Next at xhigh when it is
-available. That later preference does not change these measurements.
+Default recommendations below describe this historical dense-model comparison.
+The MTP preset IDs used in these runs are now retired. Maki prefers regular
+Flash-Next DFlash2 at xhigh when available. These later policy changes do not
+change the original inputs, task outcomes or measurements below.
 
 This page compares Paracetamol's two managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind

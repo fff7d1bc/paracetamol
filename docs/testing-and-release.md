@@ -272,8 +272,8 @@ to the keep-id process, `/tmp/comfy` must be writable, and persistent files
 must retain the private host mask.
 
 The llama.cpp router check requires `content install llama-cpp qwen3.8`,
-but does not load a model. Confirm `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl` and
-`unsloth-qwen3.8-27b-ud-q8-k-xl` are present and unloaded.
+but does not load a model. Confirm `unsloth-qwen3.8-27b-ud-q8-k-xl` is present
+and unloaded. Retired dense Qwen MTP and Muse IDs must not be advertised.
 The pinned upstream router may also advertise its reserved empty `default`
 preset; that is not managed content and should not be selected during the
 smoke test.
@@ -413,8 +413,8 @@ must not change the exported authority.
 
 Use separately installed Maki 0.6.3 or newer for the optional transport fixture
 above. Qwen3.8 supports off, low, medium and xhigh. Unsupported high snaps to
-medium, and Muse off clamps to low. Adaptive follows each model's exported
-preference. Regular Flash-Next defaults to xhigh while Huihui and dense Qwen3.8
+medium. Adaptive follows each model's exported preference. Regular Flash-Next,
+with or without DFlash2, defaults to xhigh while Huihui and dense Qwen3.8
 remain medium. HTTP calls without reasoning retain the catalog medium fallback.
 Use Maki's native `always_thinking` Lua setting in print-mode tests. Its hidden
 `--thinking` flag is accepted but ignored in the tested release.

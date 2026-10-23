@@ -165,7 +165,7 @@ func TestInspectRequestRecognizesNestedHarnessControlsWithoutEnforcement(t *test
 		name, body, field, value string
 	}{
 		{"maki toggle", `{"model":"qwen","chat_template_kwargs":{"enable_thinking":false}}`, "chat_template_kwargs.enable_thinking", "false"},
-		{"pi strength", `{"model":"muse","chat_template_kwargs":{"reasoning_strength":"high","preserve_thinking":true}}`, "chat_template_kwargs.reasoning_strength", "high"},
+		{"native strength", `{"model":"fixture","chat_template_kwargs":{"reasoning_strength":"high","preserve_thinking":true}}`, "chat_template_kwargs.reasoning_strength", "high"},
 		{"nested effort", `{"model":"qwen","chat_template_kwargs":{"reasoning_effort":"medium"}}`, "chat_template_kwargs.reasoning_effort", "medium"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

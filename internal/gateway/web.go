@@ -120,7 +120,7 @@ func (server *Server) webData(w http.ResponseWriter, r *http.Request) {
 // labels never influence eligibility, routing, licenses or reasoning policy.
 func modelPresentation(id string) (name, family, publisher string) {
 	name, family, publisher = id, "Other models", "Unspecified"
-	for _, prefix := range []string{"huihui-ai", "meta-models", "ggml-org", "mradermacher", "unsloth", "bartowski", "tencent", "qwen"} {
+	for _, prefix := range []string{"huihui-ai", "ggml-org", "mradermacher", "unsloth", "bartowski", "tencent", "qwen"} {
 		if strings.HasPrefix(id, prefix+"-") {
 			publisher = prefix
 			name = strings.TrimPrefix(id, prefix+"-")
@@ -130,7 +130,6 @@ func modelPresentation(id string) (name, family, publisher string) {
 	for _, group := range [][2]string{
 		{"qwen3.8-flash-next-", "Qwen 3.8 Flash-Next"},
 		{"qwen3.8-27b-", "Qwen 3.8 27B"},
-		{"muse-glimmer-", "Muse Glimmer"},
 		{"gemma4-", "Gemma 4"},
 		{"qwen3-", "Qwen 3"},
 	} {

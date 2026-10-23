@@ -87,13 +87,13 @@ var commandExampleArguments = map[string][][]string{
 	"status":      {{"status"}, {"status", "llama-cpp"}, {"status", "gateway"}, {"status", "gateway", "--requests", "10"}},
 	"run comfyui": {{"run", "comfyui"}, {"run", "comfyui", "--", "--enable-manager"}, {"run", "comfyui", "--listen", "127.0.0.1", "--detach"}},
 	"run llama-cpp server": {
-		{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"},
+		{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"},
 		{"run", "llama-cpp", "server", "--router", "--models-max", "2"},
 		{"run", "llama-cpp", "server", "--model", "/path/to/model.gguf"},
 	},
 	"run llama-cpp cli": {
 		{"run", "llama-cpp", "cli", "--model", "/path/to/model.gguf"},
-		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--prompt", "Hello"},
+		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2", "--prompt", "Hello"},
 	},
 	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp"}, {"run", "gateway", "--port", "18080"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},
@@ -116,7 +116,7 @@ var commandExampleArguments = map[string][][]string{
 	"benchmark comfyui run":           {{"benchmark", "comfyui", "run", "BUNDLE", "--dry-run"}},
 	"benchmark comfyui suite":         {{"benchmark", "comfyui", "suite", "--family", "qwen", "--dry-run"}},
 	"benchmark llama-cpp throughput":  {{"benchmark", "llama-cpp", "throughput", "--preset", "qwen-qwen3-0.6b-q8-0", "--dry-run"}},
-	"benchmark llama-cpp speculative": {{"benchmark", "llama-cpp", "speculative", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "--dry-run"}},
+	"benchmark llama-cpp speculative": {{"benchmark", "llama-cpp", "speculative", "--preset", "ggml-org-gemma4-31b-it-q8-0-mtp", "--dry-run"}},
 	"benchmark report":                {{"benchmark", "report", "SUITE.json"}},
 }
 

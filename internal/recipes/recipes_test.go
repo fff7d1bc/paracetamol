@@ -10,11 +10,11 @@ func TestFlashNextRecipeUsesAcceptedQ4KXLVariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantBundles := []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}
+	wantBundles := []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"}
 	if !reflect.DeepEqual(recipe.Bundles, wantBundles) {
 		t.Fatalf("bundles = %v, want %v", recipe.Bundles, wantBundles)
 	}
-	wantNext := "./paracetamol run llama-cpp server --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"
+	wantNext := "./paracetamol run llama-cpp server --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"
 	if got := recipe.NextCommand(); got != wantNext {
 		t.Fatalf("next command = %q, want %q", got, wantNext)
 	}
@@ -28,6 +28,9 @@ func TestQwen38RecipeKeepsDenseSelection(t *testing.T) {
 	if !reflect.DeepEqual(qwen.Bundles, []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}) {
 		t.Fatalf("Qwen dense bundles = %v", qwen.Bundles)
 	}
+	if got := qwen.NextCommand(); got != "./paracetamol run llama-cpp server --preset unsloth-qwen3.8-27b-ud-q8-k-xl" {
+		t.Fatalf("dense recipe must launch without MTP: %s", got)
+	}
 }
 
 func TestQwen36RecipeIsRetired(t *testing.T) {
@@ -37,7 +40,7 @@ func TestQwen36RecipeIsRetired(t *testing.T) {
 }
 
 func TestRetiredTextRecipesAreUnavailable(t *testing.T) {
-	for _, id := range []string{"kat-coder", "shisa-v2.1", "translation-gemma", "translation-hy"} {
+	for _, id := range []string{"kat-coder", "shisa-v2.1", "translation-gemma", "translation-hy", "muse-glimmer"} {
 		t.Run(id, func(t *testing.T) {
 			if _, err := Find("llama-cpp", id); err == nil {
 				t.Fatal("retired recipe remains selectable")

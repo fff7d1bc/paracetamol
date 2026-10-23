@@ -49,10 +49,11 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   authoritative sampling differs between thinking and non-thinking requests.
 
 Managed DFlash uses explicit greedy proposals, independently of the target's
-gateway sampling. Optional Flash-Next `-dflash2` bundles reuse the existing
+gateway sampling. Flash-Next `-dflash2` bundles reuse the existing
 target shards and add one shared pinned Inco Q8_0 draft. They are limited to
-the accepted ROCm Strix Halo tuple at depth three and do not replace the
-ordinary non-speculative recipe or Maki default.
+the accepted ROCm Strix Halo tuple at depth three. The regular Flash-Next
+DFlash2 bundle is the recipe launch and Maki default at xhigh. Plain
+Flash-Next remains available without speculation.
 
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination
@@ -86,7 +87,9 @@ bundle, separate from the ordinary Unsloth recipe. It shares the dense Qwen
 template, reasoning, sampling and 256K runtime policy without MTP. This
 repository's pinned model card declares Apache-2.0. KAT-Coder, Shisa V2.1,
 TranslateGemma and HY-MT1.5 are retired. Their unused templates and the
-Llama 3.3 and Tencent HY agreements are removed. Gemma terms remain for the
+Llama 3.3 and Tencent HY agreements are removed. Muse Glimmer and dense Qwen
+MTP aliases are also retired, including Muse's unused image template.
+Existing GGUFs are not deleted. Gemma terms remain for the
 ComfyUI text encoder that still needs them.
 
 ## Import policy

@@ -29,7 +29,63 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Flash-Next DFlash2 default and model retirement (2026-10-23)
+
+Regular Unsloth Flash-Next greedy DFlash2 becomes the recommended Maki model
+at xhigh after the managed checks below and field testing. Plain regular
+Flash-Next remains the first fallback and keeps its existing adaptive xhigh
+preference. Plain dense Q8 is next, at medium. Raw HTTP requests without
+reasoning still use medium. No target bytes, templates, sampler values, F16
+KV or matrix precision change with this client preference.
+
+The locally built image is `llama-cpp-ubuntu26.04-rocm10.1-280141e-r62`, ID
+`a897d5157c5c19832ac13568f5c43669c75fc3b28423a59c856a99e731719206`.
+It removes the unused Muse template and its exact entrypoint allowlist value.
+The source remains `280141e6d4769b1e4424de999437cc72ffac33d6` with thirteen
+patches. Three native executables and the selected native libraries match
+`r61` byte for byte. Dependency closure and `pip check` pass.
+
+Muse content, presets, recipe, image template and client presentation are
+retired. Dense Qwen MTP aliases are also retired, while plain Unsloth Q8,
+Q4 and Huihui Q8 retain their targets and contexts. Their existing Strix Halo
+F16 KV precision is made explicit. The unrelated Gemma MTP path remains.
+Existing managed GGUFs and receipts are left untouched. Historical
+observations below are not current recipes.
+
+The separate [dense 27B DFlash2
+retest](qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23)
+uses the ordinary gateway with independently checked native samplers and
+no INI rewrites. Plain and greedy depth-three Q8 pass the short and populated
+32K protocol/retrieval/edit gates, but DFlash does not produce a useful
+fixed-work speedup. Depth seven also retains very low draft acceptance in
+the short screen. Q4 and Huihui Q8 likewise pass their short checks with
+low acceptance and slower matched thinking requests. None of these dense
+speculative choices is added. This does not invalidate the accepted Flash-Next
+pair, which uses a different draft and architecture. Private evidence remains
+under `build/dense-dflash-20261023/`.
+
+Final acceptance uses the normal 64-artifact, 45-bundle, nine-preset catalog,
+with all temporary dense speculative entries removed. Native Maki 0.6.3
+completes one real authorized synthetic Bash call and the exact final answer
+in two turns on the preferred regular Flash-Next DFlash2 preset. Both turns
+request xhigh, native thinking is retained, and reports confirm all six
+omitted sampler fields receive the Flash-Next gateway defaults. Disposable configuration is fetched
+from the normal export. No user configuration or sessions are changed.
+This native screen complements the earlier API replay/truncation checks,
+rather than proving raw wire history or input truncation itself.
+
+The CPU-only router passes health, matching native/OpenAI inventories,
+unloaded models, read-only confinement, zero capabilities, no GPU devices,
+loopback-only publication and exact normal stop. The built image contains no
+Muse template. Full host checks, static builds and native Maki fake-wire tests
+pass, along with focused gateway/client/catalog/runtime race tests. All test
+containers, gateways and listeners are gone afterward. The final kernel
+window has no GPU fault, reset, SVM mapping failure, process trap or OOM event.
+No host configuration or power settings change. The acceptance host is left idle.
+
 ### Optional Flash-Next greedy DFlash2 presets (2026-10-23)
+
+This initial optional rollout predates the default promotion above.
 
 The optional regular Unsloth and Huihui abliterated-v2 `-dflash2` presets use
 the locally built image `llama-cpp-ubuntu26.04-rocm10.1-280141e-r61`, ID

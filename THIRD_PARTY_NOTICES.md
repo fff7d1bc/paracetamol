@@ -150,7 +150,7 @@ revisions recorded in `catalog/catalog.json`.
   gate. The official Qwen license is recorded as lineage only. Every shard
   has its own size and SHA-256 pin. Paracetamol does not redistribute the
   weights, and uses its existing Qwen3.8 template without modification.
-- The optional Flash-Next DFlash2 presets share Inco AI's Q8_0 draft from
+- The Flash-Next DFlash2 presets share Inco AI's Q8_0 draft from
   `incoai/Qwen3.8-Flash-Next-DFlash2-GGUF` at
   `4f5a39be8f0a9e9a573ac9824251830a8f4096d9`. Its own pinned model card
   declares Apache-2.0 and identifies
@@ -162,13 +162,6 @@ revisions recorded in `catalog/catalog.json`.
   downloaded together from one full pinned llama.cpp project revision. The
   repository declares Apache-2.0. Paracetamol records both files' exact sizes
   and SHA-256 hashes and does not redistribute them.
-- Muse Glimmer 30B dynamic K-quant and its DFlash k-quant draft are downloaded
-  together from one full pinned Meta GGUF revision. The repository declares
-  Apache-2.0. Paracetamol records both files' exact sizes and SHA-256 hashes and
-  does not redistribute them. The llama.cpp image includes Meta's Apache-2.0
-  Muse Glimmer ATEM chat template from base-model revision
-  `a4e59da52a7bc87ae7251dd5545c0dd437c44b68` so the unchanged GGUF receives
-  Meta's later duplicate-reasoning-directive correction.
 - lightx2v's Wan 2.2 Lightning LoRAs declare Apache-2.0. The Comfy-Org
   FP8/FP16 repack used by optional ComfyUI Wan bundles does not currently
   declare a license. Paracetamol records it as `NOASSERTION`, retains its

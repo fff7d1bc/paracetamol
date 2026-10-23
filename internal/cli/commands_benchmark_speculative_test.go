@@ -61,14 +61,17 @@ func TestSpeculativeSweepRejectsStreamedPresetsBeforeHostResolution(t *testing.T
 }
 
 func TestSpeculativeSweepKeepsResidentDFlashEligible(t *testing.T) {
-	managed, err := catalog.Load(filepath.Join("..", "..", "catalog", "catalog.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Generic resident decoding stays eligible independently of which model
+	// families have passed hardware acceptance and remain in the real catalog.
+	managed := catalog.Catalog{LlamaPresets: map[string]catalog.LlamaPreset{
+		"resident-dflash-fixture": {ID: "resident-dflash-fixture", DefaultContext: 262144,
+			SpeculativeType: "draft-dflash", DraftTokens: 3, AgentTools: true,
+			DraftArtifact: "draft-fixture", ModelLoad: map[string]string{"strix-halo": catalog.LlamaModelLoadResident}},
+	}}
 	runner := &commandRunner{}
 	app, _, _ := testApp(t, runner)
 	app.catalog = &managed
-	err = app.Dispatch([]string{"benchmark", "llama-cpp", "speculative", "--preset", "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "--profile", "invalid", "--dry-run"})
+	err := app.Dispatch([]string{"benchmark", "llama-cpp", "speculative", "--preset", "resident-dflash-fixture", "--profile", "invalid", "--dry-run"})
 	var controlled *controlerr.Error
 	if !errors.As(err, &controlled) || controlled.Status != 2 || controlled.Message != "speculative sweeps require a valid GPU profile" || len(runner.commands) != 0 {
 		t.Fatalf("resident DFlash no longer reaches ordinary sweep validation: %v", err)

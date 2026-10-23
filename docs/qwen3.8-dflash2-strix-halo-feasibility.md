@@ -1,17 +1,140 @@
 # Qwen3.8 DFlash2 llama.cpp Strix Halo feasibility snapshot
 
 This maintainer research record covers the October 23 Flash-Next evaluation,
-its optional-preset follow-up and the original August 23 dense-27B experiment
-on Fedora 44 Strix Halo. The two architectures use different draft models.
-The regular non-speculative Flash-Next remains the default.
+its default promotion, the dense-27B retest and the original August 23
+experiment on Fedora 44 Strix Halo. The two architectures use different
+draft models.
+Regular Flash-Next with greedy DFlash2 is now the Maki default at xhigh.
+Plain Flash-Next remains available as a fallback and parallel-throughput
+alternative. The sections below retain the earlier decisions and measurements.
 
 This document is historical, machine-specific evidence rather than a current
 support or performance declaration. Inspect `Containerfile`, the catalog,
 source, and current hardware-acceptance records for active policy.
 
+## Default promotion and model retirement (2026-10-23)
+
+Following the managed-path checks below and subsequent field use, regular
+Flash-Next DFlash2 becomes the recommended Maki model at xhigh. This changes
+the client preference and guided Flash-Next bundle, not the target GGUF,
+template, six sampler defaults, F16 KV or matrix precision. HTTP callers that
+omit reasoning still receive medium. Plain Flash-Next and plain dense Q8
+are the ordered client fallbacks. Plain regular Flash-Next keeps adaptive
+xhigh, while dense Q8 remains medium.
+
+The measured memory and four-client throughput costs remain relevant. This
+promotion is a workflow choice, not a claim that DFlash wins at every
+concurrency. Probabilistic proposals are still not exposed. Muse Glimmer and
+dense Qwen MTP aliases are retired from the active catalog and client
+configuration. Their older observations below are historical evidence.
+Managed GGUF files are left untouched.
+
+## Dense 27B retest (2026-10-23)
+
+**Do not add dense DFlash2 presets.** All three targets pass the short
+protocol and exact-answer gates, but none demonstrates a useful speed
+benefit on this ROCm Strix Halo tuple. Keep plain Unsloth Q8, Dynamic v3 Q4
+and Huihui Q8 available without speculation. Dense Qwen MTP aliases are
+retired independently. The successful Flash-Next draft is unaffected.
+
+The dense drafter is a different model from the successful Flash-Next draft.
+This retest uses the publisher's current Q8_0 GGUF from
+[`incoai/Qwen3.8-27B-DFlash2-GGUF`](https://huggingface.co/incoai/Qwen3.8-27B-DFlash2-GGUF/tree/144eb06583b4fb0b6e54bc814b16a206a240f4d2),
+revision `144eb06583b4fb0b6e54bc814b16a206a240f4d2`, filename
+`Qwen3.8-27B-DFlash2-Q8_0.gguf`, 2056414816 bytes, SHA-256
+`651a1b2930c9825080480f79cf38057e681c9b175d580a357c14f67cf77ccf49`.
+Its own pinned card declares Apache-2.0. These are not the August draft bytes.
+Normal installation creates its verification receipt, and an independent
+full-file hash confirms the downloaded bytes. The installed header contains
+the corrected M-RoPE dimension sections, which the pinned loader reads.
+
+The image is `280141e-r62`, ID
+`a897d5157c5c19832ac13568f5c43669c75fc3b28423a59c856a99e731719206`.
+It removes Muse's unused template without changing the source pin, thirteen
+patches, three native executable hashes or selected native-library hashes
+from `r61`. Dependency closure and `pip check` pass. The hardware remains
+Fedora 44, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 and ROCm 10.1.
+
+Both arms use the ordinary receipt-backed gateway and normal generated router
+configuration, without INI hooks. Dense Q8 retains its 262144-token unified
+pool, four slots, ordinary resident loading, explicit F16 target K/V and
+unchanged matrix precision. Only one client generates at a time. The clients
+omit all six samplers. Reports and native settings independently confirm
+thinking temperature 1, top-p 0.95, top-k 20, min-p 0, presence penalty 0 and
+repeat penalty 1. Off receives the dense non-thinking tuple instead.
+The Flash-Next min-p 0.05 policy is not copied onto dense Qwen.
+
+Plain Q8 and greedy depth-three DFlash each pass ten short checks covering
+off and xhigh, nested tools, replay of their complete own assistant messages,
+streaming and a repeated prefix. Native prompts and controls match. Both also
+recover all six exact values twice at 32977 input tokens and return the
+correct changed value after a separate medium-effort history edit. None of
+these quality answers is truncated. The known object-form `tool_choice`
+fallback warnings remain, so this is not complete forced-tool API acceptance.
+
+The 32K fixed-work timing requests each generate exactly 256 tokens at xhigh.
+These deliberately length-limited requests include reasoning and are timing
+work, not completed-task quality scores. The first evaluates 506 tokens after
+32461 cached tokens. The identical repeat evaluates four tokens after 32963
+cached tokens. Corresponding inputs, native prompts, controls and cache
+counts match across arms.
+
+| Dense Q8 mode | First HTTP request | Cached repeat | Accepted proposals, first / repeat |
+| --- | ---: | ---: | --- |
+| No speculation | 46.759 s | 43.605 s | Not applicable |
+| Greedy DFlash, depth 3 | 47.508 s | 45.181 s | 30/672 (4.46%) / 25/684 (3.65%) |
+
+DFlash is 1.6% and 3.6% slower in this pair. Cold retrieval prefill takes
+110.756 seconds versus 107.429 seconds without speculation. Minimum sampled
+available memory is 66.554 versus 71.872 GiB. These are single, fixed-order
+measurements, not a stable regression estimate or a useful speedup. The short
+screen also has low draft acceptance, 20/627 proposals across ten requests.
+Coherent output alone therefore does not establish useful dense speculation.
+
+A separate short screen uses the publisher's depth-seven recommendation,
+feeding the complete trained eight-token draft block. It again passes all
+ten quality and protocol checks with matching native prompts and controls,
+but accepts only 29/1400 proposals (2.07%). Depth three accepts 20/627
+(3.19%) on the same short cases. Several comparable thinking requests take
+longer at depth seven, although not every short request is slower. This is
+not a second fixed-work 32K benchmark, and it does not rescue the candidate.
+
+The Unsloth Dynamic v3 Q4 target and its greedy depth-three counterpart also
+pass their ten short checks at the unchanged 131072-token pool. Draft
+acceptance is 24/633 (3.79%). Matched 28-token xhigh sentinel requests take
+2.711 seconds without speculation and 3.407 seconds with it. Matched
+36-token SSE requests take 3.402 and 4.063 seconds. These are small individual
+observations, but offer no reason to expand the candidate to deeper tests.
+The xhigh own-history replay has different inputs because the preceding
+assistant generated different reasoning lengths, so that replay is not a
+matched performance comparison. Both full histories still pass their exact
+answer oracle. Minimum sampled available memory is 93.535 versus 88.512 GiB.
+
+Huihui's dense Q8 pair passes the same ten checks with 18/540 accepted
+proposals (3.33%). Matched 33-token xhigh sentinel requests take 5.070 seconds
+plain and 5.618 seconds with greedy drafting. Matched 26-token SSE requests
+take 4.115 and 4.500 seconds. Minimum sampled available memory is 73.249
+versus 67.690 GiB. Its own-history replay also has different input lengths
+because the preceding reasoning differs, so that case is not used for a
+matched speed claim. It still returns the exact tool value in both modes.
+
+These small screens justify stopping, not a claim that DFlash2 is universally
+broken or that every short request is slower. No dense ceiling, native Maki,
+concurrent-client, Vulkan or other-GPU acceptance is performed. Revisit after
+a material draft or implementation change, starting with the same shallow
+gateway checks before investing in long contexts. Temporary catalog entries
+are removed. The downloaded research draft and raw evidence are retained.
+
+All completed source guards, generated-router checks and normal cleanup pass.
+The extra-draft fitting premeasurement warning is retained. It falls back to
+fitting without that measurement and does not prevent actual draft loading
+or generation. Selecting `ROCm0` for target and draft is not proof of every
+tensor's placement. Private evidence remains under
+`build/dense-dflash-20261023/`. No Vulkan or other-GPU result is implied.
+
 ## Optional greedy preset follow-up (2026-10-23)
 
-**Greedy DFlash2 is an optional choice, not the new default.** Regular
+**Initial integration decision, before the promotion above.** Regular
 Unsloth Flash-Next remains the recommended model at xhigh. Probabilistic
 drafting is not exposed. The initial measurements below still apply to its
 tradeoffs. Greedy helps some single-request decode work, does not accelerate
@@ -25,7 +148,7 @@ reasoning preservation, gateway-owned missing sampler defaults, normal matrix
 precision, F16 KV and the 262144-token pool. They explicitly select greedy
 proposals at depth three. They are accepted only on ROCm Strix Halo, not
 Vulkan, RDNA 4 or Strix Point. Installation and selection are described in
-the [application guide](guides/applications.md#optional-greedy-dflash2).
+the [application guide](guides/applications.md#greedy-flash-next-dflash2).
 
 ### Managed-path checks
 

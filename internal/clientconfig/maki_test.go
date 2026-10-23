@@ -97,20 +97,23 @@ func TestMakiEmptyInventoryAndFallback(t *testing.T) {
 			t.Fatal("empty eligible inventory accepted")
 		}
 	}
-	models := []textmodel.Model{{ID: "a-optional", AgentTools: true}, {ID: "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", AgentTools: true}}
-	selected, err := DefaultModel(models)
-	if err != nil || selected.ID != models[1].ID {
-		t.Fatalf("fallback=%v err=%v", selected, err)
+	models := []textmodel.Model{{ID: "a-optional", AgentTools: true}}
+	for _, id := range []string{"unsloth-qwen3.8-27b-ud-q8-k-xl", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl", RecommendedModel} {
+		models = append(models, textmodel.Model{ID: id, AgentTools: true})
+		selected, err := DefaultModel(models)
+		if err != nil || selected.ID != id {
+			t.Fatalf("fallback=%v want=%s err=%v", selected, id, err)
+		}
 	}
 	if _, err := Maki(models, "https://user:secret@example/v1", true); err == nil {
 		t.Fatal("credential-bearing URL accepted")
 	}
 }
 
-func TestMakiFlashNextDFlash2ExportsKeepNonSpeculativeDefault(t *testing.T) {
+func TestMakiDFlash2ExportsPreferAcceptedFlashNext(t *testing.T) {
 	const baseID = "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"
-	if RecommendedModel != baseID {
-		t.Fatalf("optional speculation displaced the recommended control: %s", RecommendedModel)
+	if RecommendedModel != baseID+"-dflash2" {
+		t.Fatalf("recommended model did not select Flash-Next DFlash2: %s", RecommendedModel)
 	}
 	models := catalogModels(t)
 	byID := make(map[string]textmodel.Model)
@@ -118,17 +121,20 @@ func TestMakiFlashNextDFlash2ExportsKeepNonSpeculativeDefault(t *testing.T) {
 		byID[model.ID] = model
 	}
 	variants := []string{
-		baseID + "-dflash2",
+		RecommendedModel,
 		"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2",
 	}
 	for _, modelID := range variants {
 		t.Run(modelID, func(t *testing.T) {
 			model, ok := byID[modelID]
 			if !ok || !model.AgentTools {
-				t.Fatal("missing optional agent model")
+				t.Fatal("missing DFlash2 agent model")
 			}
 			wantFields := map[string]any{}
 			for mode, effort := range map[string]string{"adaptive": "medium", "off": "none", "low": "low", "medium": "medium", "xhigh": "xhigh"} {
+				if mode == "adaptive" && modelID == RecommendedModel {
+					effort = "xhigh"
+				}
 				wantFields[mode] = map[string]any{"reasoning_effort": effort}
 			}
 			if fields := MakiThinkingFields(model); !reflect.DeepEqual(fields, wantFields) {
@@ -149,22 +155,26 @@ func TestMakiFlashNextDFlash2ExportsKeepNonSpeculativeDefault(t *testing.T) {
 		})
 	}
 	base := byID[baseID]
-	if base.ReasoningDefault != "medium" || ReasoningDefault(base) != "xhigh" {
-		t.Fatalf("HTTP fallback or recommended client effort changed: %#v", base)
+	if base.ReasoningDefault != "medium" || ReasoningDefault(base) != "xhigh" || byID[RecommendedModel].ReasoningDefault != "medium" || ReasoningDefault(byID[RecommendedModel]) != "xhigh" {
+		t.Fatalf("HTTP fallback or client reasoning preference is wrong: base=%#v preferred=%#v", base, byID[RecommendedModel])
 	}
-	// Exercise both catalog order and the adverse order where every optional
-	// model precedes the base. Availability must not imply a new preference.
+	// The accepted Flash-Next preference is independent of catalog ordering.
 	for _, inventory := range [][]textmodel.Model{models, {byID[variants[1]], byID[variants[0]], base}} {
 		selected, err := DefaultModel(inventory)
-		if err != nil || selected.ID != baseID {
-			t.Fatalf("optional model displaced the non-speculative default: %s, %v", selected.ID, err)
+		if err != nil || selected.ID != RecommendedModel {
+			t.Fatalf("wrong accepted default: %s, %v", selected.ID, err)
 		}
 		files, err := Maki(inventory, "https://gateway.example/v1", true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(files.Providers, []byte("default_model = "+quote("paracetamol/"+baseID))) || !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+baseID))) || !bytes.Contains(files.Providers, []byte(`"adaptive" = { "reasoning_effort" = "xhigh" }`)) {
+		if !bytes.Contains(files.Providers, []byte("default_model = "+quote("paracetamol/"+RecommendedModel))) || !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+RecommendedModel))) || !bytes.Contains(files.Providers, []byte(`"adaptive" = { "reasoning_effort" = "xhigh" }`)) {
 			t.Fatal("export changed the recommended model or xhigh effort")
+		}
+	}
+	for _, model := range models {
+		if strings.Contains(model.ID, "muse-glimmer") || strings.Contains(model.ID, "qwen3.8-27b-mtp-") {
+			t.Fatalf("retired managed model still exported: %s", model.ID)
 		}
 	}
 }
@@ -182,5 +192,13 @@ func TestMakiLiteralEscapingAndToggle(t *testing.T) {
 	fields := MakiThinkingFields(model)
 	if inlineValue(fields["off"]) != `{ "chat_template_kwargs" = { "enable_thinking" = false } }` {
 		t.Fatal("toggle not rendered as nested TOML")
+	}
+	strength := textmodel.Model{ReasoningControl: "strength", ReasoningLevels: []string{"low", "high"}, ReasoningDefault: "high"}
+	if got := MakiThinkingFields(strength); !reflect.DeepEqual(got, map[string]any{
+		"adaptive": map[string]any{"reasoning_strength": "high"},
+		"low":      map[string]any{"reasoning_strength": "low"},
+		"high":     map[string]any{"reasoning_strength": "high"},
+	}) {
+		t.Fatalf("generic native strength control changed: %v", got)
 	}
 }

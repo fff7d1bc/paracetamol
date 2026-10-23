@@ -99,7 +99,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      snapshot](deepseek-v4-flash-llama-cpp-feasibility.md)
    - [Historical GLM-5.3 Flash DwarfStar feasibility and tool-parser
      follow-up](glm-5.3-flash-dwarfstar-feasibility.md)
-   - [Muse Glimmer llama.cpp agent feasibility
+   - [Historical Muse Glimmer llama.cpp agent feasibility
      snapshot](muse-glimmer-llama-cpp-agent-feasibility.md)
    - [Ling 3.0 Flash llama.cpp feasibility
      snapshot](ling-3.0-flash-llama-cpp-feasibility.md)
@@ -107,8 +107,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      snapshot](qwen3.6-strix-halo-llama-cpp-tuning-feasibility.md)
    - [Qwen3.8 Strix Halo platform power-policy feasibility
      snapshot](qwen3.8-strix-halo-platform-power-policy-feasibility.md)
-   - [Qwen3.8 Flash-Next DFlash2 measurements, optional presets and historical
-     dense-27B feasibility](qwen3.8-dflash2-strix-halo-feasibility.md)
+   - [Qwen3.8 DFlash2 default, Flash-Next measurements and dense-27B
+     retest](qwen3.8-dflash2-strix-halo-feasibility.md)
    - [Qwen3.8 RDNA head-dim-256 Flash Attention Strix Halo feasibility
      snapshot](qwen3.8-rdna-head-dim-256-flash-attention-strix-halo-feasibility.md)
    - [Qwen3.8 isolated tiled GDN prefill on Strix

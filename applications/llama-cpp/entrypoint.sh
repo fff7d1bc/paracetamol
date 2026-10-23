@@ -72,7 +72,7 @@ case "$qsa_graph_requested" in
 esac
 # This mirrors the host catalog allowlist so neither boundary accepts paths.
 case "$chat_template" in
-    ""|muse-glimmer-atem|qwen3-0.6b|qwen3.8) ;;
+    ""|qwen3-0.6b|qwen3.8) ;;
     *) die "unknown managed llama.cpp chat template '$chat_template'" ;;
 esac
 case "$speculative_type" in

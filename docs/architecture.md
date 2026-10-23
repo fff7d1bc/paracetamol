@@ -480,8 +480,9 @@ this serving policy.
 
 For this streamed policy, the only reviewed speculative exception is a
 separate DFlash draft on ROCm Strix Halo at depth three, without backend depth
-overrides. Existing non-speculative presets remain the default. Direct
-startup and router rendering explicitly select greedy draft proposals,
+overrides. The regular Flash-Next DFlash2 preset is the Maki default, with
+the plain target retained as a fallback. Direct startup and router rendering
+explicitly select greedy draft proposals,
 independently of the target's gateway sampling. The container repeats the
 streamed tuple check before loading either direct or routed models.
 
@@ -766,14 +767,13 @@ or speculative-decoding policies retain separate runtime acceptance.
 
 `reasoning_control` is the narrower model claim behind agent-client reasoning
 selectors. `reasoning_levels`, `reasoning_default`, and `reasoning_off` define
-the exact UI contract. Qwen3.8 declares native
-effort, and Muse declares native strength. llama.cpp forwards recognized
-OpenAI-compatible labels through its template capability layer as both
+the exact UI contract. Qwen3.8 declares native effort. The shared schema also
+supports strength for a model that genuinely exposes it. llama.cpp forwards
+recognized OpenAI-compatible labels through its template capability layer as both
 `reasoning_effort` and `reasoning_strength`; each template consumes only its
 own variable. Paracetamol does not infer a native label from a client's numeric
-reasoning budget. Muse declares no off choice because its model always
-reasons; the reviewed template maps clients' unavoidable generic off value to
-Muse low without changing other model families.
+reasoning budget. Each maintained preset's own capabilities determine which
+levels and off mode a generated client may advertise.
 
 `internal/textmodel/` derives backend-neutral model capabilities from the
 llama.cpp preset collection. The catalog
@@ -866,7 +866,7 @@ headers at the server boundary.
 reviewed model capabilities. Gateway exports consume only the frozen registry,
 not the full catalog or a fresh disk scan. They carry no secrets, private
 paths, fixed session identifiers or sampler overrides. Client preferences
-select regular Flash-Next at xhigh without changing the HTTP reasoning
+select regular Flash-Next DFlash2 at xhigh without changing the HTTP reasoning
 fallback. The native provider uses Maki's TOML reasoning mappings and a small
 separate startup-preferences snippet, not a provider plugin or remote runner.
 
@@ -876,10 +876,10 @@ Native Maki uses its ordinary configuration and permissions on macOS or Linux.
 The controller does not execute clients, own their state, install runtimes or
 provide a client sandbox.
 
-The export prefers regular Flash-Next at xhigh, then dense Qwen3.8 MTP Q8,
-then the first available coding-capable model. It records context, output
-limits and native reasoning mappings. Adaptive reasoning follows each model's
-reviewed preference. It does not rewrite saved tiers or global model policies.
+The export prefers regular Flash-Next DFlash2 at xhigh, then plain Flash-Next,
+then plain dense Qwen3.8 Q8, then the first available coding-capable model. It
+records context, output limits and native reasoning mappings. Adaptive
+reasoning follows each model's reviewed preference. It does not rewrite saved tiers or global model policies.
 Refreshing is an explicit download and merge, not a startup action.
 
 The catalog owns reusable thinking and non-thinking sampling policies. The

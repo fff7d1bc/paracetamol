@@ -13,7 +13,7 @@ import (
 	"paracetamol/internal/textmodel"
 )
 
-const RecommendedModel = "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"
+const RecommendedModel = "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"
 
 type MakiFiles struct {
 	Providers []byte
@@ -26,7 +26,7 @@ func DefaultModel(models []textmodel.Model) (textmodel.Model, error) {
 	if len(models) == 0 {
 		return textmodel.Model{}, fmt.Errorf("gateway exposes no model maintained for coding clients")
 	}
-	for _, preferred := range []string{RecommendedModel, "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"} {
+	for _, preferred := range []string{RecommendedModel, "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl", "unsloth-qwen3.8-27b-ud-q8-k-xl"} {
 		for _, model := range models {
 			if model.ID == preferred {
 				return model, nil
@@ -37,7 +37,7 @@ func DefaultModel(models []textmodel.Model) (textmodel.Model, error) {
 }
 
 func ReasoningDefault(model textmodel.Model) string {
-	if model.ID == RecommendedModel {
+	if model.ID == RecommendedModel || model.ID == "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl" {
 		for _, level := range textmodel.ReasoningLevels(model) {
 			if level == "xhigh" {
 				return level

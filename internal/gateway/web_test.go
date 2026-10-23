@@ -17,7 +17,7 @@ import (
 func webFixtureModels() []Model {
 	return []Model{
 		{ID: clientconfig.RecommendedModel, Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP, Context: 262144, MaxOutputTokens: 16384, AgentTools: true, ReasoningControl: "effort", ReasoningLevels: []string{"medium", "xhigh"}, ReasoningDefault: "medium", ReasoningOff: true},
-		{ID: "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP, Context: 262144, MaxOutputTokens: 16384, AgentTools: true, ReasoningControl: "effort", ReasoningLevels: []string{"medium", "xhigh"}, ReasoningDefault: "medium", ReasoningOff: true},
+		{ID: "unsloth-qwen3.8-27b-ud-q8-k-xl", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP, Context: 262144, MaxOutputTokens: 16384, AgentTools: true, ReasoningControl: "effort", ReasoningLevels: []string{"medium", "xhigh"}, ReasoningDefault: "medium", ReasoningOff: true},
 		{ID: "local-<img src=x onerror=alert(1)>", Application: "llama-cpp", Backend: textmodel.BackendLlamaCPP, Context: 8192, MaxOutputTokens: 1024},
 	}
 }

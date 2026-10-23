@@ -84,10 +84,11 @@ Back up your configuration before merging.
 - If an existing `allowed_models` or `excluded_models` policy hides this
   provider, adjust that policy deliberately. The export does not override it.
 
-The defaults select regular Unsloth Qwen3.8 Flash-Next when available, then
-dense Qwen3.8 27B MTP Q8, then the first available reviewed model. Adaptive
-thinking selects xhigh for regular Flash-Next and the reviewed default for
-each other model. The example limits concurrent task subagents to two per
+The defaults select regular Unsloth Qwen3.8 Flash-Next DFlash2 when available,
+then plain Flash-Next, plain dense Q8 and the first available reviewed model.
+Adaptive thinking selects xhigh for regular Flash-Next, with or without
+DFlash2, and the reviewed default for each other model. The example limits
+concurrent task subagents to two per
 Maki process, independently of the gateway's shared request slots. Saved tier
 assignments are not reset. Existing installations must update `max_concurrent`
 in their active `init.lua` to adopt this preference.

@@ -142,7 +142,7 @@ hundreds of MiB to more than 100 GiB, so inspect a dry run before a large
 installation.
 
 ```bash
-./paracetamol content install llama-cpp muse-glimmer --dry-run
+./paracetamol content install llama-cpp qwen3.8-flash-next --dry-run
 ```
 
 The built-in guides provide short, copyable walkthroughs.
@@ -169,9 +169,9 @@ Manager, and multi-GPU graphs are covered in the
 
 ### llama.cpp
 
-Qwen3.8 Flash-Next Dynamic Q4_K_XL at `xhigh` is the exported Maki default
-when the gateway advertises it. It needs a high-memory host. Dense Qwen3.8
-27B remains available for smaller systems and as a comparison model.
+Qwen3.8 Flash-Next Dynamic Q4_K_XL with greedy DFlash2 at `xhigh` is the
+exported Maki default when the gateway advertises it. It needs a high-memory
+Strix Halo host. Plain Flash-Next and dense Qwen3.8 27B remain available.
 
 To start with the dense model:
 
@@ -179,16 +179,21 @@ To start with the dense model:
 ./paracetamol build llama-cpp
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol run llama-cpp server \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl
 ```
 
-The recipe installs one 29.30 GiB GGUF containing the dense target and its MTP
-prediction heads. The dense preset starts at 256K context, verifies up to
-three draft tokens, and uses native medium reasoning effort. Its non-MTP
-control shares the same verified artifact.
+The recipe installs one 29.30 GiB Unsloth Dynamic Q8_K_XL GGUF. The plain dense
+preset starts at 256K context with native medium reasoning effort and no
+speculative decoding. Dense Qwen MTP presets are retired.
+
+Dense DFlash2 was retested on Unsloth Q8, Dynamic v3 Q4 and Huihui Q8. It
+passed the short correctness checks but showed no useful speed benefit on
+Strix Halo, so it is not added to the picker. The
+[test record](docs/qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23)
+keeps the results separately from the successful Flash-Next pair.
 
 Public text model IDs now begin with the publisher of the pinned GGUF. The
-models above are `unsloth-…`, and the Muse presets are `meta-models-…`.
+models above are `unsloth-…`, with optional modified weights under `huihui-ai-…`.
 These are breaking changes for clients that send a literal `model` ID,
 including OpenAI-compatible HTTP clients. Update those IDs after upgrading.
 Refresh Maki's exported configuration when the gateway inventory changes.
@@ -201,18 +206,14 @@ managed-client default.
 
 ```bash
 ./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl
-./paracetamol run llama-cpp server --preset unsloth-qwen3.8-27b-mtp-ud-q4-k-xl
+./paracetamol run llama-cpp server --preset unsloth-qwen3.8-27b-ud-q4-k-xl
 ```
 
-The Dynamic v3 Q4_K_XL presets start at a reviewed 128K context. Treat the
+The Dynamic v3 Q4_K_XL preset starts at a reviewed 128K context. Treat the
 smaller quantization as a capacity and throughput tradeoff, not an
-equivalent-quality replacement for Dynamic Q8_K_XL. On the
-accepted Strix Halo host its matched depth-three MTP screen generated 3.3%
-faster than the earlier preview Q4 artifact, with 1.9% slower prompt
-processing. It solved three of five fresh hidden-graded Pi tasks. The earlier
-artifact also missed both tasks used as direct failure controls and was much
-slower on the harder control. ROCm remains the default backend. Dedicated 32
-GiB RDNA 4 capacity still needs acceptance on that hardware.
+equivalent-quality replacement for Dynamic Q8_K_XL. ROCm remains the default
+backend. Dedicated 32 GiB RDNA 4 capacity still needs acceptance on that
+hardware.
 
 The [Qwen3.8 Dynamic Q4 versus Q8 coding-agent
 comparison](docs/guides/qwen3.8-dynamic-quant-comparison.md) adds hidden-graded
@@ -224,22 +225,27 @@ Strix Halo hosts with fast local storage. Its guided four-shard Unsloth
 Dynamic Q4_K_XL conversion occupies 103.7 GiB. Paracetamol reads the model's
 large per-layer token embedding on demand from local storage, with the other
 weights on the GPU. This is a capacity path, not a claim that SSD becomes
-GPU memory. The pinned upstream llama.cpp does not yet expose the model's
-MTP heads.
+GPU memory. The recipe adds a shared 652 MB Inco DFlash2 draft without
+changing the target quantization, F16 KV cache or matrix precision.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
 ./paracetamol run llama-cpp server \
-  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl
+  --preset unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2
 ```
 
-On Strix Halo, direct startup now selects ROCm and a ROCm gateway includes
-the installed, verified model. Its model-specific policy uses direct CPU
-embedding reads and disables inherited unified-memory allocation only for
-that model process. Ordinary ROCm allocation still produces corrupt output
-for this model. The accepted Vulkan path remains available with
-`--backend vulkan`. Other models keep their existing settings.
+The DFlash2 variant uses ROCm on Strix Halo with greedy depth-three proposals.
+The plain Flash-Next preset remains available with the same target shards
+on ROCm or Vulkan. Its model-specific policy uses direct CPU embedding reads
+and disables inherited unified-memory allocation only for that model
+process. Other models keep their existing settings.
+
+DFlash2 is a measured tradeoff rather than a universal speed upgrade.
+Single-request decode benefits in our bounded tests, while four-client
+throughput falls and available memory is about 5 GiB lower. The
+[DFlash2 record](docs/qwen3.8-dflash2-strix-halo-feasibility.md) keeps the
+results and their limits.
 
 Keep `--models-max 1` when using Flash-Next through a gateway or router on a
 128 GB host. The model count is not a memory budget. The [acceptance
@@ -249,8 +255,8 @@ record](docs/qwen3.8-flash-next-direct-reader-feasibility.md) covers the
 The pinned conversion's license metadata could not be verified against a
 license file at its exact revision, so installation requires the explicit
 unverified-license acknowledgment. Hardware acceptance is limited to `gfx1151`.
-The Maki example selects this model at `xhigh`. HTTP requests that omit
-reasoning still use `medium`.
+The Maki example selects the regular DFlash2 model at `xhigh`. HTTP requests
+that omit reasoning still use `medium`.
 
 Huihui's abliterated v2 is an optional, separately named Flash-Next variant.
 It uses the Unsloth-derived UD-Q4_K_XL files and the same runtime policy,
@@ -258,17 +264,9 @@ template and sampling defaults. It does not replace regular Flash-Next.
 See the [model guide](docs/guides/applications.md#choosing-a-managed-qwen-preset)
 for installation and limitations.
 
-Qwen3.6 has been retired from the catalog and clients. Existing downloads
-are left untouched. Muse Glimmer remains a separate comparison family.
-
-```bash
-./paracetamol content install llama-cpp muse-glimmer
-```
-
-Each dense Qwen3.8 quantization shares one
-GGUF between its base and MTP presets. The list prints each pair of
-preset aliases on one comma-separated row. Muse's three presets also share
-one artifact pair.
+Qwen3.6, Muse Glimmer and dense Qwen MTP presets are retired from the catalog
+and clients. Existing downloads are left untouched. Refresh Maki's provider
+configuration and update literal model IDs in other clients after upgrading.
 
 Use the managed router to serve several installed presets.
 
@@ -277,7 +275,7 @@ Use the managed router to serve several installed presets.
 ```
 
 The [llama.cpp guide](docs/guides/applications.md#llamacpp) explains presets,
-contexts, MTP, DFlash, the terminal CLI, tool calling, and choosing between
+contexts, speculative decoding, the terminal CLI, tool calling, and choosing between
 the managed Qwen variants.
 
 ## Everyday use
@@ -295,7 +293,7 @@ A running llama.cpp server can also print a pasteable configuration report.
 ```bash
 ./paracetamol status llama-cpp
 ./paracetamol status llama-cpp \
-  --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
+  --model unsloth-qwen3.8-27b-ud-q8-k-xl
 ```
 
 The model selector identifies a managed direct preset or chooses one configured
@@ -320,7 +318,7 @@ Override the profile only when testing or diagnosing.
 Web applications publish on `127.0.0.1` by default. Select one exact LAN or
 Tailscale address only when unauthenticated network access is intentional.
 The examples use the documentation address `192.0.2.10` and hostname
-`gateway.example`; substitute your server's real address.
+`gateway.example`. Substitute your server's real address.
 
 ```bash
 ./paracetamol run comfyui --listen 192.0.2.10
@@ -520,8 +518,8 @@ that native `llama-bench` cannot exercise.
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --dry-run
+  --preset ggml-org-gemma4-31b-it-q8-0-mtp \
+  --thinking off --dry-run
 ```
 
 The real run checkpoints every fresh-server request and can resume after an

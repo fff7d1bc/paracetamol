@@ -39,7 +39,7 @@ func samplingModels(t *testing.T) []Model {
 func samplingModel(t *testing.T, backend textmodel.Backend) Model {
 	t.Helper()
 	for _, model := range samplingModels(t) {
-		if model.Backend == backend && strings.Contains(model.ID, "qwen3.8-27b-mtp-ud-q8") {
+		if model.Backend == backend && model.ID == "unsloth-qwen3.8-27b-ud-q8-k-xl" {
 			return model
 		}
 	}

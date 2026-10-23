@@ -326,11 +326,11 @@ comparison, or use the separate managed server sweep:
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --dry-run
+  --preset ggml-org-gemma4-31b-it-q8-0-mtp \
+  --thinking off --dry-run
 ./paracetamol benchmark llama-cpp speculative \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium
+  --preset ggml-org-gemma4-31b-it-q8-0-mtp \
+  --thinking off
 ```
 
 For MTP, the default screen tests draft depths 1 through 8. It calibrates one
@@ -378,8 +378,8 @@ Resume with the same options and the printed checkpoint path:
 
 ```bash
 ./paracetamol benchmark llama-cpp speculative \
-  --preset unsloth-qwen3.8-27b-mtp-ud-q8-k-xl \
-  --thinking medium --resume RESULT.json
+  --preset ggml-org-gemma4-31b-it-q8-0-mtp \
+  --thinking off --resume RESULT.json
 ```
 
 Completed trials are skipped. A running, interrupted, or failed trial is

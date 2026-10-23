@@ -71,12 +71,12 @@ var specs = []Spec{
 	{
 		ID: string(LlamaCPP), DisplayName: "llama.cpp",
 		Summary:       "local GGUF inference, routing, and native throughput tests",
-		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-280141e-r61"),
+		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-280141e-r62"),
 		ContainerName: identity.Container("llama-cpp"), Build: BuildLlamaCPP, Port: 8080,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
-		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8"}, Description: "install the reviewed Qwen3.8 family"}},
+		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8-flash-next"}, Description: "install the recommended Qwen3.8 Flash-Next DFlash2 selection"}},
 		AfterContent: []Action{{
-			Arguments:   []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"},
+			Arguments:   []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"},
 			Description: "start the default direct-model server",
 		}},
 	},

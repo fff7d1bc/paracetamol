@@ -1,6 +1,18 @@
 package application
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestLlamaGuideActionsUseRecommendedSelection(t *testing.T) {
+	spec, ok := ByID(string(LlamaCPP))
+	if !ok || len(spec.AfterBuild) != 1 || len(spec.AfterContent) != 1 ||
+		!slices.Equal(spec.AfterBuild[0].Arguments, []string{"content", "install", "llama-cpp", "qwen3.8-flash-next"}) ||
+		!slices.Equal(spec.AfterContent[0].Arguments, []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"}) {
+		t.Fatalf("incoherent recommended install/start actions: %#v", spec)
+	}
+}
 
 func TestManagedApplicationSet(t *testing.T) {
 	want := []string{"comfyui", "llama-cpp"}

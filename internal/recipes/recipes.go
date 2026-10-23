@@ -26,9 +26,8 @@ var byApplication = map[string][]Recipe{
 		{ID: "i2v", Application: "comfyui", Description: "Wan 2.2 I2V FP8, 4-step Lightning", Bundles: []string{"wan-2.2-i2v-14b-fp8-lightning"}, Next: []string{"run", "comfyui"}},
 	},
 	"llama-cpp": {
-		{ID: "qwen3.8", Application: "llama-cpp", Description: "Unsloth Qwen3.8 dense 27B Dynamic Q8_K_XL with MTP", Bundles: []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"}},
-		{ID: "qwen3.8-flash-next", Application: "llama-cpp", Description: "Unsloth Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL for experimental Strix Halo SSD-backed loading", Bundles: []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"}},
-		{ID: "muse-glimmer", Application: "llama-cpp", Description: "Meta Muse Glimmer 30B Dynamic Q4_K_XL with DFlash", Bundles: []string{"llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash"}, Next: []string{"run", "llama-cpp", "server", "--preset", "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k"}},
+		{ID: "qwen3.8", Application: "llama-cpp", Description: "Unsloth Qwen3.8 dense 27B Dynamic Q8_K_XL without speculation", Bundles: []string{"llama-unsloth-qwen3.8-27b-ud-q8-k-xl"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-27b-ud-q8-k-xl"}},
+		{ID: "qwen3.8-flash-next", Application: "llama-cpp", Description: "Unsloth Qwen3.8 Flash-Next 125B-A6B Dynamic Q4_K_XL with greedy DFlash2 for ROCm Strix Halo", Bundles: []string{"llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"}, Next: []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"}},
 	},
 }
 

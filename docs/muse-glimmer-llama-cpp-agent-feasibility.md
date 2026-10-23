@@ -1,5 +1,9 @@
 # Muse Glimmer llama.cpp agent feasibility snapshot
 
+Muse Glimmer was retired from the catalog, recipes, client exports and image
+templates on 2026-10-23. This record preserves earlier observations, not
+current setup instructions. Existing GGUF files are not deleted automatically.
+
 This is a dated maintainer research record from 2026-08-10. It captures the
 comparison that selected Meta's official dynamic K-quant Muse Glimmer GGUF,
 kept DFlash and the managed coding-agent integrations, and declined to add a

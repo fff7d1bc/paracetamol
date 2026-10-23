@@ -22,10 +22,10 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 46 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 14 {
+	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 64 || len(loaded.Bundles) != 45 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 9 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets))
 	}
-	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
+	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-ud-q8-k-xl"]
 	if preset.ReasoningControl != "effort" || preset.ReasoningDefault != "medium" || preset.SamplingPolicy != "qwen3.8-27b" {
 		t.Fatalf("unexpected qwen preset: %#v", preset)
 	}
@@ -196,14 +196,92 @@ func TestFlashNextDFlash2VariantsReuseTargetsAndSharedDraft(t *testing.T) {
 			}
 		})
 	}
-	for id, depth := range map[string]int64{
-		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash":      15,
-		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": 12,
+}
+
+func TestPlainDenseQwenPresetsKeepF16AndSharedFamilyPolicy(t *testing.T) {
+	loaded, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := loaded.LlamaPresets["unsloth-qwen3.8-27b-ud-q8-k-xl"]
+	for id, context := range map[string]int64{
+		"unsloth-qwen3.8-27b-ud-q8-k-xl":               262144,
+		"unsloth-qwen3.8-27b-ud-q4-k-xl":               131072,
+		"huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl": 262144,
 	} {
-		preset := loaded.LlamaPresets[id]
-		if preset.SpeculativeType != "draft-dflash" || preset.DraftTokens != depth || preset.DraftTokensForBackend("vulkan") != 4 || len(preset.ModelLoad) != 0 {
-			t.Fatalf("unrelated Muse DFlash defaults changed: %#v", preset)
+		t.Run(id, func(t *testing.T) {
+			base, exists := loaded.LlamaPresets[id]
+			if !exists {
+				t.Fatal("missing plain dense target")
+			}
+			if base.DefaultContext != context || base.SpeculativeType != "" || base.DraftTokens != 0 || base.DraftArtifact != "" || len(base.DraftTokensByBackend) != 0 || len(base.Backends) != 0 || len(base.BackendProfiles) != 0 || len(base.ModelLoad) != 0 || base.KVCache["strix-halo"] != "f16" || len(base.KVCache) != 1 {
+				t.Fatalf("plain dense control policy changed: %#v", base)
+			}
+			baseBundle := loaded.Bundles[base.Bundle]
+			if base.Bundle != "llama-"+id || base.Artifact != id+"-gguf" || !reflect.DeepEqual(baseBundle.Artifacts, []string{base.Artifact}) || strings.Join(baseBundle.Groups, ",") != "all,llama" {
+				t.Fatalf("plain dense target must remain a one-artifact bundle: %#v", baseBundle)
+			}
+			if base.ChatTemplate != "qwen3.8" || base.SamplingPolicy != "qwen3.8-27b" || !base.AgentTools || base.ReasoningControl != "effort" || strings.Join(base.ReasoningLevels, ",") != "low,medium,xhigh" || base.ReasoningDefault != "medium" || !base.ReasoningOff || !base.ReasoningPreserve {
+				t.Fatalf("plain dense template, reasoning or sampler contract changed: %#v", base)
+			}
+			for _, backend := range []string{"rocm", "vulkan"} {
+				for _, profile := range []string{"auto", "cpu", "rdna4", "strix-point", "strix-halo"} {
+					if !base.SupportsRuntime(backend, profile) {
+						t.Fatalf("dense runtime compatibility changed on %s/%s", backend, profile)
+					}
+				}
+			}
+			// Weight provenance and the reviewed context differ; the family's
+			// template, samplers, reasoning and ordinary loading policy do not.
+			base.ID, base.Bundle, base.Artifact, base.DefaultContext = control.ID, control.Bundle, control.Artifact, control.DefaultContext
+			if !reflect.DeepEqual(base, control) {
+				t.Fatalf("plain dense family policies diverged: control=%#v preset=%#v", control, base)
+			}
+		})
+	}
+}
+
+func TestDenseDFlash2CandidatesRemainOutsideManagedCatalog(t *testing.T) {
+	loaded, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, preset := range loaded.LlamaPresets {
+		if strings.Contains(id, "qwen3.8-27b") && (strings.Contains(id, "dflash") || preset.SpeculativeType != "" || preset.DraftArtifact != "") {
+			t.Fatalf("unaccepted dense speculation is advertised: %s", id)
 		}
+	}
+	for id, artifact := range loaded.Artifacts {
+		if strings.Contains(id, "qwen3.8-27b-dflash") || artifact.Source.Repository == "incoai/Qwen3.8-27B-DFlash2-GGUF" {
+			t.Fatalf("rejected dense draft remains managed: %s", id)
+		}
+	}
+	for id := range loaded.Bundles {
+		if strings.Contains(id, "qwen3.8-27b") && strings.Contains(id, "dflash") {
+			t.Fatalf("rejected dense speculative bundle remains selectable: %s", id)
+		}
+	}
+}
+
+func TestMuseAndDenseMTPAliasesAreRetired(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(contents)), "muse") {
+		t.Fatal("retired Muse content or policy remains in the catalog")
+	}
+	loaded, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"unsloth-qwen3.8-27b-mtp-ud-q8-k-xl", "unsloth-qwen3.8-27b-mtp-ud-q4-k-xl"} {
+		if _, exists := loaded.LlamaPresets[id]; exists {
+			t.Fatalf("retired dense MTP alias remains selectable: %s", id)
+		}
+	}
+	if gemma := loaded.LlamaPresets["ggml-org-gemma4-31b-it-q8-0-mtp"]; gemma.SpeculativeType != "draft-mtp" || gemma.DraftTokens != 4 {
+		t.Fatalf("dense Qwen retirement changed unrelated Gemma MTP: %#v", gemma)
 	}
 }
 

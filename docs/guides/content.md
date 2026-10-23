@@ -30,7 +30,6 @@ comfyui
   image  edit  t2v  i2v
 llama-cpp
   qwen3.8  qwen3.8-flash-next
-  muse-glimmer
 ```
 
 Install interactively, or select one recipe explicitly:
@@ -41,17 +40,17 @@ Install interactively, or select one recipe explicitly:
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk
-./paracetamol content install llama-cpp muse-glimmer
 ```
 
-Qwen3.6, KAT-Coder, Shisa V2.1, TranslateGemma, and HY-MT1.5 have been retired
+Muse Glimmer, dense Qwen MTP presets, Qwen3.6, KAT-Coder, Shisa V2.1,
+TranslateGemma and HY-MT1.5 have been retired
 from the managed catalog. Old downloads are left in place, but no longer
 appear in the gateway or generated client lists.
 
 The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
-That file contains the dense 27B target and its trained MTP prediction heads,
-so the matching base and MTP presets share one verified artifact. The initial
-integration is text-only: the optional vision projector remains outside the
+The recipe launches it without speculation. Its embedded MTP heads are not
+enabled by any managed Qwen preset. The integration is text-only. The optional
+vision projector remains outside the
 recipe until its multimodal runtime contract is separately accepted.
 
 The exact `llama-unsloth-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
@@ -63,8 +62,8 @@ second quantization:
 ./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl
 ```
 
-Its base and embedded-MTP presets start at a reviewed 128K context for more
-constrained hardware. The smaller quantization is optional and never
+Its plain preset starts at a reviewed 128K context for more constrained
+hardware. The smaller quantization is optional and never
 changes the managed-client default.
 
 The optional Huihui dense 27B abliterated UD-Q8_K_XL also stays outside the
@@ -80,17 +79,18 @@ It shares regular dense Qwen's template, reasoning and sampling policy at
 non-default. See the [application guide](applications.md#choosing-a-managed-qwen-preset).
 
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
-Q4_K_XL shards totaling 103.7 GiB. It is an experimental 125B-A6B path for a
-128 GB Strix Halo host with fast local SSD storage, not another quantization
-of dense 27B. It is the exported Maki default at `xhigh` when advertised by the
-gateway. The preset uses SSD-backed lazy loading for the
-model's unusually large per-layer token embedding and has no MTP mode in the
-current pinned llama.cpp. On Strix Halo it uses a model-scoped ROCm direct
-reader and allocator policy. A ROCm router or gateway includes it when the
-shards have current verification receipts. Vulkan remains an explicit
-alternative. Other hardware cannot opt into this ROCm policy, and unknown
-hardware detection fails closed. See the [application
-guide](applications.md) for capacity and concurrency limits.
+Q4_K_XL shards totaling 103.7 GiB and the shared 652 MB Inco DFlash2 draft.
+It is a 125B-A6B path for a 128 GB Strix Halo host with fast local SSD storage,
+not another quantization
+of dense 27B. The regular greedy DFlash2 preset is the exported Maki default
+at `xhigh` when advertised by the gateway. It uses SSD-backed reads for the
+model's unusually large per-layer token embedding and no MTP.
+On Strix Halo it uses a model-scoped ROCm direct reader and allocator policy.
+A ROCm router or gateway includes it when the
+shards and draft have current verification receipts. The plain target remains
+an explicit ROCm or Vulkan alternative. Other hardware cannot opt into this
+ROCm policy, and unknown hardware detection fails closed. See the
+[application guide](applications.md) for capacity and concurrency limits.
 Its pinned conversion repository declares license
 metadata but does not contain the referenced license text, so Paracetamol
 keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
@@ -108,8 +108,8 @@ Install it separately without changing the default:
 This download also needs explicit license-risk acknowledgment. It is another
 103.7 GiB model, not a patch file applied to existing weights.
 
-Optional greedy DFlash2 variants are exact bundles rather than changes to
-the guided recipe:
+The regular recipe now installs the greedy DFlash2 bundle. The same draft
+also works with the separately installed Huihui target:
 
 ```bash
 ./paracetamol content install llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2 \
@@ -120,19 +120,11 @@ the guided recipe:
 
 Each reuses its existing four target shards and adds the same shared 652 MB
 Inco draft. Installing both does not duplicate that file. These presets are
-limited to ROCm Strix Halo and do not change the non-speculative default.
+limited to ROCm Strix Halo. Regular DFlash2 is the default, while both plain
+targets remain available.
 Restart the gateway and refresh Maki's exported provider configuration to
-see newly installed choices. See the [application guide](applications.md#optional-greedy-dflash2)
+see newly installed choices. See the [application guide](applications.md#greedy-flash-next-dflash2)
 for the measured speed, concurrency and memory tradeoffs.
-
-The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
-matching DFlash draft. The next-step command starts the forced-256K DFlash
-preset used as the Muse family comparison. The same pair also exposes a
-non-speculative 128K control and a 128K DFlash preset. All three preserve
-parsed reasoning and advertise Muse's native low, medium, high, and xhigh
-strengths; high is the family default and off is not advertised. The native
-Maki configuration instead prefers regular non-speculative Flash-Next at xhigh
-when it is installed.
 
 Catalog pruning does not delete GGUFs installed by an older checkout. Retired
 files remain visible as local model rows in `content list models`; remove

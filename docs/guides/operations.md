@@ -284,7 +284,7 @@ shareable runtime report instead of the general dashboard:
 
 # Required for model-specific details when the router serves many presets:
 ./paracetamol status llama-cpp \
-  --model unsloth-qwen3.8-27b-mtp-ud-q8-k-xl
+  --model unsloth-qwen3.8-27b-ud-q8-k-xl
 ```
 
 The report reads the live container's private runtime snapshot, image labels,

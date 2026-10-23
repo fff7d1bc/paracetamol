@@ -980,40 +980,6 @@
         "url": "https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/blob/23749fefcc72300e3a2ad315e1317431b06b590a/LICENSE"
       }
     },
-    "meta-models-muse-glimmer-30b-kquant-dynamic-gguf": {
-      "description": "Official Muse Glimmer 30B KQuant Dynamic Q4_K_XL GGUF for llama.cpp",
-      "source": {
-        "repository": "meta-models/Muse-Glimmer-30B-GGUF",
-        "revision": "93769bc7ab5ad1e9cd22d857e3138cf5d977ae81",
-        "path": "muse-glimmer-30B-kquant-dynamic.gguf"
-      },
-      "destination": "meta-models-muse-glimmer-30b/meta-models-muse-glimmer-30B-kquant-dynamic.gguf",
-      "target": "llama-models",
-      "size": 19653957984,
-      "sha256": "513109c8319115f69eb09fb7b118c97c8167d15bc014fd7670d2e30489bf106c",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/blob/93769bc7ab5ad1e9cd22d857e3138cf5d977ae81/README.md"
-      }
-    },
-    "meta-models-muse-glimmer-30b-dflash-kquant-gguf": {
-      "description": "Official Muse Glimmer 30B DFlash k-quant draft GGUF for llama.cpp",
-      "source": {
-        "repository": "meta-models/Muse-Glimmer-30B-GGUF",
-        "revision": "93769bc7ab5ad1e9cd22d857e3138cf5d977ae81",
-        "path": "dflash-kquant.gguf"
-      },
-      "destination": "meta-models-muse-glimmer-30b/meta-models-dflash-kquant.gguf",
-      "target": "llama-models",
-      "size": 1631205312,
-      "sha256": "27d9a805fa29b943cfb6ad4843367cd4eaaaf06bd452d8cc3e00a2cd18a677bc",
-      "license": {
-        "spdx": "Apache-2.0",
-        "status": "verified",
-        "url": "https://huggingface.co/meta-models/Muse-Glimmer-30B-GGUF/blob/93769bc7ab5ad1e9cd22d857e3138cf5d977ae81/README.md"
-      }
-    },
     "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf": {
       "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL GGUF with embedded MTP heads for llama.cpp",
       "source": {
@@ -1849,7 +1815,7 @@
       ]
     },
     "llama-unsloth-qwen3.8-27b-ud-q8-k-xl": {
-      "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL llama.cpp model with embedded MTP heads",
+      "description": "Qwen3.8 27B Unsloth Dynamic Q8_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
         "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf"
@@ -1860,7 +1826,7 @@
       ]
     },
     "llama-unsloth-qwen3.8-27b-ud-q4-k-xl": {
-      "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL llama.cpp model with embedded MTP heads",
+      "description": "Qwen3.8 27B Unsloth Dynamic v3 Q4_K_XL llama.cpp model",
       "application": "llama-cpp",
       "artifacts": [
         "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf"
@@ -1934,18 +1900,6 @@
       "artifacts": [
         "ggml-org-gemma4-31b-it-q8-gguf",
         "ggml-org-gemma4-31b-it-mtp-q8-gguf"
-      ],
-      "groups": [
-        "all",
-        "llama"
-      ]
-    },
-    "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
-      "description": "Official Muse Glimmer 30B KQuant Dynamic Q4_K_XL llama.cpp model with DFlash draft",
-      "application": "llama-cpp",
-      "artifacts": [
-        "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
-        "meta-models-muse-glimmer-30b-dflash-kquant-gguf"
       ],
       "groups": [
         "all",
@@ -2508,26 +2462,10 @@
       ],
       "reasoning_default": "medium",
       "reasoning_off": true,
-      "reasoning_preserve": true
-    },
-    "unsloth-qwen3.8-27b-mtp-ud-q8-k-xl": {
-      "bundle": "llama-unsloth-qwen3.8-27b-ud-q8-k-xl",
-      "artifact": "unsloth-qwen3.8-27b-ud-q8-k-xl-gguf",
-      "default_context": 262144,
-      "speculative_type": "draft-mtp",
-      "draft_tokens": 3,
-      "chat_template": "qwen3.8",
-      "sampling_policy": "qwen3.8-27b",
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "xhigh"
-      ],
-      "reasoning_default": "medium",
-      "reasoning_off": true,
-      "reasoning_preserve": true
+      "reasoning_preserve": true,
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
     },
     "unsloth-qwen3.8-27b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
@@ -2544,26 +2482,10 @@
       ],
       "reasoning_default": "medium",
       "reasoning_off": true,
-      "reasoning_preserve": true
-    },
-    "unsloth-qwen3.8-27b-mtp-ud-q4-k-xl": {
-      "bundle": "llama-unsloth-qwen3.8-27b-ud-q4-k-xl",
-      "artifact": "unsloth-qwen3.8-27b-ud-q4-k-xl-gguf",
-      "default_context": 131072,
-      "speculative_type": "draft-mtp",
-      "draft_tokens": 3,
-      "chat_template": "qwen3.8",
-      "sampling_policy": "qwen3.8-27b",
-      "agent_tools": true,
-      "reasoning_control": "effort",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "xhigh"
-      ],
-      "reasoning_default": "medium",
-      "reasoning_off": true,
-      "reasoning_preserve": true
+      "reasoning_preserve": true,
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
     },
     "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl": {
       "bundle": "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl",
@@ -2717,73 +2639,6 @@
       "jinja": true,
       "agent_tools": true
     },
-    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl": {
-      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
-      "default_context": 131072,
-      "chat_template": "muse-glimmer-atem",
-      "agent_tools": true,
-      "reasoning_control": "strength",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high",
-        "xhigh"
-      ],
-      "reasoning_default": "high",
-      "reasoning_off": false,
-      "reasoning_preserve": true
-    },
-    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash": {
-      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
-      "draft_artifact": "meta-models-muse-glimmer-30b-dflash-kquant-gguf",
-      "default_context": 131072,
-      "speculative_type": "draft-dflash",
-      "draft_tokens": 15,
-      "draft_tokens_by_backend": {
-        "vulkan": 4
-      },
-      "chat_template": "muse-glimmer-atem",
-      "agent_tools": true,
-      "reasoning_control": "strength",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high",
-        "xhigh"
-      ],
-      "reasoning_default": "high",
-      "reasoning_off": false,
-      "reasoning_preserve": true
-    },
-    "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": {
-      "bundle": "llama-meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash",
-      "artifact": "meta-models-muse-glimmer-30b-kquant-dynamic-gguf",
-      "draft_artifact": "meta-models-muse-glimmer-30b-dflash-kquant-gguf",
-      "default_context": 262144,
-      "speculative_type": "draft-dflash",
-      "draft_tokens": 12,
-      "draft_tokens_by_backend": {
-        "vulkan": 4
-      },
-      "context_override_architectures": [
-        "muse-glimmer",
-        "dflash"
-      ],
-      "chat_template": "muse-glimmer-atem",
-      "agent_tools": true,
-      "reasoning_control": "strength",
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high",
-        "xhigh"
-      ],
-      "reasoning_default": "high",
-      "reasoning_off": false,
-      "reasoning_preserve": true
-    },
     "huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl": {
       "bundle": "llama-huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl",
       "artifact": "huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl-gguf",
@@ -2799,7 +2654,10 @@
       ],
       "reasoning_default": "medium",
       "reasoning_off": true,
-      "reasoning_preserve": true
+      "reasoning_preserve": true,
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
     }
   }
 }

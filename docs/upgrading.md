@@ -316,6 +316,17 @@ matrix precision and model-aware gateway samplers are unchanged. See the
 for the independent checks and limitations. The unrestricted direct
 speculative-depth sweep intentionally rejects these streamed presets.
 
+The later `280141e-r62` packaging removes Muse's unused chat template and
+entrypoint allowlist entry. The three native executable hashes and selected
+native-library hashes still match `r61`, with dependency closure and
+`pip check` passing. Regular Flash-Next greedy DFlash2 becomes the guided
+recipe launch and exported Maki default at xhigh after field testing. Plain
+regular Flash-Next keeps adaptive xhigh as the first fallback. Raw HTTP
+reasoning and sampler defaults do not change. Muse and dense Qwen MTP
+aliases are retired without deleting existing GGUFs. The
+[dense DFlash2 retest](qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23)
+is a separate acceptance decision, not an upstream source or math change.
+
 The October 22 refresh selects frozen upstream
 `e197cef4554d466e0becac20e453a355daba8e5d`, 63 commits after `dd002b9`,
 in image `e197cef-r58`. Thirteen patches remain. Twelve apply unchanged;

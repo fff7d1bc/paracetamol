@@ -75,8 +75,8 @@ func TestLlamaEntrypointDFlashProposalPolicyAndStreamGuard(t *testing.T) {
 		name, backend, arch, spec, depth, load, mode, failure string
 		missingDraft, nonexistentDraft                        bool
 	}{
-		{name: "Muse DFlash remains greedy", backend: "rocm", arch: "gfx1151", spec: "draft-dflash", depth: "15"},
-		{name: "Muse long-context DFlash remains greedy", backend: "rocm", arch: "gfx1151", spec: "draft-dflash", depth: "12"},
+		{name: "resident DFlash maximum depth remains greedy", backend: "rocm", arch: "gfx1151", spec: "draft-dflash", depth: "15"},
+		{name: "resident DFlash depth twelve remains greedy", backend: "rocm", arch: "gfx1151", spec: "draft-dflash", depth: "12"},
 		{name: "Vulkan resident DFlash remains greedy", backend: "vulkan", arch: "gfx1151", spec: "draft-dflash", depth: "4"},
 		{name: "CPU resident DFlash remains greedy", backend: "rocm", arch: "cpu", spec: "draft-dflash", depth: "3"},
 		{name: "MTP unchanged", backend: "rocm", arch: "gfx1151", spec: "draft-mtp", depth: "3"},
@@ -231,6 +231,51 @@ func TestLlamaEntrypointRouterStreamSpeculation(t *testing.T) {
 			}
 			if tc.spec != "" && (!strings.Contains(output, "spec-draft-sampling = greedy\n") || !strings.Contains(output, "device-draft = ROCm0\n")) {
 				t.Fatalf("missing explicit greedy ROCm draft policy: %s", output)
+			}
+		})
+	}
+}
+
+func TestDenseQwenPresetsKeepNativeF16ForDirectAndRouter(t *testing.T) {
+	root, err := project.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed, err := catalog.Load(filepath.Join(root, "catalog/catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"unsloth-qwen3.8-27b-ud-q8-k-xl", "unsloth-qwen3.8-27b-ud-q4-k-xl", "huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl"} {
+		t.Run(id, func(t *testing.T) {
+			preset, ok := managed.LlamaPresets[id]
+			if !ok || preset.SpeculativeType != "" || preset.DraftArtifact != "" || preset.DraftTokens != 0 {
+				t.Fatal("missing plain dense preset or unexpected speculation")
+			}
+			env := []string{"PARACETAMOL_LLAMA_KV_CACHE_STRIX_HALO=" + preset.KVCache["strix-halo"]}
+			output, err := runLlamaPolicyEntrypoint(t, "rocm", "gfx1151", env, nil)
+			if err != nil {
+				t.Fatalf("direct entrypoint: %v\n%s", err, output)
+			}
+			for _, axis := range []string{"k", "v"} {
+				if !strings.Contains(output, "ARG=<--cache-type-"+axis+">\nARG=<f16>\n") {
+					t.Fatalf("dense direct native cache precision changed: %s", output)
+				}
+			}
+			if strings.Contains(output, "ARG=<--spec-") || strings.Contains(output, "ARG=<--model-draft>") {
+				t.Fatalf("plain dense direct enabled speculation: %s", output)
+			}
+			output, err = runLlamaPolicyEntrypoint(t, "rocm", "gfx1151", nil, func(string) string {
+				ini, err := RenderRouterModels(managed, "rocm", "strix-halo", []string{id})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return ini
+			})
+			if err != nil || !strings.Contains(output, "cache-type-k = f16\ncache-type-v = f16\n") {
+				t.Fatalf("dense router native cache precision changed: %v\n%s", err, output)
+			}
+			if strings.Contains(output, "\nspec-") || strings.Contains(output, "\nmodel-draft = ") {
+				t.Fatalf("plain dense router enabled speculation: %s", output)
 			}
 		})
 	}
