@@ -29,6 +29,109 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp source refresh (2026-10-23)
+
+**Flash-Next no-speculation refresh acceptance passes on the tested
+`gfx1151` path.** This is not acceptance of the experimental DFlash modes.
+
+The source advances from `e197cef` to
+`280141e6d4769b1e4424de999437cc72ffac33d6`, 28 upstream commits.
+The locally rebuilt production image is
+`llama-cpp-ubuntu26.04-rocm10.1-280141e-r60`, ID
+`83cb393c11b752e948005c43b386e04d8b0813d00c23a6da5439181bd67a2f81`.
+Its patched source tree is `e0cfcbd3be804635b63c4e49594319d4d776e193`.
+The paired baseline is `e197cef-r59`, ID
+`bc5f15265c08610fb782b1a47430176847a7f99f3b851c52f4f529b01652ba86`.
+
+Thirteen patches remain, twelve unchanged. The gfx1151 graph-recapture
+correction follows upstream's new executable chunks and still reinstantiates
+only changed captures. Its compatibility hunk also corrects an upstream HIP
+build failure where the legacy-pool diagnostic referenced the removed
+single-executable member. It counts captured graphs, not chunks, and does not
+change pool invalidation. The [patch ledger](upgrading.md#llamacpp-downstream-patch-ledger)
+records the protected behavior and removal gate.
+
+This is the same Fedora 44 Ryzen AI Max+ 395, 128 GB Strix Halo host and
+`7.2.10-200.fc44.x86_64` kernel used on October 22. ROCm 10.1, balanced
+platform policy, CPU `balance_performance`, target GGUFs, templates, sampler
+policies, F16 K/V and normal matrix arithmetic are unchanged. The selected
+application and native SDK are built without layer cache. Their unchanged
+shared ROCm prerequisite is reused. This is not a cold rebuild or hardware
+acceptance of ComfyUI, another ROCm tuple or another GPU architecture.
+
+Dependency closure and all four compiled HIP payload identities pass.
+The actual production image passes CPU tiny CLI and ROCm/Vulkan tiny CLI
+checks, plus three SSE requests interleaved with health checks over one TCP
+connection per GPU backend. Matching-source probes link the production
+libraries and pass seven parser/chat programs, 1149 selected HIP operator
+cases, eight allocation-lifetime cases, F16/Q8_0/Q4_0 device-state copies,
+24 CPU and 24 ROCm selection-mask cases and fourteen F32 GELU lengths.
+Populated ordinary, causal-transition and clear/restore checks retain NMSE
+zero. The 31 serial-versus-joint projection comparisons also retain NMSE zero.
+The quantized-cache cases are diagnostics, not new runtime cache defaults.
+
+The old and refreshed ordinary gateways each pass the ten-request Flash-Next
+short matrix with thinking off and xhigh, nested function tools and full
+assistant replay, streaming and cold/warm prefix checks. All generation goes
+through the ordinary gateway. The six omitted samplers receive catalog
+defaults, checked against native settings. Frozen controllers select their
+own real image tags without retagging images or creating a special inference
+route.
+
+The paired 32K comparison passes all three six-key retrieval answers per
+image, including a changed history returning its new value. Requests,
+rendered prompts and control provenance match between images. Actual input
+is 32977 tokens for xhigh retrieval and 32935 for the medium changed-history
+case. Repeating the xhigh prompt reuses 32973 tokens. The medium change fully
+reprocesses its input and is not evidence of partial rollback-cache reuse.
+
+| Matched xhigh fixed-256 timing at 32K | Old `e197cef-r59` | Refreshed `280141e-r60` |
+| --- | ---: | ---: |
+| First request HTTP wall, 2038 evaluated input tokens | 15.094 s | 15.010 s |
+| Identical cached repeat HTTP wall, 4 evaluated input tokens | 11.888 s | 11.843 s |
+
+Both rows produce exactly 256 tokens with a deliberate `length` finish.
+The first timing request changes the suffix and reuses 30929 of 32967 input
+tokens. The repeat reuses 32963. These are fixed-work timing probes, not
+completed coding tasks. The small fixed-order screen supports retained
+performance, not a meaningful speedup. Retrieval reasoning lengths differ
+between source versions, so their complete request times are not treated as
+fixed-work performance evidence. Minimum sampled available memory is 26.624
+GiB on the old arm and 26.607 GiB on the refreshed arm.
+
+The refreshed ordinary gateway also passes a bounded near-ceiling phase.
+Both xhigh six-key answers are exact at 247210 input tokens. The repeated
+request reuses 247206 tokens, without context or output-limit truncation.
+Cold native prefill takes 410.437 seconds. The fixed-256 timing requests use
+247200 input tokens. Their first request reuses 245162 tokens and takes
+18.496 seconds of HTTP wall time. The identical repeat reuses 247196 and
+takes 14.320 seconds. Minimum sampled available memory is 20.117 GiB.
+This phase intentionally omits the medium-effort history edit already tested
+at 32K. It is not a fresh paired old/new near-ceiling speed comparison or a
+complete long-history mutation matrix.
+
+Four simultaneous non-thinking streams with independent opaque synthetic
+labels pass all own/foreign-label and follow-up checks. Actual native
+generation overlaps in all four slots. After intentional cancellation,
+all slots become idle in about 0.097 seconds and the recovery answer is exact.
+Earlier baseline fixture attempts are preserved separately. Private-marker
+wording causes refusals, and predictable numbered labels cause ordinary
+extrapolation of other worker names. Neither result proves backend state
+leakage. The final opaque fixture changes the input, not the exact oracles.
+
+The separately tested DFlash2 draft is not a managed preset or default.
+Its modes, retained quality miss and measurements are recorded in the
+[DFlash2 feasibility follow-up](qwen3.8-dflash2-strix-halo-feasibility.md#flash-next-follow-up-2026-10-23).
+All experimental gateways and containers are stopped and removed. The
+generated router file is byte-identical to its normal pre-experiment version,
+without speculation controls in the Flash-Next section. The final kernel
+window contains no matching GPU fault, reset, SVM mapping failure, process
+trap or OOM event. Host power policies are unchanged, and the test host is
+left idle.
+Private source, build and gateway evidence is retained under
+`build/dflash-next-20261023/` and
+`build/llama-dflash-refresh-20261023-6sOqRt/`.
+
 ### Huihui dense Qwen and catalog retirement (2026-10-22)
 
 **Serving integration passes on `gfx1151`, with a recorded xhigh task-quality

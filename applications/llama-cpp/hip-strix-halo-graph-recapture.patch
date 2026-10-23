@@ -1,27 +1,38 @@
-Local gfx1151 HIP graph-recapture correction. Reinstantiate only after a
-changed capture, retaining ordinary graph replay. The direct-reader Qwen4exp
-restore fixture fails before this correction and passes afterward. Other
-architectures retain the upstream executable-update path.
+Local gfx1151 HIP graph-recapture correction. Reinstantiate each chunk only
+after a changed capture, retaining ordinary graph replay. The direct-reader
+Qwen4exp restore fixture motivated this correction. Other architectures retain
+the upstream executable-update path. Follow upstream's chunked representation
+in its legacy-pool capture diagnostic too: count captured graphs, not chunks.
 
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -2774,6 +2774,18 @@ static bool ggml_cuda_graph_update_required(ggml_backend_cuda_context * cuda_ctx
- static void ggml_cuda_graph_update_executable(ggml_backend_cuda_context * cuda_ctx, const void * graph_key) {
-     ggml_cuda_graph * graph = cuda_ctx->cuda_graph(graph_key);
+@@ -494,7 +494,7 @@ struct ggml_cuda_pool_leg : public ggml_cuda_pool {
+ #ifdef USE_CUDA_GRAPH
+         int n_captured = 0;
+         for (const auto & [key, graph] : ctx.cuda_graphs) {
+-            n_captured += graph->instance != nullptr;
++            n_captured += !graph->instances.empty();
+         }
+         if (n_captured > 0) {
+             GGML_LOG_DEBUG(GGML_CUDA_NAME " pool[%d]: memory freed, %d captured CUDA graphs must be captured again\n", device, n_captured);
+@@ -2843,7 +2843,19 @@ static void ggml_cuda_graph_launch_chunk(ggml_backend_cuda_context * cuda_ctx, ggml_cuda_graph * graph, size_t idx) {
+     cudaGraph_t cuda_graph = nullptr;
+     CUDA_CHECK(cudaStreamEndCapture(cuda_ctx->stream(), &cuda_graph));
  
+     if (idx < graph->instances.size()) {
 +#if defined(GGML_USE_HIP)
-+    if (ggml_cuda_info().devices[cuda_ctx->device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151) {
-+        // A recaptured graph needs a fresh executable on gfx1151. Updating it
-+        // can replay stale state after a Qwen4exp clear/restore. Ordinary
-+        // unchanged graph replay remains enabled.
-+        CUDA_CHECK(cudaGraphExecDestroy(graph->instance));
-+        graph->instance = nullptr;
-+        CUDA_CHECK(cudaGraphInstantiate(&graph->instance, graph->graph, NULL, NULL, 0));
-+        return;
-+    }
++        if (ggml_cuda_info().devices[cuda_ctx->device].cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151) {
++            // Each recaptured chunk needs a fresh executable on gfx1151.
++            // Updating it can replay stale state after a Qwen4exp clear/restore.
++            // Ordinary unchanged graph replay remains enabled.
++            CUDA_CHECK(cudaGraphExecDestroy(graph->instances[idx]));
++            graph->instances[idx] = nullptr;
++            CUDA_CHECK(cudaGraphInstantiate(&graph->instances[idx], cuda_graph, nullptr, nullptr, 0));
++        } else
 +#endif
-+
- #if CUDART_VERSION >= 12000
-     cudaGraphExecUpdateResultInfo result_info;
-     cudaError_t stat = cudaGraphExecUpdate(graph->instance, graph->graph, &result_info);
++        {
+         ggml_cuda_graph_update_executable(graph->instances[idx], cuda_graph);
++        }
+     } else {
+         GGML_ASSERT(idx == graph->instances.size());

@@ -1,16 +1,285 @@
 # Qwen3.8 DFlash2 llama.cpp Strix Halo feasibility snapshot
 
-This maintainer research record captures a 2026-08-23 isolated evaluation of
-the then-open llama.cpp DFlash2 pull request with Qwen3.8 27B on the Fedora 44
-Strix Halo host. It preserves the exact candidate, artifacts, measurements,
-decision, and retest gate without making DFlash2 part of Paracetamol's source
-pin or managed catalog.
+This maintainer research record covers the October 23 Flash-Next follow-up
+and the original August 23 dense-27B experiment on Fedora 44 Strix Halo.
+The two architectures use different draft models. Neither experiment adds a
+managed DFlash2 preset or changes the default model's speculative policy.
 
 This document is historical, machine-specific evidence rather than a current
 support or performance declaration. Inspect `Containerfile`, the catalog,
 source, and current hardware-acceptance records for active policy.
 
-## Decision
+## Flash-Next follow-up (2026-10-23)
+
+**Keep the existing no-speculation default.** DFlash2 improves the cached
+single-request fixed-output tests, but not prefill, and its benefit does not
+transfer uniformly to parallel work. It also leaves about 5 GiB less available
+memory on the tested 128 GB host. The source refresh is accepted separately.
+No managed DFlash2 preset is added.
+
+The newer Flash-Next draft now runs through llama.cpp on ROCm. It no longer
+hits the first-request hidden-state assertion described in its pinned model
+card. This is an isolated evaluation, not a new supported or default preset.
+Regular Unsloth Flash-Next retains its existing no-speculation policy.
+
+### Source and artifact
+
+The test uses llama.cpp `280141e6d4769b1e4424de999437cc72ffac33d6`,
+ROCm 10.1 and Paracetamol's thirteen reviewed patches. The locally built image
+is `llama-cpp-ubuntu26.04-rocm10.1-280141e-r60`, ID
+`83cb393c11b752e948005c43b386e04d8b0813d00c23a6da5439181bd67a2f81`.
+The coupled source refresh and its regression checks are recorded in
+[hardware acceptance](hardware-acceptance.md).
+
+Two upstream changes matter for this test:
+
+- [PR 30927](https://github.com/ggml-org/llama.cpp/pull/30927), merged
+  October 22, reduces Flash-Next's four hyperconnection streams to the mean
+  expected by the drafter. The model card's unsupported warning predates it.
+- [PR 30663](https://github.com/ggml-org/llama.cpp/pull/30663), merged
+  October 23, adds probabilistic proposal sampling. It is selected with
+  llama.cpp's native `--spec-draft-sampling probabilistic`. The upstream
+  default remains `greedy`, and both modes are tested separately here.
+
+The draft is the Q8_0 conversion from
+[`incoai/Qwen3.8-Flash-Next-DFlash2-GGUF`](https://huggingface.co/incoai/Qwen3.8-Flash-Next-DFlash2-GGUF/tree/4f5a39be8f0a9e9a573ac9824251830a8f4096d9),
+revision `4f5a39be8f0a9e9a573ac9824251830a8f4096d9`:
+
+```text
+Qwen3.8-Flash-Next-DFlash2-Q8_0.gguf
+652101024 bytes
+sha256 541f4d6ee230747a34d4a2c6890e6e08cc8b19c461226dc1829701a544e46e8a
+```
+
+Its own pinned publisher card declares Apache-2.0. The corresponding source
+checkpoint is pinned at `a22a1744e85c17364dcc54a6a420af7135d4c7f6`.
+A reviewed ignored catalog derivative passes the normal installer, full SHA
+verification and receipt publication. It does not add a public model preset.
+
+The target is the unchanged managed Unsloth UD-Q4_K_XL Flash-Next at
+`c8b5954a88c2775c546b92593eda40ea041d3176`, with the same four shards
+and hashes recorded in `catalog/catalog.json`. Q8_0 describes only the small
+draft, not a replacement target quantization.
+
+### Controls and short correctness screen
+
+Every generation request goes through the ordinary gateway. A guarded
+ignored helper changes only the target's generated router section before
+lazy backend startup, then restores the normal file on shutdown. The real
+controller, receipt-backed inventory, sampler insertion and request reports
+remain in use. No special inference route or weakened content gate is added.
+
+Except for the labelled temperature-zero control, all six sampler fields are
+omitted so the gateway supplies the model's thinking or non-thinking
+defaults. Reports are checked against actual native settings. Thinking uses
+temperature 1, top-p 0.95, top-k 20, min-p 0.05, presence penalty 0 and
+repeat penalty 1. Non-thinking uses 0.7, 0.8, 20, 0, 1.5 and 1 respectively.
+The target keeps F16 K/V, normal matrix arithmetic, four slots sharing a
+262144-token unified pool, 2048 batch and microbatch sizes, direct
+embedding reads and no RAM prompt archive. DFlash drafts at most three
+tokens per step. The platform and CPU power policies remain unchanged.
+
+Old and refreshed no-speculation images pass the ten-request short matrix,
+including thinking off and xhigh, nested tool calls with full assistant
+replay, streaming and live prefix reuse. The probabilistic DFlash arm passes
+the protocol checks but misses one exact tool-result answer. It returns an
+invented title instead of the literal value in the tool result.
+
+Greedy DFlash separately passes the complete ten-request matrix, including
+replay of its own assistant reasoning and tool calls. Both source images and
+draft modes retain existing warnings for object-form `tool_choice`, falling
+back to default selection. These checks establish the observed round trip
+with the sole listed function, not complete support for that API form.
+
+To investigate the probabilistic miss, the failed request is replayed with
+one byte-identical rendered prompt, ten explicit seeds from 42 through 51,
+no cached input and a separate temperature-zero control. All requests contain
+451 input tokens without truncation.
+
+| Mode | Correct sampled replays | Separate temperature-zero control |
+| --- | ---: | --- |
+| No speculation | 10/10 | Pass |
+| DFlash probabilistic draft, depth 3 | 9/10 | Pass |
+| DFlash greedy draft, depth 3 | 10/10 | Pass |
+
+The same sampled seed repeats the invented title in probabilistic mode.
+This is a retained behavioral miss, not proof of a broken sampling
+distribution. Speculative execution consumes randomness differently, so
+identical seeds do not require identical sampled answers. The source intends
+both paths to preserve target verification, rather than accepting approximate
+tokens. At temperature zero the server disables probabilistic rejection, so
+that control does not independently validate its stochastic branch.
+
+These are repeated answers to one small item, not thirty independent tasks
+or a general model-quality score. Greedy drafting passes this screen and is
+carried forward for longer-context checks. Both modes receive a matched
+32K timing screen, without discarding the earlier probabilistic miss.
+
+### Populated 32K result
+
+All three current-image modes pass cold, repeated and changed-history
+six-key retrieval. The old-image no-speculation control passes too.
+Corresponding request bodies, rendered prompts and sampler provenance match.
+The xhigh retrieval has 32977 input tokens. Its repeated request reuses all
+but four. A separate medium-effort changed-history request fully reprocesses
+32935 tokens and returns the new value correctly.
+
+| Measurement | No speculation | Greedy DFlash, depth 3 | Probabilistic DFlash, depth 3 |
+| --- | ---: | ---: | ---: |
+| Cold native prefill | 46.545 s | 46.758 s | 47.853 s |
+| First fixed-256 HTTP request | 15.010 s | 12.143 s | 11.489 s |
+| Identical cached fixed-256 HTTP request | 11.843 s | 8.935 s | 8.055 s |
+| Minimum sampled available host memory | 26.607 GiB | 21.527 GiB | 21.463 GiB |
+
+The first timing request reuses 30929 of 32967 input tokens and evaluates
+2038. The repeat reuses 32963 and evaluates four. Every timing request emits
+exactly 256 tokens, including reasoning, with an intentional `length` finish.
+These forced-output probes measure fixed work, not a completed program or a
+task-quality pass. Retrieval reasoning lengths vary, so their total wall
+times are not used as fixed-work speed comparisons.
+
+The cached request takes 24.6% less wall time with greedy drafting and 32.0%
+less with probabilistic drafting. This is a small fixed-order screen with
+one observation of each cache condition per mode, not a stable universal
+speedup estimate. Prefill does not improve. The approximately 5 GiB lower
+available memory matters on a 128 GB host, but is an arm-level measurement,
+not an isolated accounting of draft weights, KV or feature-capture buffers.
+
+Actual child arguments select `ROCm0` for the draft. Upstream's default
+requests full eligible draft-layer offload, but these verbosity-three logs do
+not independently report every layer or tensor placement. They are not proof
+that every draft operator executes on the GPU.
+
+### Near-256K ceiling result
+
+The same three modes also pass cold and cached six-key retrieval with
+247210 actual input tokens in the unchanged 262144-token allocation. The
+repeat reuses 247206 tokens and evaluates four. Corresponding request bodies,
+rendered prompts and sampler provenance match across modes. This bounded
+ceiling screen does not repeat the medium-effort changed-history test.
+
+| Measurement | No speculation | Greedy DFlash, depth 3 | Probabilistic DFlash, depth 3 |
+| --- | ---: | ---: | ---: |
+| Cold native prefill | 410.437 s | 414.092 s | 411.914 s |
+| First fixed-256 HTTP request | 18.496 s | 15.489 s | 14.464 s |
+| Identical cached fixed-256 HTTP request | 14.320 s | 11.468 s | 10.861 s |
+| Minimum sampled available host memory | 20.117 GiB | 15.172 GiB | 15.523 GiB |
+
+The timing requests have 247200 input tokens. The first reuses 245162 and
+evaluates 2038. Its repeat reuses 247196 and evaluates four. Both deliberately
+produce exactly 256 tokens, including reasoning, rather than completing a
+coding task. Retrieval answers pass without input truncation, but their
+variable reasoning lengths make their request walls unsuitable for a
+fixed-work comparison.
+
+The cached timing request takes 19.9% less wall time with greedy drafting
+and 24.2% less with probabilistic drafting. Cold prefill remains essentially
+unchanged. These are single observations per cache condition and mode in a
+fixed-order screen, not a general speedup guarantee. Neither mode triggers
+the 8 GiB available-memory guard, though both leave about 5 GiB less memory
+than the no-speculation control.
+
+### Four-slot protocol screen with thinking off
+
+All three modes run four simultaneous streams, each producing exactly 256
+tokens, then replay four independent histories and test cancellation. Fixed
+opaque labels are the same across modes. All own-label, foreign-label and
+follow-up checks pass, with actual generation observed in all four slots.
+This is a short non-thinking protocol screen, not xhigh or long-context
+throughput acceptance.
+
+| Mode | Shared wall for 1024 output tokens | Aggregate tokens/s | Per-request wall range |
+| --- | ---: | ---: | ---: |
+| No speculation | 19.783 s | 51.762 | 19.779 to 19.782 s |
+| Greedy DFlash, depth 3 | 31.335 s | 32.679 | 30.662 to 31.333 s |
+| Probabilistic DFlash, depth 3 | 29.221 s | 35.044 | 28.516 to 29.219 s |
+
+Aggregate rate is total generated tokens divided by the group's shared wall
+time, not the sum of per-request rates. Continuous native-slot polling is
+included symmetrically in this screen. These observations show that the
+single-request gain does not automatically carry over to parallel work.
+They do not establish the same result for every reasoning mode or workload.
+
+Cancellation leaves all four native slots idle within about 0.10, 0.26 and
+0.16 seconds respectively. The probabilistic arm then returns `RECOVERED.`
+instead of the exact requested `RECOVERED`. Its protocol checks pass, but
+that unchanged exact-output oracle fails. The punctuation miss is retained
+without relabelling the arm as a full quality pass or a backend-state defect.
+
+Two earlier no-speculation fixture attempts remain failed records. A prompt
+about a private marker provokes refusals. Replacing that wording with a
+synthetic label removes the refusals, but numbered labels let the model
+invent adjacent worker names. Opaque independent labels make the final
+foreign-marker check informative. Every mode uses that same final fixture
+and unchanged exact-match predicates.
+
+### Two- and four-client xhigh timing
+
+A separate short-context screen measures the usual xhigh reasoning mode,
+with two fixed-output rounds per mode and client count. Every request
+evaluates its full 96 or 97 input tokens with zero cached tokens and emits
+exactly 256 tokens, including reasoning. Request bodies, rendered prompts
+and sampler provenance match across draft modes. Actual generation overlaps
+in all requested slots. No completed-task quality score is assigned to these
+deliberately limited outputs.
+
+| Clients | Mode | Round 1 aggregate tokens/s | Round 2 aggregate tokens/s | Combined aggregate tokens/s | Per-request wall range |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 2 | No speculation | 34.509 | 34.129 | 34.318 | 14.834 to 15.000 s |
+| 2 | Greedy DFlash, depth 3 | 37.243 | 36.857 | 37.049 | 13.309 to 13.890 s |
+| 2 | Probabilistic DFlash, depth 3 | 36.122 | 40.763 | 38.303 | 12.318 to 14.172 s |
+| 4 | No speculation | 51.961 | 51.759 | 51.860 | 19.657 to 19.783 s |
+| 4 | Greedy DFlash, depth 3 | 31.165 | 37.276 | 33.948 | 27.038 to 32.855 s |
+| 4 | Probabilistic DFlash, depth 3 | 43.149 | 44.686 | 43.904 | 21.928 to 23.731 s |
+
+Each two-client round generates 512 tokens, and each four-client round
+generates 1024. Combined rate divides their total output by the sum of the
+two shared round walls, never by summed per-request rates. Native-slot
+polling stops at the first observed full generation overlap. That initial
+polling remains included in wall time, so this is not an interference-free
+decode benchmark.
+
+Two-client aggregate throughput improves about 8% with greedy drafting and
+12% with probabilistic drafting. Four-client throughput instead falls about
+35% and 15% respectively. The visible round variation and two observations
+per condition do not establish stable rankings or a universal speedup.
+These are short prompts in the normal 256K allocation, not four populated
+long histories. Minimum sampled available memory is 27.869 GiB for the
+four-client control and about 23.3 GiB for its draft arms.
+
+### Decision and limits
+
+The merged implementation makes ROCm DFlash2 worth revisiting, but these
+results do not justify changing the regular parallel coding-agent path.
+Keep the current target, F16 KV and no-speculation policy. The verified small
+draft is retained for repeatable local research, not exposed as another
+managed model.
+
+This screen uses draft depth three, one target quantization and one Strix
+Halo host. It is not exhaustive draft-depth tuning, a full Maki agentic
+comparison, a Vulkan DFlash acceptance result or evidence for other GPU
+architectures. Fixed-output timing includes reasoning and deliberately stops
+at the token limit. It does not measure completed useful code. The recorded
+sampled-answer misses are real observations, not enough to establish a
+sampling-distribution defect or a general accuracy regression.
+
+Reconsider adoption after a material implementation or draft update, with
+matched gateway sampling, actual populated context and representative
+parallel coding work. Retain the literal tool replay, cancellation and
+memory checks rather than treating a higher native token rate as sufficient.
+
+Exact commands, requests, rendered prompts, reports, raw responses, native
+settings and failed attempts remain privately under
+`build/dflash-next-20261023/`. They are disposable local evidence, not
+tracked prompts, telemetry or a runtime dependency.
+
+## Dense 27B experiment (2026-08-23)
+
+The following sections preserve the original experiment and its then-current
+policy. Its model identifiers, Pi runner, ROCm version and source patch set
+are historical, not current configuration instructions or Flash-Next results.
+
+### Decision
 
 Do not enable Qwen3.8 DFlash2 in Paracetamol yet. Keep the managed
 `qwen3.8-27b-mtp-ud-q8-k-xl` ROCm path as the default.
@@ -41,7 +310,7 @@ An upstream merge by itself is not a promotion signal. Revisit the candidate
 when DFlash2 has materially changed, especially in the ROCm path, then repeat
 the gate at the end of this record.
 
-## Snapshot under test
+### Snapshot under test
 
 - Paracetamol baseline:
   `a78c4dac2c59241b6c424ec8fcb17a8cb7e8f289`
@@ -76,7 +345,7 @@ build before GPU testing. The MTP controls below used the same candidate image
 as DFlash2, not the production llama.cpp image, so source revision was held
 constant across the comparisons.
 
-## Exact model artifacts
+### Exact model artifacts
 
 Every condition used the existing managed Qwen3.8 target:
 
@@ -93,7 +362,7 @@ Q8_0 DFlash2 was used only to determine whether the ROCm failure was peculiar
 to the smaller draft. The complete Vulkan screen and deep comparison used
 Q4_K_M.
 
-## Workload and measurement rules
+### Workload and measurement rules
 
 The server-side speculative benchmark used one slot, a fresh server per
 condition, native Qwen3.8 medium reasoning, the managed Qwen3.8 chat template
@@ -117,7 +386,7 @@ rates come from llama.cpp's server timings; acceptance is accepted draft
 tokens divided by proposed draft tokens. Every cell is one repetition, so
 small differences are directional rather than stable estimates.
 
-## ROCm compatibility screen
+### ROCm compatibility screen
 
 At 8,172 actual prompt tokens, embedded MTP behaved normally while both
 DFlash2 quantizations produced almost no useful proposals:
@@ -136,7 +405,7 @@ screen. A future retest should treat similarly collapsed acceptance as a
 failed backend path even if generation still returns syntactically valid
 text.
 
-## Vulkan screens
+### Vulkan screens
 
 The same Q4_K_M draft behaved normally through Vulkan. Depth four beat depth
 five in the shallow screen and was retained:
@@ -155,7 +424,7 @@ However, the MTP/ROCm requests completed in 46.78 and 361.44 seconds at those
 depths. DFlash2/Vulkan was therefore 8.8% and 5.8% slower than that practical
 cross-backend control despite its faster generation.
 
-## Near-256K result
+### Near-256K result
 
 At 250,317 actual prompt tokens and 1,024 generated tokens, Vulkan's prompt
 scaling changed the complete-request outcome:
@@ -181,7 +450,7 @@ The near-256K test interval produced no matching AMDGPU fault, SVM mapping
 failure, GPU reset, process trap, general-protection fault, or OOM kernel
 event. Every benchmark container was removed after its run.
 
-## Promotion and retest gate
+### Promotion and retest gate
 
 Reopen this investigation only after a newer llama.cpp DFlash2 implementation
 contains a plausible change to the failing path or materially changes the
@@ -213,7 +482,7 @@ requires either a working ROCm path or that deliberate runtime boundary. A
 default change additionally requires repeated complete-request and quality
 evidence; a faster decode phase or merged pull request is not enough.
 
-## Retained local evidence and discovery sources
+### Retained local evidence and discovery sources
 
 The raw benchmark JSON remains outside version control in the ignored
 `build/dflash2-probe/build/benchmarks/` directory. The three deep records are:

@@ -107,8 +107,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      snapshot](qwen3.6-strix-halo-llama-cpp-tuning-feasibility.md)
    - [Qwen3.8 Strix Halo platform power-policy feasibility
      snapshot](qwen3.8-strix-halo-platform-power-policy-feasibility.md)
-   - [Qwen3.8 DFlash2 llama.cpp Strix Halo feasibility
-     snapshot](qwen3.8-dflash2-strix-halo-feasibility.md)
+   - [Qwen3.8 Flash-Next and historical dense-27B DFlash2 Strix Halo
+     feasibility](qwen3.8-dflash2-strix-halo-feasibility.md)
    - [Qwen3.8 RDNA head-dim-256 Flash Attention Strix Halo feasibility
      snapshot](qwen3.8-rdna-head-dim-256-flash-attention-strix-halo-feasibility.md)
    - [Qwen3.8 isolated tiled GDN prefill on Strix
