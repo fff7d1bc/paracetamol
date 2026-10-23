@@ -269,6 +269,10 @@ GGUF contains its own prediction heads; DFlash requires the separate draft
 artifact. These fields intentionally do not accept arbitrary llama.cpp
 arguments.
 
+Managed DFlash always selects greedy proposal sampling explicitly in both
+direct startup and router sections. Target sampling still comes from the
+gateway or the caller. Probabilistic draft sampling is not a managed option.
+
 `draft_tokens_by_backend` is an optional closed `rocm`/`vulkan` map that
 overrides the default draft depth only for a measured backend. Use it when
 the same target and speculative decoder have materially different optima on
@@ -324,9 +328,13 @@ The additional `stream-token-embedding` policy is limited to Strix Halo with
 Flash Attention and F16 KV. It preserves the lazy-mmap Vulkan path and selects
 explicit CPU embedding reads with device allocation on ROCm. The shared
 container helper owns its complete direct/router argument tuple, including
-2048 batch/microbatch, one non-unified-KV server slot and no RAM prompt archive.
-The ROCm backend must explicitly restrict itself to Strix Halo. Speculation
-is rejected for this policy. Native `llama-bench` cannot apply it and therefore
+2048 batch/microbatch and no RAM prompt archive. Four request slots share one
+configured context pool by default. A single-slot launch retains separate KV.
+The ROCm backend must explicitly restrict itself to Strix Halo. Its only
+reviewed speculative tuple is ROCm-only `draft-dflash` at depth three with a
+separate verified draft and no backend depth overrides. MTP, other depths and
+Vulkan speculation remain rejected for this policy. Native `llama-bench`
+cannot apply it and therefore
 rejects the managed ROCm preset rather than measuring a different allocator.
 
 `agent_tools` is an optional, explicit compatibility decision. Set it only
@@ -390,7 +398,8 @@ high-memory agent work; bounded-task and constrained-hardware presets may use
 less. Document useful smaller overrides because llama.cpp allocates the cache
 at startup. Preset identifiers become public OpenAI API model names, so keep
 them stable and descriptive. Router startup includes
-installed presets, ignores wholly missing presets, and refuses partial
+installed presets, ignores wholly missing target families or an absent
+optional separate draft beside verified targets, and refuses partial
 managed installs.
 
 The public llama.cpp recipes include the single-artifact Qwen3.8 dense target

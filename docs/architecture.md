@@ -478,6 +478,13 @@ are required by catalog validation. Native `llama-bench` refuses the managed
 ROCm preset because its independent resident benchmark path does not implement
 this serving policy.
 
+For this streamed policy, the only reviewed speculative exception is a
+separate DFlash draft on ROCm Strix Halo at depth three, without backend depth
+overrides. Existing non-speculative presets remain the default. Direct
+startup and router rendering explicitly select greedy draft proposals,
+independently of the target's gateway sampling. The container repeats the
+streamed tuple check before loading either direct or routed models.
+
 `qwen4exp-direct-reader.patch` provides the opt-in reader without changing
 Gemma4. It fails when an explicitly requested reader cannot open the model file.
 `process-allocation-policy.patch` adds `--no-unified-memory`. Parsing or
@@ -716,7 +723,12 @@ can select one of the allowlisted `draft-mtp` or `draft-dflash` strategies
 with a strategy-specific bounded token count and an optional closed
 ROCm/Vulkan override map. A different draft GGUF must belong to that same
 bundle. MTP may instead use tensors embedded in the target GGUF, while DFlash
-always requires the separate draft artifact. A preset may
+always requires the separate draft artifact. Automatic direct-router discovery
+omits a variant when only its optional separate draft is absent and every
+target shard is verified. A wholly absent target family is also omitted when
+another family has installed the shared draft. Invalid draft files beside
+present targets and incomplete targets still stop that router. Explicitly
+selecting a variant always requires its complete bundle. A preset may
 name exact GGUF architecture prefixes whose `context_length` metadata is
 overridden to that launch's selected context. Presence of this narrow policy
 also disables llama.cpp automatic fitting; it does not expose general metadata

@@ -29,6 +29,72 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Optional Flash-Next greedy DFlash2 presets (2026-10-23)
+
+The optional regular Unsloth and Huihui abliterated-v2 `-dflash2` presets use
+the locally built image `llama-cpp-ubuntu26.04-rocm10.1-280141e-r61`, ID
+`34565dee597fbdfcd482a3abdda56a9813a51b5f5ad6af46a29db5ba6ed8ef73`.
+The source remains `280141e6d4769b1e4424de999437cc72ffac33d6` with thirteen
+patches. All three native executables and all regular native-library files
+match `r60` byte for byte. Both images pass dependency closure and `pip check`.
+This is a serving-policy and catalog delivery, not another kernel refresh.
+
+The existing four target shards per family are reused with one shared Inco
+Q8_0 draft, pinned by full revision, exact bytes and SHA-256. Its own card
+declares Apache-2.0. The target license-risk gates remain independent.
+Normal installation passes without downloading duplicate target bytes.
+The existing non-speculative model at xhigh remains the Maki preference.
+
+Both Huihui modes pass the ten-request short protocol/answer matrix and a
+separate matched ten-seed literal tool-result replay. Native prompt hashes,
+six gateway-resolved samplers and actual uncached input counts match. No
+answer is truncated in these quality checks. The 32K pair also passes cold,
+repeated and changed-history six-key retrieval. The history edit fully
+reprocesses its input rather than proving partial cache rollback.
+
+The Huihui cached fixed-256 request takes 11.888 seconds without speculation
+and 9.983 seconds with greedy drafting. Minimum sampled available memory is
+27.086 versus 22.051 GiB. These forced-output measurements include reasoning,
+are not completed-task scores and do not establish a stable speedup.
+
+Huihui greedy additionally passes two exact, untruncated six-key answers at
+247210 actual input tokens. The repeated request evaluates four tokens.
+Minimum sampled available memory is 15.708 GiB, above the 8 GiB guard. This
+bounded ceiling phase omits the history edit already checked at 32K and is
+not a paired Huihui no-speculation performance comparison.
+
+The regular managed greedy entry also passes its ten-request short matrix
+and populated 32K retrieval/edit regression. Its fixed-256 HTTP times are
+12.580 and 9.380 seconds. This is not a fresh paired `r61` speed comparison.
+Native Maki 0.6.3 completes separate regular and Huihui greedy xhigh checks,
+each with one actual authorized synthetic Bash call and the exact final
+answer in two turns. Both retain thinking and finish normally. Reports
+confirm xhigh and six omitted samplers receiving gateway defaults. Disposable
+configuration comes from the normal export, with no user configuration
+changes. These native-client observations complement the separate API tests,
+not independent proof of raw wire-history replay or engine input truncation.
+
+The reviewed tuple is ROCm Strix Halo only, with greedy depth three,
+F16 K/V, unchanged matrix precision, direct embedding reads and four slots
+sharing the 262144-token pool. Native arguments select `ROCm0` for target
+and draft. That selection is not independent proof of every draft tensor's
+placement. Other streamed speculation tuples and probabilistic proposals
+remain rejected. Unit and installed-Maki fixture tests cover inventory,
+receipt eligibility, reasoning, sampler ownership and the unchanged default.
+The direct speculative sweep rejects the streamed presets rather than
+permitting unsupported strategy or allocation overrides.
+
+The actual CPU-only router passes loopback health, inventory, confinement
+and normal stop checks. All test gateways, native inference processes and
+managed containers are gone afterward. The final kernel window is quiet,
+with no matching GPU fault, reset, mapping failure, process trap or OOM event.
+No host configuration or power settings are changed, and the host is left idle.
+
+The [DFlash2 record](qwen3.8-dflash2-strix-halo-feasibility.md#optional-greedy-preset-follow-up-2026-10-23)
+keeps the detailed gates and earlier regular-target concurrency tradeoffs.
+Private evidence remains under `build/dflash-presets-20261023/`. No Vulkan,
+RDNA 4, Strix Point or dense-27B DFlash2 acceptance is implied.
+
 ### Strix Halo llama.cpp source refresh (2026-10-23)
 
 **Flash-Next no-speculation refresh acceptance passes on the tested
@@ -119,7 +185,9 @@ wording causes refusals, and predictable numbered labels cause ordinary
 extrapolation of other worker names. Neither result proves backend state
 leakage. The final opaque fixture changes the input, not the exact oracles.
 
-The separately tested DFlash2 draft is not a managed preset or default.
+At this source-refresh stage the separately tested DFlash2 draft is not a
+managed preset or default. The later optional-preset acceptance is recorded
+above and keeps the non-speculative default.
 Its modes, retained quality miss and measurements are recorded in the
 [DFlash2 feasibility follow-up](qwen3.8-dflash2-strix-halo-feasibility.md#flash-next-follow-up-2026-10-23).
 All experimental gateways and containers are stopped and removed. The

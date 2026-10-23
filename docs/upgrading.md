@@ -305,6 +305,17 @@ The [dated DFlash2 follow-up](qwen3.8-dflash2-strix-halo-feasibility.md#flash-ne
 records the independent draft evaluation rather than treating an upstream
 merge as hardware or task-quality acceptance.
 
+The subsequent `280141e-r61` image keeps that source pin and all thirteen
+patches. It packages explicit greedy DFlash proposals and the accepted
+streamed Flash-Next exception at depth three on ROCm Strix Halo. All native
+binaries and regular files under `/usr/local/lib` are byte-identical to
+`r60`. Separate optional presets reuse the regular and Huihui targets plus
+one pinned Inco Q8_0 draft. The ordinary non-speculative default, F16 KV,
+matrix precision and model-aware gateway samplers are unchanged. See the
+[managed-preset follow-up](qwen3.8-dflash2-strix-halo-feasibility.md#optional-greedy-preset-follow-up-2026-10-23)
+for the independent checks and limitations. The unrestricted direct
+speculative-depth sweep intentionally rejects these streamed presets.
+
 The October 22 refresh selects frozen upstream
 `e197cef4554d466e0becac20e453a355daba8e5d`, 63 commits after `dd002b9`,
 in image `e197cef-r58`. Thirteen patches remain. Twelve apply unchanged;

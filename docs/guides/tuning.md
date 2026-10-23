@@ -345,6 +345,12 @@ The resulting 96 requests can take
 hours; use `--draft-depth`, `--context-depth`, `--repetitions`, and
 `--generation-tokens` for a bounded smoke before the default campaign.
 
+Streamed Flash-Next DFlash2 presets are not accepted by this direct sweep.
+Their reviewed tuple fixes greedy depth three and the streaming allocation
+policy, while the sweep permits incompatible strategy and runtime overrides.
+Use ordinary gateway requests and request reports to compare these optional
+presets with their non-speculative controls instead.
+
 Controlled tuning runs can additionally fix `--draft-probability-min`,
 `--draft-backend-sampling`, `--ngram-simple`, `--graph-optimization`,
 `--disable-graphs`, `--poll`, `--no-host`, `--flash-attn`, and the matching

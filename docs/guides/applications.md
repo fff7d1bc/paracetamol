@@ -228,7 +228,9 @@ Existing Qwen3.6 files are not deleted automatically.
 | `unsloth-qwen3.8-27b-ud-q4-k-xl` | Dense 27B Dynamic v3 Q4_K_XL at 128K | Optional smaller non-speculative control |
 | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl` | Same Dynamic v3 Q4_K_XL GGUF using its embedded MTP heads | Optional smaller agent preset |
 | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl` | Sparse 125B-A6B Dynamic Q4_K_XL, no MTP | Harness default at xhigh on the accepted 128 GB Strix Halo path |
+| `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2` | Same target with Inco's Q8_0 draft and greedy depth-three proposals | Optional single-request decode tradeoff on ROCm Strix Halo |
 | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl` | Huihui abliterated v2, Unsloth-derived Dynamic Q4_K_XL | Optional modified weights with the same Flash-Next runtime policy |
+| `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2` | Same Huihui target with the shared Inco draft and greedy depth-three proposals | Optional speculative counterpart, not a new target quantization |
 
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
@@ -329,8 +331,9 @@ low, medium, and xhigh reasoning. The Maki example starts regular Flash-Next at
 callers that omit reasoning. Thinking uses
 temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
 0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
-upstream llama.cpp supports the target architecture but not its MTP heads, so
-Paracetamol deliberately provides no speculative alias. Q4_K_XL is preferred on the
+upstream llama.cpp supports the target architecture but Paracetamol provides
+no MTP variant. Optional greedy DFlash2 presets use a separate draft instead.
+Q4_K_XL is preferred on the
 accepted 128 GB Strix Halo host because it improves Unsloth's quant-fidelity
 measurements over IQ4_XS while retaining 34 GiB of available memory after a
 199872-token retrieval run. The Q5_K_XL payload exceeds the measured remaining
@@ -358,6 +361,39 @@ describes modified weights with reduced refusal behavior. Its linked license
 file is absent, so the download retains the explicit `NOASSERTION` gate.
 The [hardware acceptance log](../hardware-acceptance.md) records the tested
 scope rather than treating protocol compatibility as a quality benchmark.
+
+#### Optional greedy DFlash2
+
+The `-dflash2` presets keep the same target shards, template, reasoning
+controls, gateway sampling, 256K context and F16 KV. They add one shared
+652 MB Inco Q8_0 draft and explicitly select greedy proposals at depth three.
+They are limited to ROCm on Strix Halo. There is no managed probabilistic
+proposal mode, and the regular non-speculative Flash-Next remains the Maki
+default at xhigh.
+
+Install either exact bundle, or both:
+
+```bash
+./paracetamol content install llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2 \
+  --accept-license --acknowledge-license-risk
+./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2 \
+  --acknowledge-license-risk
+```
+
+Already installed target shards are reused, not downloaded into another
+directory. The two options also share the same draft file. Restart the
+gateway to refresh its frozen inventory, then refresh Maki's generated
+provider configuration as described in [Remote Maki](remote-maki.md). Select
+the corresponding `-dflash2` ID and choose the reasoning level normally.
+Both optional IDs retain the medium HTTP and adaptive client fallback.
+
+This is not a universal speed upgrade. In the regular target's bounded
+tests, cached single-request generation takes about 20 to 25% less wall time,
+but prefill does not improve. Four-client xhigh throughput falls about 35%
+with greedy drafting, and available memory falls by about 5 GiB. The
+[DFlash2 research record](../qwen3.8-dflash2-strix-halo-feasibility.md)
+keeps the measurements, independent Huihui checks and limitations. Prefer
+the ordinary preset when parallel throughput or memory headroom matters.
 
 On the accepted Fedora Strix Halo host, start the optional dense MTP preset with the
 normal ROCm backend unless the local workload favors Vulkan:
@@ -636,7 +672,7 @@ or network sandbox, runtime installation, credential store or session manager.
 Maki's permission prompts and folder trust are not equivalent to the former
 bubblewrap boundary. Keep backups and review executable project configuration.
 
-The example prefers regular Unsloth Flash-Next at xhigh, then dense Qwen3.8
+The example prefers non-speculative Unsloth Flash-Next at xhigh, then dense Qwen3.8
 27B MTP Q8, then the first available coding-capable model. It limits concurrent
 task subagents to two per Maki process but does not change saved tier
 assignments or other providers. Use Maki's model picker and `/thinking` to
@@ -645,13 +681,14 @@ choose another model or reasoning mode.
 | Family | Native control | Choices | Default |
 | --- | --- | --- | --- |
 | Qwen3.8 27B | reasoning effort | off, low, medium, xhigh | medium |
-| Regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in the Maki example, medium when omitted over HTTP |
+| Non-speculative regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in the Maki example, medium when omitted over HTTP |
 | Huihui Flash-Next abliterated v2 | reasoning effort | off, low, medium, xhigh | medium |
+| Optional Flash-Next DFlash2, either publisher | reasoning effort | off, low, medium, xhigh | medium |
 | Muse Glimmer 30B | reasoning strength | low, medium, high, xhigh | high |
 
 Qwen3.8 has no native high level. The reviewed template uses medium when HTTP
 reasoning is omitted. The client preference sends xhigh explicitly for regular
-Flash-Next. Maki maps unsupported high to medium and clamps Muse off to low.
+non-speculative Flash-Next. Maki maps unsupported high to medium and clamps Muse off to low.
 Adaptive follows the selected model's exported default.
 
 The provider sends Qwen's `reasoning_effort` or Muse's `reasoning_strength`,
@@ -840,7 +877,9 @@ Inspect the router itself, or select one configured child policy:
 ```
 
 Select a preset using the OpenAI API `model` field. Missing models are skipped;
-partial managed installs stop startup. The generated router INI and model
+an absent optional draft does not prevent serving its verified base target.
+Partial targets or invalid draft files for installed targets stop startup.
+The generated router INI and model
 partition are mounted read-only.
 
 An ordinary Chat Completions request selects the router preset through

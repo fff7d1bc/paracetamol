@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -103,6 +104,68 @@ func TestMakiEmptyInventoryAndFallback(t *testing.T) {
 	}
 	if _, err := Maki(models, "https://user:secret@example/v1", true); err == nil {
 		t.Fatal("credential-bearing URL accepted")
+	}
+}
+
+func TestMakiFlashNextDFlash2ExportsKeepNonSpeculativeDefault(t *testing.T) {
+	const baseID = "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl"
+	if RecommendedModel != baseID {
+		t.Fatalf("optional speculation displaced the recommended control: %s", RecommendedModel)
+	}
+	models := catalogModels(t)
+	byID := make(map[string]textmodel.Model)
+	for _, model := range models {
+		byID[model.ID] = model
+	}
+	variants := []string{
+		baseID + "-dflash2",
+		"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2",
+	}
+	for _, modelID := range variants {
+		t.Run(modelID, func(t *testing.T) {
+			model, ok := byID[modelID]
+			if !ok || !model.AgentTools {
+				t.Fatal("missing optional agent model")
+			}
+			wantFields := map[string]any{}
+			for mode, effort := range map[string]string{"adaptive": "medium", "off": "none", "low": "low", "medium": "medium", "xhigh": "xhigh"} {
+				wantFields[mode] = map[string]any{"reasoning_effort": effort}
+			}
+			if fields := MakiThinkingFields(model); !reflect.DeepEqual(fields, wantFields) {
+				t.Fatalf("optional model invented levels or request fields: %#v", fields)
+			}
+			files, err := Maki(models, "https://gateway.example/v1", true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count := strings.Count(string(files.Providers), "\nid = "+quote(modelID)+"\n"); count != 1 {
+				t.Fatalf("optional model exported %d times", count)
+			}
+			for _, forbidden := range []string{"temperature", "top_p", "top_k", "min_p", "presence_penalty", "repeat_penalty", "thinking_budget", "draft_sampling"} {
+				if bytes.Contains(files.Providers, []byte(forbidden)) || bytes.Contains(files.Init, []byte(forbidden)) {
+					t.Fatalf("optional model introduced client-owned sampling: %s", forbidden)
+				}
+			}
+		})
+	}
+	base := byID[baseID]
+	if base.ReasoningDefault != "medium" || ReasoningDefault(base) != "xhigh" {
+		t.Fatalf("HTTP fallback or recommended client effort changed: %#v", base)
+	}
+	// Exercise both catalog order and the adverse order where every optional
+	// model precedes the base. Availability must not imply a new preference.
+	for _, inventory := range [][]textmodel.Model{models, {byID[variants[1]], byID[variants[0]], base}} {
+		selected, err := DefaultModel(inventory)
+		if err != nil || selected.ID != baseID {
+			t.Fatalf("optional model displaced the non-speculative default: %s, %v", selected.ID, err)
+		}
+		files, err := Maki(inventory, "https://gateway.example/v1", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(files.Providers, []byte("default_model = "+quote("paracetamol/"+baseID))) || !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+baseID))) || !bytes.Contains(files.Providers, []byte(`"adaptive" = { "reasoning_effort" = "xhigh" }`)) {
+			t.Fatal("export changed the recommended model or xhigh effort")
+		}
 	}
 }
 

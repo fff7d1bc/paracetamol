@@ -204,6 +204,13 @@ preset-arguments collection: every new optimized policy needs an explicit
 schema, validation, runtime mapping, router rendering, and hardware
 acceptance.
 
+Managed DFlash proposals are explicitly greedy in direct startup and router
+sections. Do not inherit the upstream proposal-sampling default or expose
+probabilistic proposals through another configuration path. The streamed
+Flash-Next exception is narrower than the general DFlash schema. It requires
+ROCm on Strix Halo, depth three and a separate verified draft. MTP and other
+streamed speculative tuples remain unsupported.
+
 When controlled measurements establish different speculative depths for the
 ROCm and Vulkan builds, `draft_tokens_by_backend` may override the preset's
 fallback for either exact backend. Keep the common value in `draft_tokens`,

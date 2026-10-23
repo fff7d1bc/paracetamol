@@ -61,6 +61,12 @@ func TestInstalledMaki(t *testing.T) {
 		{"huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl", "off", "reasoning_effort", "none", true},
 		{"huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl", "xhigh", "reasoning_effort", "xhigh", true},
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "adaptive", "reasoning_effort", "medium", true},
+		{"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2", "adaptive", "reasoning_effort", "medium", true},
+		{"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2", "off", "reasoning_effort", "none", true},
+		{"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2", "xhigh", "reasoning_effort", "xhigh", true},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "adaptive", "reasoning_effort", "medium", true},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "off", "reasoning_effort", "none", true},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "xhigh", "reasoning_effort", "xhigh", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "adaptive", "reasoning_strength", "high", true},
 		{"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "off", "reasoning_strength", "low", true},
 	} {
@@ -207,7 +213,7 @@ data: [DONE]
 		if body["model"] != models[0].ID || body[field] != expected {
 			t.Fatalf("wrong model/reasoning: %v", body)
 		}
-		for _, sampler := range []string{"temperature", "top_p", "top_k", "min_p", "thinking_budget"} {
+		for _, sampler := range []string{"temperature", "top_p", "top_k", "min_p", "presence_penalty", "repeat_penalty", "thinking_budget", "draft_sampling"} {
 			if _, ok := body[sampler]; ok {
 				t.Fatalf("native Maki overrode sampling: %s", sampler)
 			}

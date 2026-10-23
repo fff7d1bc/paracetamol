@@ -187,6 +187,10 @@ if [[ "$router" == 0 && -n "$speculative_type" ]]; then
         --spec-type "$speculative_type"
         --spec-draft-n-max "$draft_tokens"
     )
+    if [[ "$speculative_type" == draft-dflash ]]; then
+        # Proposal sampling is separate from the caller's target sampler.
+        speculative_args+=(--spec-draft-sampling greedy)
+    fi
     if [[ -n "$draft_model" ]]; then
         speculative_args+=(--model-draft "$draft_model")
     fi
@@ -291,6 +295,11 @@ else
             stream-token-embedding)
                 [[ "$profile" == strix-halo && "$mode" != bench ]] ||
                     die "streaming token embedding requires Strix Halo server or CLI mode"
+                if [[ -n "$speculative_type" ]]; then
+                    [[ "$backend" == rocm && "$speculative_type" == draft-dflash &&
+                        "$draft_tokens" == 3 && -f "$draft_model" ]] ||
+                        die "streaming token embedding speculation requires ROCm Strix Halo DFlash at depth 3 with a draft model"
+                fi
                 stream_arguments="$(llama_stream_token_embedding_args "$backend" "$mode")"
                 mapfile -t stream_args <<< "$stream_arguments"
                 model_policy_args+=("${stream_args[@]}")
@@ -444,6 +453,12 @@ if [[ "$mode" == server ]]; then
             die "router preset has an unsupported version"
         ! grep -q '^\[\*\]$' /run/paracetamol/models.ini ||
             die "router preset must not contain global settings"
+        while IFS= read -r preset_line; do
+            if [[ "$preset_line" == 'model-draft = '* ]]; then
+                [[ -f "${preset_line#model-draft = }" ]] ||
+                    die "router draft model is not a regular file"
+            fi
+        done < /run/paracetamol/models.ini
         stream_ini=""
         if [[ "$profile" == strix-halo ]]; then
             stream_ini="$(llama_stream_token_embedding_ini "$backend")"
@@ -453,9 +468,21 @@ if [[ "$mode" == server ]]; then
             tail -n +2 /run/paracetamol/models.ini |
                 awk \
                     -v profile="$profile" \
+                    -v backend="$backend" \
                     -v stream_ini="$stream_ini" \
                     -v gpu_count="$gpu_count" \
                     -v backend_devices="${backend_devices:-none}" '
+                    function validate_stream_speculation() {
+                        # Validate after the whole section, independent of key order.
+                        if (streaming && spec_type != "" &&
+                            (profile != "strix-halo" || backend != "rocm" ||
+                             spec_type != "draft-dflash" || draft_depth != "3" ||
+                             draft_sampling != "greedy" || draft_model == "")) {
+                            print "error: streaming token embedding speculation requires ROCm Strix Halo DFlash at depth 3 with a draft model" > "/dev/stderr"
+                            bad = 1
+                            exit 1
+                        }
+                    }
                     /^paracetamol-flash-attn-rdna4 = / {
                         if (profile == "rdna4") {
                             sub(/^paracetamol-flash-attn-rdna4 = /, "")
@@ -519,6 +546,7 @@ if [[ "$mode" == server ]]; then
                                 print "lazy-mode = on"
                                 print "override-tensor = per_layer_token_embd.weight=CPU"
                             } else if ($0 == "stream-token-embedding") {
+                                streaming = 1
                                 print stream_ini
                             }
                         }
@@ -538,6 +566,12 @@ if [[ "$mode" == server ]]; then
                         next
                     }
                     /^\[[^*].*\]$/ {
+                        validate_stream_speculation()
+                        streaming = 0
+                        spec_type = ""
+                        draft_depth = ""
+                        draft_sampling = ""
+                        draft_model = ""
                         print
                         print "offline = true"
                         if (profile == "cpu") {
@@ -551,12 +585,19 @@ if [[ "$mode" == server ]]; then
                         }
                         next
                     }
-                    /^spec-type = draft-(mtp|dflash)$/ {
+                    /^spec-type = / {
+                        spec_type = $3
                         print
-                        print "device-draft = " backend_devices
+                        if (spec_type == "draft-mtp" || spec_type == "draft-dflash") {
+                            print "device-draft = " backend_devices
+                        }
                         next
                     }
+                    /^spec-draft-n-max = / { draft_depth = $3 }
+                    /^spec-draft-sampling = / { draft_sampling = $3 }
+                    /^model-draft = / { draft_model = substr($0, 15) }
                     { print }
+                    END { if (!bad) validate_stream_speculation() }
                 '
         } | llama_server_slot_ini "$slots" > "$router_preset"
         exec llama-server \

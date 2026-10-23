@@ -38,11 +38,27 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend, profile string) (s
 		}
 		allMissing := true
 		ready := true
+		separateDraft := preset.DraftArtifact != "" && preset.DraftArtifact != preset.Artifact
+		draftMissing := false
+		targetFound := false
+		targetsMissing := true
+		targetsReady := true
 		for _, status := range statuses {
 			allMissing = allMissing && status.State == content.Missing
 			ready = ready && content.Ready(status.State)
+			if separateDraft && status.Artifact.ID == preset.DraftArtifact {
+				draftMissing = status.State == content.Missing
+			} else {
+				targetFound = true
+				targetsMissing = targetsMissing && status.State == content.Missing
+				targetsReady = targetsReady && content.Ready(status.State)
+			}
 		}
-		if allMissing {
+		// A separate optional draft may share targets or serve multiple families.
+		// Neither an absent draft beside verified targets nor a shared draft beside
+		// wholly absent targets is a partial install. Partial/stale target sets and
+		// existing unverified draft bytes beside present targets still fail closed.
+		if allMissing || (separateDraft && targetFound && (targetsMissing || (draftMissing && targetsReady))) {
 			continue
 		}
 		if !ready {
@@ -123,6 +139,10 @@ func RenderRouterModels(managed catalog.Catalog, backend, profile string, identi
 		}
 		if preset.SpeculativeType != "" {
 			section = append(section, "spec-type = "+preset.SpeculativeType, fmt.Sprintf("spec-draft-n-max = %d", preset.DraftTokensForBackend(backend)))
+			if preset.SpeculativeType == "draft-dflash" {
+				// Pin the reviewed proposal policy without changing target sampling.
+				section = append(section, "spec-draft-sampling = greedy")
+			}
 			if preset.DraftArtifact != "" {
 				section = append(section, "model-draft = /content/models/"+managed.Artifacts[preset.DraftArtifact].Destination)
 			}

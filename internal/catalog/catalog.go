@@ -832,7 +832,12 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 		}
 		if policy == LlamaModelLoadStreamTokenEmbedding {
 			if raw.SpeculativeType != "" {
-				return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s streaming token embedding has no accepted speculative path", id)
+				// The streamed target/draft tuple was accepted only at depth three
+				// on ROCm Strix Halo. Do not extend that evidence to Vulkan, MTP,
+				// or another draft depth through a backend override.
+				if raw.SpeculativeType != "draft-dflash" || raw.DraftTokens != 3 || len(raw.DraftTokensByBackend) != 0 || raw.DraftArtifact == "" || len(raw.Backends) != 1 || raw.Backends[0] != "rocm" {
+					return LlamaPreset{}, fmt.Errorf("llama.cpp preset %s streaming speculation requires ROCm-only DFlash at depth 3 with a separate draft", id)
+				}
 			}
 			if len(raw.Backends) == 0 || contains(raw.Backends, "rocm") {
 				profiles := raw.BackendProfiles["rocm"]

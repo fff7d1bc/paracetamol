@@ -1,13 +1,128 @@
 # Qwen3.8 DFlash2 llama.cpp Strix Halo feasibility snapshot
 
-This maintainer research record covers the October 23 Flash-Next follow-up
-and the original August 23 dense-27B experiment on Fedora 44 Strix Halo.
-The two architectures use different draft models. Neither experiment adds a
-managed DFlash2 preset or changes the default model's speculative policy.
+This maintainer research record covers the October 23 Flash-Next evaluation,
+its optional-preset follow-up and the original August 23 dense-27B experiment
+on Fedora 44 Strix Halo. The two architectures use different draft models.
+The regular non-speculative Flash-Next remains the default.
 
 This document is historical, machine-specific evidence rather than a current
 support or performance declaration. Inspect `Containerfile`, the catalog,
 source, and current hardware-acceptance records for active policy.
+
+## Optional greedy preset follow-up (2026-10-23)
+
+**Greedy DFlash2 is an optional choice, not the new default.** Regular
+Unsloth Flash-Next remains the recommended model at xhigh. Probabilistic
+drafting is not exposed. The initial measurements below still apply to its
+tradeoffs. Greedy helps some single-request decode work, does not accelerate
+prefill, leaves about 5 GiB less available memory and loses throughput with four
+parallel clients in the short xhigh screen.
+
+The optional IDs append `-dflash2` to the regular Unsloth and Huihui
+abliterated-v2 Flash-Next IDs. Both reuse their existing target shards and one
+shared Inco Q8_0 draft pinned below. They preserve the target template,
+reasoning preservation, gateway-owned missing sampler defaults, normal matrix
+precision, F16 KV and the 262144-token pool. They explicitly select greedy
+proposals at depth three. They are accepted only on ROCm Strix Halo, not
+Vulkan, RDNA 4 or Strix Point. Installation and selection are described in
+the [application guide](guides/applications.md#optional-greedy-dflash2).
+
+### Managed-path checks
+
+The follow-up uses image `280141e-r61`, ID
+`34565dee597fbdfcd482a3abdda56a9813a51b5f5ad6af46a29db5ba6ed8ef73`.
+The llama.cpp commit and thirteen patches are unchanged from the initial
+evaluation. The server, CLI, benchmark binaries and every regular file under
+the native library directory are byte-identical to `r60`. The image change
+packages the reviewed entrypoint policy, not new inference kernels.
+
+Unlike the initial experimental arms, these checks select ordinary managed
+catalog presets through the gateway without editing a generated router file.
+Normal installation verifies the shared draft and reuses existing target
+receipts. Inventory and client tests withhold the optional choices when the
+draft is missing or unverified and preserve the ordinary model preference.
+Direct-router discovery also permits installing either target family alone
+with the shared draft. Missing optional content is not made mandatory, and
+partial or stale target installations still fail closed.
+
+The regular managed greedy preset also repeats the complete ten-request
+short matrix successfully, including replay of its own assistant histories.
+The same two object-form tool-choice fallback warnings remain. No experimental
+INI hook is used in this follow-up.
+
+Its populated 32K regression check also passes both six-key retrievals and
+the changed-history answer with the same input and cache counts used below.
+The fixed-256 HTTP requests take 12.580 and 9.380 seconds, with 22.077 GiB
+minimum sampled available memory. These are representative managed-path
+acceptance measurements, not a fresh paired `r61` speed comparison. The
+earlier matched `r60` comparison is retained separately below.
+
+### Independent Huihui checks
+
+The unchanged Huihui target and its greedy counterpart each pass the complete
+ten-request short matrix. This includes thinking off and xhigh, nested tools,
+replay of their own full assistant messages, streaming and live prefix reuse.
+Both retain the pre-existing object-form `tool_choice` fallback warning.
+The observed sole-function round trip is not a claim of complete forced-tool
+API support.
+
+A separate ten-seed replay uses one unchanged Huihui assistant/tool history
+per mode. Only the model selector changes. Both return the exact tool value
+in all ten sampled answers. Native rendered prompts match byte for byte,
+all 454 input tokens are evaluated without cache or truncation, and the six
+samplers match the omitted-client-field gateway policy. This is one small
+replayed item, not twenty independent quality tasks or a guarantee against
+hallucination.
+
+At populated 32K, both modes recover all six keys twice and correctly return
+the changed value after a separate history edit. Actual inputs are 32977
+tokens for xhigh retrieval and 32935 for the medium edit. The repeat evaluates
+four tokens, while the edit fully reprocesses its input. Requests, controls
+and native prompt hashes match between modes.
+
+| Huihui fixed-256 measurement at 32K | No speculation | Greedy DFlash2 |
+| --- | ---: | ---: |
+| First request HTTP wall | 15.099 s | 13.160 s |
+| Identical cached repeat HTTP wall | 11.888 s | 9.983 s |
+| Minimum sampled available memory | 27.086 GiB | 22.051 GiB |
+
+The cached repeat takes about 16% less wall time. Each timing answer is
+deliberately limited to 256 tokens, including reasoning. It is not a completed
+task or quality pass. These single observations do not establish a stable
+speedup or show that the shared draft fits every abliterated target equally
+well.
+
+The greedy Huihui preset also passes cold and cached six-key retrieval at
+247210 actual input tokens. The repeat reuses 247206 tokens and evaluates
+four. Both answers are exact and untruncated. The cold native prefill takes
+410.846 seconds. The separate fixed-256 timing requests have 247200 input
+tokens and take 15.652 and 11.477 seconds of HTTP wall time. Minimum sampled
+available memory is 15.708 GiB, above the unchanged 8 GiB guard. This bounded
+four-request ceiling phase omits the history edit tested at 32K. There is no
+matched Huihui no-speculation ceiling arm, so it proves this tested workload
+works, not a paired near-ceiling speedup.
+
+Native Maki 0.6.3 also completes separate regular and Huihui greedy xhigh tool
+loops, each in two turns. An isolated configuration uses the ordinary gateway
+export, permits only one exact synthetic Bash command and requires the real
+successful tool result followed
+by the exact final answer. Thinking is present, and gateway reports confirm
+xhigh and the six omitted sampler fields receiving their catalog defaults.
+The normal user configuration is untouched. Native Maki output and reports
+do not independently prove OpenAI wire-history preservation, actual engine
+sampler settings or lack of input truncation. The separate API checks above
+cover those boundaries.
+
+The actual CPU-only router starts on loopback, exposes its inventory and
+stops cleanly through the normal controller. Its root remains read-only, no
+GPU devices are exposed, and the server process has no permitted, effective
+or bounding capabilities. All test gateways and containers are gone after
+acceptance. The kernel window has no GPU fault, reset, SVM mapping failure,
+process trap or OOM event. No host power or kernel settings are changed.
+
+Private commands, raw messages, reports and native output remain under
+`build/dflash-presets-20261023/`. Only sanitized results are tracked. These
+checks do not retest dense 27B DFlash2 or change that historical decision.
 
 ## Flash-Next follow-up (2026-10-23)
 
@@ -15,7 +130,8 @@ source, and current hardware-acceptance records for active policy.
 single-request fixed-output tests, but not prefill, and its benefit does not
 transfer uniformly to parallel work. It also leaves about 5 GiB less available
 memory on the tested 128 GB host. The source refresh is accepted separately.
-No managed DFlash2 preset is added.
+This initial evaluation does not add a managed DFlash2 preset. The later
+optional-preset acceptance above is a separate decision, not a default change.
 
 The newer Flash-Next draft now runs through llama.cpp on ROCm. It no longer
 hits the first-request hidden-state assertion described in its pinned model
@@ -247,7 +363,7 @@ These are short prompts in the normal 256K allocation, not four populated
 long histories. Minimum sampled available memory is 27.869 GiB for the
 four-client control and about 23.3 GiB for its draft arms.
 
-### Decision and limits
+### Initial decision and limits
 
 The merged implementation makes ROCm DFlash2 worth revisiting, but these
 results do not justify changing the regular parallel coding-agent path.
@@ -255,7 +371,7 @@ Keep the current target, F16 KV and no-speculation policy. The verified small
 draft is retained for repeatable local research, not exposed as another
 managed model.
 
-This screen uses draft depth three, one target quantization and one Strix
+This initial screen uses draft depth three, one target quantization and one Strix
 Halo host. It is not exhaustive draft-depth tuning, a full Maki agentic
 comparison, a Vulkan DFlash acceptance result or evidence for other GPU
 architectures. Fixed-output timing includes reasoning and deliberately stops

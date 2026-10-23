@@ -108,13 +108,31 @@ Install it separately without changing the default:
 This download also needs explicit license-risk acknowledgment. It is another
 103.7 GiB model, not a patch file applied to existing weights.
 
+Optional greedy DFlash2 variants are exact bundles rather than changes to
+the guided recipe:
+
+```bash
+./paracetamol content install llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2 \
+  --accept-license --acknowledge-license-risk
+./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2 \
+  --acknowledge-license-risk
+```
+
+Each reuses its existing four target shards and adds the same shared 652 MB
+Inco draft. Installing both does not duplicate that file. These presets are
+limited to ROCm Strix Halo and do not change the non-speculative default.
+Restart the gateway and refresh Maki's exported provider configuration to
+see newly installed choices. See the [application guide](applications.md#optional-greedy-dflash2)
+for the measured speed, concurrency and memory tradeoffs.
+
 The `muse-glimmer` recipe installs Meta's 30B Dynamic Q4_K_XL target and
 matching DFlash draft. The next-step command starts the forced-256K DFlash
 preset used as the Muse family comparison. The same pair also exposes a
 non-speculative 128K control and a 128K DFlash preset. All three preserve
 parsed reasoning and advertise Muse's native low, medium, high, and xhigh
-strengths; high is the family default and off is not advertised. Managed agent
-launchers instead prefer Qwen3.8 27B MTP at medium when it is installed.
+strengths; high is the family default and off is not advertised. The native
+Maki configuration instead prefers regular non-speculative Flash-Next at xhigh
+when it is installed.
 
 Catalog pruning does not delete GGUFs installed by an older checkout. Retired
 files remain visible as local model rows in `content list models`; remove

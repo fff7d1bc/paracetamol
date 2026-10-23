@@ -48,6 +48,12 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   `sampling_policy` optionally references one catalog policy when the model's
   authoritative sampling differs between thinking and non-thinking requests.
 
+Managed DFlash uses explicit greedy proposals, independently of the target's
+gateway sampling. Optional Flash-Next `-dflash2` bundles reuse the existing
+target shards and add one shared pinned Inco Q8_0 draft. They are limited to
+the accepted ROCm Strix Halo tuple at depth three and do not replace the
+ordinary non-speculative recipe or Maki default.
+
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination
 collisions.

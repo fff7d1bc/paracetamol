@@ -192,6 +192,13 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if !preset.AgentTools {
 		return controlerr.Usage("preset %q has no reviewed Chat Completions policy", *presetID)
 	}
+	for _, policy := range preset.ModelLoad {
+		if policy == catalog.LlamaModelLoadStreamTokenEmbedding {
+			// This sweep can override strategy, depth, batch and cache policy;
+			// it cannot preserve the streamed preset's fixed accepted tuple.
+			return controlerr.Usage("preset %q uses stream-token-embedding with a reviewed depth-3 DFlash tuple; direct speculative sweeps are unsupported; use gateway-based probes instead", *presetID)
+		}
+	}
 	maximumDepth := 15
 	if preset.SpeculativeType == "draft-mtp" {
 		maximumDepth = 8

@@ -150,6 +150,14 @@ revisions recorded in `catalog/catalog.json`.
   gate. The official Qwen license is recorded as lineage only. Every shard
   has its own size and SHA-256 pin. Paracetamol does not redistribute the
   weights, and uses its existing Qwen3.8 template without modification.
+- The optional Flash-Next DFlash2 presets share Inco AI's Q8_0 draft from
+  `incoai/Qwen3.8-Flash-Next-DFlash2-GGUF` at
+  `4f5a39be8f0a9e9a573ac9824251830a8f4096d9`. Its own pinned model card
+  declares Apache-2.0 and identifies
+  `incoai/Qwen3.8-Flash-Next-DFlash2` as the source checkpoint. This license
+  does not change the separate terms or unresolved conversion-license gates
+  of either target. Paracetamol pins the draft's exact size and SHA-256,
+  downloads it separately, and does not redistribute the weights.
 - The managed Gemma 4 31B IT Q8_0 target and matching Q8_0 MTP draft are
   downloaded together from one full pinned llama.cpp project revision. The
   repository declares Apache-2.0. Paracetamol records both files' exact sizes

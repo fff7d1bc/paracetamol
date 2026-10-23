@@ -2,10 +2,78 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"paracetamol/internal/benchmark"
+	"paracetamol/internal/catalog"
+	"paracetamol/internal/controlerr"
 )
+
+func TestSpeculativeSweepRejectsStreamedPresetsBeforeHostResolution(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, presetID := range []string{
+		"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2",
+		"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2",
+	} {
+		for name, extra := range map[string][]string{
+			"default sweep":   nil,
+			"ngram override":  {"--ngram-simple"},
+			"reviewed depth":  {"--draft-depth", "3"},
+			"different depth": {"--draft-depth", "4"},
+		} {
+			for _, dryRun := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/dry-run=%t", presetID, name, dryRun), func(t *testing.T) {
+					runner := &commandRunner{}
+					app, stdout, stderr := testApp(t, runner)
+					app.catalog = &managed
+					root := t.TempDir()
+					args := []string{"benchmark", "llama-cpp", "speculative", "--preset", presetID,
+						"--profile", "strix-halo", "--render-node", "/dev/dri/renderD999999",
+						"--data-dir", filepath.Join(root, "data"), "--output", filepath.Join(root, "checkpoint.json")}
+					args = append(args, extra...)
+					if dryRun {
+						args = append(args, "--dry-run")
+					}
+					err := app.Dispatch(args)
+					var controlled *controlerr.Error
+					if !errors.As(err, &controlled) || controlled.Status != 2 || !strings.Contains(controlled.Message, presetID) || !strings.Contains(controlled.Message, "reviewed depth-3 DFlash tuple") || !strings.Contains(controlled.Message, "use gateway-based probes instead") {
+						t.Fatalf("missing early streamed-policy usage error: %v", err)
+					}
+					if len(runner.commands) != 0 || app.configuration != nil || stdout.Len() != 0 || stderr.Len() != 0 {
+						t.Fatalf("rejected sweep reached host planning/execution: commands=%v configuration=%v stdout=%q stderr=%q", runner.commands, app.configuration, stdout.String(), stderr.String())
+					}
+					entries, err := os.ReadDir(root)
+					if err != nil || len(entries) != 0 {
+						t.Fatalf("rejected sweep created persistent data/checkpoint: entries=%v err=%v", entries, err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestSpeculativeSweepKeepsResidentDFlashEligible(t *testing.T) {
+	managed, err := catalog.Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &commandRunner{}
+	app, _, _ := testApp(t, runner)
+	app.catalog = &managed
+	err = app.Dispatch([]string{"benchmark", "llama-cpp", "speculative", "--preset", "meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k", "--profile", "invalid", "--dry-run"})
+	var controlled *controlerr.Error
+	if !errors.As(err, &controlled) || controlled.Status != 2 || controlled.Message != "speculative sweeps require a valid GPU profile" || len(runner.commands) != 0 {
+		t.Fatalf("resident DFlash no longer reaches ordinary sweep validation: %v", err)
+	}
+}
 
 func TestValidateSpeculativeResumeBindsDefinitionAndSchedule(t *testing.T) {
 	planned := makeSpeculativeTrials([]int{1, 2}, []int{4096}, 1, 42)

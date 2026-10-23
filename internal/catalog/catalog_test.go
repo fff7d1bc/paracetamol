@@ -22,7 +22,7 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 65 || len(loaded.Bundles) != 44 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 12 {
+	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 46 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 14 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-mtp-ud-q8-k-xl"]
@@ -141,6 +141,72 @@ func TestPublicTextPresetIDsNameTheGGUFPublisher(t *testing.T) {
 	}
 }
 
+func TestFlashNextDFlash2VariantsReuseTargetsAndSharedDraft(t *testing.T) {
+	loaded, err := Load(filepath.Join("..", "..", "catalog", "catalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const draftID = "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf"
+	draft := loaded.Artifacts[draftID]
+	if draft.Source.Repository != "incoai/Qwen3.8-Flash-Next-DFlash2-GGUF" ||
+		draft.Source.Revision != "4f5a39be8f0a9e9a573ac9824251830a8f4096d9" ||
+		draft.Source.Path != "Qwen3.8-Flash-Next-DFlash2-Q8_0.gguf" ||
+		draft.Destination != "incoai-qwen3.8-flash-next-dflash2/incoai-Qwen3.8-Flash-Next-DFlash2-Q8_0.gguf" ||
+		draft.Size != 652101024 || draft.SHA256 != "541f4d6ee230747a34d4a2c6890e6e08cc8b19c461226dc1829701a544e46e8a" ||
+		draft.Target != "llama-models" || draft.License.SPDX != "Apache-2.0" || draft.License.Status != "verified" ||
+		draft.License.URL != "https://huggingface.co/incoai/Qwen3.8-Flash-Next-DFlash2-GGUF/blob/4f5a39be8f0a9e9a573ac9824251830a8f4096d9/README.md" {
+		t.Fatalf("unexpected shared Flash-Next draft provenance: %#v", draft)
+	}
+	for _, id := range []string{
+		"unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
+		"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl",
+	} {
+		t.Run(id, func(t *testing.T) {
+			base := loaded.LlamaPresets[id]
+			variant, ok := loaded.LlamaPresets[id+"-dflash2"]
+			if !ok {
+				t.Fatal("missing optional DFlash2 preset")
+			}
+			if base.SpeculativeType != "" || base.DraftTokens != 0 || base.DraftArtifact != "" || len(base.DraftTokensByBackend) != 0 || strings.Join(base.Backends, ",") != "rocm,vulkan" {
+				t.Fatalf("non-speculative control changed: %#v", base)
+			}
+			baseBundle := loaded.Bundles[base.Bundle]
+			variantBundle := loaded.Bundles[variant.Bundle]
+			wantArtifacts := append(append([]string(nil), baseBundle.Artifacts...), draftID)
+			if variant.Bundle != base.Bundle+"-dflash2" || len(baseBundle.Artifacts) != 4 || !reflect.DeepEqual(variantBundle.Artifacts, wantArtifacts) || strings.Join(variantBundle.Groups, ",") != "all,llama" {
+				t.Fatalf("DFlash2 must add only the shared draft to a separate bundle: %#v", variantBundle)
+			}
+			if variant.SpeculativeType != "draft-dflash" || variant.DraftTokens != 3 || len(variant.DraftTokensByBackend) != 0 || variant.DraftArtifact != draftID || strings.Join(variant.Backends, ",") != "rocm" {
+				t.Fatalf("unexpected DFlash2 policy: %#v", variant)
+			}
+			for _, backend := range []string{"rocm", "vulkan"} {
+				for _, profile := range []string{"auto", "cpu", "rdna4", "strix-point", "strix-halo"} {
+					if variant.SupportsRuntime(backend, profile) != (backend == "rocm" && profile == "strix-halo") {
+						t.Fatalf("DFlash2 exposed on unaccepted %s/%s", backend, profile)
+					}
+				}
+			}
+			// The optional pair changes speculation and compatibility, not the
+			// target, chat, sampler, reasoning, context, or allocator contract.
+			variant.ID, variant.Bundle = base.ID, base.Bundle
+			variant.SpeculativeType, variant.DraftTokens, variant.DraftArtifact = "", 0, ""
+			variant.Backends = base.Backends
+			if !reflect.DeepEqual(base, variant) {
+				t.Fatalf("optional DFlash2 changed the target runtime policy: base=%#v variant=%#v", base, variant)
+			}
+		})
+	}
+	for id, depth := range map[string]int64{
+		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash":      15,
+		"meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k": 12,
+	} {
+		preset := loaded.LlamaPresets[id]
+		if preset.SpeculativeType != "draft-dflash" || preset.DraftTokens != depth || preset.DraftTokensForBackend("vulkan") != 4 || len(preset.ModelLoad) != 0 {
+			t.Fatalf("unrelated Muse DFlash defaults changed: %#v", preset)
+		}
+	}
+}
+
 func TestManagedTextArtifactsNameGGUFPublisher(t *testing.T) {
 	root, err := project.Root()
 	if err != nil {
@@ -218,6 +284,36 @@ func TestStreamingEmbeddingRequiresTheAcceptedRuntimeTuple(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if _, err := loadLlamaPreset("fixture", json.RawMessage(invalid)); err == nil {
 				t.Fatal("accepted unsafe streaming policy")
+			}
+		})
+	}
+}
+
+func TestStreamingEmbeddingDFlashRequiresTheAcceptedRuntimeTuple(t *testing.T) {
+	valid := `{"bundle":"fixture","artifact":"fixture","default_context":262144,"backends":["rocm"],"backend_profiles":{"rocm":["strix-halo"]},"model_load":{"strix-halo":"stream-token-embedding"},"flash_attention":{"strix-halo":"on"},"kv_cache":{"strix-halo":"f16"},"speculative_type":"draft-dflash","draft_tokens":3,"draft_artifact":"draft"}`
+	if _, err := loadLlamaPreset("fixture", json.RawMessage(valid)); err != nil {
+		t.Fatal(err)
+	}
+	for name, invalid := range map[string]string{
+		"MTP":                  strings.Replace(valid, "draft-dflash", "draft-mtp", 1),
+		"depth zero":           strings.Replace(valid, `"draft_tokens":3`, `"draft_tokens":0`, 1),
+		"depth two":            strings.Replace(valid, `"draft_tokens":3`, `"draft_tokens":2`, 1),
+		"depth four":           strings.Replace(valid, `"draft_tokens":3`, `"draft_tokens":4`, 1),
+		"backend override":     strings.Replace(valid, `"draft_tokens":3`, `"draft_tokens":3,"draft_tokens_by_backend":{"rocm":4}`, 1),
+		"missing draft":        strings.Replace(valid, `,"draft_artifact":"draft"`, "", 1),
+		"Vulkan":               strings.ReplaceAll(valid, "rocm", "vulkan"),
+		"both backends":        strings.Replace(valid, `"backends":["rocm"]`, `"backends":["rocm","vulkan"]`, 1),
+		"implicit backends":    strings.Replace(valid, `"backends":["rocm"],`, "", 1),
+		"unrestricted ROCm":    strings.Replace(valid, `"backend_profiles":{"rocm":["strix-halo"]},`, "", 1),
+		"extra ROCm profile":   strings.Replace(valid, `"rocm":["strix-halo"]`, `"rocm":["strix-halo","strix-point"]`, 1),
+		"other profile":        strings.ReplaceAll(valid, "strix-halo", "strix-point"),
+		"quantized cache":      strings.Replace(valid, `"f16"`, `"q8_0"`, 1),
+		"no flash attention":   strings.Replace(valid, `"on"`, `"off"`, 1),
+		"probabilistic schema": strings.Replace(valid, `"draft_tokens":3`, `"draft_tokens":3,"draft_sampling":true`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadLlamaPreset("fixture", json.RawMessage(invalid)); err == nil {
+				t.Fatal("accepted unreviewed streaming speculative policy")
 			}
 		})
 	}

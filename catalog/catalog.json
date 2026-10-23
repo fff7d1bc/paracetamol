@@ -1048,6 +1048,23 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
+    "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf": {
+      "description": "Publisher-provided Qwen3.8 Flash-Next DFlash2 Q8_0 speculative draft; not a standalone target",
+      "source": {
+        "repository": "incoai/Qwen3.8-Flash-Next-DFlash2-GGUF",
+        "revision": "4f5a39be8f0a9e9a573ac9824251830a8f4096d9",
+        "path": "Qwen3.8-Flash-Next-DFlash2-Q8_0.gguf"
+      },
+      "destination": "incoai-qwen3.8-flash-next-dflash2/incoai-Qwen3.8-Flash-Next-DFlash2-Q8_0.gguf",
+      "size": 652101024,
+      "sha256": "541f4d6ee230747a34d4a2c6890e6e08cc8b19c461226dc1829701a544e46e8a",
+      "license": {
+        "spdx": "Apache-2.0",
+        "status": "verified",
+        "url": "https://huggingface.co/incoai/Qwen3.8-Flash-Next-DFlash2-GGUF/blob/4f5a39be8f0a9e9a573ac9824251830a8f4096d9/README.md"
+      },
+      "target": "llama-models"
+    },
     "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1": {
       "description": "Huihui Qwen3.8 Flash-Next 125B-A6B abliterated v2, Unsloth-derived Dynamic Q4_K_XL GGUF shard 1 of 4",
       "source": {
@@ -1881,6 +1898,36 @@
         "llama"
       ]
     },
+    "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2": {
+      "description": "Optional Huihui abliterated v2 Flash-Next Dynamic Q4_K_XL with shared Inco Q8_0 DFlash2 draft",
+      "application": "llama-cpp",
+      "artifacts": [
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-2",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-3",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4",
+        "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf"
+      ],
+      "groups": [
+        "all",
+        "llama"
+      ]
+    },
+    "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2": {
+      "description": "Optional Qwen3.8 Flash-Next Unsloth Dynamic Q4_K_XL with shared Inco Q8_0 DFlash2 draft",
+      "application": "llama-cpp",
+      "artifacts": [
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4",
+        "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf"
+      ],
+      "groups": [
+        "all",
+        "llama"
+      ]
+    },
     "llama-ggml-org-gemma4-31b-it-q8-0-mtp": {
       "description": "Gemma 4 31B IT Q8_0 llama.cpp model with Q8_0 MTP draft",
       "application": "llama-cpp",
@@ -2562,6 +2609,80 @@
       ],
       "backend_profiles": {
         "rocm": ["strix-halo"]
+      },
+      "default_context": 262144,
+      "chat_template": "qwen3.8",
+      "sampling_policy": "qwen3.8-flash-next",
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "reasoning_default": "medium",
+      "reasoning_off": true,
+      "reasoning_preserve": true,
+      "flash_attention": {
+        "strix-halo": "on"
+      },
+      "model_load": {
+        "strix-halo": "stream-token-embedding"
+      },
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2": {
+      "bundle": "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2",
+      "artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+      "draft_artifact": "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf",
+      "speculative_type": "draft-dflash",
+      "draft_tokens": 3,
+      "backends": [
+        "rocm"
+      ],
+      "backend_profiles": {
+        "rocm": [
+          "strix-halo"
+        ]
+      },
+      "default_context": 262144,
+      "chat_template": "qwen3.8",
+      "sampling_policy": "qwen3.8-flash-next",
+      "agent_tools": true,
+      "reasoning_control": "effort",
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "reasoning_default": "medium",
+      "reasoning_off": true,
+      "reasoning_preserve": true,
+      "flash_attention": {
+        "strix-halo": "on"
+      },
+      "model_load": {
+        "strix-halo": "stream-token-embedding"
+      },
+      "kv_cache": {
+        "strix-halo": "f16"
+      }
+    },
+    "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2": {
+      "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2",
+      "artifact": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+      "draft_artifact": "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf",
+      "speculative_type": "draft-dflash",
+      "draft_tokens": 3,
+      "backends": [
+        "rocm"
+      ],
+      "backend_profiles": {
+        "rocm": [
+          "strix-halo"
+        ]
       },
       "default_context": 262144,
       "chat_template": "qwen3.8",
