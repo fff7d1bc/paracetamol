@@ -110,7 +110,7 @@ func Maki(models []textmodel.Model, endpoint string, authenticated bool) (MakiFi
 		"-- For existing init.lua, merge these fields into its one maki.setup call.\n" +
 		"-- Other providers and saved model-tier assignments are left alone.\n" +
 		"maki.setup({\n" +
-		"    always_thinking = \"adaptive\",\n" +
+		"    always_thinking = \"xhigh\",\n" +
 		"    provider = {\n        default_model = " + luaString(provider+"/"+defaultModel.ID) + ",\n    },\n" +
 		"    plugins = {\n        task = { max_concurrent = 2 },\n    },\n" +
 		"})\n"

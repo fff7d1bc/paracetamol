@@ -364,11 +364,12 @@ by the model. Qwen3.8 also accepts the
 boolean and supported nested `reasoning_effort` values.
 No client-specific workaround is involved.
 
-The regular Flash-Next DFlash2 default in the exported Maki example is `xhigh`.
-That client preference is sent explicitly. Plain regular Flash-Next keeps
-adaptive xhigh, while Huihui and dense Qwen retain medium. The catalog and shared
-template still use medium when a raw HTTP request omits reasoning. All four
-Flash-Next presets share one sampling policy and template.
+The exported Maki startup snippet selects explicit `xhigh` for new sessions,
+including Huihui. Choosing adaptive instead still maps regular Flash-Next to
+xhigh and Huihui or dense Qwen to medium. These are client preferences, not
+gateway overrides. The catalog and shared template still use medium when a
+raw HTTP request omits reasoning. All four Flash-Next presets share one
+sampling policy and template.
 
 Malformed or conflicting thinking controls return HTTP 400 before a backend
 starts. For example, `reasoning_effort: medium` combined with

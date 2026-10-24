@@ -635,24 +635,26 @@ or network sandbox, runtime installation, credential store or session manager.
 Maki's permission prompts and folder trust are not equivalent to the former
 bubblewrap boundary. Keep backups and review executable project configuration.
 
-The example prefers Unsloth Flash-Next DFlash2 at xhigh, then plain Flash-Next,
-then plain dense Q8 and the first available coding-capable model. It limits
-concurrent task subagents to two per Maki process but does not change saved tier
-assignments or other providers. Use Maki's model picker and `/thinking` to
-choose another model or reasoning mode.
+The example prefers Unsloth Flash-Next DFlash2, then plain Flash-Next,
+then plain dense Q8 and the first available coding-capable model. Its exported
+`init.lua` starts new sessions at explicit xhigh, including Huihui, rather than
+adaptive. Merge `always_thinking = "xhigh"` into the existing setup to adopt it.
+It limits concurrent task subagents to two per Maki process without rewriting
+saved tier assignments or provider definitions. Use Maki's model picker and
+`/thinking` to choose another model or reasoning mode. This startup preference
+does not force compaction or subagents to use xhigh.
 
-| Family | Native control | Choices | Default |
+| Family | Native control | Choices | Adaptive mapping |
 | --- | --- | --- | --- |
 | Qwen3.8 27B | reasoning effort | off, low, medium, xhigh | medium |
-| Regular Qwen3.8 Flash-Next DFlash2 | reasoning effort | off, low, medium, xhigh | xhigh in the Maki example, medium when omitted over HTTP |
-| Plain regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh in the Maki example, medium when omitted over HTTP |
+| Regular Qwen3.8 Flash-Next DFlash2 | reasoning effort | off, low, medium, xhigh | xhigh |
+| Plain regular Qwen3.8 Flash-Next | reasoning effort | off, low, medium, xhigh | xhigh |
 | Huihui Flash-Next abliterated v2 | reasoning effort | off, low, medium, xhigh | medium |
 | Huihui Flash-Next DFlash2 | reasoning effort | off, low, medium, xhigh | medium |
 
 Qwen3.8 has no native high level. The reviewed template uses medium when HTTP
-reasoning is omitted. The client preference sends xhigh explicitly for regular
-Flash-Next, with or without DFlash2. Maki maps unsupported high to medium.
-Adaptive follows the selected model's exported default.
+reasoning is omitted. Maki maps unsupported high to medium. Adaptive remains
+an explicit choice with the mappings above, not the startup default.
 
 The provider sends Qwen's `reasoning_effort`, not a numeric thinking budget.
 Qwen off is `reasoning_effort: none`.

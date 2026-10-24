@@ -86,12 +86,15 @@ Back up your configuration before merging.
 
 The defaults select regular Unsloth Qwen3.8 Flash-Next DFlash2 when available,
 then plain Flash-Next, plain dense Q8 and the first available reviewed model.
-Adaptive thinking selects xhigh for regular Flash-Next, with or without
-DFlash2, and the reviewed default for each other model. The example limits
-concurrent task subagents to two per
-Maki process, independently of the gateway's shared request slots. Saved tier
-assignments are not reset. Existing installations must update `max_concurrent`
-in their active `init.lua` to adopt this preference.
+The exported `init.lua` starts new sessions at explicit xhigh with
+`always_thinking = "xhigh"`, including Huihui. Merge that setting into your
+existing setup to adopt it. It is a Maki startup preference, not a gateway
+default or a mandatory minimum for compaction and subagents.
+
+Adaptive remains selectable. Choosing it sends xhigh for regular Flash-Next,
+with or without DFlash2, and medium for Huihui and dense Qwen. The example
+limits concurrent task subagents to two per Maki process, independently of the
+gateway's shared request slots. Saved tier assignments are not reset.
 
 Use Maki's native model picker and `/thinking` to change selections. Neither
 requires a Paracetamol wrapper. Gateway sampling defaults follow the requested

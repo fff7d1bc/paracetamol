@@ -399,6 +399,10 @@ inventory. It prefers regular Flash-Next at `xhigh`. Raw HTTP requests still
 use medium when reasoning is omitted. Maki's model picker and `/thinking`
 select the model's native controls.
 
+The exported `init.lua` starts new sessions at explicit xhigh, including
+Huihui. Existing setups must merge `always_thinking = "xhigh"` to adopt it.
+Adaptive and lower levels remain selectable.
+
 Restrict the published port with your firewall and use
 [optional Bearer authentication](docs/gateway.md#optional-authentication)
 when appropriate. HTTP does not encrypt credentials or prompts. Other clients

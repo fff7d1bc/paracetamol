@@ -413,9 +413,11 @@ must not change the exported authority.
 
 Use separately installed Maki 0.6.3 or newer for the optional transport fixture
 above. Qwen3.8 supports off, low, medium and xhigh. Unsupported high snaps to
-medium. Adaptive follows each model's exported preference. Regular Flash-Next,
-with or without DFlash2, defaults to xhigh while Huihui and dense Qwen3.8
-remain medium. HTTP calls without reasoning retain the catalog medium fallback.
+medium. The exported startup snippet explicitly selects xhigh, including for
+Huihui. Test that default without rewriting the snippet, separately from
+explicit adaptive, off and effort selections. Adaptive maps regular Flash-Next
+to xhigh and Huihui or dense Qwen to medium. HTTP calls without reasoning
+retain the catalog medium fallback.
 Use Maki's native `always_thinking` Lua setting in print-mode tests. Its hidden
 `--thinking` flag is accepted but ignored in the tested release.
 

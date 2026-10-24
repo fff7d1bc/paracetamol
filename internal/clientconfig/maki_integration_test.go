@@ -43,7 +43,7 @@ func TestInstalledMaki(t *testing.T) {
 				ordered = append(ordered, model)
 			}
 		}
-		testNativeMaki(t, executable, ordered, "adaptive", "reasoning_effort", "xhigh", true)
+		testNativeMaki(t, executable, ordered, "", "reasoning_effort", "xhigh", true)
 	})
 	for _, test := range []struct {
 		model, mode, field, value string
@@ -63,6 +63,7 @@ func TestInstalledMaki(t *testing.T) {
 		{"huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl", "xhigh", "reasoning_effort", "xhigh", true},
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl", "adaptive", "reasoning_effort", "medium", true},
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "adaptive", "reasoning_effort", "medium", true},
+		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "", "reasoning_effort", "xhigh", true},
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "off", "reasoning_effort", "none", true},
 		{"huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2", "xhigh", "reasoning_effort", "xhigh", true},
 	} {
@@ -161,8 +162,9 @@ data: [DONE]
 		if strings.Contains(string(contents), secret) {
 			t.Fatal("exported a credential")
 		}
-		if filename == "init.lua" && mode != "adaptive" {
-			contents = []byte(strings.Replace(string(contents), `always_thinking = "adaptive"`, `always_thinking = "`+mode+`"`, 1))
+		// An empty mode exercises the generated startup default unchanged.
+		if filename == "init.lua" && mode != "" {
+			contents = []byte(strings.Replace(string(contents), `always_thinking = "xhigh"`, `always_thinking = "`+mode+`"`, 1))
 		}
 		if err := os.WriteFile(filepath.Join(configuration, filename), contents, 0o600); err != nil {
 			t.Fatal(err)

@@ -879,7 +879,11 @@ provide a client sandbox.
 The export prefers regular Flash-Next DFlash2 at xhigh, then plain Flash-Next,
 then plain dense Qwen3.8 Q8, then the first available coding-capable model. It
 records context, output limits and native reasoning mappings. Adaptive
-reasoning follows each model's reviewed preference. It does not rewrite saved tiers or global model policies.
+reasoning remains selectable and follows each model's reviewed preference.
+The startup snippet explicitly sets `always_thinking = "xhigh"` for new
+sessions, including Huihui, without changing HTTP reasoning defaults or
+forcing that level on compaction and subagents. It does not rewrite saved
+tiers or global model policies.
 Refreshing is an explicit download and merge, not a startup action.
 
 The catalog owns reusable thinking and non-thinking sampling policies. The

@@ -61,7 +61,7 @@ func TestMakiExportDefaultsAuthenticationAndIsolation(t *testing.T) {
 			t.Fatalf("export contains %s", forbidden)
 		}
 	}
-	if !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+RecommendedModel))) || !bytes.Contains(files.Init, []byte(`always_thinking = "adaptive"`)) {
+	if !bytes.Contains(files.Init, []byte("default_model = "+luaString("paracetamol/"+RecommendedModel))) || !bytes.Contains(files.Init, []byte(`always_thinking = "xhigh"`)) {
 		t.Fatalf("wrong startup defaults: %s", files.Init)
 	}
 	if !bytes.Contains(files.Init, []byte("task = { max_concurrent = 2 }")) {
