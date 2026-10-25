@@ -102,7 +102,7 @@ try {
   assert.equal(await page.$$eval(".model-row details[open]", nodes => nodes.length), 1);
   assert.match(await page.$eval(".model-detail-grid", node => node.textContent), /medium/);
   assert.match(await page.$eval(".model-detail-grid", node => node.textContent), /xhigh/);
-  assert.match(await page.$eval(".model-detail-grid", node => node.textContent), /Configured request slots4/);
+  assert.match(await page.$eval(".model-detail-grid", node => node.textContent), /Configured request slots8/);
   assert.match(await page.$eval(".model-detail-grid", node => node.textContent), /shared across slots/);
   await page.type("#model-search", "27b");
   assert.equal(await page.$$eval(".model-row", nodes => nodes.length), 1);

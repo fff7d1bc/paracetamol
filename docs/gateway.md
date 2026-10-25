@@ -114,7 +114,7 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
-slots = 4
+slots = 8
 ```
 
 Select another file globally either before or after the command:
@@ -321,18 +321,25 @@ until it can evict an idle least-recently-used child; it does not evict a busy
 child.
 
 Request concurrency is a separate setting. Each loaded llama.cpp model has
-four request slots by default. Use `--slots N` or
-`[gateway.llama-cpp].slots = N` to change it. A fifth request waits for a slot
+eight request slots by default. Use `--slots N` or
+`[gateway.llama-cpp].slots = N` to change it. A ninth request waits for a slot
 without loading another copy of the model.
 
 With multiple slots, llama.cpp shares the preset's KV token pool. A 256K
-preset is **256K total across active conversations**, not four independent
-256K allocations and not a fixed 64K limit per conversation. One conversation
+preset is **256K total across active conversations**, not eight independent
+256K allocations and not a fixed 32K limit per conversation. One conversation
 can use nearly the whole pool when the others are idle. Long simultaneous
 conversations must fit together, and running out of KV space can cause
 reprocessing or a backend error. More slots improve aggregate throughput on
 some workloads but do not promise faster individual responses. Use `--slots 1`
 when one long conversation should have the server to itself.
+
+Per-sequence state and work buffers can still grow with the slot count,
+especially for recurrent and speculative models. Eight slots is not a memory
+or performance acceptance claim for every model and GPU. Reduce it with
+`--slots 4` or a smaller value when memory headroom matters. Existing config
+files containing `slots = 4` retain that explicit override. Change it to eight
+or omit the key to adopt the new default.
 
 The startup banner, gateway model details, and `status llama-cpp` show the
 configured request-slot count separately from the loaded-model limit. Direct

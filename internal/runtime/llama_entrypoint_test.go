@@ -341,6 +341,7 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 				"PATH=" + dir + ":/usr/bin:/bin", "TEST_ARCH=" + tc.arch,
 				"PARACETAMOL_PROFILE=" + profile, "PARACETAMOL_GPU_COUNT=" + gpus,
 				"PARACETAMOL_LLAMA_BACKEND=" + tc.backend, "PARACETAMOL_LLAMA_MODEL=" + model,
+				"PARACETAMOL_LLAMA_SLOTS=8",
 				"PARACETAMOL_QWEN4EXP_QSA_KERNEL=" + tc.kernel, "PARACETAMOL_QWEN4EXP_QSA_GRAPH=" + tc.graph,
 			}
 			output, err := cmd.CombinedOutput()
@@ -353,8 +354,8 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 			if err != nil || !strings.Contains(string(output), "\nQSA="+tc.want+"\n") {
 				t.Fatalf("err=%v output=%s", err, output)
 			}
-			if !strings.Contains(string(output), "--parallel 4 --kv-unified\n") {
-				t.Fatalf("missing default request slots: %s", output)
+			if !strings.Contains(string(output), "--parallel 8 --kv-unified\n") {
+				t.Fatalf("missing requested slots: %s", output)
 			}
 			// Vulkan layout selection belongs to upstream now. Neither the
 			// environment nor the status snapshot should claim a local override.

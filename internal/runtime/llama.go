@@ -75,6 +75,8 @@ type LlamaBenchmarkOptions struct {
 var LlamaBenchmarkContainer = identity.Container("llama-cpp-benchmark")
 
 func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
+	// Always pass the host's resolved policy to the image. Managed launches must
+	// not depend on an older entrypoint fallback when only host defaults change.
 	if options.Slots == 0 {
 		options.Slots = config.DefaultLlamaSlots
 	}

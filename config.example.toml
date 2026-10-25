@@ -26,7 +26,7 @@ url = "http://127.0.0.1:7455/v1"
 backend = "rocm"
 models_max = 1
 # Simultaneous requests per loaded model, sharing its configured KV token pool.
-slots = 4
+slots = 8
 
 [gateway.statistics]
 # Private daily totals only; no prompts, responses, or client identities.

@@ -30,7 +30,7 @@ type lifecycleRunner struct {
 }
 
 func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
-	for _, slots := range []int{0, 1, 4, -1, 65} {
+	for _, slots := range []int{0, 1, 4, 8, -1, 65} {
 		lifecycle, err := NewContainerLifecycle(LifecycleOptions{
 			Registry: Registry{Models: []Model{{ID: "fixture", Backend: "llama-cpp"}}},
 			DataRoot: "/data", Profile: "cpu", LlamaBackend: "rocm", LlamaModelsMax: 1,
@@ -51,7 +51,7 @@ func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
 		}
 		want := slots
 		if want == 0 {
-			want = 4
+			want = 8
 		}
 		joined := strings.Join(command, " ")
 		if !strings.Contains(joined, fmt.Sprintf("PARACETAMOL_LLAMA_SLOTS=%d", want)) || !strings.Contains(joined, "PARACETAMOL_LLAMA_MODELS_MAX=1") {

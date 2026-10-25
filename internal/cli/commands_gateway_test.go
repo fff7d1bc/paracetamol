@@ -47,7 +47,7 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 4") {
+	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 8") {
 		t.Fatalf("missing request slots: %s", output)
 	}
 	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080", "--statistics", "--statistics=false", "--statistics-retention-days DAYS", "default: 90"} {

@@ -130,7 +130,7 @@ func TestRenderRouterModelsUsesOnlyFrozenSelection(t *testing.T) {
 }
 
 func TestLlamaRequestSlots(t *testing.T) {
-	for _, slots := range []int{0, 1, 4, 64, -1, 65} {
+	for _, slots := range []int{0, 1, 4, 8, 64, -1, 65} {
 		options := LlamaOptions{Image: "image", Profile: "cpu", Mode: "server", DataDir: "/data", Backend: "rocm", ManagedModel: "model.gguf", Listen: "127.0.0.1", Port: 8080, Slots: slots}
 		command, err := LlamaCommand(options, "")
 		if slots < 0 || slots > 64 {
@@ -144,7 +144,7 @@ func TestLlamaRequestSlots(t *testing.T) {
 		}
 		want := slots
 		if want == 0 {
-			want = 4
+			want = 8
 		}
 		if !strings.Contains(strings.Join(command, " "), fmt.Sprintf("PARACETAMOL_LLAMA_SLOTS=%d", want)) {
 			t.Fatalf("slots=%d command=%v", slots, command)

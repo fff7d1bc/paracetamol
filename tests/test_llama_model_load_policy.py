@@ -54,7 +54,7 @@ class LlamaModelLoadPolicyTests(unittest.TestCase):
                 self.invoke("llama_stream_token_embedding_args", backend, mode)
 
     def test_slots_share_context_without_partitioning_or_multiplying_it(self):
-        for slots in (1, 4):
+        for slots in (1, 4, 8):
             cache_flag = "no-kv-unified" if slots == 1 else "kv-unified"
             self.assertEqual(self.invoke("llama_server_slot_args", str(slots), "1"),
                              ["--parallel", str(slots), f"--{cache_flag}"])

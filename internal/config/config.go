@@ -28,7 +28,7 @@ const (
 	DefaultListen                  = "127.0.0.1"
 	DefaultGatewayPort             = 7455
 	DefaultGatewayURL              = "http://127.0.0.1:7455/v1"
-	DefaultLlamaSlots              = 4
+	DefaultLlamaSlots              = 8
 	DefaultStatisticsRetentionDays = 90
 	maxFileSize                    = 64 * 1024
 )
@@ -286,7 +286,7 @@ func DefaultContents(dataDir string) []byte {
 		"backend = \"rocm\"\n" +
 		"models_max = 1\n" +
 		"# Simultaneous requests per loaded model, sharing its configured KV token pool.\n" +
-		"slots = 4\n\n" +
+		"slots = " + strconv.Itoa(DefaultLlamaSlots) + "\n\n" +
 		"[gateway.statistics]\n" +
 		"# Private daily totals only; no prompts, responses, or client identities.\n" +
 		"enabled = true\n" +
