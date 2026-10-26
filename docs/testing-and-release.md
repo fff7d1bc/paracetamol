@@ -583,6 +583,15 @@ The exact representative model may change with the catalog. State why the
 selected dense or sparse model covers the changed code, and do not substitute
 a faster unrelated architecture merely because it is convenient.
 
+Current source refreshes use regular Unsloth Flash-Next UD-Q4_K_XL as the
+primary large-model acceptance case, with the managed greedy DFlash2 preset
+and a non-speculative control. Cover populated long context, prefix reuse,
+history edits, reasoning, tools and cancellation through the ordinary gateway.
+Retained dense Qwen3.8 27B needs a short completion and tool round trip, not
+a duplicate long-context matrix, unless a changed dense-specific path or a
+failed smoke requires deeper investigation. This does not replace numerical
+backend tests or the hardware-specific patch removal gates.
+
 Do not treat one successful tiny workflow as acceptance of every model family.
 
 For the quantized on-device state-copy correction, run upstream's

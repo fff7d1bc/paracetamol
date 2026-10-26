@@ -270,8 +270,8 @@ protected behavior is fixed.
 | --- | --- | --- |
 | `hip-apu-host-buffer.patch` | Prevents unsafe direct computation on `ROCm_Host` buffers on HIP integrated GPUs while retaining pinned allocation. Relevant to `gfx1150` and `gfx1151`. | The selected upstream pin contains an equivalent to [PR 25863](https://github.com/ggml-org/llama.cpp/pull/25863), and long-input server, CLI, tool-call, and concurrent-slot checks remain correct on both APU architectures. |
 | `quantized-kv-flash-attention.patch` | Provides the reviewed HIP q8_0/q4_0 tile dequantize-on-load path derived from Nathan Wilson's commit `2a24abc6`. Upstream owns the former Vulkan q8_0 half at commit `dc72703fc`. | Matching upstream HIP code passes the same f16, q8_0, and q4_0 cache, context-depth, performance, and output checks on every applicable hardware class. |
-| `hip-strix-halo-graph-recapture.patch` | Reinstantiates each HIP executable chunk after a changed capture on exact `gfx1151`, retaining ordinary graph replay. This corrects the populated direct-reader clear/restore failure isolated during the October source screens. Other architectures retain upstream executable updates. The legacy-pool diagnostic follows the chunk-vector representation while still counting captured graphs, not individual chunks. | The unpatched upstream path passes populated ordinary, causal-transition and clear/restore logit checks with the managed reader, followed by long-context and older-model checks. |
-| `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, real Qwen27B MTP protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
+| `hip-strix-halo-graph-recapture.patch` | Reinstantiates each HIP executable chunk after a changed capture on exact `gfx1151`, retaining ordinary graph replay. This corrects the populated direct-reader clear/restore failure isolated during the October source screens. Other architectures retain upstream executable updates. Upstream now owns the legacy-pool chunk-vector diagnostic. | The unpatched upstream path passes populated ordinary, causal-transition and clear/restore logit checks with the managed reader, followed by long-context and older-model checks. |
+| `hip-strix-halo-tiled-gdn.patch` | Adds the F32 tiled GDN prefill kernel from Piotr Wilkin's commit `964c6f2f0`, narrowed to exact `gfx1151`, 48 value heads, state dimension 128, one sequence and 16 through 32768 operation tokens. Includes CPU-reference shape and snapshot tests. | The selected upstream implementation passes the numerical operator cases, managed Flash-Next protocol checks and populated near-256K comparison with equivalent performance. Other GPU architectures need their own acceptance before broadening dispatch. |
 | `qwen4exp-direct-reader.patch` | Carries the explicit buffered embedding reader from PR 28136 at `c6a9e5c9ae6d6a551217f75c9a04b2e8b1aa62dd`, with Gemma4 hooks omitted and unavailable explicit reads rejected instead of silently reverting to mmap. | Upstream's reader passes the same CPU dequantizer/EOF cases and managed Flash-Next router, tools and populated near-256K checks with the accepted allocation policy. |
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. Canonical sorting and deduplication make attention independent of upstream top-k ordering. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. A container-level value of `0` disables it. | Upstream provides equivalent selected-key attention with the order-invariance and numerical operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
@@ -281,6 +281,50 @@ protected behavior is fixed.
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
+
+The October 26 refresh selects frozen upstream
+`c6fb3b5be2209f6c12339833198190f6f6829581`, 58 commits after `280141e`,
+in image `c6fb3b5-r64`. Nine patches apply unchanged and four are rebased.
+The thirteen downstream protections remain. Upstream
+[PR 31053](https://github.com/ggml-org/llama.cpp/pull/31053) now fixes the
+legacy-pool chunk-vector diagnostic, so that downstream hunk is removed.
+The separate `gfx1151` executable-recapture workaround is still required.
+
+Two upstream graph changes require semantic review rather than a context-only
+patch refresh. [PR 30965](https://github.com/ggml-org/llama.cpp/pull/30965)
+builds QSA selection without reading the dense causal mask. The rebase keeps
+selected IDs and the visibility mask as real dependencies of the downstream
+selected-key path, including its graph-disabled control.
+[PR 31028](https://github.com/ggml-org/llama.cpp/pull/31028)
+adds optional merged tensor forms and moves HC injection scaling before its
+callback. The pipeline rebase keeps the raw F32 projection followed by one
+separate scale, preserving the unchanged decode matcher's topology. Merged
+tensor forms retain the upstream path when the scoped matchers decline them.
+The same patch follows upstream's new MMQ fusion arguments and excludes
+fused gate inputs from the private prefetch and small-tile dispatch.
+Upstream [PR 31086](https://github.com/ggml-org/llama.cpp/pull/31086) changes
+softplus to `log1pf(expf(x))`. The decode fusion follows that same expression.
+Its exact-equivalence tests caught the old `logf(1 + expf(x))` calculation.
+Neither the oracle nor the matcher guards are relaxed to accept it.
+Existing Unsloth model bytes, F16 KV, matrix precision, templates, samplers,
+four shared slots and the `r63` full-span correction remain unchanged.
+
+The newly published
+[CVE-2026-116096](https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/116xxx/CVE-2026-116096.json)
+concerns a malformed local Pocket-TTS projection file. Its cited state-object
+mitigation, `0a1ef309cdbb9f2024f58a38fb4c42352c5db569`, is already an ancestor
+of the previous pin. It turns that unchecked state write into a release-active
+assertion and abort, not acceptance of arbitrary projection files. This
+refresh must not be described as newly fixing a remote chat-request RCE.
+
+The new range does add HTTP-input resource limits through grammar recursion
+[PR 29755](https://github.com/ggml-org/llama.cpp/pull/29755), nested JSON
+[PR 30242](https://github.com/ggml-org/llama.cpp/pull/30242), broader recursive
+guards [PR 31153](https://github.com/ggml-org/llama.cpp/pull/31153), and DRY
+sequence breakers [PR 31035](https://github.com/ggml-org/llama.cpp/pull/31035).
+The RPC RDMA bounds correction also enters upstream, but managed builds
+continue to set `GGML_RPC=OFF`. No new inference feature or fork optimization
+is enabled by this source refresh.
 
 The October 23 refresh selects frozen upstream
 `280141e6d4769b1e4424de999437cc72ffac33d6`, 28 commits after `e197cef`,

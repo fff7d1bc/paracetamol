@@ -1,21 +1,12 @@
 Local gfx1151 HIP graph-recapture correction. Reinstantiate each chunk only
 after a changed capture, retaining ordinary graph replay. The direct-reader
 Qwen4exp restore fixture motivated this correction. Other architectures retain
-the upstream executable-update path. Follow upstream's chunked representation
-in its legacy-pool capture diagnostic too: count captured graphs, not chunks.
+the upstream executable-update path. Upstream owns the chunked graph-pool
+diagnostic independently of this executable-recapture workaround.
 
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -494,7 +494,7 @@ struct ggml_cuda_pool_leg : public ggml_cuda_pool {
- #ifdef USE_CUDA_GRAPH
-         int n_captured = 0;
-         for (const auto & [key, graph] : ctx.cuda_graphs) {
--            n_captured += graph->instance != nullptr;
-+            n_captured += !graph->instances.empty();
-         }
-         if (n_captured > 0) {
-             GGML_LOG_DEBUG(GGML_CUDA_NAME " pool[%d]: memory freed, %d captured CUDA graphs must be captured again\n", device, n_captured);
 @@ -2843,7 +2843,19 @@ static void ggml_cuda_graph_launch_chunk(ggml_backend_cuda_context * cuda_ctx, ggml_cuda_graph * graph, size_t idx) {
      cudaGraph_t cuda_graph = nullptr;
      CUDA_CHECK(cudaStreamEndCapture(cuda_ctx->stream(), &cuda_graph));

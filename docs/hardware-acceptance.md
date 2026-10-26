@@ -29,6 +29,99 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp upstream refresh (2026-10-26)
+
+The accepted Strix Halo ROCm image is
+`llama-cpp-ubuntu26.04-rocm10.1-c6fb3b5-r64`, ID
+`f2f8314b87f5a87c53584cd5243c2b58769eb3d16fd827c4cc648afbb64bb429`.
+It selects upstream `c6fb3b5be2209f6c12339833198190f6f6829581`, 58 commits
+after `280141e`. Nine patches apply unchanged and four are rebased. The final
+patched tree is `9846481e57eca4ba98016ece1a0f1e1cdbe50ec7`. A cold
+`build llama-cpp --no-cache` compiles HIP for all four managed GPU targets and
+Vulkan. Model bytes, templates, gateway sampling, F16 KV, four shared request
+slots and greedy DFlash2 depth three remain unchanged. The `r63` full-span
+QSA correction is retained. No additional fork optimization is imported.
+
+An earlier build of this refresh was rejected by its GPU operator gate after
+forty exact-equivalence failures in the positive GDN decode cases, before any
+model was loaded. Upstream changed softplus to `log1pf(expf(x))`, while the
+downstream fusion still used `logf(1 + expf(x))`. The rebase follows the new upstream
+expression without relaxing the exact-zero oracle or matcher guards. The
+fixture's reported infinite error denotes a nonzero difference, not proof
+that the calculated tensor contains infinity. Failure evidence is retained
+separately from the corrected build.
+
+The corrected image passes all 260 ROCm decode cases and the broader
+1153/1153-case QSA, HC, normalization, GDN and top-k MoE suite. Three reviewed
+unsupported layouts are accounted for separately, not counted as GPU passes.
+They are the two interleaved selected-attention layouts and the 513-channel
+convolution. Full-span QSA passes 4/4 and the allocation-lifetime fixture
+passes 8/8. Matching-source diagnostics retain the production binary and
+library hashes, pass all nine CPU chat/parser/grammar programs, and check the
+same patched tree in their builder and final runtime. The native reader and
+process-isolation build fixture passes 50/50. Production `pip check`, native
+dependency closure, CPU CLI and the ordinary unloaded CPU router pass.
+Selection-mask tests pass 28/28 on CPU and ROCm. The four additional upstream
+cases cover broadcasting one mask row across query rows and streams in F16
+and F32. The diagnostic helper's old 24-case expectation is updated from that
+source change, with its initial count-only rejection retained as evidence.
+
+Populated ordinary, causal-transition and clear-and-restore checks pass with
+NMSE zero. Completion callbacks confirm selected-key prefill and decode in
+both compact and graph-disabled modes. Independent same-mode repeats also
+match all 248320 logits exactly. The cross-mode diagnostic still fails the
+unchanged `1e-6` comparator, with NMSE `0.0249451014777` and the same top token.
+The [October 22 source-refresh record](#strix-halo-llamacpp-source-refresh-2026-10-22)
+already documents a similar discrepancy. This switch changes pipeline
+fusions as well as mask construction. No tolerance is relaxed, and neither
+task-quality parity nor exact old/new logits are established by this
+diagnostic. The repeatability and within-process state gates remain separate.
+
+Tiny ROCm and Vulkan CLI checks pass. Each backend also completes three SSE
+requests interleaved with health checks on one physical TCP connection, then
+stops cleanly. The primary regular Unsloth DFlash2 preset passes thirteen
+ordinary-gateway short requests covering off/medium/xhigh reasoning, nested
+tool calls with full assistant replay, streaming, and cold/warm prefix reuse.
+Reports confirm the six omitted samplers receive the reviewed gateway values.
+The populated 32K check recovers all six values on cold and repeated requests
+at 32977 input tokens. The repeat reuses 32973 cached tokens. A medium-effort
+history edit returns the changed value without the old one, with natural
+completion and no native context truncation. These observations do not form
+an old/new performance comparison.
+The DFlash2 ceiling cold/repeat requests also recover all six values at
+247210 input tokens, finish naturally without context truncation, and reuse
+247206 cached tokens on the repeat. Their observed HTTP times are 432.443
+and 10.886 seconds. These are cache-behavior observations, not a source-update
+speedup claim.
+The ceiling medium-effort history edit also passes with the changed value
+and old value absent, at 247168 input tokens and 213 output tokens. It fully
+reprocesses the prompt, finishes naturally without truncation, and takes
+413.337 seconds. Idle-cache eviction is exercised without a memory-guard
+trigger. JSON and SSE disconnects return the backend to idle, followed by
+an exact recovery answer.
+The plain regular Flash-Next preset also passes the thirteen-request short
+matrix, the 32K cold/repeat/history-edit checks and both cancellation modes.
+Legacy dense Unsloth Q8 passes only the intended three-request smoke, a
+warmup followed by one non-thinking nested tool call and replay. No dense
+long-context, MTP or comparative quality matrix is claimed.
+Native Maki 0.6.3 completes the two-turn synthetic Bash tool call and exact
+answer on regular DFlash2 at xhigh. Its disposable configuration comes from
+the ordinary gateway export. Both requests omit the six sampler fields and
+receive the gateway defaults. Existing client configuration and sessions are
+untouched.
+
+Full host checks, static and forced ordinary builds, focused race tests and
+installed-Maki fake-wire tests pass. Minimum sampled available memory is
+15.159 GiB and the 8 GiB guard never triggers. The final kernel window has no
+GPU fault, reset, SVM failure or OOM. All test gateways, containers and
+listeners are stopped. No host configuration or power setting changes.
+Private evidence remains under `build/llama-refresh-20261026-acceptance-*/`
+with both failed attempts and corrected results. This is a source refresh
+and compatibility screen, not a new performance baseline or fork comparison.
+`gfx1150`, `gfx1200` and `gfx1201` GPU acceptance remains deferred using the
+[hardware handoff](#deferred-acceptance-handoff), despite successful compilation
+for those targets.
+
 ### Flash-Next full-span prefill correction (2026-10-26)
 
 The accepted Strix Halo ROCm image is

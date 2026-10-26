@@ -36,7 +36,7 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `280141e6d4769b1e4424de999437cc72ffac33d6`. The license is installed
+  commit `c6fb3b5be2209f6c12339833198190f6f6829581`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally. RPC, remote UI assets and
   optional prebuilt llama-connect helper downloads are disabled. It applies
@@ -61,8 +61,8 @@ revisions recorded in `catalog/catalog.json`.
   Local bounds checks also protect terminal and partial normalization groups.
   A local gfx1151 correction reinstantiates each HIP executable graph chunk
   after a changed capture, while retaining ordinary unchanged graph replay.
-  Its compatibility correction also counts captured graphs through upstream's
-  chunk vector rather than the removed single-executable member.
+  Upstream now owns the chunk-vector compatibility correction in the
+  legacy-pool diagnostic. That obsolete downstream hunk is removed.
   The HIP build also carries the tiled F32 gated-delta-net prefill kernel
   from Piotr Wilkin's MIT-licensed llama.cpp fork at commit
   `964c6f2f0b66008243883298f3f535bc99f5998c`. Paracetamol restricts its dispatch

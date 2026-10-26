@@ -71,7 +71,7 @@ var specs = []Spec{
 	{
 		ID: string(LlamaCPP), DisplayName: "llama.cpp",
 		Summary:       "local GGUF inference, routing, and native throughput tests",
-		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-280141e-r63"),
+		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-c6fb3b5-r64"),
 		ContainerName: identity.Container("llama-cpp"), Build: BuildLlamaCPP, Port: 8080,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
 		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8-flash-next"}, Description: "install the recommended Qwen3.8 Flash-Next DFlash2 selection"}},

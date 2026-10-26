@@ -11,6 +11,8 @@ consumer, allocation-lifetime and alias checks. Unsupported graphs fall back.
 No weights, KV cache precision, matrix precision or host policy is changed.
 The normalization rebase follows upstream's aligned float4 F32 reduction,
 with exact positive and misaligned-layout fallback tests.
+The scalar softplus expression must also match upstream unary.cu: retain
+log1pf(expf(x)) rather than rounding 1 + expf(x) before taking logf.
 
 diff --git a/ggml/src/ggml-cuda/gated_delta_net.cu b/ggml/src/ggml-cuda/gated_delta_net.cu
 index 6cee2cc..f43e13b 100644
@@ -40,7 +42,7 @@ index 6cee2cc..f43e13b 100644
 +}
 +
 +static __device__ __forceinline__ float gdn_decode_softplus(float x) {
-+    return (x > 20.0f) ? x : logf(1.0f + expf(x));
++    return (x > 20.0f) ? x : log1pf(expf(x));
 +}
 +
 +template <int S, int D_CONV>
