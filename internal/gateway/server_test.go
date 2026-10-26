@@ -272,7 +272,7 @@ func TestStatusRedactsLifecycleErrors(t *testing.T) {
 }
 
 func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.T) {
-	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":3}},"timings":{"prompt_n":19,"prompt_ms":95,"predicted_n":4,"predicted_ms":200,"draft_n":6,"draft_n_accepted":4}}`)
+	responseBody := []byte(`{"id":"chatcmpl-fixture","secret_response":"not retained","usage":{"prompt_tokens":19,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11},"completion_tokens_details":{"reasoning_tokens":3}},"timings":{"prompt_n":19,"prompt_ms":95,"predicted_n":4,"predicted_ms":200,"draft_n":6,"draft_n_accepted":4,"draft_verif_steps":2,"private_stat":"private-native-stat"}}`)
 	seenBody := make(chan []byte, 1)
 	seenSessionHeader := make(chan string, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -356,8 +356,12 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 	if record.Tokens.Reasoning == nil || *record.Tokens.Reasoning != 3 {
 		t.Fatalf("reasoning tokens=%#v", record.Tokens)
 	}
-	if record.BackendTimings.GeneratedMilliseconds == nil || *record.BackendTimings.GeneratedMilliseconds != 200 || record.BackendTimings.DraftAcceptedTokens == nil || *record.BackendTimings.DraftAcceptedTokens != 4 {
+	if record.BackendTimings.GeneratedMilliseconds == nil || *record.BackendTimings.GeneratedMilliseconds != 200 || record.BackendTimings.DraftAcceptedTokens == nil || *record.BackendTimings.DraftAcceptedTokens != 4 || record.BackendTimings.DraftVerificationSteps == nil || *record.BackendTimings.DraftVerificationSteps != 2 {
 		t.Fatalf("backend timings=%#v", record.BackendTimings)
+	}
+	report := completedReport(t, server.URL, requestID)
+	if report.Record.BackendTimings.DraftVerificationSteps == nil || *report.Record.BackendTimings.DraftVerificationSteps != 2 {
+		t.Fatalf("request report lost explicit native steps: %#v", report.Record.BackendTimings)
 	}
 	if status.Usage.Overall.Requests != 1 || status.Usage.Overall.Tokens.Reasoning.Total != 3 || len(status.Usage.Models) != 1 || len(status.Usage.Sessions) != 1 {
 		t.Fatalf("usage=%#v", status.Usage)
@@ -369,10 +373,15 @@ func TestServerCorrelatesRequestsAndExposesPrivacySafeRecentMetadata(t *testing.
 		t.Fatalf("model status=%#v", status.Models)
 	}
 	encoded, _ := json.Marshal(status)
-	for _, secret := range []string{"secret prompt", "tool schema", "not retained", "/secret/model.gguf", "--secret", "secret-token", "203.0.113.77"} {
-		if bytes.Contains(encoded, []byte(secret)) || strings.Contains(logs.String(), secret) {
+	encodedReport, _ := json.Marshal(report)
+	for _, secret := range []string{"secret prompt", "tool schema", "not retained", "/secret/model.gguf", "--secret", "secret-token", "203.0.113.77", "private-native-stat"} {
+		if bytes.Contains(encoded, []byte(secret)) || bytes.Contains(encodedReport, []byte(secret)) || strings.Contains(logs.String(), secret) {
 			t.Fatalf("observability leaked %q:\nstatus=%s\nlogs=%s", secret, encoded, logs.String())
 		}
+	}
+	encodedUsage, _ := json.Marshal(status.Usage)
+	if bytes.Contains(encodedUsage, []byte("draft_verification_steps")) {
+		t.Fatal("request-only native counter unexpectedly entered usage aggregates")
 	}
 	if !strings.Contains(logs.String(), "gateway | request "+requestID+" start") || !strings.Contains(logs.String(), "gateway | request "+requestID+" finish") {
 		t.Fatalf("correlated logs missing:\n%s", logs.String())

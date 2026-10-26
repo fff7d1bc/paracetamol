@@ -1,0 +1,29 @@
+Local Paracetamol observability change for the pinned llama.cpp server.
+Base upstream: c6fb3b5be2209f6c12339833198190f6f6829581.
+Apply after the thirteen reviewed production patches (tree
+9846481e57eca4ba98016ece1a0f1e1cdbe50ec7).
+
+Expose the existing per-request accounted verification-round counter alongside
+the existing draft counters. It does not count every verification attempt:
+checkpoint restore/replay may add work before a round is accounted. No counter
+updates, inference flow, arithmetic,
+sampling, model or precision policy change. Ordinary requests retain their
+existing timing fields without speculative keys. Remove when upstream exposes
+an equivalent exact verification-step count and the matching-source JSON
+fixture passes. This is a local patch, not an imported upstream proposal.
+
+diff --git a/tools/server/server-common.cpp b/tools/server/server-common.cpp
+--- a/tools/server/server-common.cpp
++++ b/tools/server/server-common.cpp
+@@ -169,8 +169,9 @@ json server_slot_stats::to_json() const {
+     };
+ 
+     if (n_draft_tokens > 0) {
+-        base["draft_n"]          = n_draft_tokens;
+-        base["draft_n_accepted"] = n_draft_accepted;
++        base["draft_n"]           = n_draft_tokens;
++        base["draft_n_accepted"]  = n_draft_accepted;
++        base["draft_verif_steps"] = n_draft_verif_steps;
+     }
+ 
+     return base;

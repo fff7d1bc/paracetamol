@@ -39,7 +39,7 @@ func TestGatewayRequestReportsUseActualProductionSamplingAndStreaming(t *testing
 	for _, canceled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "completed", true: "canceled"}[canceled], func(t *testing.T) {
 			const role = "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\n"
-			const tail = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"private-response\"},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":12}},\"timings\":{\"prompt_n\":8,\"prompt_ms\":25,\"predicted_n\":8,\"predicted_ms\":100}}\n\ndata: [DONE]\n\n"
+			const tail = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"private-response\"},\"finish_reason\":\"length\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":12}},\"timings\":{\"prompt_n\":8,\"prompt_ms\":25,\"predicted_n\":8,\"predicted_ms\":100,\"draft_verif_steps\":5,\"private_stat\":\"private-native-stat\"}}\n\ndata: [DONE]\n\n"
 			continueResponse := make(chan struct{})
 			defer close(continueResponse)
 			bodySeen := make(chan []byte, 1)
@@ -52,7 +52,10 @@ func TestGatewayRequestReportsUseActualProductionSamplingAndStreaming(t *testing
 				w.(http.Flusher).Flush()
 				select {
 				case <-continueResponse:
-					_, _ = io.WriteString(w, tail)
+					split := strings.Index(tail, "draft_verif_steps") + 7
+					_, _ = io.WriteString(w, tail[:split])
+					w.(http.Flusher).Flush()
+					_, _ = io.WriteString(w, tail[split:])
 				case <-r.Context().Done():
 				}
 			}))
@@ -117,14 +120,20 @@ func TestGatewayRequestReportsUseActualProductionSamplingAndStreaming(t *testing
 			}
 			report = completedReport(t, gateway.URL, id)
 			if canceled {
-				if report.Record.Outcome != OutcomeCanceled || report.Record.Completion.Observation != CompletionPartial {
+				if report.Record.Outcome != OutcomeCanceled || report.Record.Completion.Observation != CompletionPartial || report.Record.BackendTimings.DraftVerificationSteps != nil {
 					t.Fatalf("cancellation=%+v", report.Record)
 				}
-			} else if record := report.Record; record.Outcome != OutcomeSucceeded || record.Completion.Observation != CompletionAvailable || len(record.Completion.FinishReasons) != 1 || record.Completion.FinishReasons[0].FinishReason != "length" || record.Completion.StreamDone == nil || !*record.Completion.StreamDone || record.BackendTimings.PromptTokens == nil || *record.BackendTimings.PromptTokens != 8 {
+			} else if record := report.Record; record.Outcome != OutcomeSucceeded || record.Completion.Observation != CompletionAvailable || len(record.Completion.FinishReasons) != 1 || record.Completion.FinishReasons[0].FinishReason != "length" || record.Completion.StreamDone == nil || !*record.Completion.StreamDone || record.BackendTimings.PromptTokens == nil || *record.BackendTimings.PromptTokens != 8 || record.BackendTimings.DraftVerificationSteps == nil || *record.BackendTimings.DraftVerificationSteps != 5 {
 				t.Fatalf("completion=%+v", record)
 			}
+			if !canceled {
+				recent := handler.requests.Recent(1)
+				if len(recent) != 1 || recent[0].BackendTimings.DraftVerificationSteps == nil || *recent[0].BackendTimings.DraftVerificationSteps != 5 {
+					t.Fatalf("live ledger lost SSE counter: %#v", recent)
+				}
+			}
 			encoded, _ := json.Marshal(report)
-			for _, private := range []string{"private-response", "private-prompt", "private-tool"} {
+			for _, private := range []string{"private-response", "private-prompt", "private-tool", "private-native-stat"} {
 				if bytes.Contains(encoded, []byte(private)) {
 					t.Fatalf("private content in report: %s", encoded)
 				}

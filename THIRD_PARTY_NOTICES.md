@@ -56,6 +56,9 @@ revisions recorded in `catalog/catalog.json`.
   The successful-stream connection reuse correction and its regression test
   come from PR 30492 at `221c0b2e6c815b32b2d629a1830ad04502807ecb`, under MIT.
   Failed writes still terminate the response.
+  A local server-only reporting patch exposes the existing speculative
+  verification-round counter in completion timings. It does not change
+  inference, sampling, counters or arithmetic.
   The top-k MoE allocation-lifetime endpoint correction derives from the
   MIT-licensed Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`.
   Local bounds checks also protect terminal and partial normalization groups.

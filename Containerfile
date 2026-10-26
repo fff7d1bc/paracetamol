@@ -357,6 +357,29 @@ RUN c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
         -o /tmp/test-llama-native-policy && \
     LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy
 
+# Keep server-only telemetry after the native build so a reporting change does
+# not invalidate the accepted GPU kernel compilation or its numerical identity.
+COPY applications/llama-cpp/server-speculative-metrics.patch \
+    /opt/paracetamol/llama-server-speculative-metrics.patch
+COPY applications/llama-cpp/test-server-speculative-metrics.cpp \
+    /opt/paracetamol/test-server-speculative-metrics.cpp
+RUN git apply --check /opt/paracetamol/llama-server-speculative-metrics.patch && \
+    git apply /opt/paracetamol/llama-server-speculative-metrics.patch && \
+    cmake --build build --config Release --target llama-server && \
+    cmake --install build --config Release && \
+    find /opt/llama-install/bin -type f \
+        ! -name llama-cli ! -name llama-server ! -name llama-bench -delete && \
+    rm -rf /opt/llama-install/include /opt/llama-install/lib/cmake \
+        /opt/llama-install/lib/pkgconfig && \
+    c++ -O2 -std=c++17 -ffunction-sections -fdata-sections \
+        -Itools/server -Itools/mtmd -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
+        /opt/paracetamol/test-server-speculative-metrics.cpp \
+        tools/server/server-common.cpp common/json.cpp \
+        -L/opt/llama-install/lib -Wl,-rpath,/opt/llama-install/lib \
+        -Wl,--gc-sections -lggml-base -pthread \
+        -o /tmp/test-server-speculative-metrics && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-server-speculative-metrics
+
 FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -402,7 +425,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

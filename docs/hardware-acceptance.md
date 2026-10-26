@@ -29,6 +29,45 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo speculative request reporting (2026-10-26)
+
+The accepted reporting-only image is
+`llama-cpp-ubuntu26.04-rocm10.1-c6fb3b5-r65`, ID
+`e5b8d42153d37d6dc2f59c27fc688895ff1593e04890ec7452e1829d32ce6a34`.
+The upstream pin remains `c6fb3b5be2209f6c12339833198190f6f6829581`.
+The fourteen-patch tree is `ebac725e678b76a5a97f7c605593296b8dde1b09`.
+The added patch serializes the server's existing accounted verification-round
+counter. It changes no counter updates, inference flow or arithmetic. Only
+`libllama-server-impl.so` differs from `r64` among the installed native
+libraries. HIP, Vulkan, CPU, model and common libraries are byte-identical.
+Model artifacts, templates, F16 KV, greedy DFlash2 depth three, the shared
+262144-token pool, four slots and gateway sampling remain unchanged.
+
+The local build compiles all four managed HIP targets and Vulkan, passes the
+50-case native reader/allocation-policy fixture and the six matching-source
+CPU serialization checks. Runtime `pip check`, native dependency closure,
+CPU CLI startup and both ROCm/Vulkan tiny CLI checks pass. Each GPU backend
+also passes three SSE requests and health checks on one physical reusable
+TCP connection, followed by clean shutdown.
+
+The regular Unsloth Flash-Next DFlash2 preset passes thirteen ordinary-gateway
+requests covering off/medium/xhigh reasoning, nested tool calls and complete
+assistant replay, JSON/SSE, and cold/warm prefix reuse. Reports confirm omitted
+samplers receive the reviewed gateway defaults and retain the explicit native
+counter. The gateway adds no timing estimates, payload storage or durable
+statistics fields. Parser tests cover zero versus missing, malformed values,
+integer overflow and fragmented streams. Full host checks, static and forced
+ordinary builds, focused race tests and the actual CPU serialization fixture
+pass.
+
+This is reporting acceptance on `gfx1151`, not a performance improvement or
+new mathematical-equivalence claim. The previous source refresh's populated
+state and long-context gates remain the inference evidence for the unchanged
+libraries. Its unresolved compact-versus-graph-disabled logit discrepancy is
+not waived. GPU inference on `gfx1150`, `gfx1200` and `gfx1201` remains deferred.
+Private evidence is retained under `build/performance-sweep-20261026/` and the
+preceding refresh's ignored acceptance directory. No host configuration changes.
+
 ### Strix Halo llama.cpp upstream refresh (2026-10-26)
 
 The accepted Strix Halo ROCm image is

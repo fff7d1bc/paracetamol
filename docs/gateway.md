@@ -606,6 +606,16 @@ not invent final durations, token counts or outcomes. The stream setting is
 omitted while the request body is still being received. Probes can poll until a
 report is completed using their own cancellation policy.
 
+Completed records may include `backend_timings.draft_verification_steps`,
+copied only from llama.cpp's explicit `timings.draft_verif_steps` counter.
+An observed zero is retained; missing or invalid metadata stays unavailable.
+The gateway never estimates verification rounds from generated or accepted
+tokens. This is the server's accounted-round counter, not a GPU-launch or
+verification-attempt count. A checkpoint restore and replay can add work
+before a round is accounted. Dividing generation time by this counter alone
+does not establish kernel efficiency. This request-level counter appears in
+reports and the live recent ledger, not usage aggregates or durable statistics.
+
 The gateway retains the most recent 64 completed requests and at most 128
 active metadata snapshots. Active tracking is best-effort and never limits
 inference admission. Read reports promptly and save any required benchmark

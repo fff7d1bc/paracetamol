@@ -281,6 +281,15 @@ protected behavior is fixed.
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
+| `server-speculative-metrics.patch` | Local reporting-only change exposing the existing `n_draft_verif_steps` as `timings.draft_verif_steps`. The gateway records it as optional request metadata. This counts accounted rounds, not every verification attempt or replay. | Upstream exposes the equivalent explicit counter and the matching-source CPU serialization fixture passes. Do not estimate it from draft-token counts. |
+
+The subsequent `c6fb3b5-r65` image adds that server-only reporting patch to
+the same source pin, making fourteen patches. It changes no inference or
+sampling behavior. The build applies it after the existing native build and
+rebuilds the server, retaining the compiled GPU kernels. A matching-source CPU
+fixture checks absent, zero, positive and large unsigned wire values. Gateway
+reports preserve missing versus observed zero without adding durable
+statistics or payload storage.
 
 The October 26 refresh selects frozen upstream
 `c6fb3b5be2209f6c12339833198190f6f6829581`, 58 commits after `280141e`,

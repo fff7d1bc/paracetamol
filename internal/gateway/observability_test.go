@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -333,6 +334,88 @@ func TestResponseObserverReadsFragmentedSSETimingsAndIgnoresMalformedFields(t *t
 	}
 	if result.Timings.DraftTokens == nil || *result.Timings.DraftTokens != 25 || result.Timings.DraftAcceptedTokens == nil || *result.Timings.DraftAcceptedTokens != 15 {
 		t.Fatalf("draft timings=%#v", result.Timings)
+	}
+}
+
+func TestResponseObserverDraftVerificationStepsAreExplicitNonnegativeIntegers(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		timings string
+		want    *int64
+	}{
+		{"missing", `"predicted_n":20,"draft_n":25,"draft_n_accepted":15`, nil},
+		{"wrong-native-name", `"draft_verification_steps":7`, nil},
+		{"positive", `"draft_verif_steps":7`, new(int64(7))},
+		{"zero", `"draft_verif_steps":0`, new(int64(0))},
+		{"maximum", `"draft_verif_steps":9223372036854775807`, new(int64(9223372036854775807))},
+		{"negative", `"draft_verif_steps":-1`, nil},
+		{"overflow", `"draft_verif_steps":9223372036854775808`, nil},
+		{"null", `"draft_verif_steps":null`, nil},
+		{"string", `"draft_verif_steps":"7"`, nil},
+		{"private-string", `"draft_verif_steps":"private-counter-value"`, nil},
+		{"fraction", `"draft_verif_steps":1.5`, nil},
+		{"decimal-integer", `"draft_verif_steps":7.0`, nil},
+		{"exponent", `"draft_verif_steps":7e0`, nil},
+		{"boolean", `"draft_verif_steps":true`, nil},
+		{"object", `"draft_verif_steps":{}`, nil},
+		{"array", `"draft_verif_steps":[]`, nil},
+		{"malformed-json", `"draft_verif_steps":7,`, nil},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", tc.name, stream), func(t *testing.T) {
+				contentType := "application/json"
+				body := `{"timings":{` + tc.timings + `}}`
+				if stream {
+					contentType = "text/event-stream"
+					body = "data: " + body + "\n\ndata: [DONE]\n\n"
+				}
+				observer := newResponseObserver(contentType)
+				// Splitting every byte crosses both the counter key and value.
+				for _, b := range []byte(body) {
+					observer.Observe([]byte{b})
+				}
+				got := observer.Finish().Timings
+				if (got.DraftVerificationSteps == nil) != (tc.want == nil) || (tc.want != nil && *got.DraftVerificationSteps != *tc.want) {
+					t.Fatalf("steps=%v want %v", got.DraftVerificationSteps, tc.want)
+				}
+				encoded, err := json.Marshal(got)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(encoded, &fields); err != nil {
+					t.Fatal(err)
+				}
+				_, present := fields["draft_verification_steps"]
+				if present != (tc.want != nil) {
+					t.Fatalf("missing and zero conflated: %s", encoded)
+				}
+				if bytes.Contains(encoded, []byte("private-counter-value")) {
+					t.Fatal("private malformed native string retained")
+				}
+			})
+		}
+	}
+}
+
+func TestResponseObserverDraftVerificationStepsRetainLastValidStreamObservation(t *testing.T) {
+	observer := newResponseObserver("text/event-stream")
+	for _, body := range []string{
+		`{"timings":{"draft_verif_steps":7}}`,
+		`{"timings":{"draft_verif_steps":-1}}`,
+		`{"timings":{"draft_verif_steps":9223372036854775808}}`,
+		`{"timings":{"draft_verif_steps":"private-counter-value"}}`,
+		`{"timings":{"draft_verif_steps":null}}`,
+		`{"timings":{"draft_n":30,"draft_n_accepted":15,"predicted_n":20}}`,
+	} {
+		observer.Observe([]byte("data: " + body + "\n\n"))
+	}
+	if got := observer.Finish().Timings.DraftVerificationSteps; got == nil || *got != 7 {
+		t.Fatalf("valid observation lost: %v", got)
+	}
+	observer.Observe([]byte("data: {\"timings\":{\"draft_verif_steps\":0}}\n\ndata: [DONE]\n\n"))
+	if got := observer.Finish().Timings.DraftVerificationSteps; got == nil || *got != 0 {
+		t.Fatalf("explicit final zero lost: %v", got)
 	}
 }
 

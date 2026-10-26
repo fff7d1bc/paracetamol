@@ -79,12 +79,13 @@ type TokenUsage struct {
 // retained by the gateway. Counts stay paired with their source durations so
 // lifetime throughput can be derived from totals instead of averaging rates.
 type BackendTimings struct {
-	PromptTokens          *int64   `json:"prompt_tokens,omitempty"`
-	PromptMilliseconds    *float64 `json:"prompt_ms,omitempty"`
-	GeneratedTokens       *int64   `json:"generated_tokens,omitempty"`
-	GeneratedMilliseconds *float64 `json:"generated_ms,omitempty"`
-	DraftTokens           *int64   `json:"draft_tokens,omitempty"`
-	DraftAcceptedTokens   *int64   `json:"draft_accepted_tokens,omitempty"`
+	PromptTokens           *int64   `json:"prompt_tokens,omitempty"`
+	PromptMilliseconds     *float64 `json:"prompt_ms,omitempty"`
+	GeneratedTokens        *int64   `json:"generated_tokens,omitempty"`
+	GeneratedMilliseconds  *float64 `json:"generated_ms,omitempty"`
+	DraftTokens            *int64   `json:"draft_tokens,omitempty"`
+	DraftAcceptedTokens    *int64   `json:"draft_accepted_tokens,omitempty"`
+	DraftVerificationSteps *int64   `json:"draft_verification_steps,omitempty"`
 }
 
 type responseObservation struct {
@@ -650,6 +651,10 @@ func (observer *responseObserver) observeJSON(value []byte) {
 		}
 		if token, ok := firstInteger(timings, "draft_n_accepted"); ok {
 			observer.timings.DraftAcceptedTokens = token
+		}
+		// Accepted/generated token totals do not identify verification rounds.
+		if steps, ok := firstInteger(timings, "draft_verif_steps"); ok {
+			observer.timings.DraftVerificationSteps = steps
 		}
 	}
 }
