@@ -259,6 +259,73 @@ Review Ubuntu's `glslc`, SPIR-V headers, Vulkan loader, and Mesa RADV versions
 together. The shader compiler changes generated code at build time, while
 Mesa changes the runtime driver.
 
+### Precision-preserving ROCm PR screen (2026-10-26)
+
+Four isolated candidates pass the numerical and ordinary-gateway checks on
+Strix Halo (`gfx1151`) but remain held for value. None establishes
+a repeatable, worthwhile ROCm Flash-Next gain with the managed model bytes,
+F16 KV, greedy DFlash2 depth three, four slots and shared 262144-token pool.
+The [hardware screen](hardware-acceptance.md#strix-halo-precision-preserving-pr-screen-2026-10-26)
+owns the paired measurements and qualification limits.
+
+- The direct-K extraction from
+  [Strix PR 213](https://github.com/halo-box/strix-llama.cpp/pull/213), frozen at
+  `07b5e10c4df960ceb52b5327e659b7cbcdb2c9c1`, reads the same F16 K bits while
+  retaining packed V. It changes neither KV precision nor selected keys.
+  Its deep cold input is identical to control, while generated reasoning
+  changes the subsequent append histories. Neither phase supplies a compelling
+  gain. The append pair does not establish a precise causal speedup or
+  regression. Revisit only with equivalent fixed work and
+  a repeatable gain that warrants the extra kernel machinery.
+- The shape-key graph cache from
+  [PR 31004](https://github.com/ggml-org/llama.cpp/pull/31004), frozen at
+  `296e8fb7088b00a003fac612971d4f7f2f3ec8da`, retains chunked graph ownership,
+  the `gfx1151` recapture correction and allocator invalidation. Serial and
+  four-worker controls show overlapping timings and changed draft acceptance,
+  not a reliable aggregate-throughput gain. Keep it outside production until
+  capture counts and counterbalanced wall-time results justify its cache policy.
+- The shared output view from
+  [PR 30196](https://github.com/ggml-org/llama.cpp/pull/30196), frozen at
+  `0715571e1077206f5f0a89edf3cc71bfe913f29c`, synchronizes speculative batch
+  outputs once while preserving ordinary scalar sampling and its timer boundary.
+  One screen leaves serial throughput effectively unchanged and reduces
+  four-worker throughput. That supplies no adoption case. Do not compare its
+  timings directly with different fixture versions or infer a general regression
+  from one screen.
+
+A separate occupancy-only extraction from the same Strix PR changes only the
+QSA kernel's compiler hint. The matching compiler lowers VGPR use from 210 to
+192 without spills. Forty numerical cases and exact model-logit checks pass.
+Its initial 2.67% deep cold-prefill gain fails to repeat in reverse order,
+with 601.671 versus 602.190 tokens/s. Short-context results also overlap or
+vary in both directions. Keep the hint outside production rather than treating
+lower register use as proof of a worthwhile workload gain.
+
+The broad scan also covered QSA, GDN, MoE, allocation, graphs, sampling, cache
+and server work rather than only HIP-titled proposals. Vulkan-only or
+NVIDIA-only speedups do not qualify as ROCm gains. RAM-prompt-restore fixes
+do not activate with the managed `--cache-ram 0` policy. Mixed-precision
+shortcuts, new quantization and private runtime replacements remain excluded.
+The per-size graph arenas in
+[PR 31156](https://github.com/ggml-org/llama.cpp/pull/31156) need separate
+memory-cost and scheduler-lifetime review, not an unmeasured combined stack.
+
+Potential follow-ups are narrower qualification tasks, not adoption promises:
+
+- [PR 31084](https://github.com/ggml-org/llama.cpp/pull/31084) makes threshold-tie
+  top-k selection deterministic. This changes which tied IDs are selected, not
+  merely their order, so downstream canonical sorting is not an equivalent fix.
+  Treat it as a correctness screen with independent selected-key oracles.
+- [PR 30311](https://github.com/ggml-org/llama.cpp/pull/30311) now has head
+  `0360fd1025c068d2d938f66d8418c4ae2f17bf3f`, including relocated-idle snapshot
+  bookkeeping absent from the historical hold. Rerun that hold's exact-zero
+  continuation oracle and report discrepancy magnitude rather than assuming it
+  is the unchanged proposal or a demonstrated performance improvement.
+- [PR 30489](https://github.com/ggml-org/llama.cpp/pull/30489) fuses GLU into the
+  existing Q8_1 activation quantizer, without adding another quantization step.
+  Profile actual activation first, then qualify arithmetic, precision overrides
+  and allocation lifetimes before spending time on another carried fusion.
+
 ### llama.cpp downstream patch ledger
 
 Treat every row as part of the pinned source rather than as incidental build

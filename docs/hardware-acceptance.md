@@ -29,6 +29,173 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo precision-preserving PR screen (2026-10-26)
+
+Four candidates remain **held** after numerical, state and ordinary gateway
+checks. None establishes a repeatable worthwhile ROCm Flash-Next gain.
+No performance patch is added to production. The occupancy-only extraction's
+initial cold-prefill gain does not survive the reverse-order confirmation.
+The accepted reporting-only `r65` change is separate and recorded below.
+
+All candidates start independently from upstream
+`c6fb3b5be2209f6c12339833198190f6f6829581` plus the thirteen production
+patches, tree `9846481e57eca4ba98016ece1a0f1e1cdbe50ec7` (`r64`).
+The measured v3 baseline, direct-K, graph and occupancy arms carry the identical
+native counter serializer later accepted in `r65`. This adds observability,
+not inference changes. The managed regular Unsloth Qwen3.8 Flash-Next
+UD-Q4_K_XL DFlash2 artifacts, templates, F16 K/V and ordinary F32/quantized
+matrix arithmetic stay fixed. Greedy draft depth three, four slots sharing
+one 262144-token pool, gateway sampler defaults and the production direct
+embedding reader remain enabled. No precision shortcut, new quantization,
+model substitution, private runtime or host power-policy change is included.
+
+Frozen proposals and extraction boundaries:
+
+- [Strix PR 213](https://github.com/halo-box/strix-llama.cpp/pull/213),
+  `07b5e10c4df960ceb52b5327e659b7cbcdb2c9c1`: direct selected-K reads use
+  the same F16 bits while V remains packed. Selected IDs and attention policy
+  are unchanged. The fork's other arithmetic and scheduling changes are absent.
+- [Upstream PR 31004](https://github.com/ggml-org/llama.cpp/pull/31004),
+  `296e8fb7088b00a003fac612971d4f7f2f3ec8da`: graph shape keying is rebased
+  onto chunked graph ownership. The scoped `gfx1151` recapture workaround,
+  full node-property/UID validation and legacy-pool invalidation remain.
+  There is no PR 31156 per-size graph arena or combined optimization stack.
+- [Upstream PR 30196](https://github.com/ggml-org/llama.cpp/pull/30196),
+  `0715571e1077206f5f0a89edf3cc71bfe913f29c`: borrowed shared output views
+  cover speculative verification and DFlash feature reads. Ordinary scalar
+  sampling and its timer boundary are deliberately retained. Sampling,
+  grammar and acceptance arithmetic are unchanged.
+- The separate occupancy extraction uses only PR 213's
+  `amdgpu_waves_per_eu(8)` hint on the existing QSA prefill kernel. Original
+  packed K/V, the full kernel body, grid and block sizes remain unchanged.
+  The matching ROCm compiler lowers `gfx1151` VGPR allocation from 210 to
+  192 without spills. A requested minimum wave count is not a measurement
+  or guarantee of runtime occupancy.
+
+The direct and packed modes pass 42/42 ROCm QSA operator cases each.
+The occupancy-only variant passes its unchanged 40-case QSA suite.
+Populated state restore and three clear/restore cycles pass with NMSE zero
+for packed control, direct-K, graph-key, output-view and occupancy variants.
+Matching-source completion callbacks confirm compact selected-key prefill
+and decode. All five same-mode vectors contain 248320 F32 logits and have
+SHA-256 `dc8863bb4457868c6cfaa0f8f891ff82ed285a58baba452aad65bbca14dd9dde`.
+This is a logit count, not a context length. It does not resolve the separate
+compact-versus-graph-disabled discrepancy of about 0.025 NMSE recorded below.
+The custom QSA cases are evaluation-only in this pin's `test-backend-ops`.
+A `perf` filter for QSA can exit successfully with no measurements. Any
+operator timing must verify actual cases and nonzero iteration counts.
+
+The model-free graph lifetime fixture passes on control and graph-key:
+72 exact graph comparisons across 259 queued async compute calls, twelve
+identities and sixteen alternating ADD/SCALE nodes in the starting graph.
+Inputs, views and intermediates have dedicated live storage until an explicit
+fence. Same-key changes cover a late scalar parameter, input pointer,
+padded offset/stride view, shorter topology and restoration. No intermediate
+explicit fence is inserted within each phase. These facts do **not** prove
+actual pending GPU overlap, capture/replay counts, chunk counts or evictions.
+Those require separate instrumentation. Nor does this fixture alone accept
+model scheduling, cancellation or allocator-pool invalidation lifetimes.
+The output-view CPU fixture uses actual candidate libraries and synthetic
+models to check first-read synchronization, sparse rows, nonidentity candidate
+IDs, extracted layer inputs and reacquisition after outputs change. Borrowed
+views are not retained across another decode of the same context.
+
+The first fixture exposed an invalid natural-stop expectation after a
+private-marker refusal. The v2 control later produced generic numbered-worker
+examples that falsely matched another worker's label. Neither is evidence of
+cross-request leakage or a candidate regression. Frozen
+`performance-sweep26-public-label-v3` uses deterministic opaque public labels
+with exact own-label, foreign-label and follow-up oracles. Earlier evidence is
+retained but is not silently mixed into the v3 comparison.
+
+The eight completed v3 arms below pass their protocol and quality gates.
+Cold/repeated six-value retrieval and a late history edit complete naturally
+without native context truncation. Four client workers each generate 256
+tokens with intentional output limits, and native polling observes all four
+generating simultaneously. Separate label/follow-up checks pass. SSE
+cancellation returns slots to idle and the recovery answer passes. Earlier
+short matrices also cover reasoning levels, nested tools, full assistant
+replay and JSON/SSE. Truncated timing outputs are not completed-task quality
+scores, and four short histories are not four near-full-context histories.
+
+| v3 arm in run order | Cold prefill tokens/s | Late-edit prefill tokens/s | Serial HTTP tokens/s | Native timed tokens/s | Four-worker aggregate tokens/s | Draft accepted/proposed | Accounted rounds |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline-a | 692.676 | 664.064 | 25.966 | 26.293 | 37.681 | 276/694 | 232 |
+| graph-key-a | 661.114 | 624.473 | 24.069 | 24.352 | 38.852 | 256/750 | 252 |
+| direct-K-a | 697.165 | 678.436 | 27.350 | 27.716 | 39.711 | 286/667 | 223 |
+| graph-key-b | 691.983 | 674.601 | 26.602 | 26.958 | 40.161 | 280/690 | 230 |
+| baseline-b | 684.900 | 675.986 | 26.488 | 26.838 | 39.568 | 279/687 | 229 |
+| occupancy-a | 708.923 | 687.803 | 24.554 | 24.824 | 40.801 | 259/743 | 249 |
+| occupancy-b | 701.078 | 605.797 | 27.447 | 27.824 | 39.020 | 290/654 | 219 |
+| baseline-c | 705.584 | 684.496 | 26.602 | 26.927 | 41.028 | 278/694 | 232 |
+
+Serial xhigh HTTP rate divides 512 completed output tokens by two warm
+request walls, excluding changed-suffix priming. Four-worker nonthinking rate
+divides 1024 tokens by shared group wall time, never sums per-request rates. The
+retained report also contains each request's latency. Symmetric metadata
+polling is included, so this is not an interference-free decode benchmark.
+Native `predicted_ms` excludes the first token produced by the final prompt
+batch. Native timed rate therefore uses `sum(max(0, predicted_n - 1))` over
+summed native seconds, not HTTP's full output count. Draft acceptance varies
+despite unchanged sampling policy. The native verification counter records
+accounted rounds, not every checkpoint/replay attempt or physical GPU launch.
+An early replay return precedes its increment. Missing rounds remain unknown
+and are never inferred from proposed or accepted tokens.
+
+The separate `true-append-v1` deep fixture starts with the same uncached
+247210-token input in each arm. Two sequential turns append
+4096-token supplements while replaying every previous message and complete
+assistant object, including reasoning. Template/history boundaries make each
+new native evaluation 4144 or 4145 tokens. All requests pass answer oracles
+and finish naturally without truncation. Both appends in every arm meet the
+suffix-only evidence gate.
+
+| Deep arm in run order | Initial native prefill tokens/s | Two suffix evaluations, tokens | Suffix native prefill tokens/s | Initial output tokens |
+| --- | ---: | ---: | ---: | ---: |
+| baseline-a | 590.717 | 8290 | 491.933 | 328 |
+| direct-K-a | 580.616 | 8289 | 471.573 | 482 |
+| occupancy-a | 606.477 | 8288 | 493.662 | 598 |
+| occupancy-b | 601.671 | 8290 | 492.572 | 446 |
+| baseline-b | 602.190 | 8289 | 481.384 | 593 |
+
+Suffix rate excludes the initial cold prefill and divides total newly
+evaluated tokens by summed native prompt time. Substantial prompt counts
+prove new evaluation, not independent QSA dispatch activation. Different
+generated reasoning lengths change subsequent total inputs and cache extents.
+Natural-workload append timings therefore cannot establish a precise causal
+regression or gain, and variable generation wall time is not fixed-work decode.
+
+Direct-K's attractive short screen is not corroborated by its deep pair.
+Graph-key serial/P4 controls overlap and draft acceptance changes, leaving no
+reliable gain worth its cache policy. Output-view's separate v2 screen gives
+26.595 versus 26.482 serial HTTP tokens/s and 32.806 versus 34.860 four-worker
+tokens/s: effectively unchanged serial throughput and lower P4 throughput.
+It is held, without a direct cross-fixture comparison or general regression
+claim. Occupancy's initial deep cold gain is 2.67%, but the reverse pair gives
+601.671 versus 602.190 tokens/s, effectively unchanged. Its short cold gain
+also fails to repeat against the last control. Serial/P4 results vary in both
+directions with draft acceptance, and one late-edit result is substantially
+slower. No repeatable workload benefit justifies promoting the compiler hint.
+Lower register use alone is not performance acceptance.
+
+All five deep workflows pass natural answer, history, suffix and cleanup
+checks. The 8 GiB available-memory guard never triggers. The final kernel
+window has no GPU fault, reset, SVM failure or OOM. It does contain recurring
+zram initialization warnings, left for host-configuration investigation rather
+than attributed to an inference candidate. No host configuration changes are
+made. All experiment gateways, containers and listeners are stopped.
+
+Retained private evidence is under `build/performance-sweep-20261026/`:
+source patches, immutable image/controller identities, matching-source tests,
+runtime policy inspection, per-request reports, numeric summaries and cleanup
+records. The retained read-only analyzer selects matching-v3 arms and
+distinguishes complete, failed, partial and missing evidence.
+Reproduce with identical source/image hashes, model receipts, profile, seeds,
+samplers, four-slot pool, cache conditioning and client count, then repeat in
+reverse order. ROCm benefit is the acceptance criterion, not a Vulkan-only
+speedup. Existing Vulkan compatibility must remain intact. This screen is
+`gfx1151` evidence only, not acceptance on the other managed GPU profiles.
+
 ### Strix Halo speculative request reporting (2026-10-26)
 
 The accepted reporting-only image is
