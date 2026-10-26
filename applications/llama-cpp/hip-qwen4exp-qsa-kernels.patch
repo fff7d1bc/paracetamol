@@ -464,7 +464,7 @@ new file mode 100644
 index 000000000..01b737444
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-prefill.cu
-@@ -0,0 +1,511 @@
+@@ -0,0 +1,513 @@
 +#include "qsa-prefill.cuh"
 +#if defined(GGML_USE_HIP)
 +#include "common.cuh"
@@ -650,7 +650,9 @@ index 000000000..01b737444
 +    }
 +    if (lane == QSA3_MERGE_LANES - 1) {
 +        int t = total;
-+        while (t & 3) { ob[t] = 0xFFFFu; om[t] = 0; ++t; }
++        // Zero visibility, not a reserved block index, marks padding. Block
++        // 0xFFFF is live when the unified cache reaches its final four cells.
++        while (t & 3) { ob[t] = 0; om[t] = 0; ++t; }
 +        ucount[g] = t;
 +    }
 +}
@@ -729,7 +731,7 @@ index 000000000..01b737444
 +    };
 +    auto blk_of = [&](const uint32_t b01, const uint32_t b23, const int j) -> int {
 +        const uint32_t v = (j < 2 ? b01 : b23) >> (16 * (j & 1)) & 0xFFFFu;
-+        return v == 0xFFFFu ? 0 : (int) v;
++        return (int) v;
 +    };
 +    auto load_k = [&](const uint32_t b01, const uint32_t b23, const uint32_t m01, const uint32_t m23, v16s * kf) {
 +        const int j = r >> 2;
@@ -909,7 +911,7 @@ index 000000000..01b737444
 +    return bias==0 && softcap==0 && q->type==GGML_TYPE_F32 && k->type==GGML_TYPE_F16 && v->type==GGML_TYPE_F16 &&
 +        dst->type==GGML_TYPE_F32 && ids->type==GGML_TYPE_I32 &&
 +        q->ne[0]==256 && k->ne[0]==256 && v->ne[0]==256 && q->ne[1]>=128 && q->ne[1]<=INT_MAX &&
-+        k->ne[1]>0 && k->ne[1]<=262140 && k->ne[1]%4==0 && v->ne[1]==k->ne[1] &&
++        k->ne[1]>0 && k->ne[1]<=262144 && k->ne[1]%4==0 && v->ne[1]==k->ne[1] &&
 +        k->ne[2]>0 && k->ne[2]<=65535 && q->ne[2]==12*k->ne[2] && v->ne[2]==k->ne[2] &&
 +        q->ne[3]==1 && k->ne[3]==1 && v->ne[3]==1 && ggml_nelements(k)/4<=INT_MAX &&
 +        q->nb[0]==4 && k->nb[0]==2 && v->nb[0]==2 && ids->nb[0]==4 &&

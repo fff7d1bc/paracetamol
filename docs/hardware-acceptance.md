@@ -29,6 +29,61 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Flash-Next full-span prefill correction (2026-10-26)
+
+The accepted Strix Halo ROCm image is
+`llama-cpp-ubuntu26.04-rocm10.1-280141e-r63`, ID
+`9abb6dd2d5aae34ae8daaf981f1f9dde576e4d10efae63909e8d2560570c4275`.
+It retains source `280141e6d4769b1e4424de999437cc72ffac33d6` and thirteen
+patches. The correction changes selected-key prefill indexing, not model
+bytes, F16 K/V, matrix arithmetic, templates, sampling or greedy DFlash2.
+The host default returns to four request slots sharing one 262144-token pool.
+Explicit larger slot counts remain supported overrides, not capacity claims.
+
+The regression can be reproduced without swap or sustained memory pressure.
+After distinct synthetic prefixes and an extension bring live cache occupancy
+to 262066 tokens, replacing a lower-address history leaves the physical span
+at its padded 262144-row ceiling. The old 262140-row prefill guard then drops
+selected-key attention, even though the next cold request is only 16045
+tokens and total live occupancy is much lower. Correcting descriptor padding
+makes the final block representable and retains the fast path.
+
+| Completed matched request | Previous image `r62` | Corrected image `r63` |
+| --- | --- | --- |
+| Uncached input tokens | 16045 | 16045 |
+| Prompt processing | 103.750 s | 28.222 s |
+| Prompt rate | 154.65 tokens/s | 568.52 tokens/s |
+| Exact retrieval answer | PASS | PASS |
+| Minimum available host memory | 13.43 GiB | 14.45 GiB |
+
+Both arms use the ordinary gateway, four slots, the regular Unsloth
+Flash-Next UD-Q4_K_XL DFlash2 preset, the same deterministic fixture and seed,
+and explicit reasoning off as used for client compaction. All six omitted
+samplers receive the reviewed non-thinking gateway defaults. Both finish
+normally without truncation. These are synthetic cache-layout measurements,
+not universal model speedups or a reproduction of every client compactor.
+Compilation overlapped earlier conditioning requests in the corrected arm.
+Those earlier timings are excluded from performance comparisons. The matched
+requests above run after compilation ends.
+
+Four new `QSA_END_BLOCK` GPU tests pass against an independent numerical
+oracle at 262140 and 262144 rows. They cover masked and maskless selection,
+duplicate and invalid IDs, the final block and poisoned padding. The retained
+QSA prefill, decode, order, intersection and maskless suite passes 36/36.
+The CPU-only router passes health, unloaded inventory, read-only confinement,
+no GPU devices, loopback-only publication and exact stop. Native dependency
+closure and `pip check` pass.
+
+The gateway also sends boundary-safe SSE comments during long prefill. A
+126.268-second live stream completes under curl's one-byte/second,
+20-second low-speed limit with eight gateway comments, the exact answer and
+`[DONE]`. The report records first generated output at 126.074 seconds, not
+at the first keepalive. Usage and native timings remain unchanged by comments.
+This covers silent prefill after upstream headers, not pre-header loading or
+slot queues. Installed-Maki transport fixtures and gateway race tests pass.
+Private fixture evidence remains under `build/compaction-cache-20261026/`.
+No new acceptance claim is made for other hardware profiles.
+
 ### Flash-Next DFlash2 default and model retirement (2026-10-23)
 
 Regular Unsloth Flash-Next greedy DFlash2 becomes the recommended Maki model

@@ -327,6 +327,17 @@ aliases are retired without deleting existing GGUFs. The
 [dense DFlash2 retest](qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23)
 is a separate acceptance decision, not an upstream source or math change.
 
+The `280141e-r63` selected-key prefill correction keeps that source pin and
+the same thirteen patches. A unified cache's padded physical span can reach
+262144 rows while an individual request uses much less context. Previously
+the 262140-row prefill limit then selected the slow fallback. Zero visibility
+now marks padded descriptors, leaving all 16 bits available for real block
+indices, including the final block at `0xFFFF`. Both dispatch gates cover the
+full 262144-row pool. `QSA_END_BLOCK` operator cases check that boundary,
+masked and maskless selection, duplicate and invalid IDs, and poisoned
+padding against an independent numerical oracle. The correction changes no
+KV precision, model bytes, sampling policy, or matrix arithmetic.
+
 The October 22 refresh selects frozen upstream
 `e197cef4554d466e0becac20e453a355daba8e5d`, 63 commits after `dd002b9`,
 in image `e197cef-r58`. Thirteen patches remain. Twelve apply unchanged;

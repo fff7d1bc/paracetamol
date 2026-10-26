@@ -191,7 +191,7 @@ index b6b9a99eb..14a2fb07c 100644
 +        cparams.flash_attn && n_embd_head == 256 && n_head_kv > 0 && n_head == 12*n_head_kv &&
 +        cache_k->type == GGML_TYPE_F16 && cache_v->type == GGML_TYPE_F16 &&
 +        cache_k->ne[3] == 1 && cache_v->ne[3] == 1 && cache_v->nb[1] < cache_v->nb[2] &&
-+        cache_k->ne[2] > 0 && cache_k->ne[2] <= (n_tokens > 512 ? 262140 : 262144) &&
++        cache_k->ne[2] > 0 && cache_k->ne[2] <= 262144 &&
 +        (n_tokens <= 512 || cache_k->ne[2] % 4 == 0) &&
 +        inp_kpool->n_sel > 0 && inp_kpool->n_sel <= 2560 &&
 +        causal && causal->ne[2] == 1 && causal->ne[3] == 1;
@@ -217,10 +217,79 @@ diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
 index eb53aa056..10c762f5c 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10039,6 +10039,40 @@ struct test_qsa_order : public test_qsa_prefill {
+@@ -10039,6 +10039,109 @@ struct test_qsa_order : public test_qsa_prefill {
      }
  };
  
++// Aged unified caches can reach block 0xFFFF without filling the live token
++// pool. Exercise that block and padded descriptors against an independent
++// constant-row oracle, keeping CPU work proportional to the selected set.
++struct test_qsa_end_block : public test_case {
++    const int keys;
++    const bool maskless;
++    static constexpr int queries = 513, dim = 256, heads = 12, selected = 9;
++    ggml_tensor * q = nullptr, * k = nullptr, * v = nullptr, * mask = nullptr, * ids = nullptr;
++    test_qsa_end_block(int keys, bool maskless) : keys(keys), maskless(maskless) {}
++    std::string op_desc(ggml_tensor *) override { return "QSA_END_BLOCK"; }
++    std::string vars() override { return VARS_TO_STR2(keys, maskless); }
++    bool run_whole_graph() override { return true; }
++    double max_nmse_err() override { return 5e-4; }
++    ggml_tensor * build_graph(ggml_context * ctx) override {
++        q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, dim, queries, heads, 1);
++        k = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, dim, keys, 1, 1);
++        v = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, dim, keys, 1, 1);
++        mask = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, keys, queries, 1, 1);
++        ids = ggml_new_tensor_4d(ctx, GGML_TYPE_I32, selected, queries, 1, 1);
++        auto * out = ggml_flash_attn_ext(ctx, q, k, v, maskless ? nullptr : mask,
++                1.0f/sqrtf(dim), 0.0f, 0.0f);
++        ggml_flash_attn_ext_add_top_k(out, ids, 0);
++        ggml_flash_attn_ext_set_top_k_mask(out);
++        ggml_prec_set_acc(out, GGML_PREC_F32);
++        return out;
++    }
++    void initialize_tensors(ggml_context *) override {
++        for (auto * t : {q, k, v}) ggml_backend_tensor_memset(t, 0, 0, ggml_nbytes(t));
++        std::vector<ggml_fp16_t> row(dim);
++        // The union has two real blocks and two padding descriptors. Poison
++        // block zero so padding must suppress values before any arithmetic.
++        for (int key : {0, keys-3}) {
++            std::fill(row.begin(), row.end(), ggml_fp32_to_fp16(NAN));
++            ggml_backend_tensor_set(v, row.data(), size_t(key)*v->nb[1], dim*sizeof(ggml_fp16_t));
++        }
++        for (int offset : {8, 4, 2, 1}) {
++            std::fill(row.begin(), row.end(), ggml_fp32_to_fp16(float(offset)/8.0f));
++            ggml_backend_tensor_set(v, row.data(), size_t(keys-offset)*v->nb[1], dim*sizeof(ggml_fp16_t));
++        }
++        std::vector<int32_t> picks(ggml_nelements(ids));
++        // A broad mask makes IDs authoritative, rather than a redundant hint.
++        std::vector<ggml_fp16_t> masks(ggml_nelements(mask), ggml_fp32_to_fp16(0.0f));
++        for (int query=0; query<queries; ++query) {
++            const int32_t row_ids[selected] = {keys-4, keys-1, keys-4, keys-8,
++                -1, keys+1, maskless ? -1 : keys-3, query%2 ? keys-2 : -1, keys-8};
++            std::copy(row_ids, row_ids+selected, picks.begin()+size_t(query)*selected);
++            masks[size_t(query)*keys+keys-3] = ggml_fp32_to_fp16(-INFINITY);
++            masks[size_t(query)*keys+keys-1] = ggml_fp32_to_fp16(0.125f);
++        }
++        ggml_backend_tensor_set(ids, picks.data(), 0, ggml_nbytes(ids));
++        ggml_backend_tensor_set(mask, masks.data(), 0, ggml_nbytes(mask));
++    }
++    double err(const float * actual, const float * cpu, size_t n) override {
++        std::vector<float> reference(n);
++        for (int query=0; query<queries; ++query) {
++            const double weight = maskless ? 1.0 : std::exp(0.125);
++            const double extra = query%2 ? 1.0 : 0.0;
++            const float expected = float((0.5 + 0.125*weight + 1.0 + 0.25*extra)/(2.0 + weight + extra));
++            for (int head=0; head<heads; ++head) for (int d=0; d<dim; ++d) {
++                reference[d+size_t(dim)*(head+heads*query)] = expected;
++            }
++        }
++        // Require both implementations to agree with the independently known
++        // softmax; matching the same wrong low-block alias cannot pass.
++        for (size_t i=0; i<n; ++i) if (!std::isfinite(actual[i]) || !std::isfinite(cpu[i])) return INFINITY;
++        return std::max(nmse(reference.data(), actual, n), nmse(reference.data(), cpu, n));
++    }
++};
++
 +// A broad causal mask must not make unselected rows visible. Compare the
 +// explicit intersection against an independently materialized selected mask.
 +struct test_qsa_intersection : public test_qsa_prefill {
@@ -258,7 +327,7 @@ index eb53aa056..10c762f5c 100644
  // Maskless selected attention is compared against the same FP64 oracle as the
  // masked path. The unused mask is only an independent visibility oracle.
  struct test_qsa_maskless : public test_qsa_decode {
-@@ -12429,7 +12463,11 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -12429,7 +12532,14 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      // Selected-key paths retain an independent full-mask CPU reference.
      for (int queries : {1, 16, 513}) {
          test_cases.emplace_back(new test_qsa_order(queries, 2051));
@@ -267,6 +336,9 @@ index eb53aa056..10c762f5c 100644
 +        }
      }
 +    test_cases.emplace_back(new test_qsa_intersection(2, 257, 4));
++    for (int keys : {262140, 262144}) for (bool maskless : {false, true}) {
++        test_cases.emplace_back(new test_qsa_end_block(keys, maskless));
++    }
      for (int selected : {1, 255, 256, 257, 2048, 2560}) {
          test_cases.emplace_back(new test_qsa_order(513, selected));
          test_cases.emplace_back(new test_qsa_prefill(513, 4096, selected, true, true));
