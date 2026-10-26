@@ -328,7 +328,7 @@ The additional `stream-token-embedding` policy is limited to Strix Halo with
 Flash Attention and F16 KV. It preserves the lazy-mmap Vulkan path and selects
 explicit CPU embedding reads with device allocation on ROCm. The shared
 container helper owns its complete direct/router argument tuple, including
-2048 batch/microbatch and no RAM prompt archive. Eight request slots share one
+2048 batch/microbatch and no RAM prompt archive. Four request slots share one
 configured context pool by default. A single-slot launch retains separate KV.
 The ROCm backend must explicitly restrict itself to Strix Halo. Its only
 reviewed speculative tuple is ROCm-only `draft-dflash` at depth three with a

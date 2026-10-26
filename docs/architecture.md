@@ -466,7 +466,7 @@ The Strix Halo `stream-token-embedding` policy keeps that Vulkan mapping but
 uses explicit CPU embedding reads for ROCm. Its ROCm recipe disables inherited
 unified-memory allocation and host weight buffers, retains resident loading
 for the other tensors, disables automatic fitting and the RAM prompt archive,
-and uses a 2048 batch/microbatch. Managed server concurrency defaults to eight
+and uses a 2048 batch/microbatch. Managed server concurrency defaults to four
 request slots per loaded model, independently of the router's model count. Multiple
 slots use a unified KV token pool of the preset's configured size. The
 single-slot override preserves the accepted non-unified cache for this ROCm

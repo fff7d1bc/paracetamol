@@ -144,7 +144,7 @@ func TestLlamaRequestSlots(t *testing.T) {
 		}
 		want := slots
 		if want == 0 {
-			want = 8
+			want = 4
 		}
 		if !strings.Contains(strings.Join(command, " "), fmt.Sprintf("PARACETAMOL_LLAMA_SLOTS=%d", want)) {
 			t.Fatalf("slots=%d command=%v", slots, command)

@@ -28,7 +28,7 @@ const (
 	DefaultListen                  = "127.0.0.1"
 	DefaultGatewayPort             = 7455
 	DefaultGatewayURL              = "http://127.0.0.1:7455/v1"
-	DefaultLlamaSlots              = 8
+	DefaultLlamaSlots              = 4
 	DefaultStatisticsRetentionDays = 90
 	maxFileSize                    = 64 * 1024
 )

@@ -343,6 +343,7 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		}
 		observer = newResponseObserver(response.Header.Get("Content-Type"))
 		response.Body = &observedBody{ReadCloser: response.Body, observer: observer}
+		keepStreamingResponseAlive(response)
 		return nil
 	}
 	proxy.ErrorHandler = func(output http.ResponseWriter, incoming *http.Request, proxyErr error) {

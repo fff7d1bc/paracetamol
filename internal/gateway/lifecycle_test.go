@@ -51,7 +51,7 @@ func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
 		}
 		want := slots
 		if want == 0 {
-			want = 8
+			want = 4
 		}
 		joined := strings.Join(command, " ")
 		if !strings.Contains(joined, fmt.Sprintf("PARACETAMOL_LLAMA_SLOTS=%d", want)) || !strings.Contains(joined, "PARACETAMOL_LLAMA_MODELS_MAX=1") {

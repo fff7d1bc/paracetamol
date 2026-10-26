@@ -245,7 +245,8 @@ func TestTrackedExampleLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Applications == nil || configuration.Gateway.RenderNodes == nil || configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort {
+	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Applications == nil || configuration.Gateway.RenderNodes == nil || configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort ||
+		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != DefaultLlamaSlots {
 		t.Fatalf("configuration=%#v", configuration)
 	}
 }
@@ -253,6 +254,9 @@ func TestTrackedExampleLoads(t *testing.T) {
 func TestGatewayDefaultsAgree(t *testing.T) {
 	if DefaultGatewayPort != 7455 || DefaultGatewayURL != "http://127.0.0.1:7455/v1" {
 		t.Fatalf("port=%d URL=%q", DefaultGatewayPort, DefaultGatewayURL)
+	}
+	if DefaultLlamaSlots != 4 {
+		t.Fatalf("request slots=%d", DefaultLlamaSlots)
 	}
 }
 

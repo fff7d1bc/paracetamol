@@ -114,7 +114,7 @@ url = "http://127.0.0.1:7455/v1"
 [gateway.llama-cpp]
 backend = "rocm"
 models_max = 1
-slots = 8
+slots = 4
 ```
 
 Select another file globally either before or after the command:
@@ -306,7 +306,15 @@ the backend's own slots. During startup, requests wait in a bounded FIFO queue
 until the backend passes its readiness check. The gateway fills
 missing sampling fields only for models with a reviewed catalog policy, as
 described below. Messages, tools, and unknown fields retain their values.
-SSE responses stream without aggregation.
+SSE responses stream without aggregation. After a successful upstream SSE
+response begins, the gateway adds a content-free comment every 15 seconds at
+an event boundary. These keepalives exceed one byte per second on average so
+clients with low-speed timeouts can tolerate long prompt processing. They do
+not count as generated output, usage, or completion, and do not prove backend
+progress. Client cancellation still stops the request. A partial upstream event
+is forwarded unchanged and never interrupted by a comment. Keepalives do not
+cover gateway startup, model loading, or slot queues before upstream headers;
+HTTP errors and non-streaming JSON responses retain their original behavior.
 
 The body limit is 16 MiB and the waiting queue holds at most 64 requests.
 Client cancellation removes a queued request or propagates to the upstream
@@ -321,13 +329,13 @@ until it can evict an idle least-recently-used child; it does not evict a busy
 child.
 
 Request concurrency is a separate setting. Each loaded llama.cpp model has
-eight request slots by default. Use `--slots N` or
-`[gateway.llama-cpp].slots = N` to change it. A ninth request waits for a slot
+four request slots by default. Use `--slots N` or
+`[gateway.llama-cpp].slots = N` to change it. A fifth request waits for a slot
 without loading another copy of the model.
 
 With multiple slots, llama.cpp shares the preset's KV token pool. A 256K
-preset is **256K total across active conversations**, not eight independent
-256K allocations and not a fixed 32K limit per conversation. One conversation
+preset is **256K total across active conversations**, not four independent
+256K allocations and not a fixed 64K limit per conversation. One conversation
 can use nearly the whole pool when the others are idle. Long simultaneous
 conversations must fit together, and running out of KV space can cause
 reprocessing or a backend error. More slots improve aggregate throughput on
@@ -335,11 +343,11 @@ some workloads but do not promise faster individual responses. Use `--slots 1`
 when one long conversation should have the server to itself.
 
 Per-sequence state and work buffers can still grow with the slot count,
-especially for recurrent and speculative models. Eight slots is not a memory
-or performance acceptance claim for every model and GPU. Reduce it with
-`--slots 4` or a smaller value when memory headroom matters. Existing config
-files containing `slots = 4` retain that explicit override. Change it to eight
-or omit the key to adopt the new default.
+especially for recurrent and speculative models. Four slots reduce this
+overhead compared with eight, but are not a memory or performance acceptance
+claim for every model and GPU. Use a smaller value when memory headroom
+matters. Existing config files containing `slots = 8` retain that explicit
+override. Change it to four or omit the key to adopt the default.
 
 The startup banner, gateway model details, and `status llama-cpp` show the
 configured request-slot count separately from the loaded-model limit. Direct

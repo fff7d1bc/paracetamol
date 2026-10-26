@@ -47,13 +47,23 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		t.Fatalf("help error=%v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 8") {
+	if !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 4") {
 		t.Fatalf("missing request slots: %s", output)
 	}
 	for _, expected := range []string{"-a, --application APPLICATION", "default discovers runnable applications", "--models-max COUNT", "default: 1", "loopback remains available", "Using --port alone selects loopback", "default: 7455", "run gateway --port 18080", "--statistics", "--statistics=false", "--statistics-retention-days DAYS", "default: 90"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
+	}
+}
+
+func TestLlamaServerHelpShowsRequestSlotDefault(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	if err := app.runLlama("server", []string{"--help"}); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("help error=%v", err)
+	}
+	if output := stdout.String(); !strings.Contains(output, "--slots COUNT") || !strings.Contains(output, "default: 4") {
+		t.Fatalf("missing request slots: %s", output)
 	}
 }
 
@@ -222,7 +232,7 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 	}
 	configuredBackend := "vulkan"
 	configuredModels := 2
-	configuredSlots := 2
+	configuredSlots := 8
 	configuredTimeout := "45m"
 	configuration := config.Configuration{Path: "/profiles/gateway.toml", Gateway: config.GatewayConfiguration{
 		Applications: []string{"llama-cpp"}, RenderNodes: []string{"/dev/dri/renderD128"}, StartupTimeout: &configuredTimeout,
@@ -231,17 +241,17 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
 		t.Fatal(err)
 	}
-	if *slots != 2 {
+	if *slots != 8 {
 		t.Fatalf("configured slots=%d", *slots)
 	}
-	if err := parseFlags(set, []string{"--slots", "4"}); err != nil {
+	if err := parseFlags(set, []string{"--slots", "6"}); err != nil {
 		t.Fatal(err)
 	}
 	nodes = nil
 	if err := applyGatewayConfiguration(set, map[string]string{}, configuration, &applications, &nodes, backend, modelsMax, slots, startupTimeout); err != nil {
 		t.Fatal(err)
 	}
-	if *slots != 4 {
+	if *slots != 6 {
 		t.Fatalf("explicit slots=%d", *slots)
 	}
 	if strings.Join(applications, ",") != "llama-cpp" || strings.Join(nodes, ",") != "/dev/dri/renderD128" || *backend != "vulkan" || *modelsMax != 3 || *startupTimeout != 45*time.Minute {
