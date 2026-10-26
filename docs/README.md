@@ -115,6 +115,8 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      Halo](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
    - [Qwen3.8 Flash-Next direct embedding reads on Strix
      Halo](qwen3.8-flash-next-direct-reader-feasibility.md)
+   - [Flash-Next Gufo optimization and DFlash2 tuning
+     screen](qwen3.8-flash-next-gufo-optimization-screen.md)
    - [Swift 1.5 model retirement](swift-retirement.md)
 
 ### Sources of truth

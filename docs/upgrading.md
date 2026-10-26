@@ -326,6 +326,20 @@ Potential follow-ups are narrower qualification tasks, not adoption promises:
   Profile actual activation first, then qualify arithmetic, precision overrides
   and allocation lifetimes before spending time on another carried fusion.
 
+### Gufo-inspired Flash-Next screen (2026-10-26)
+
+The separate [Gufo optimization screen](qwen3.8-flash-next-gufo-optimization-screen.md)
+records exact DPP lane transport, reader reuse and prompt-row lookahead.
+No Gufo engine, private runtime, reduced-precision math or adaptive draft
+controller is imported. Reader profiling at 32K and near 256K finds no exposed
+bottleneck justifying persistent workers or cross-call prefetch machinery.
+The DPP numerical gates pass, but the measured serial improvement accompanies
+different draft acceptance and is not isolated from it. The candidate remains
+held rather than joining the production patch ledger.
+The independent greedy DFlash2 depth-five screen also supplies no adoption
+case. Serial throughput barely changes and four-client throughput is lower.
+Keep depth three instead of copying Gufo's different-model adaptive widths.
+
 ### llama.cpp downstream patch ledger
 
 Treat every row as part of the pinned source rather than as incidental build

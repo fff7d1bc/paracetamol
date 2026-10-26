@@ -29,6 +29,21 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo Gufo-inspired optimization screen (2026-10-26)
+
+The [independent screen](qwen3.8-flash-next-gufo-optimization-screen.md)
+records the exact sources, images, numerical gates, paired gateway timings
+and qualification limits. Production remains `c6fb3b5-r65` with fourteen
+patches. The DPP candidate passes exact lane, operator and populated-state
+checks plus four ordinary-gateway screens, but remains held for value.
+Diagnostic 32K and near-256K runs place embedding gather work below 1% of
+native prompt-plus-generation time in the matched requests. Persistent reader
+workers and cross-call prompt-row lookahead are not adopted.
+The independent greedy depth-five arm passes the short workload checks but
+reduces four-client aggregate throughput by about 13% without a useful serial
+gain. The managed DFlash2 depth remains three.
+This is Strix Halo evidence only, not acceptance on other GPU classes.
+
 ### Strix Halo precision-preserving PR screen (2026-10-26)
 
 Four candidates remain **held** after numerical, state and ordinary gateway
