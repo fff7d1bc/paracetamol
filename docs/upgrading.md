@@ -106,21 +106,34 @@ any application image. `containers/content_tools/requirements.txt` is a
 complete exact dependency set, not merely a list of direct dependencies. When
 upgrading `huggingface-hub`, resolve its full environment in a clean Python
 virtual environment, review every transitive change, replace the complete pin
-set, and update `CONTENT_TOOLS_IMAGE` in `internal/config/config.go`.
+set, and update the content-tools image identity in
+`internal/application/registry.go`.
 
-Build through one application so the normal prerequisite path is exercised:
+Build the independent content-tools target explicitly. A selected application
+build does not include it in that application's prerequisite closure:
 
 ```bash
-./paracetamol build comfyui --no-cache
+./paracetamol build content-tools --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r2 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r1 \
   -m pip check
 ```
 
-Use the current tag from `internal/config/config.go`. Then dry-run at least one direct
-Hugging Face artifact and one authenticated Civitai artifact. A dry run
+Use the current tag from `internal/application/registry.go`. Then dry-run at
+least one direct Hugging Face artifact and one authenticated Civitai artifact. A dry run
 validates metadata but does not test transport; use small pinned fixtures when
 transport behavior itself changed.
+
+The November 3 refresh advances `huggingface-hub` from 1.27.0 to 2.4.0 with
+its complete fifteen-package lock. The transport now uses HTTPX2/HTTPCore2
+and operating-system certificate trust through `truststore`, following the
+[upstream migration](https://huggingface.co/docs/huggingface_hub/en/concepts/migration_v2).
+The cold content-tools image passes `pip check`. An actual normal installer
+run downloads the catalog-pinned Qwen3 0.6B Q8_0 artifact, verifies all
+639446688 bytes against its SHA-256 and publishes a reusable verification
+receipt in disposable storage. TLS verification remains enabled, and no
+credentials or existing managed content are used. Authenticated Civitai
+transport is not covered by that check; its separate HTTPS helper is unchanged.
 
 ## Upgrade the Ubuntu base
 
@@ -1447,15 +1460,12 @@ shapes constructed by `internal/content/`:
 
 ```text
 hf download REPOSITORY PATH --revision COMMIT --local-dir DIRECTORY
-hf download REPOSITORY --revision COMMIT --local-dir DIRECTORY \
-  --include PATH [--include PATH ...]
 ```
 
 Confirm that the new CLI still supports:
 
 - exact revisions;
 - resumable local-directory downloads;
-- repeated `--include` filters;
 - `--max-workers`;
 - `HF_TOKEN` inherited only when the host supplies it;
 - `HF_HUB_DISABLE_TELEMETRY`.

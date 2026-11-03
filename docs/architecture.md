@@ -305,10 +305,12 @@ does not authenticate the case outcomes and is not a signed attestation.
 
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
-Every application build ensures and tags this prerequisite as
-`localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r2`; `content install`
-uses it without building anything itself. This keeps downloads independent of
-ComfyUI and makes a llama.cpp-only initial setup complete.
+`build all` includes it as
+`localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r1`.
+Use `build content-tools` to build or refresh it independently. Selected
+application builds follow their own prerequisite closure and do not build the
+download image. `content install` requires it but builds nothing itself.
+This keeps downloads independent of ComfyUI and the inference runtime.
 
 `Containerfile` defines a minimal `rocm-runtime` target, which the launcher
 builds and tags as the managed local prerequisite
