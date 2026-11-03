@@ -43,7 +43,7 @@ func (server *Server) makiConfig(writer http.ResponseWriter, request *http.Reque
 func (server *Server) clientModel(model Model) textmodel.Model {
 	return textmodel.Model{
 		ID: model.ID, Context: model.Context, MaxOutputTokens: model.MaxOutputTokens,
-		AgentTools: model.AgentTools, ReasoningControl: model.ReasoningControl,
+		AgentTools: model.AgentTools, Vision: model.Vision, ReasoningControl: model.ReasoningControl,
 		ReasoningLevels: model.ReasoningLevels, ReasoningDefault: model.ReasoningDefault,
 		ReasoningOff: model.ReasoningOff,
 	}

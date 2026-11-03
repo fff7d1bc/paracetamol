@@ -389,6 +389,34 @@ RUN git apply --check /opt/paracetamol/llama-server-speculative-metrics.patch &&
         -o /tmp/test-server-speculative-metrics && \
     LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-server-speculative-metrics
 
+# PR 30220, frozen at 73647e8ade6fb4293d221c4b92aafb7e82976418.
+# Only its two quality-guarantee comment lines are locally qualified; code and
+# global cache-consecutivity guards remain exactly those of the pinned source.
+# Keep this common-only correction after the reviewed native build: the patch
+# fills draft logical-position holes, without changing target/GPU arithmetic.
+# A private index prevents source checks from refreshing build-info's index
+# dependency. Ordinary Ninja regeneration and install-time RPATH remain intact.
+COPY applications/llama-cpp/dflash-mtmd-position-gap.patch \
+    /opt/paracetamol/llama-dflash-mtmd-position-gap.patch
+RUN printf '%s\n' \
+        'c299f24df7c580ccbe013224dbba50c6adc64eaf513afff918c9f5d8cebce91d  /opt/paracetamol/llama-dflash-mtmd-position-gap.patch' \
+        | sha256sum -c - && \
+    export GIT_OPTIONAL_LOCKS=0 \
+        GIT_INDEX_FILE=/tmp/paracetamol-dflash-position-gap.index && \
+    test ! -e "$GIT_INDEX_FILE" && \
+    git read-tree HEAD && \
+    git apply --check /opt/paracetamol/llama-dflash-mtmd-position-gap.patch && \
+    git apply /opt/paracetamol/llama-dflash-mtmd-position-gap.patch && \
+    cmake --build build --config Release \
+        --target llama-common llama-server llama-cli llama-bench && \
+    cmake --install build --config Release && \
+    find /opt/llama-install/bin -type f \
+        ! -name llama-cli ! -name llama-server ! -name llama-bench -delete && \
+    rm -rf /opt/llama-install/include /opt/llama-install/lib/cmake \
+        /opt/llama-install/lib/pkgconfig && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-server-speculative-metrics
+
 FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -434,7 +462,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics,dflash-mtmd-position-gap" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

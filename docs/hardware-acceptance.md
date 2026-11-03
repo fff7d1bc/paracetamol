@@ -29,6 +29,36 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo Flash-Next vision (2026-11-03)
+
+PASS on `gfx1151` with the locally built `740251a-r71` image. The source pin,
+regular Unsloth UD-Q4_K_XL, F16 K/V, ordinary quantized/F32 matrix arithmetic,
+greedy DFlash2 depth three, four unified slots and 262144-token total pool
+remain unchanged. The [vision record](qwen3.8-flash-next-vision-feasibility.md)
+contains immutable image/source identities, A–B–B–A text measurements,
+retained and transient memory observations, the upstream compatibility defect
+and its repair.
+
+The unused projector adds about 1.1–1.3 GB. The 100K image/history screen
+retains about 2.3–2.5 GB above text-only controls. No convincing unused-text
+speed penalty is observed. Natural image/history and text checks also pass
+near 244K input tokens with at least 12.70 GB available. This is not a fully
+populated 262144-token input claim. Four explicit concurrent image/text
+requests, actual four-slot generation, cancellation and recovery pass.
+Huihui plain/DFlash2 ROCm and both publishers' plain Vulkan image/history
+checks pass with their own projectors. Native Maki 0.6.5 passes a genuine
+export/image-tool round trip at xhigh on the final production image.
+
+The final native numerical libraries match `r70` byte for byte. Only the
+intended common-library payload changes, matching the separately tested
+candidate. Host checks, static and forced normal builds, focused race checks,
+catalog dry-runs and installed dependency consistency pass. The CPU startup
+check does not generate tokens. No kernel, memory-policy, power or swap
+configuration is changed. No GPU/kernel/SVM/OOM faults are observed.
+Other GPU architectures and arbitrary image dimensions/counts remain
+unqualified. Raw private evidence stays under ignored
+`build/vision-screen-20261103/`, not in the tracked documentation.
+
 ### Strix Halo routing hardening and performance screen (2026-11-03)
 
 This follow-up keeps upstream `740251a`, the regular Unsloth Flash-Next

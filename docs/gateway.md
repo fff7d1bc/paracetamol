@@ -265,6 +265,25 @@ in the runtime gate. An incomplete, unverified, architecture-incompatible, or
 unselected model is absent from `GET /v1/models`. Every selected application
 must contribute at least one schedulable model or startup fails.
 
+Vision capability comes from a required catalog projector, not the target's
+name. The regular and Huihui Flash-Next plain/DFlash2 presets require their
+matching pinned BF16 companion and a current verification receipt. A missing
+or stale projector removes that entire preset from the startup inventory,
+including text-only use; rerun its normal content installer, then restart the
+gateway. The frozen `vision` field and generated Maki `supports_vision` claim
+describe that verified tuple, not whether a backend is currently resident.
+
+Image input uses Chat Completions content parts with `type: "image_url"` and
+an inline base64 `data:image/...;base64,...` URL. Remote HTTP(S) image URLs,
+local file URLs and audio/video input are rejected before scheduling. A
+text-only model rejects image input too. The existing 16 MiB whole-request
+limit includes base64 image bytes. Validation does not download media or
+rewrite messages, and image bytes/URLs never enter gateway request reports
+or statistics. Preserve identical image content and complete assistant history
+for prefix reuse; replacing an image changes the usable prefix. Native direct
+llama.cpp servers have a broader upstream media API: this gateway restriction
+is not a claim that direct endpoints have the same admission policy.
+
 A catalog backend can also be restricted to a concrete hardware profile.
 Flash-Next's ROCm streaming path is restricted to Strix Halo. Automatic
 selection resolves the exact render nodes through KFD topology, and the

@@ -38,7 +38,9 @@ media. Use `./paracetamol content list bundles` for the current exact inventory.
   decoding with an optional closed ROCm/Vulkan draft-depth override, embedded
   Jinja or project-bundled chat-template policy, profile-specific Flash
   Attention, symmetric K/V-cache policy, a narrowly validated model-load
-  policy, and one verified draft GGUF from the same bundle. A reviewed
+  policy, one verified draft GGUF, and a required matching multimodal projector
+  GGUF from the same bundle. `mmproj_artifact` derives vision capability; it is
+  not an independent client toggle. A reviewed
   experimental preset may narrowly override the target and draft
   `context_length` metadata while disabling automatic fitting. `agent_tools`
   records the smaller reviewed set maintained for function-tool agent clients.
@@ -53,7 +55,13 @@ gateway sampling. Flash-Next `-dflash2` bundles reuse the existing
 target shards and add one shared pinned Inco Q8_0 draft. They are limited to
 the accepted ROCm Strix Halo tuple at depth three. The regular Flash-Next
 DFlash2 bundle is the recipe launch and Maki default at xhigh. Plain
-Flash-Next remains available without speculation.
+Flash-Next remains available without speculation. Both plain and DFlash2
+regular Flash-Next bundles require the same pinned Unsloth BF16 projector;
+the Huihui pair requires its separately pinned non-Swift BF16 projector. The
+two projectors retain `NOASSERTION` licensing and explicit risk acknowledgment.
+Missing or stale projector receipts block the affected preset, even for a
+text-only request. Re-run the normal installer for an existing installation;
+verified target shards are reused rather than downloaded again.
 
 The loader rejects unsafe paths, malformed revisions and hashes, missing
 references, repeated bundle content, unknown groups, and destination

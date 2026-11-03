@@ -695,6 +695,9 @@ func (app *App) runLlama(mode string, args []string) error {
 		if preset.DraftArtifact != "" {
 			options.ManagedDraft = managed.Artifacts[preset.DraftArtifact].Destination
 		}
+		if preset.MMProjArtifact != "" {
+			options.ManagedMMProj = managed.Artifacts[preset.MMProjArtifact].Destination
+		}
 		options.SpeculativeType = preset.SpeculativeType
 		options.DraftTokens = preset.DraftTokensForBackend(*backend)
 		options.ContextOverrideArchitectures = preset.ContextOverrideArchitectures

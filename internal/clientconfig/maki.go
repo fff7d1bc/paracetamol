@@ -97,7 +97,7 @@ func Maki(models []textmodel.Model, endpoint string, authenticated bool) (MakiFi
 		output.WriteString("# Maki requires a credential even when this gateway has no authentication.\napi_key = \"paracetamol-local\"\n")
 	}
 	for _, model := range selected {
-		fmt.Fprintf(&output, "\n[[%s.models]]\nid = %s\ntier = \"medium\"\ncontext_window = %d\nmax_output_tokens = %d\nsupports_thinking = %t\nsupports_vision = false\nrequires_thinking = %t\n", quote(provider), quote(model.ID), model.Context, model.MaxOutputTokens, model.ReasoningControl != "", model.ReasoningControl != "" && !model.ReasoningOff)
+		fmt.Fprintf(&output, "\n[[%s.models]]\nid = %s\ntier = \"medium\"\ncontext_window = %d\nmax_output_tokens = %d\nsupports_thinking = %t\nsupports_vision = %t\nrequires_thinking = %t\n", quote(provider), quote(model.ID), model.Context, model.MaxOutputTokens, model.ReasoningControl != "", model.Vision, model.ReasoningControl != "" && !model.ReasoningOff)
 		fields := MakiThinkingFields(model)
 		if len(fields) != 0 {
 			fmt.Fprintf(&output, "\n[%s.models.thinking_fields]\n", quote(provider))

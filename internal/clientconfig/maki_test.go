@@ -29,7 +29,7 @@ func TestMakiExportFiltersAndSortsWithoutMutatingInput(t *testing.T) {
 	models := []textmodel.Model{
 		{ID: "z", AgentTools: true, Context: 4096, MaxOutputTokens: 1000},
 		{ID: "not-for-agents"},
-		{ID: "a", AgentTools: true, Context: 8192, MaxOutputTokens: 2000},
+		{ID: "a", AgentTools: true, Vision: true, Context: 8192, MaxOutputTokens: 2000},
 	}
 	files, err := Maki(models, "http://gateway.test:7455/v1", false)
 	if err != nil {
@@ -43,6 +43,12 @@ func TestMakiExportFiltersAndSortsWithoutMutatingInput(t *testing.T) {
 	}
 	if strings.Contains(text, "not-for-agents") || strings.Index(text, `id = "a"`) > strings.Index(text, `id = "z"`) || models[0].ID != "z" {
 		t.Fatal("filter/order mutated input or leaked a model")
+	}
+	for id, want := range map[string]string{"a": "true", "z": "false"} {
+		section := strings.SplitN(strings.SplitN(text, "\nid = "+quote(id)+"\n", 2)[1], "\n[[", 2)[0]
+		if !strings.Contains(section, "supports_vision = "+want+"\n") {
+			t.Fatalf("wrong per-model vision capability for %s: %s", id, section)
+		}
 	}
 	again, err := Maki([]textmodel.Model{models[2], models[0]}, "http://gateway.test:7455/v1", false)
 	if err != nil || !bytes.Equal(files.Providers, again.Providers) || !bytes.Equal(files.Init, again.Init) {

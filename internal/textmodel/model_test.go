@@ -56,3 +56,13 @@ func TestRepositoryModelsHaveUniqueBackendNeutralIdentities(t *testing.T) {
 		last = model.ID
 	}
 }
+
+func TestVisionRequiresAnExplicitProjectorReference(t *testing.T) {
+	for _, projector := range []string{"", "projector"} {
+		preset := catalog.LlamaPreset{Bundle: "bundle", DefaultContext: 4096, MMProjArtifact: projector}
+		model := FromLlamaPreset("fixture", preset)
+		if model.Vision != (projector != "") {
+			t.Fatalf("projector=%q model=%+v", projector, model)
+		}
+	}
+}

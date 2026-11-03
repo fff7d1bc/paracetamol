@@ -22,6 +22,7 @@ type LlamaOptions struct {
 	Model                        string
 	ManagedModel                 string
 	ManagedDraft                 string
+	ManagedMMProj                string
 	SpeculativeType              string
 	DraftTokens                  int64
 	ContextOverrideArchitectures []string
@@ -119,6 +120,11 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 		draft = "/content/models/" + options.ManagedDraft
 	}
 	command = env(command, "PARACETAMOL_LLAMA_DRAFT_MODEL", draft)
+	projector := ""
+	if options.ManagedMMProj != "" {
+		projector = "/content/models/" + options.ManagedMMProj
+	}
+	command = env(command, "PARACETAMOL_LLAMA_MMPROJ", projector)
 	command = env(command, "PARACETAMOL_LLAMA_SPECULATIVE_TYPE", options.SpeculativeType)
 	command = env(command, "PARACETAMOL_LLAMA_DRAFT_TOKENS", options.DraftTokens)
 	var overrides []string

@@ -240,6 +240,20 @@ unresolved `ldd` entries, link both `libggml-hip` and `libggml-vulkan`, and
 retain rocBLAS/hipBLASLt payloads only for `gfx1150`, `gfx1151`, `gfx1200`,
 and `gfx1201`. CPU startup is not GPU inference acceptance.
 
+For the late DFlash multimodal-position correction, retain source and payload
+identity evidence separately from inference acceptance. Its patch is pinned by
+SHA-256 and applied with `git apply --check` after the existing native build.
+Rebuild common, server, CLI and bench through normal CMake/Ninja and installation
+rules; do not use header shims, restored timestamps, copied build-control files
+or configure bypasses. Every Git subprocess in the late step must inherit the
+private index. The installed native-policy and serializer fixtures rerun after
+installation. An isolated comparison must keep target-numerical shared
+libraries and HIP/Vulkan/libllama objects byte-identical, then exercise actual
+images, identical-image history reuse, changed-image rewinds and text after
+images. Count MTMD tokens separately from M-RoPE positions when checking native
+cache accounting. Missing or failed target evidence is not a successful image
+acceptance merely because the build and CPU checks pass.
+
 Inspect image metadata and history when pins or licenses changed:
 
 ```bash

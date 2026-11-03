@@ -192,3 +192,54 @@ func TestDirectLlamaPresetIgnoresBackendIncompatibleMatch(t *testing.T) {
 		t.Fatalf("Vulkan match preset=%#v err=%v", preset, err)
 	}
 }
+
+func TestDirectLlamaPresetIncludesProjectorIdentity(t *testing.T) {
+	managed := catalog.Catalog{
+		Artifacts:    map[string]catalog.Artifact{"target": {Destination: "target.gguf"}, "projector": {Destination: "vision/projector.gguf"}},
+		LlamaPresets: map[string]catalog.LlamaPreset{"vision": {ID: "vision", Artifact: "target", MMProjArtifact: "projector"}},
+	}
+	for _, path := range []string{"", "/content/models/wrong.gguf", "/content/models/vision/projector.gguf"} {
+		env := map[string]string{"PARACETAMOL_LLAMA_MODEL": "/content/models/target.gguf", "PARACETAMOL_LLAMA_DRAFT_TOKENS": "0", "PARACETAMOL_LLAMA_MMPROJ": path}
+		preset, err := directLlamaPreset(managed, env, "rocm", "")
+		if err != nil || (preset != nil) != (path == "/content/models/vision/projector.gguf") {
+			t.Fatalf("projector=%s preset=%+v err=%v", path, preset, err)
+		}
+		_, err = directLlamaPreset(managed, env, "rocm", "vision")
+		if (err == nil) != (path == "/content/models/vision/projector.gguf") {
+			t.Fatalf("explicit projector mismatch: %s: %v", path, err)
+		}
+	}
+}
+
+func TestLlamaStatusReportsActualProjectorAndCatalogProvenance(t *testing.T) {
+	managed := catalog.Catalog{Artifacts: map[string]catalog.Artifact{"projector": {Destination: "vision/projector.gguf", SHA256: "reviewed-hash", Source: catalog.Source{Repository: "example/model", Revision: "reviewed-revision", Path: "mmproj-BF16.gguf"}}}}
+	preset := catalog.LlamaPreset{ID: "vision", MMProjArtifact: "projector"}
+	for _, router := range []bool{false, true} {
+		env := map[string]string{"PARACETAMOL_LLAMA_MMPROJ": "/content/models/vision/projector.gguf"}
+		var section map[string]string
+		if router {
+			section = map[string]string{"mmproj": "/content/models/vision/projector.gguf"}
+			env = nil
+		}
+		rows, err := llamaModelStatusRows(managed, &preset, section, env, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values := map[string]string{}
+		for _, row := range rows {
+			values[row[0]] = row[1]
+		}
+		if values["Vision projector"] != "/content/models/vision/projector.gguf" || values["Projector source"] != "example/model @ reviewed-revision / mmproj-BF16.gguf" || values["Projector SHA-256"] != "reviewed-hash" {
+			t.Fatalf("router=%t projector rows=%v", router, values)
+		}
+	}
+	rows, err := llamaModelStatusRows(catalog.Catalog{}, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row[0] == "Vision projector" && row[1] != "none" {
+			t.Fatalf("text-only server acquired projector: %v", rows)
+		}
+	}
+}

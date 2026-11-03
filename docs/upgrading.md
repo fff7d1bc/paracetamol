@@ -418,6 +418,32 @@ Keep depth three instead of copying Gufo's different-model adaptive widths.
 
 ### llama.cpp downstream patch ledger
 
+The `740251a-r71` packaging follow-up retains the fourteen-patch `r70` stack
+and adds the DFlash multimodal-position correction as patch fifteen. It freezes
+[upstream PR 30220](https://github.com/ggml-org/llama.cpp/pull/30220) at
+`73647e8ade6fb4293d221c4b92aafb7e82976418`; the normalized patch SHA-256 is
+`3e66828bebe8f9ceb5a5a7b786572cbc05fd9632537c592b20f0b6a7fb487150`.
+The local file qualifies only the two source-comment lines claiming unchanged
+output correctness: target encoding and verification stay unchanged, but draft
+conditioning and acceptance change. No executable code or global cache guard
+is adapted. Its SHA-256 is
+`c299f24df7c580ccbe013224dbba50c6adc64eaf513afff918c9f5d8cebce91d`.
+Applied after `server-speculative-metrics.patch`, it takes the full native tree
+from `593631c59c69782aec7f81c7459005c0c59c1842` to
+`3cd21570a1bf02003a1710327d4093a3150b6f85` without moving upstream. The exact
+upstream-comment form has tree `c7a67a78d2830b10227be78c984904246f4a9970`;
+do not conflate these source identities.
+
+This fills the missing logical draft-cache positions after M-RoPE image
+chunks; embedding-token counts are not position counts. The selected pin
+already contains upstream's pinned-image skip and `pos_next()` drafting fix;
+neither alone fills this gap. The proposal remains unmerged, includes no
+upstream regression test, and its author identifies remaining cross-request
+and slot-gap limitations. Keep those limits visible when qualifying a new
+tuple. Source correction and image construction do not establish hardware
+acceptance, resolution bounds, model quality, or distribution equivalence.
+Target-hardware results belong in `hardware-acceptance.md`.
+
 Treat every row as part of the pinned source rather than as incidental build
 machinery. On an update, classify each patch as unchanged, rebased, replaced
 upstream, or blocked. A patch that stops applying has not proved that its
@@ -439,6 +465,7 @@ protected behavior is fixed.
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 | `server-speculative-metrics.patch` | Local reporting-only change exposing the existing `n_draft_verif_steps` as `timings.draft_verif_steps`. The gateway records it as optional request metadata. This counts accounted rounds, not every verification attempt or replay. | Upstream exposes the equivalent explicit counter and the matching-source CPU serialization fixture passes. Do not estimate it from draft-token counts. |
+| `dflash-mtmd-position-gap.patch` | Carries [PR 30220](https://github.com/ggml-org/llama.cpp/pull/30220) at `73647e8ade6fb4293d221c4b92aafb7e82976418`. Seeds missing DFlash draft-cache logical positions with zero target-feature rows after M-RoPE media bypasses draft injection. Target image encoding, target verification, model bytes, samplers and precision remain unchanged. | The selected upstream pin fills the equivalent draft-cache gaps and passes image decoding, unchanged/changed-media history, actual prefix reuse, natural text recovery, populated near-256K and relevant slot/rewind checks without draft-process errors. Requalify remaining cross-request/slot limitations; do not remove it merely because the earlier pinned-image skip or `pos_next()` change is present. |
 
 The November 3 refresh selects frozen upstream
 [`740251a920abf92b7744d9c0518ca157db0db579`](https://github.com/ggml-org/llama.cpp/commit/740251a920abf92b7744d9c0518ca157db0db579),

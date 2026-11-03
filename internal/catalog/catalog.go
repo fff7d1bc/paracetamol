@@ -19,7 +19,7 @@ import (
 	"paracetamol/internal/platform"
 )
 
-const SchemaVersion = 30
+const SchemaVersion = 31
 
 const (
 	LlamaModelLoadResident               = "resident"
@@ -141,6 +141,7 @@ type LlamaPreset struct {
 	DraftTokens                  int64
 	DraftTokensByBackend         map[string]int64
 	DraftArtifact                string
+	MMProjArtifact               string
 	ContextOverrideArchitectures []string
 	Jinja                        bool
 	AgentTools                   bool
@@ -346,6 +347,7 @@ type rawLlamaPreset struct {
 	DraftTokens                  int64               `json:"draft_tokens"`
 	DraftTokensByBackend         map[string]int64    `json:"draft_tokens_by_backend"`
 	DraftArtifact                string              `json:"draft_artifact"`
+	MMProjArtifact               string              `json:"mmproj_artifact"`
 	ContextOverrideArchitectures []string            `json:"context_override_architectures"`
 	Jinja                        bool                `json:"jinja"`
 	AgentTools                   bool                `json:"agent_tools"`
@@ -873,8 +875,9 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 		Backends: append([]string(nil), raw.Backends...), BackendProfiles: cloneMap(raw.BackendProfiles),
 		DefaultContext: raw.DefaultContext, SpeculativeType: raw.SpeculativeType,
 		DraftTokens: raw.DraftTokens, DraftTokensByBackend: cloneMap(raw.DraftTokensByBackend),
-		DraftArtifact: raw.DraftArtifact, ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...),
-		Jinja: raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl,
+		DraftArtifact: raw.DraftArtifact, MMProjArtifact: raw.MMProjArtifact,
+		ContextOverrideArchitectures: append([]string(nil), raw.ContextOverrideArchitectures...),
+		Jinja:                        raw.Jinja, AgentTools: raw.AgentTools, ReasoningControl: raw.ReasoningControl,
 		ReasoningLevels: append([]string(nil), raw.ReasoningLevels...), ReasoningDefault: reasoningDefault,
 		ReasoningOff: raw.ReasoningOff, ReasoningPreserve: raw.ReasoningPreserve,
 		ChatTemplate: raw.ChatTemplate, SamplingPolicy: raw.SamplingPolicy,
@@ -938,6 +941,12 @@ func (catalog Catalog) validateRelationships() error {
 			draft, exists := catalog.Artifacts[preset.DraftArtifact]
 			if !exists || preset.DraftArtifact == preset.Artifact || !contains(bundle.Artifacts, preset.DraftArtifact) || draft.Target != "llama-models" || !strings.HasSuffix(strings.ToLower(draft.Destination), ".gguf") {
 				return fmt.Errorf("llama.cpp preset %s references an invalid draft artifact", id)
+			}
+		}
+		if preset.MMProjArtifact != "" {
+			projector, exists := catalog.Artifacts[preset.MMProjArtifact]
+			if !exists || preset.MMProjArtifact == preset.Artifact || preset.MMProjArtifact == preset.DraftArtifact || !contains(bundle.Artifacts, preset.MMProjArtifact) || projector.Target != "llama-models" || !strings.HasSuffix(strings.ToLower(projector.Destination), ".gguf") {
+				return fmt.Errorf("llama.cpp preset %s references an invalid multimodal projector artifact", id)
 			}
 		}
 		if preset.SamplingPolicy != "" {

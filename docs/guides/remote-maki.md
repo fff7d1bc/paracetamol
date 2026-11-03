@@ -144,6 +144,19 @@ headers are not trusted and the gateway never contacts the supplied URL.
 
 ## Verify the connection
 
+For the regular and Huihui Flash-Next presets, the exported provider advertises
+vision only when the gateway's frozen inventory contains the required verified
+projector. Reinstall the selected bundle and restart the gateway if its
+companion is missing, then download the new provider export unchanged. Do not
+manually turn on `supports_vision` for a text-only or unavailable model.
+Use Maki's native image input or `view_image` tool with a harmless local
+screenshot to check it. Maki sends inline image content; a remote image URL is
+not accepted by the gateway. An image tool still executes locally with Maki's
+normal permissions: these provider settings do not confine local file access.
+The gateway's 16 MiB request limit includes image bytes and their base64
+encoding. Other managed families remain text-only unless their own exported
+capability says otherwise.
+
 Check that `maki models` contains the expected `paracetamol/` models. Start
 Maki, check its model and `/thinking`, and ask it to read a harmless file in a
 disposable directory. Gateway logs should show that model and reasoning

@@ -500,6 +500,18 @@ rendering a model preset only records that option. Only actual native process
 startup removes `GGML_CUDA_ENABLE_UNIFIED_MEMORY`, before model allocation.
 The router parent and other children retain their original environment.
 
+`dflash-mtmd-position-gap.patch` fills logical-position holes in the separate
+DFlash draft cache after M-RoPE image chunks. Image embedding-token counts and
+logical positions differ, so the fill spans missing positions rather than all
+image-token rows. The real target image encoder and target verifier remain
+unchanged. The build applies this common-library correction after the existing
+native and server-metrics steps, then normally rebuilds and installs common,
+server, CLI and bench. A private Git index is active before any Git subprocess
+in that late step, preserving the native build's default-index dependency.
+CPU policy and serializer fixtures rerun against the installed payload.
+This source correction does not itself advertise a model's image capability
+or establish hardware, resolution, context, or concurrency acceptance.
+
 A llama.cpp preset can additionally declare a closed backend compatibility
 list. Omission means both built backends are supported. Direct startup selects
 the first declared backend only when the caller did not choose one and rejects
@@ -704,7 +716,7 @@ destination roots are therefore required not to overlap.
 
 ## Catalog and workflow trust chain
 
-`catalog/catalog.json` is schema version 30. The loader in
+`catalog/catalog.json` is schema version 31. The loader in
 `internal/catalog/` rejects malformed identifiers, unsafe paths,
 non-full revisions, invalid hashes, duplicate destinations, unknown
 references, and incomplete bundle/benchmark relationships.

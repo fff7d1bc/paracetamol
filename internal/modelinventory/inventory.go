@@ -112,9 +112,13 @@ func catalogLlamaModels(managed catalog.Catalog, dataRoot string, store *verific
 		presets := presetsByArtifact[primaryID]
 		sort.Strings(presets)
 		required := make(map[string]catalog.Artifact)
+		projectors := make(map[string]bool)
 		bundleSet := make(map[string]bool)
 		for _, presetID := range presets {
 			preset := managed.LlamaPresets[presetID]
+			if preset.MMProjArtifact != "" {
+				projectors[preset.MMProjArtifact] = true
+			}
 			bundleSet[preset.Bundle] = true
 			for _, artifactID := range managed.Bundles[preset.Bundle].Artifacts {
 				artifact := managed.Artifacts[artifactID]
@@ -127,8 +131,13 @@ func catalogLlamaModels(managed catalog.Catalog, dataRoot string, store *verific
 		bundles := sortedBoolKeys(bundleSet)
 		states := make([]content.State, 0, len(requiredIDs))
 		var expected, observed int64
+		shards := 0
 		for _, artifactID := range requiredIDs {
 			artifact := required[artifactID]
+			// Projectors participate in readiness and size, not target sharding.
+			if !projectors[artifactID] {
+				shards++
+			}
 			expected += artifact.Size
 			status, inspectErr := content.InspectArtifact(store, dataRoot, artifact, false)
 			if inspectErr != nil {
@@ -153,7 +162,7 @@ func catalogLlamaModels(managed catalog.Catalog, dataRoot string, store *verific
 		models = append(models, LlamaModel{
 			Path: content.ArtifactPath(dataRoot, primary), Size: size, State: state,
 			Source: "catalog", Presets: presets, Bundles: bundles, Artifacts: requiredIDs,
-			ShardCount: len(requiredIDs), ExpectedShards: len(requiredIDs),
+			ShardCount: shards, ExpectedShards: shards,
 		})
 	}
 	return models, claimed, nil

@@ -124,7 +124,8 @@ model families, and exact bundle installation.
 ## llama.cpp
 
 Use llama.cpp for local text models, an OpenAI-compatible API, or an
-interactive terminal session.
+interactive terminal session. The regular and Huihui Flash-Next presets also
+include their matching pinned BF16 vision projector for image input.
 
 For the dense model on smaller hosts:
 
@@ -150,6 +151,18 @@ Flash Attention choices, model-load policy, and the exact running llama.cpp
 command. Gateway sampling policy is identified separately from native engine
 defaults. Inspect `status gateway --requests N` for the values actually
 supplied on a request.
+
+For Flash-Next, status also reports the actual projector path and catalog
+provenance. Both plain and DFlash2 variants require that companion's current
+verification receipt, including for text-only use. Existing installations
+must rerun the selected bundle's normal content installer; verified model
+shards are reused. The extra projector remains `NOASSERTION`, requiring the
+same explicit license-risk review as the repack rather than an inferred
+upstream license. There is no separate vision switch or new model ID.
+Through the gateway, image inputs must be inline base64 image content parts;
+remote/file URLs and audio/video are rejected. The 16 MiB request limit
+includes image encoding. Refresh generated Maki configuration after restarting
+the gateway so its frozen vision capability reaches the client.
 
 The plain dense Qwen3.8 Q8 preset starts at 262144 tokens. The recommended
 Flash-Next DFlash2 preset also starts at 262144 tokens and uses greedy
@@ -439,9 +452,8 @@ reports large improvements over Qwen3.6-27B on its coding and agent harnesses.
 Treat those numbers as candidate-selection evidence, not acceptance of this
 quantization or local client behavior.
 The reviewed template and neutral omitted-effort behavior also apply to the
-plain dense alternative. The catalog currently serves text only. Native vision
-needs the optional projector
-and separate multimodal acceptance.
+plain dense alternative. These dense presets remain text-only; Flash-Next's
+projector and image capability do not apply to the dense family.
 
 Early community experience remains unusually sensitive to the exact template
 and reasoning defaults. The release-day

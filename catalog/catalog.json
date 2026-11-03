@@ -1,5 +1,5 @@
 {
-  "schema_version": 30,
+  "schema_version": 31,
   "agreements": {
     "ltx-2-community-license": {
       "name": "LTX-2 Community License",
@@ -1014,6 +1014,48 @@
         "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/blob/27af057ecb382ddfea5d12837360a8980560e3ed/README.md"
       }
     },
+    "unsloth-qwen3.8-flash-next-125b-a6b-mmproj-bf16": {
+      "description": "Matching BF16 vision projector for regular Unsloth Qwen3.8 Flash-Next, shared by plain and DFlash2 presets",
+      "source": {
+        "repository": "unsloth/Qwen3.8-Flash-Next-GGUF",
+        "revision": "c8b5954a88c2775c546b92593eda40ea041d3176",
+        "path": "mmproj-BF16.gguf"
+      },
+      "destination": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl/unsloth-Qwen3.8-Flash-Next-mmproj-BF16.gguf",
+      "target": "llama-models",
+      "size": 907542944,
+      "sha256": "2e788f8c511d8093c7b43cb87b2fd7e14228340318057f8fb20c86df2efe2355",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF/tree/c8b5954a88c2775c546b92593eda40ea041d3176",
+        "warning": "The Unsloth GGUF repack declares the Qwen Community License in repository metadata but does not publish its license text at the pinned revision. Paracetamol cannot assert that Qwen's upstream terms cover the converted projector.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
+    "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-mmproj-bf16": {
+      "description": "Matching non-Swift BF16 vision projector for Huihui Qwen3.8 Flash-Next abliterated v2, shared by plain and DFlash2 presets",
+      "source": {
+        "repository": "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF",
+        "revision": "43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "path": "mmproj-Qwen3.8-Flash-Next-BF16.gguf"
+      },
+      "destination": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl/huihui-ai-abliterated-v2-Qwen3.8-Flash-Next-mmproj-BF16.gguf",
+      "target": "llama-models",
+      "size": 907543008,
+      "sha256": "b1a82259702816a5330d7bd7607cd9676b11780e79ff7348c21103ff3ce49bd0",
+      "license": {
+        "spdx": "NOASSERTION",
+        "status": "unverified",
+        "url": "https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF/tree/43b4c1a8871afcc27e37bf996a431528b3d957e5",
+        "warning": "The Huihui GGUF repack names the Qwen Community License in its model card but the linked LICENSE file is absent at the pinned revision. The conversion and abliteration license remains unverified, including for this projector.",
+        "upstream_repository": "Qwen/Qwen3.8-Flash-Next",
+        "upstream_license": "Qwen Community License Agreement",
+        "upstream_license_url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/de4b8e4d43b917e7706784d8bb445c9af86a3540/LICENSE"
+      }
+    },
     "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf": {
       "description": "Publisher-provided Qwen3.8 Flash-Next DFlash2 Q8_0 speculative draft; not a standalone target",
       "source": {
@@ -1843,7 +1885,8 @@
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-2",
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-3",
-        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4"
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-mmproj-bf16"
       ],
       "groups": [
         "all",
@@ -1857,7 +1900,8 @@
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
-        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4"
+        "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4",
+        "unsloth-qwen3.8-flash-next-125b-a6b-mmproj-bf16"
       ],
       "groups": [
         "all",
@@ -1872,6 +1916,7 @@
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-2",
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-3",
         "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-4",
+        "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-mmproj-bf16",
         "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf"
       ],
       "groups": [
@@ -1887,6 +1932,7 @@
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-2",
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-3",
         "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-4",
+        "unsloth-qwen3.8-flash-next-125b-a6b-mmproj-bf16",
         "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf"
       ],
       "groups": [
@@ -2490,6 +2536,7 @@
     "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl": {
       "bundle": "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl",
       "artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+      "mmproj_artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-mmproj-bf16",
       "backends": [
         "rocm",
         "vulkan"
@@ -2525,6 +2572,7 @@
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl": {
       "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
       "artifact": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+      "mmproj_artifact": "unsloth-qwen3.8-flash-next-125b-a6b-mmproj-bf16",
       "backends": [
         "rocm",
         "vulkan"
@@ -2558,6 +2606,7 @@
     "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2": {
       "bundle": "llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2",
       "artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-gguf-1",
+      "mmproj_artifact": "huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-mmproj-bf16",
       "draft_artifact": "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf",
       "speculative_type": "draft-dflash",
       "draft_tokens": 3,
@@ -2595,6 +2644,7 @@
     "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2": {
       "bundle": "llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2",
       "artifact": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-gguf-1",
+      "mmproj_artifact": "unsloth-qwen3.8-flash-next-125b-a6b-mmproj-bf16",
       "draft_artifact": "incoai-qwen3.8-flash-next-dflash2-q8-0-gguf",
       "speculative_type": "draft-dflash",
       "draft_tokens": 3,

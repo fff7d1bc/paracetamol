@@ -22,6 +22,7 @@ type Model struct {
 	Context          int64             `json:"context"`
 	MaxOutputTokens  int64             `json:"max_output_tokens"`
 	AgentTools       bool              `json:"agent_tools"`
+	Vision           bool              `json:"vision"`
 	ReasoningControl string            `json:"reasoning_control,omitempty"`
 	ReasoningLevels  []string          `json:"reasoning_levels,omitempty"`
 	ReasoningDefault string            `json:"reasoning_default,omitempty"`
@@ -145,6 +146,7 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 		model := Model{
 			ID: candidate.ID, Application: application, Backend: candidate.Backend, Bundle: candidate.Bundle,
 			Context: candidate.Context, MaxOutputTokens: candidate.MaxOutputTokens, AgentTools: candidate.AgentTools,
+			Vision:           candidate.Vision,
 			ReasoningControl: candidate.ReasoningControl, ReasoningLevels: append([]string(nil), candidate.ReasoningLevels...),
 			ReasoningDefault: candidate.ReasoningDefault, ReasoningOff: candidate.ReasoningOff,
 			SamplingPolicy: candidate.SamplingPolicy,
@@ -166,9 +168,9 @@ func buildRegistry(managed catalog.Catalog, dataRoot string, applications []stri
 	sort.Slice(registry.Models, func(i, j int) bool { return registry.Models[i].ID < registry.Models[j].ID })
 	hash := sha256.New()
 	for _, model := range registry.Models {
-		fmt.Fprintf(hash, "%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%s\x00%s\x00%s\x00%t\x00",
+		fmt.Fprintf(hash, "%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t\x00%s\x00%s\x00%s\x00%t\x00",
 			model.ID, model.Application, model.Bundle, model.Context, model.MaxOutputTokens,
-			model.AgentTools, model.ReasoningControl, strings.Join(model.ReasoningLevels, "\x1f"),
+			model.AgentTools, model.Vision, model.ReasoningControl, strings.Join(model.ReasoningLevels, "\x1f"),
 			model.ReasoningDefault, model.ReasoningOff)
 		// Policy values, not just their name, are part of the frozen serving
 		// condition. JSON orders these numeric string-keyed maps deterministically.

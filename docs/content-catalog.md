@@ -214,6 +214,7 @@ connect it to a stable router identity:
       "vulkan": 3
     },
     "draft_artifact": "optional-draft-artifact-id",
+    "mmproj_artifact": "required-matching-projector-artifact-id",
     "context_override_architectures": ["target-architecture"],
     "jinja": true,
     "agent_tools": true,
@@ -272,6 +273,20 @@ arguments.
 Managed DFlash always selects greedy proposal sampling explicitly in both
 direct startup and router sections. Target sampling still comes from the
 gateway or the caller. Probabilistic draft sampling is not a managed option.
+
+`mmproj_artifact` optionally names a distinct matching `.gguf` projector in
+the same bundle and `llama-models` partition. Once declared, it is required
+content, not an optional runtime switch. The target, draft and projector must
+have separate artifact identities. Validate the exact companion tuple rather
+than borrowing an upstream base model's license or a similarly named repack.
+The host maps its verified destination to direct startup and router `mmproj`
+consistently. Vision capability is derived from this reference and frozen only
+for a complete receipt-verified bundle; do not add a separately configurable
+vision boolean. Missing/stale companions require the normal installer pass.
+Projectors count toward installed size and readiness, not target shard counts.
+Keep both plain and speculative sibling bundles tied to their matching
+projector and accept image input, full image-history replay and text after
+images on every supported runtime tuple before promotion.
 
 `draft_tokens_by_backend` is an optional closed `rocm`/`vulkan` map that
 overrides the default draft depth only for a measured backend. Use it when
@@ -405,8 +420,13 @@ managed installs.
 The public llama.cpp recipes include the single-artifact plain Qwen3.8 dense
 target and the Unsloth Flash-Next target with its shared Inco DFlash2 draft.
 Flash-Next keeps its own recipe because it has a distinct architecture and
-memory policy. Regular Flash-Next DFlash2 at xhigh is the exported Maki
-default when advertised by the gateway. This harness preference
+memory policy. Its regular plain/DFlash2 presets share one required BF16
+projector at the target's Unsloth pin; the Huihui pair shares a separate
+non-Swift BF16 projector at its own target pin. Both companions preserve their
+unresolved conversion-license warnings and explicit risk acknowledgment.
+Existing users rerun their bundle's installer to add the companion without
+redownloading verified shards. Regular Flash-Next DFlash2 at xhigh is the
+exported Maki default when advertised by the gateway. This harness preference
 does not change the catalog or template's medium HTTP fallback. Huihui's
 abliterated v2 is a separate exact bundle and preset, using the same template,
 sampling and runtime policy without joining the regular recipe download.

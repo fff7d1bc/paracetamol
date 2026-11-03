@@ -19,6 +19,7 @@ type Model struct {
 	Context          int64
 	MaxOutputTokens  int64
 	AgentTools       bool
+	Vision           bool
 	ReasoningControl string
 	ReasoningLevels  []string
 	ReasoningDefault string
@@ -47,7 +48,7 @@ func FromLlamaPreset(id string, preset catalog.LlamaPreset) Model {
 	return Model{
 		ID: id, Backend: BackendLlamaCPP, Bundle: preset.Bundle,
 		Context: preset.DefaultContext, MaxOutputTokens: OutputLimit(preset.DefaultContext),
-		AgentTools: preset.AgentTools, ReasoningControl: preset.ReasoningControl,
+		AgentTools: preset.AgentTools, Vision: preset.MMProjArtifact != "", ReasoningControl: preset.ReasoningControl,
 		ReasoningLevels:  append([]string(nil), preset.ReasoningLevels...),
 		ReasoningDefault: preset.ReasoningDefault, ReasoningOff: preset.ReasoningOff,
 		SamplingPolicy: preset.SamplingPolicy,

@@ -347,8 +347,13 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 		if candidate.DraftArtifact != "" {
 			draft = "/content/models/" + managed.Artifacts[candidate.DraftArtifact].Destination
 		}
+		projector := ""
+		if candidate.MMProjArtifact != "" {
+			projector = "/content/models/" + managed.Artifacts[candidate.MMProjArtifact].Destination
+		}
 		if environment["PARACETAMOL_LLAMA_MODEL"] == "/content/models/"+artifact.Destination &&
 			environment["PARACETAMOL_LLAMA_DRAFT_MODEL"] == draft &&
+			environment["PARACETAMOL_LLAMA_MMPROJ"] == projector &&
 			environment["PARACETAMOL_LLAMA_SPECULATIVE_TYPE"] == candidate.SpeculativeType &&
 			environment["PARACETAMOL_LLAMA_DRAFT_TOKENS"] == strconv.FormatInt(candidate.DraftTokensForBackend(backend), 10) {
 			candidates = append(candidates, candidate)
@@ -378,8 +383,10 @@ func directLlamaPreset(managed catalog.Catalog, environment map[string]string, b
 func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, section, environment, runtimeReport map[string]string) ([][2]string, error) {
 	profile := runtimeReport["profile"]
 	modelPath, contextValue, template, reasoningHistory, speculativeType, draftTokens, flashAttention, kvCache, modelLoad := "", runtimeReport["context"], "", "", "", "0", "", "", ""
+	projectorPath := ""
 	if section != nil {
 		modelPath = section["model"]
+		projectorPath = section["mmproj"]
 		if contextValue == "" {
 			contextValue = section["c"]
 		}
@@ -396,6 +403,7 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 		modelLoad = section["paracetamol-model-load-"+profile]
 	} else {
 		modelPath = environment["PARACETAMOL_LLAMA_MODEL"]
+		projectorPath = environment["PARACETAMOL_LLAMA_MMPROJ"]
 		if value := environment["PARACETAMOL_LLAMA_CHAT_TEMPLATE"]; value != "" {
 			template = "managed " + value
 		}
@@ -424,6 +432,13 @@ func llamaModelStatusRows(managed catalog.Catalog, preset *catalog.LlamaPreset, 
 			contextPolicy = "forced for " + strings.Join(preset.ContextOverrideArchitectures, ", ") + "; automatic fitting disabled"
 		}
 		reasoning = llamaReasoningPolicy(*preset)
+	}
+	rows = append(rows, [2]string{"Vision projector", firstNonEmpty(projectorPath, "none")})
+	if preset != nil && preset.MMProjArtifact != "" {
+		projector := managed.Artifacts[preset.MMProjArtifact]
+		rows = append(rows,
+			[2]string{"Projector source", fmt.Sprintf("%s @ %s / %s", projector.Source.Repository, projector.Source.Revision, projector.Source.Path)},
+			[2]string{"Projector SHA-256", projector.SHA256})
 	}
 	if contextValue == "" {
 		contextValue = "model metadata"

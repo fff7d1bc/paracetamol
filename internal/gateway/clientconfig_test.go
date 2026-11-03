@@ -56,7 +56,7 @@ func TestMakiExportsAreAuthenticatedInventoryOnly(t *testing.T) {
 	defer upstream.Close()
 	_, scheduler, handler := testGatewayServer(t, upstream)
 	handler.registry.Models = []Model{
-		{ID: clientconfig.RecommendedModel, Context: 262144, MaxOutputTokens: 16384, AgentTools: true, ReasoningControl: "effort", ReasoningLevels: []string{"low", "medium", "xhigh"}, ReasoningDefault: "medium", ReasoningOff: true},
+		{ID: clientconfig.RecommendedModel, Context: 262144, MaxOutputTokens: 16384, AgentTools: true, Vision: true, ReasoningControl: "effort", ReasoningLevels: []string{"low", "medium", "xhigh"}, ReasoningDefault: "medium", ReasoningOff: true},
 		{ID: "not-an-agent-model"},
 	}
 	const secret = "fixture-secret-0123456789abcdef0123456789abcdef"
@@ -86,6 +86,9 @@ func TestMakiExportsAreAuthenticatedInventoryOnly(t *testing.T) {
 			}
 			if file == "providers.toml" && (!strings.Contains(body, "http://gateway.test:7455/v1") || (strings.Contains(body, `api_key =`) != (key == ""))) {
 				t.Fatal("wrong URL or key policy")
+			}
+			if file == "providers.toml" && !strings.Contains(body, "supports_vision = true\n") {
+				t.Fatal("lost frozen vision capability")
 			}
 			requireGatewayIdentity(t, response.Result())
 		}

@@ -258,6 +258,11 @@ unverified-license acknowledgment. Hardware acceptance is limited to `gfx1151`.
 The Maki example selects the regular DFlash2 model at `xhigh`. HTTP requests
 that omit reasoning still use `medium`.
 
+Flash-Next includes image input through a matching vision projector. Existing
+installations need another normal content-install pass and a refreshed Maki
+provider export. The [model guide](docs/guides/applications.md#llamacpp)
+explains the image limits and setup.
+
 Huihui's abliterated v2 is an optional, separately named Flash-Next variant.
 It uses the Unsloth-derived UD-Q4_K_XL files and the same runtime policy,
 template and sampling defaults. It does not replace regular Flash-Next.

@@ -59,6 +59,14 @@ revisions recorded in `catalog/catalog.json`.
   A local server-only reporting patch exposes the existing speculative
   verification-round counter in completion timings. It does not change
   inference, sampling, counters or arithmetic.
+  The DFlash multimodal logical-position gap correction comes from upstream
+  PR 30220 at `73647e8ade6fb4293d221c4b92aafb7e82976418`, also under MIT.
+  It fills missing draft-cache positions with zero target-feature rows before
+  ordinary text injection resumes. It does not replace image encoding or the
+  target verifier. The proposal remains unmerged upstream; its provenance and
+  removal gate are recorded in `docs/upgrading.md`. Only two comment lines are
+  qualified locally to avoid an unbounded output-correctness guarantee; its
+  executable code and the global cache-consecutivity guards are unchanged.
   The top-k MoE allocation-lifetime endpoint correction derives from the
   MIT-licensed Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`.
   Local bounds checks also protect terminal and partial normalization groups.
@@ -156,6 +164,12 @@ revisions recorded in `catalog/catalog.json`.
   gate. The official Qwen license is recorded as lineage only. Every shard
   has its own size and SHA-256 pin. Paracetamol does not redistribute the
   weights, and uses its existing Qwen3.8 template without modification.
+- Each Flash-Next publisher also supplies its matching BF16 vision projector
+  at the same pinned revision as its target. Plain and DFlash2 sibling bundles
+  share that publisher's one projector file. Both converted projectors retain
+  `NOASSERTION`, immutable source/hash pins and explicit license-risk
+  acknowledgment. Their upstream Qwen license links are lineage, not a claim
+  that the conversion's terms have been verified.
 - The Flash-Next DFlash2 presets share Inco AI's Q8_0 draft from
   `incoai/Qwen3.8-Flash-Next-DFlash2-GGUF` at
   `4f5a39be8f0a9e9a573ac9824251830a8f4096d9`. Its own pinned model card

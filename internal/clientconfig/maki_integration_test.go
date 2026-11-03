@@ -1,9 +1,14 @@
 package clientconfig
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +34,16 @@ func TestInstalledMaki(t *testing.T) {
 		t.Fatal("PARACETAMOL_TEST_MAKI must be absolute")
 	}
 	models := catalogModels(t)
+	t.Run("image-tool", func(t *testing.T) {
+		for _, model := range models {
+			if model.ID == RecommendedModel {
+				model.Vision = true
+				testNativeMaki(t, executable, []textmodel.Model{model}, "", "reasoning_effort", "xhigh", true)
+				return
+			}
+		}
+		t.Fatal("missing native image fixture model")
+	})
 	t.Run("complete-catalog", func(t *testing.T) {
 		// Keep the expected default first for transport assertions, but export
 		// every model together to exercise native TOML array-table association.
@@ -84,6 +99,19 @@ func TestInstalledMaki(t *testing.T) {
 
 func testNativeMaki(t *testing.T, executable string, models []textmodel.Model, mode, field, expected string, authenticated bool) {
 	const secret = "native-fixture-0123456789abcdef0123456789abcdef"
+	vision := models[0].Vision
+	var fixture bytes.Buffer
+	if vision {
+		picture := image.NewRGBA(image.Rect(0, 0, 32, 24))
+		for y := 0; y < 24; y++ {
+			for x := 0; x < 32; x++ {
+				picture.SetRGBA(x, y, color.RGBA{R: 210, G: uint8(x * 7), B: uint8(y * 9), A: 255})
+			}
+		}
+		if err := png.Encode(&fixture, picture); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var mu sync.Mutex
 	var bodies []map[string]any
 	var files MakiFiles
@@ -113,9 +141,13 @@ func testNativeMaki(t *testing.T, executable string, models []textmodel.Model, m
 			mu.Unlock()
 			w.Header().Set("Content-Type", "text/event-stream")
 			if count == 1 {
-				fmt.Fprint(w, `data: {"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"fixture reasoning","tool_calls":[{"index":0,"id":"tool-fixture","type":"function","function":{"name":"bash","arguments":"{\"command\":\"printf MAKI_TOOL_OK\"}"}}]},"finish_reason":null}]}
-
-data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+				tool, arguments := "bash", `{"command":"printf MAKI_TOOL_OK"}`
+				if vision {
+					tool, arguments = "view_image", `{"path":"fixture.png"}`
+				}
+				delta, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "reasoning_content": "fixture reasoning", "tool_calls": []any{map[string]any{"index": 0, "id": "tool-fixture", "type": "function", "function": map[string]any{"name": tool, "arguments": arguments}}}}, "finish_reason": nil}}})
+				fmt.Fprintf(w, "data: %s\n\n", delta)
+				fmt.Fprint(w, `data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
 
@@ -141,6 +173,11 @@ data: [DONE]
 		t.Fatal(err)
 	}
 	root := t.TempDir()
+	if vision {
+		if err := os.WriteFile(filepath.Join(root, "fixture.png"), fixture.Bytes(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	configuration := filepath.Join(root, "config", "maki")
 	if err := os.MkdirAll(configuration, 0o700); err != nil {
 		t.Fatal(err)
@@ -218,9 +255,55 @@ data: [DONE]
 		}
 	}
 	replay, _ := json.Marshal(bodies[1]["messages"])
-	for _, required := range []string{"MAKI_TOOL_OK", `"role":"tool"`, `"reasoning_content":"fixture reasoning"`} {
+	required := []string{`"role":"tool"`, `"reasoning_content":"fixture reasoning"`}
+	if !vision {
+		required = append(required, "MAKI_TOOL_OK")
+	}
+	for _, required := range required {
 		if !strings.Contains(string(replay), required) {
 			t.Fatalf("missing replay %s: %s", required, replay)
+		}
+	}
+	if vision {
+		// Exercise native view_image and OpenAI conversion, not an invented
+		// image result. Small fixtures avoid the client's resizing boundary.
+		var messages []struct {
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(replay, &messages); err != nil {
+			t.Fatal(err)
+		}
+		images := 0
+		for _, message := range messages {
+			var parts []struct {
+				Type     string `json:"type"`
+				ImageURL struct {
+					URL string `json:"url"`
+				} `json:"image_url"`
+			}
+			if json.Unmarshal(message.Content, &parts) != nil {
+				continue
+			}
+			for _, part := range parts {
+				if part.Type != "image_url" {
+					continue
+				}
+				images++
+				if !strings.HasPrefix(part.ImageURL.URL, "data:image/png;base64,") {
+					t.Fatal("native image is not an inline PNG")
+				}
+				decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(part.ImageURL.URL, "data:image/png;base64,"))
+				picture, errImage := png.Decode(bytes.NewReader(decoded))
+				if err != nil || errImage != nil || picture.Bounds() != image.Rect(0, 0, 32, 24) {
+					t.Fatal("native image lost its decoded dimensions")
+				}
+				if r, g, b, a := picture.At(17, 13).RGBA(); r != 210*257 || g != 119*257 || b != 117*257 || a != 65535 {
+					t.Fatal("native image pixels changed")
+				}
+			}
+		}
+		if images != 1 {
+			t.Fatalf("native replay has %d images, want one", images)
 		}
 	}
 }

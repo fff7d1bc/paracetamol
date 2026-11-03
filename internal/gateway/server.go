@@ -280,6 +280,10 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	record.Model, record.Application = model.ID, model.Application
+	if err := validateRequestMedia(body, model); err != nil {
+		reject(http.StatusBadRequest, OutcomeRejected, "invalid_request_error", "invalid_media", err.Error())
+		return
+	}
 	body, err = applySamplingDefaults(body, model, &record.Controls)
 	if err != nil {
 		reject(http.StatusBadRequest, OutcomeRejected, "invalid_request_error", "invalid_reasoning_controls", err.Error())

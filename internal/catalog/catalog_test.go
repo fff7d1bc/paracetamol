@@ -22,7 +22,7 @@ func TestLoadRepositoryCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 64 || len(loaded.Bundles) != 45 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 9 {
+	if len(loaded.Agreements) != 4 || len(loaded.Artifacts) != 66 || len(loaded.Bundles) != 45 || len(loaded.Workflows) != 28 || len(loaded.Benchmarks) != 28 || len(loaded.SamplingPolicies) != 2 || len(loaded.LlamaPresets) != 9 {
 		t.Fatalf("unexpected catalog counts: agreements=%d artifacts=%d bundles=%d workflows=%d benchmarks=%d policies=%d llama_presets=%d", len(loaded.Agreements), len(loaded.Artifacts), len(loaded.Bundles), len(loaded.Workflows), len(loaded.Benchmarks), len(loaded.SamplingPolicies), len(loaded.LlamaPresets))
 	}
 	preset := loaded.LlamaPresets["unsloth-qwen3.8-27b-ud-q8-k-xl"]
@@ -85,10 +85,10 @@ func TestHuihuiFlashNextReusesRegularRuntimePolicy(t *testing.T) {
 	}
 	bundle := loaded.Bundles[huihui.Bundle]
 	regularBundle := loaded.Bundles[regular.Bundle]
-	if len(bundle.Artifacts) != 4 {
-		t.Fatalf("Huihui requires all four shards, got %v", bundle.Artifacts)
+	if len(bundle.Artifacts) != 5 || bundle.Artifacts[4] != huihui.MMProjArtifact {
+		t.Fatalf("Huihui requires all four shards and its projector, got %v", bundle.Artifacts)
 	}
-	for i, id := range bundle.Artifacts {
+	for i, id := range bundle.Artifacts[:4] {
 		artifact := loaded.Artifacts[id]
 		original := loaded.Artifacts[regularBundle.Artifacts[i]]
 		if artifact.Source.Repository != "huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-v2-GGUF" ||
@@ -102,7 +102,7 @@ func TestHuihuiFlashNextReusesRegularRuntimePolicy(t *testing.T) {
 	}
 	// This is another weight choice, not a second implementation of the
 	// template, sampling, allocation, context or reasoning contract.
-	huihui.ID, huihui.Bundle, huihui.Artifact = regular.ID, regular.Bundle, regular.Artifact
+	huihui.ID, huihui.Bundle, huihui.Artifact, huihui.MMProjArtifact = regular.ID, regular.Bundle, regular.Artifact, regular.MMProjArtifact
 	if !reflect.DeepEqual(regular, huihui) {
 		t.Fatalf("Flash-Next policies diverged: regular=%#v Huihui=%#v", regular, huihui)
 	}
@@ -173,7 +173,7 @@ func TestFlashNextDFlash2VariantsReuseTargetsAndSharedDraft(t *testing.T) {
 			baseBundle := loaded.Bundles[base.Bundle]
 			variantBundle := loaded.Bundles[variant.Bundle]
 			wantArtifacts := append(append([]string(nil), baseBundle.Artifacts...), draftID)
-			if variant.Bundle != base.Bundle+"-dflash2" || len(baseBundle.Artifacts) != 4 || !reflect.DeepEqual(variantBundle.Artifacts, wantArtifacts) || strings.Join(variantBundle.Groups, ",") != "all,llama" {
+			if variant.Bundle != base.Bundle+"-dflash2" || len(baseBundle.Artifacts) != 5 || !reflect.DeepEqual(variantBundle.Artifacts, wantArtifacts) || strings.Join(variantBundle.Groups, ",") != "all,llama" {
 				t.Fatalf("DFlash2 must add only the shared draft to a separate bundle: %#v", variantBundle)
 			}
 			if variant.SpeculativeType != "draft-dflash" || variant.DraftTokens != 3 || len(variant.DraftTokensByBackend) != 0 || variant.DraftArtifact != draftID || strings.Join(variant.Backends, ",") != "rocm" {

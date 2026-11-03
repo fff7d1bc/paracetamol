@@ -40,13 +40,16 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend, profile string) (s
 		ready := true
 		separateDraft := preset.DraftArtifact != "" && preset.DraftArtifact != preset.Artifact
 		draftMissing := false
+		projectorReady := true
 		targetFound := false
 		targetsMissing := true
 		targetsReady := true
 		for _, status := range statuses {
 			allMissing = allMissing && status.State == content.Missing
 			ready = ready && content.Ready(status.State)
-			if separateDraft && status.Artifact.ID == preset.DraftArtifact {
+			if status.Artifact.ID == preset.MMProjArtifact {
+				projectorReady = content.Ready(status.State)
+			} else if separateDraft && status.Artifact.ID == preset.DraftArtifact {
 				draftMissing = status.State == content.Missing
 			} else {
 				targetFound = true
@@ -54,11 +57,13 @@ func RenderRouter(managed catalog.Catalog, dataRoot, backend, profile string) (s
 				targetsReady = targetsReady && content.Ready(status.State)
 			}
 		}
-		// A separate optional draft may share targets or serve multiple families.
+		// Drafts and projectors may be shared by otherwise absent model families.
 		// Neither an absent draft beside verified targets nor a shared draft beside
 		// wholly absent targets is a partial install. Partial/stale target sets and
 		// existing unverified draft bytes beside present targets still fail closed.
-		if allMissing || (separateDraft && targetFound && (targetsMissing || (draftMissing && targetsReady))) {
+		// A projector remains mandatory beside present targets, including when
+		// an absent optional draft would otherwise hide an incomplete variant.
+		if allMissing || (targetFound && targetsMissing) || (separateDraft && draftMissing && targetsReady && projectorReady) {
 			continue
 		}
 		if !ready {
@@ -102,6 +107,9 @@ func RenderRouterModels(managed catalog.Catalog, backend, profile string, identi
 			return "", fmt.Errorf("llama.cpp preset %s references unknown artifact %s", identifier, preset.Artifact)
 		}
 		section := []string{"[" + identifier + "]", "model = /content/models/" + artifact.Destination, fmt.Sprintf("c = %d", preset.DefaultContext)}
+		if preset.MMProjArtifact != "" {
+			section = append(section, "mmproj = /content/models/"+managed.Artifacts[preset.MMProjArtifact].Destination)
+		}
 		if profiles := preset.BackendProfiles[backend]; len(profiles) > 0 {
 			section = append(section, "paracetamol-allowed-profiles = "+strings.Join(profiles, ","))
 		}

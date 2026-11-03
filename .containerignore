@@ -26,6 +26,7 @@
 !applications/llama-cpp/quantized-kv-state-copy.patch
 !applications/llama-cpp/server-stream-keepalive.patch
 !applications/llama-cpp/server-speculative-metrics.patch
+!applications/llama-cpp/dflash-mtmd-position-gap.patch
 !applications/llama-cpp/test-server-speculative-metrics.cpp
 !applications/llama-cpp/topk-moe-boundaries.patch
 !applications/llama-cpp/hip-qwen4exp-decode.patch

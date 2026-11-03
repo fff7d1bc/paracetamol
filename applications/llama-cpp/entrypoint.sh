@@ -12,6 +12,7 @@ backend="${PARACETAMOL_LLAMA_BACKEND:-rocm}"
 mode="${PARACETAMOL_LLAMA_MODE:-server}"
 model="${PARACETAMOL_LLAMA_MODEL:-}"
 draft_model="${PARACETAMOL_LLAMA_DRAFT_MODEL:-}"
+mmproj="${PARACETAMOL_LLAMA_MMPROJ:-}"
 speculative_type="${PARACETAMOL_LLAMA_SPECULATIVE_TYPE:-}"
 draft_tokens="${PARACETAMOL_LLAMA_DRAFT_TOKENS:-0}"
 context_override="${PARACETAMOL_LLAMA_CONTEXT_OVERRIDE:-}"
@@ -101,6 +102,10 @@ if [[ -n "$draft_model" ]]; then
     [[ -f "$draft_model" ]] ||
         die "draft model is not a regular file: $draft_model"
 fi
+if [[ -n "$mmproj" ]]; then
+    [[ -f "$mmproj" ]] ||
+        die "multimodal projector is not a regular file: $mmproj"
+fi
 if [[ -n "$context_override" ]]; then
     [[ "$context_override" =~ ^[a-z0-9][a-z0-9_-]*\.context_length=int:[1-9][0-9]*(,[a-z0-9][a-z0-9_-]*\.context_length=int:[1-9][0-9]*)*$ ]] ||
         die "invalid managed llama.cpp context override"
@@ -158,6 +163,9 @@ profile_args=()
 bench_profile_args=()
 speculative_args=()
 model_policy_args=()
+if [[ "$router" == 0 && -n "$mmproj" ]]; then
+    model_policy_args+=(--mmproj "$mmproj")
+fi
 unified_memory=0
 qsa_kernel=0
 qsa_graph=0
@@ -457,6 +465,10 @@ if [[ "$mode" == server ]]; then
             if [[ "$preset_line" == 'model-draft = '* ]]; then
                 [[ -f "${preset_line#model-draft = }" ]] ||
                     die "router draft model is not a regular file"
+            fi
+            if [[ "$preset_line" == 'mmproj = '* ]]; then
+                [[ -f "${preset_line#mmproj = }" ]] ||
+                    die "router multimodal projector is not a regular file"
             fi
         done < /run/paracetamol/models.ini
         stream_ini=""

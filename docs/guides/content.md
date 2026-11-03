@@ -49,9 +49,9 @@ appear in the gateway or generated client lists.
 
 The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
 The recipe launches it without speculation. Its embedded MTP heads are not
-enabled by any managed Qwen preset. The integration is text-only. The optional
-vision projector remains outside the
-recipe until its multimodal runtime contract is separately accepted.
+enabled by any managed dense Qwen preset. Dense Qwen remains text-only. Its
+optional vision projector remains outside the recipe until that separate
+multimodal runtime contract is accepted.
 
 The exact `llama-unsloth-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
 Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
@@ -79,7 +79,8 @@ It shares regular dense Qwen's template, reasoning and sampling policy at
 non-default. See the [application guide](applications.md#choosing-a-managed-qwen-preset).
 
 The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
-Q4_K_XL shards totaling 103.7 GiB and the shared 652 MB Inco DFlash2 draft.
+Q4_K_XL shards totaling 103.7 GiB, the shared 652 MB Inco DFlash2 draft
+and a matching 908 MB BF16 vision projector.
 It is a 125B-A6B path for a 128 GB Strix Halo host with fast local SSD storage,
 not another quantization
 of dense 27B. The regular greedy DFlash2 preset is the exported Maki default
@@ -87,9 +88,9 @@ at `xhigh` when advertised by the gateway. It uses SSD-backed reads for the
 model's unusually large per-layer token embedding and no MTP.
 On Strix Halo it uses a model-scoped ROCm direct reader and allocator policy.
 A ROCm router or gateway includes it when the
-shards and draft have current verification receipts. The plain target remains
-an explicit ROCm or Vulkan alternative. Other hardware cannot opt into this
-ROCm policy, and unknown hardware detection fails closed. See the
+shards, draft and projector have current verification receipts. The plain
+target remains an explicit ROCm or Vulkan alternative. Other hardware cannot
+opt into this ROCm policy, and unknown hardware detection fails closed. See the
 [application guide](applications.md) for capacity and concurrency limits.
 Its pinned conversion repository declares license
 metadata but does not contain the referenced license text, so Paracetamol
@@ -118,13 +119,20 @@ also works with the separately installed Huihui target:
   --acknowledge-license-risk
 ```
 
-Each reuses its existing four target shards and adds the same shared 652 MB
-Inco draft. Installing both does not duplicate that file. These presets are
-limited to ROCm Strix Halo. Regular DFlash2 is the default, while both plain
-targets remain available.
+Each reuses its existing four target shards and matching projector, and adds
+the same shared 652 MB Inco draft. Installing both does not duplicate that
+file. These presets are limited to ROCm Strix Halo. Regular DFlash2 is the
+default, while both plain targets remain available.
 Restart the gateway and refresh Maki's exported provider configuration to
 see newly installed choices. See the [application guide](applications.md#greedy-flash-next-dflash2)
 for the measured speed, concurrency and memory tradeoffs.
+
+Both plain and DFlash2 Flash-Next variants always load their own pinned
+projector. The Huihui pair shares a separate matching 908 MB BF16 file from
+its own repack. Existing installations need one normal installer pass for
+the new companion, then a gateway restart and refreshed Maki provider export.
+Verified shards are reused. The projector inherits no assumed license from
+the source model and keeps its own explicit `NOASSERTION` acknowledgment.
 
 Catalog pruning does not delete GGUFs installed by an older checkout. Retired
 files remain visible as local model rows in `content list models`; remove
