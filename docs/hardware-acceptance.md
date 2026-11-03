@@ -29,6 +29,110 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo routing hardening and performance screen (2026-11-03)
+
+This follow-up keeps upstream `740251a`, the regular Unsloth Flash-Next
+UD-Q4_K_XL, F16 K/V, ordinary quantized/F32 matrix arithmetic, greedy DFlash2
+depth three, four shared slots and the 262144-token total pool. It evaluates
+three isolated performance extractions without enabling mixed-precision
+shortcuts. Only the invalid-expert routing bounds checks are selected for
+production. [Upgrading](upgrading.md#precision-preserving-rocm-follow-up-2026-11-03)
+records the source commits and maintenance decision.
+
+The following ordinary-gateway observations use the same frozen 32K corpus,
+sampler policy and request fixtures. The controls use the exact original
+`r69` image. Experimental image selection is the only change in the private
+screen controller. Trace logging is disabled during timings, and no image
+build overlaps these measurements. Cold prefill is uncached-prompt native
+evaluation rate, not HTTP wall time or a cold-storage measurement. Native
+slot-metadata polling is included symmetrically during parallel timings.
+
+| Isolated screen | Cold 32K prefill tokens/s | Warm serial output tokens/s | Four-worker aggregate output tokens/s |
+| --- | ---: | ---: | ---: |
+| Original control A1 | 709.45 | 25.91 | 39.38 |
+| Bounds plus parallel routing scan | 682.72 | 24.20 | 39.46 |
+| GLU/MMQ quantizer fusion | 711.93 | 26.81 | 39.12 |
+| Fresh original control A2 | 685.23 | 24.71 | 39.33 |
+| Bounds only, final `r70` | 710.57 | 26.36 | 40.91 |
+
+Serial timing divides 512 output tokens from two cached fixed-256 xhigh
+requests by summed HTTP wall time. The separate nonthinking four-worker
+fixture divides 1024 output tokens by shared wall time. Those parallel walls
+range from 25.03 to 26.18 seconds. Individual parallel latencies range from
+22.98 to 26.17 seconds across these screens. Timing
+outputs intentionally reach their limit and are not completed-task scores.
+Separate natural-answer retrieval, history-edit, protocol and concurrent
+isolation checks pass on all five screens. Generated reasoning and draft
+acceptance differ, so these are bounded screening observations, not repeatable
+causal speedup or regression estimates. They provide no compelling prefill or
+concurrent-throughput adoption case. The higher GLU serial rate alone does
+not justify carrying its new fusion/lifetime surface.
+
+Both routing variants pass 192 actual-helper GPU cases, including invalid
+IDs and both map directions. Kernel-only ABBA measurements save about
+1.8 microseconds with the parallel scan on smaller fixtures; larger cases
+are mixed. Eight generic 512-expert/10-active matrix cases pass on the bounds
+arm, but lack the private dispatch hints and do not prove wrapper activation.
+
+Stable QSA compaction passes 512 extracted-kernel fixtures, 1664 rows and
+640 groups on both arms. It substantially helps ascending selected keys with
+holes, but width-2560 shuffled and synthetic shuffled/hidden inputs cost
+about 24–36% more in repeated preprocessing measurements. Width-2051 cases
+mostly overlap outside the favorable hole case. The existing top-k source
+is unordered, so this is not a sound default optimization. No candidate
+whole-model image is built. The 16 attention and 16 reordered-ID checks are
+baseline controls, not candidate end-to-end acceptance. Operator masks sized
+for 256K are not populated 256K model contexts.
+
+The GLU extraction passes 2160 actual-HIP raw-buffer cases and 4320
+comparisons against the frozen original quantizer, with zero differing bytes
+in both generic and fused forms. Its operator screen passes 316 cases.
+Separate fresh-process graph tests pass chunk sizes 1, 2, 3 and 512, checking
+actual executable-handle reuse, refreshed inputs, outputs and fusion declines.
+A diagnostic-only trace proves managed-model activation. This does not
+qualify every routed shape or broadcast-scatter variant, nor prove
+bit-identical full-model generations. Broader qualification is stopped for
+lack of a demonstrated workload benefit. No GLU switch or code is shipped.
+
+The accepted bounds-only image is
+`llama-cpp-ubuntu26.04-rocm10.1-740251a-r70`, ID
+`daed3f9bad454118161965208d0945e0a3c2bdc115f6b6fa831810b7b584a82d`.
+Its final fourteen-patch tree is
+`593631c59c69782aec7f81c7459005c0c59c1842`. It is built through the normal
+source path. Matching-source diagnostics leave this image's native payload
+hashes unchanged. For the new routing fixture, the image build executes only
+the 192 CPU oracle self-checks and 576 deliberate checker corruptions. That
+fixture does not initialize a GPU during the build.
+
+The clean 32-stage serial campaign passes the source-refresh coverage below
+and the new 192-case actual-helper GPU gate. This includes exact populated
+state restoration, forced two-stream fallback, reasoning off/medium/xhigh,
+full assistant/tool replay, JSON/SSE, concurrent label/history isolation and
+cancellation/recovery with and without DFlash2. Huihui passes its short
+matrix. Dense Qwen and Vulkan Flash-Next pass smaller compatibility checks.
+Tiny ROCm/Vulkan CLI and same-physical-connection SSE checks pass, followed by
+one real xhigh native-Maki tool loop. These are scoped acceptance checks,
+not a broad model-quality benchmark.
+
+Near-256K retrieval passes with 247210 initial input tokens and two true
+4096-token history supplements. Full assistant objects, including reasoning,
+remain in the appended history. All three answers pass the six-record oracle
+and finish naturally. The append inputs contain 251735 and 256123 tokens,
+reuse 247590 and 251978 tokens, and evaluate only 4145 new tokens each.
+Initial native prefill is 608.9 tokens/s; combined suffix evaluation is
+501.1 tokens/s. These observations are not an isolated hardening speedup.
+Minimum available RAM is 15.56 GiB across 484 samples, above the unchanged
+8 GiB guard. No new GPU fault, reset, SVM failure or OOM appears. Exact test
+cleanup leaves the target idle, without host configuration changes.
+
+`gfx1150`, `gfx1200` and `gfx1201` remain compiled targets without new GPU
+acceptance. ComfyUI is untouched. Ignored evidence is under
+`build/strix-screen-20261103/`,
+`build/strix-routing-screen-20261103/`,
+`build/strix-qsa-preprocess-screen-20261103/`,
+`build/strix-glu-screen-20261103/` and
+`build/strix-routing-accepted-20261103/`.
+
 ### Strix Halo llama.cpp source refresh (2026-11-03)
 
 The accepted `gfx1151` image is

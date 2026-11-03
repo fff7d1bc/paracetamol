@@ -101,6 +101,9 @@ revisions recorded in `catalog/catalog.json`.
   dot product and preserves the public residual labels used by control vectors
   and imatrix. This patch does not include the separate BF16 or
   F16 matrix experiments, shadow weights or reduced-precision residuals.
+  The compact routing helper's invalid-expert bounds checks derive from
+  Strix fork PR 227 at `575da5169e2fe0c587cbdced32f41174a7316ff2`, under MIT.
+  Valid expert IDs keep the original routing and arithmetic.
   The single-token Qwen4exp GDN decode fusion derives from Strix fork
   PR 106 at `9fbe5308fabbc79a53ddee5eadfad74ae0e4710e`, under MIT.
   Paracetamol retains the pinned upstream eight-lane F32 recurrent reduction

@@ -32,5 +32,7 @@
 !applications/llama-cpp/process-allocation-policy.patch
 !applications/llama-cpp/test-native-policy.cpp
 !applications/llama-cpp/test-qwen4exp-multistream.cpp
+!applications/llama-cpp/test-qwen4exp-routing.cpp
+!applications/llama-cpp/build-routing-test.sh
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja

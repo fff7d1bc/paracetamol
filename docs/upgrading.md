@@ -279,6 +279,62 @@ Review Ubuntu's `glslc`, SPIR-V headers, Vulkan loader, and Mesa RADV versions
 together. The shader compiler changes generated code at build time, while
 Mesa changes the runtime driver.
 
+### Precision-preserving ROCm follow-up (2026-11-03)
+
+The routing follow-up keeps upstream `740251a` and all fourteen patches.
+The pipeline patch adds the two invalid-expert checks from
+[Strix PR 227](https://github.com/halo-box/strix-llama.cpp/pull/227), frozen at
+`575da5169e2fe0c587cbdced32f41174a7316ff2`. Both the histogram and scatter
+passes reject IDs outside `[0, 512)` before indexing shared counters. Valid
+routing and the serial prefix scan stay unchanged. This is hardening against
+invalid input, not evidence that normal model routing was corrupt.
+
+`test-qwen4exp-routing.cpp` checks the mechanically extracted production
+helper against independent expert bounds, row correspondence and buffer
+guards. It covers 192 cases, including negative and oversized IDs, padded
+strides, both map directions and empty valid sets. The build script refuses
+the pre-fix helper before these invalid-ID tests can run. For this fixture,
+the ordinary image build runs only CPU oracle self-checks and deliberate
+checker corruptions.
+Actual HIP helper execution remains a separate hardware gate.
+
+Three isolated performance extractions remain outside production:
+
+- The parallel integer prefix scan from
+  [Strix PR 213](https://github.com/halo-box/strix-llama.cpp/pull/213), frozen
+  at `6fa2219fb02f2a3a96873d5410e5638d8b072951`, saves about 1.8 microseconds
+  in the smaller routing fixtures, but the ordinary gateway screen establishes
+  no useful end-to-end gain. Retrieval, history edits and concurrent isolation
+  pass. Draft acceptance and generated reasoning differ, so the single paired
+  screen does not establish a general performance regression either. Keep the
+  simpler serial scan.
+- Stable QSA row compaction from that same proposal, using the earlier
+  `ff64766de0a7632ac30acff9b71a5fa7d7d1b2df` implementation, passes the
+  extracted GPU integer oracles, but its cost depends on selected width and
+  ordering. It helps ascending keys with holes. At width 2560, shuffled and
+  synthetic shuffled/hidden rows become substantially slower in repeated ABBA
+  preprocessing measurements. Width 2051 mostly overlaps outside the
+  favorable hole case. This is component evidence, not a full-model
+  regression or a populated 256K-context benchmark. Reject the isolated
+  extraction rather than adding shared-memory and fallback work to an
+  unordered top-k path without a demonstrated workload benefit.
+- GLU/MMQ input-quantizer fusion from
+  [upstream PR 30489](https://github.com/ggml-org/llama.cpp/pull/30489), frozen
+  at `730f0425773c0ece8fbdd5e73b80b749e6bf81b4`, keeps the selected pin's
+  Q8_1 correction and F32 GLU arithmetic. The isolated extraction passes
+  old-versus-new quantized-buffer comparisons, operator checks and explicit
+  same-graph capture/replay controls. A diagnostic trace also proves actual
+  managed-model activation. Its gateway screen gives no convincing cold
+  prefill or four-worker throughput benefit. Serial decode is higher, but
+  draft acceptance differs and fresh control runs also vary. This does not
+  establish a repeatable fusion speedup. Leave it out rather than carrying a
+  new fusion/lifetime surface or experimental switch for that result.
+
+The [hardware record](hardware-acceptance.md#strix-halo-routing-hardening-and-performance-screen-2026-11-03)
+owns the measurements and final bounds-only acceptance. None of these screens
+changes the GGUF, F16 KV cache, internal matrix precision or default runtime
+policy.
+
 ### Precision-preserving ROCm PR screen (2026-10-26)
 
 Four isolated candidates pass the numerical and ordinary-gateway checks on
@@ -377,7 +433,7 @@ protected behavior is fixed.
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. Canonical sorting and deduplication make attention independent of upstream top-k ordering. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. A container-level value of `0` disables it. | Upstream provides equivalent selected-key attention with the order-invariance and numerical operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 | `hip-qwen4exp-graph-optimizations.patch` | Intersects upstream's visibility-filtered selected IDs with its shared causal/sequence mask, avoiding a dense per-layer selection mask. Uses upstream pooled-cache state rather than a private prefix or derived-key cache. Requires supported single-stream F16 geometry and both QSA switches. CPU fallback honors the intersection, and unsupported accelerators decline it. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` disables this and the scoped pipeline fusions. | Upstream equivalents pass the independent selected-mask oracle, unsupported-layout fallback, populated state restore, near-256K retrieval and prefix reuse, and older-model/backend checks. Never silently substitute a private reduced-precision matrix path or persistent derived cache. |
-| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
+| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. The 512/10 routing helper rejects invalid expert IDs in both passes, with independent bounds/map/guard fixtures. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
 | `quantized-kv-state-copy.patch` | Carries [PR 30541](https://github.com/ggml-org/llama.cpp/pull/30541) at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`. Counts tensor elements rather than quantization blocks for on-device sequence save, restore and scattered range copies. Protects optional quantized-cache use without changing F16 presets. | Upstream contains the equivalent correction and its `test-llama-context` device-copy and scatter cases pass with F16, Q8_0 and Q4_0 caches. |
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |

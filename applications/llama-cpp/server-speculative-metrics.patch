@@ -1,7 +1,7 @@
 Local Paracetamol observability change for the pinned llama.cpp server.
 Base upstream: 740251a920abf92b7744d9c0518ca157db0db579.
 Apply after the thirteen reviewed production patches (tree
-3c8856de70a3a10543d0b9c20dc888af8eb82573).
+dbe56f02f63ecbe8d5e25e50b29a06616919cecc).
 
 Expose the existing per-request accounted verification-round counter alongside
 the existing draft counters. It does not count every verification attempt:

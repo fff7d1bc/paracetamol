@@ -358,6 +358,14 @@ RUN c++ -O2 -std=c++17 -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
         -o /tmp/test-llama-native-policy && \
     LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy
 
+# This checks the independent routing oracle without initializing a GPU.
+# Hardware acceptance separately runs the extracted production helper.
+COPY applications/llama-cpp/test-qwen4exp-routing.cpp \
+    applications/llama-cpp/build-routing-test.sh /opt/paracetamol/
+RUN ROUTING_CPU_ONLY=1 bash /opt/paracetamol/build-routing-test.sh \
+        /opt/llama.cpp /tmp/qwen4exp-routing-test && \
+    /tmp/qwen4exp-routing-test/test-qwen4exp-routing-cpu
+
 # Keep server-only telemetry after the native build so a reporting change does
 # not invalidate the accepted GPU kernel compilation or its numerical identity.
 COPY applications/llama-cpp/server-speculative-metrics.patch \
