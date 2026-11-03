@@ -29,6 +29,144 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp source refresh (2026-11-03)
+
+The accepted `gfx1151` image is
+`llama-cpp-ubuntu26.04-rocm10.1-740251a-r69`, ID
+`076f85a58c1e072f371eadf252ba618554dd9cee98d01eca1417bcd16ddead2e`.
+It advances upstream to
+[`740251a920abf92b7744d9c0518ca157db0db579`](https://github.com/ggml-org/llama.cpp/commit/740251a920abf92b7744d9c0518ca157db0db579),
+181 commits after the previous pin. All fourteen downstream patches remain,
+with three semantic rebases. The final patched tree is
+`6b38b14cd0f8d6c59d079ddff7f0676628f6e6d8`.
+[Upgrading](upgrading.md) records the changed source interfaces and removal
+gates. The regular Unsloth Flash-Next UD-Q4_K_XL GGUF, template, gateway
+sampling defaults, F16 K/V, ordinary quantized/F32 matrix policy, four shared
+slots, 262144-token pool and greedy DFlash2 depth three stay unchanged.
+
+Matching-source diagnostics preserve the production native payload hashes.
+Nine upstream parser/chat/grammar CTests, fifty native-policy/direct-reader
+checks and six metrics-serialization checks pass. CPU reference checks cover
+twenty shared-row attention cases and fourteen GELU cases. On `gfx1151`,
+ROCm passes all 1249 supported operator cases, with only the same three
+explicitly declined layouts. Top-mask checks pass 28 cases, and the queued
+top-k lifetime fixture passes eight cases. Tiny-model device state-copy checks
+pass four cases each for F16, Q8 and Q4 caches. The quantized caches are
+diagnostic controls, not changes to managed F16 cache defaults.
+
+Actual Flash-Next state restore, causal restore and clear/restore checks have
+NMSE zero. The compact-selection diagnostic observes 24 prefill and 84 decode
+activations, no fused-dense selection, and exact same-mode state restoration.
+These results do not establish bit-identical outputs across source revisions
+or resolve the historical compact-versus-graph-disabled comparison.
+
+The new bounded `test-qwen4exp-multistream.cpp` also passes. It forces the
+nonfused fallback with two non-unified F16 streams, 4096 context tokens and
+64+1 tokens per stream. Both real decode phases prove the full-cache mask
+layout and absence of shared-row or selected-ID inputs. All four last-token
+logit vectors are finite. Test setup was corrected to resolve programmatic
+CPU defaults and actually invalidate the scheduler reservation before this
+gate. The initial unresolved thread count caused a userspace fixture crash
+before decode, not a GPU fault. Failed attempts and corrected fixture/image
+identities remain separate in the ignored evidence.
+
+The checked upstream head `28b812d`, seven commits ahead, is held rather than
+silently accepted. A thinking-off tool replay adds a closing thinking tag and
+duplicates the otherwise correct answer. Both DFlash2 and plain short matrices
+show the miss. The separate DFlash2 replay fails five seeds and temperature
+zero at that head, while the old-source and selected-pin controls pass all
+six. A diagnostic changing only the HIP Q8_1 correction calculation back also
+restores six passes. This isolates the observed behavior to
+[`8fc0376`](https://github.com/ggml-org/llama.cpp/commit/8fc0376721e9662d498a5706d7ee8e7574ce99f4),
+not a general quality regression or proof that the intended numerical fix is
+wrong. No reverse patch or generated-output filtering is shipped.
+
+The unchanged ordinary-gateway short matrix and performance screen pass,
+covering reasoning off/medium/xhigh, nested tools, complete assistant replay,
+JSON/SSE, natural 32K retrieval/history edit, prefix reuse and concurrent
+label/history isolation. Four generating slots actually overlap. Repeated
+retrieval evaluates only four tokens, reusing 32973 of 32977 input tokens.
+The late-edit request is cold, so its successful answer is not evidence of
+prefix reuse. The same-host observations below compare whole refresh stages,
+not an isolated source-change speedup. The held row is not release acceptance.
+
+| Stack | Cold 32K prefill tokens/s | Warm serial output tokens/s | Four-worker aggregate output tokens/s |
+| --- | ---: | ---: | ---: |
+| Original foundation, `c6fb3b5-r65` | 700.0 | 23.96 | 39.59 |
+| Refreshed foundation, `c6fb3b5-r66` | 697.4 | 27.43 | 40.67 |
+| Initial rebase, `740251a-r68` (held) | 704.5 | 26.88 | 38.77 |
+| Corrected rebase, `740251a-r69` | 694.8 | 26.52 | 39.70 |
+
+Serial xhigh timing uses two cached fixed-256 requests, 512 output tokens
+divided by their summed HTTP wall time. The separate `r69` nonthinking
+four-worker screen divides 1024 output tokens by 25.79 seconds of shared wall
+time, not summed per-request rates. Individual `r69` request latencies are
+23.86–25.79 seconds. Timing outputs intentionally reach their limit and are not
+completed task-quality scores. Natural-answer oracles are separate. Each row is one
+matched screen, with varying draft acceptance and symmetric native metadata
+polling. These observations do not establish a repeatable performance gain or
+loss.
+
+The initial `r68` rebase stops at the unchanged 8 GiB available-memory guard
+during near-256K prefill, with last native progress at 194602 tokens. No
+retrieval answer or planned append completes. Paired allocation logs isolate
+the increase to target GPU compute reservation, from 4532.27 to 15744.27 MiB.
+Model, KV, recurrent/indexer and draft allocations match. New per-layer
+identity reshapes of the shared host mask become separate scheduler input
+copies. Keeping the already-canonical mask tensor shared restores 4532.27 MiB
+initial and 4580.29 MiB post-DFlash compute reservation in an isolated
+library-only diagnostic. The original post-DFlash control is 4580.27 MiB.
+DFlash's new 100 MiB device-feature buffer remains enabled. The fix changes no
+precision, sampler, context, batch, slot or host setting.
+
+The `r69` near-256K gate passes its initial 247210-token uncached retrieval
+and both true history appends. Each append preserves the full assistant
+object, including reasoning, and adds a 4096-token supplement. All three
+answers pass the six-record oracle and finish naturally without truncation.
+The append inputs contain 251682 and 255933 tokens. Native reports show
+247537 and 251788 cached tokens, with only 4145 tokens evaluated each time.
+Minimum available memory is 15.99 GiB across 479 samples, above the unchanged
+8 GiB safety guard. No swap, host or memory-policy change is made.
+
+| Deep screen | Initial native prefill tokens/s | Two suffix evaluations, tokens | Suffix native prefill tokens/s |
+| --- | ---: | ---: | ---: |
+| Original stack, `c6fb3b5-r65` | 580.8 | 8289 | 479.9 |
+| Corrected refresh, `740251a-r69` | 601.3 | 8290 | 503.4 |
+
+Suffix rate excludes the initial prefill and divides newly evaluated tokens
+by summed native prompt time. Variable reasoning and history boundaries
+change subsequent input lengths. This is one matched screen per arm, not a
+repeatable causal speedup or a comparison of fixed-work generation time.
+Four short concurrent histories are not four near-full-context histories.
+
+The complete 31-stage serial campaign passes. Regular non-speculative
+Flash-Next and Huihui DFlash2 pass their short tool/reasoning matrices.
+Both regular plain and DFlash2 cancellation/recovery checks pass. Dense
+Qwen3.8-27B Q8 and Vulkan Flash-Next pass smaller compatibility screens,
+not full task-quality or long-context comparisons. Tiny-model ROCm and
+Vulkan CLI checks pass, along with three SSE completions on one physical
+keepalive connection for each backend.
+
+Installed native Maki `0.6.5` passes one real, permission-scoped synthetic
+bash tool loop at xhigh using disposable configuration/state. Gateway reports
+confirm the six omitted sampler controls came from managed defaults. This is
+not a claim of exact provider wire-history capture. The separate short matrix
+covers full assistant replay, JSON/SSE and native truncation checks.
+
+The managed images build locally, and normal/static host checks,
+the gateway race check, source/patch checks and container dependency checks
+pass. No new GPU fault, reset, SVM or OOM appears during final acceptance.
+The target is left idle after exact cleanup. `gfx1150`, `gfx1200` and
+`gfx1201` remain compiled targets without GPU acceptance in this refresh.
+ComfyUI GPU workflows are not rerun; its foundation checks are recorded below.
+
+Evidence is below ignored
+`build/refresh-20261103-740251a-r69/`. The initial rebase and narrow mask-sharing
+diagnostic remain below `build/refresh-20261103-740251a/` and
+`build/refresh-20261103-qsa-mask-identity/`; held-head and paired controls
+remain below `build/refresh-20261103/` and
+`build/refresh-off-replay-20261103/`.
+
 ### Container foundation refresh (2026-11-03)
 
 The starting Ubuntu 26.04 image advances from `resolute-20260724.1` to

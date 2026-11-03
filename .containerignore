@@ -31,5 +31,6 @@
 !applications/llama-cpp/hip-qwen4exp-decode.patch
 !applications/llama-cpp/process-allocation-policy.patch
 !applications/llama-cpp/test-native-policy.cpp
+!applications/llama-cpp/test-qwen4exp-multistream.cpp
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja

@@ -6,11 +6,20 @@ The upstream fused dense selection-mask path remains available only when
 selected-key attention is disabled; its early return must not bypass the
 accepted compact path or the graph-disabled selected-key control.
 
+Upstream shared-cache row lists retain src[5]; selected-ID intersection uses
+src[6]. Preserve both the causal/sequence dependency and scalar CPU fallback
+across upstream's mask-independent QSA selection.
+
+Use total query tokens when shaping the fallback mask: its query dimension
+may already be split by stream. Preserve already-canonical tensors by pointer:
+per-layer identity views of the shared host mask otherwise become distinct
+full-cache backend copies. Reshape only a genuinely different stream layout.
+
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 49d212b14..5c183d4de 100644
+index b5dc4f75a689dc32bdff4e462bcef2240d7e3a34..f0524ac4ef76c844150740cf5de7a904c3a634e8 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
-@@ -2542,6 +2542,10 @@ extern "C" {
+@@ -2564,6 +2564,10 @@ extern "C" {
              struct ggml_tensor * top_k,
                       int64_t     n_kv_raw);
  
@@ -22,12 +31,12 @@ index 49d212b14..5c183d4de 100644
      GGML_API struct ggml_tensor * ggml_flash_attn_back(
             struct ggml_context * ctx,
 diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
-index 9d415aba9..05a208dc8 100644
+index 70b90f7941a969fe0dd3e08ecd49566f6c64d5cd..59424bcefc6498a202b46a7ec90a968037effeae 100644
 --- a/ggml/src/ggml-cpu/ops.cpp
 +++ b/ggml/src/ggml-cpu/ops.cpp
-@@ -8950,10 +8950,11 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
-     const ggml_tensor * mask  = dst->src[3];
+@@ -8847,10 +8847,11 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
      const ggml_tensor * sinks = dst->src[4];
+     const ggml_tensor * kv_rows = dst->src[5];
  
 -    // With no dense mask, selected IDs define visibility. Deduplicate them so
 -    // a repeated ID cannot change the softmax weight. This is also the fallback
@@ -35,56 +44,56 @@ index 9d415aba9..05a208dc8 100644
 +    // Deduplicate them so a repeated ID cannot change the softmax weight.
 +    // This is also the fallback
      // for accelerators which do not implement selected-key attention.
--    const ggml_tensor * ids = mask ? nullptr : dst->src[5];
-+    const ggml_tensor * ids = !mask || ggml_get_op_params_i32(dst, 5) ? dst->src[5] : nullptr;
+-    const ggml_tensor * ids = mask ? nullptr : dst->src[6];
++    const ggml_tensor * ids = !mask || ggml_get_op_params_i32(dst, 5) ? dst->src[6] : nullptr;
  
      GGML_TENSOR_LOCALS(int64_t, neq, q,   ne)
      GGML_TENSOR_LOCALS(size_t,  nbq, q,   nb)
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index 37ef3bb57..61bbbade0 100644
+index 3f7815be8de7003540556b13708809bdb886ce02..0d9a84f40305aba3207a527fd178e3633353a30a 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
-@@ -787,7 +787,7 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
+@@ -824,7 +824,7 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
          }
      }
  #endif
--    GGML_ASSERT(!dst->src[5] || dst->src[3]); // maskless IDs must never fall through to dense attention
-+    GGML_ASSERT(!dst->src[5] || (dst->src[3] && !ggml_get_op_params_i32(dst, 5)));
+-    GGML_ASSERT(!dst->src[6] || dst->src[3]); // maskless IDs must never fall through to dense attention
++    GGML_ASSERT(!dst->src[6] || (dst->src[3] && !ggml_get_op_params_i32(dst, 5)));
      switch (ggml_cuda_get_best_fattn_kernel(ggml_cuda_get_device(), dst)) {
          case BEST_FATTN_KERNEL_NONE:
              GGML_ABORT("fatal error");
-@@ -804,7 +804,7 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
+@@ -841,7 +841,7 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
  }
  
  bool ggml_cuda_flash_attn_ext_supported(int device, const ggml_tensor * dst) {
--    if (dst->src[5] && !dst->src[3]) {
-+    if (dst->src[5] && (!dst->src[3] || ggml_get_op_params_i32(dst, 5))) {
+-    if (dst->src[6] && !dst->src[3]) {
++    if (dst->src[6] && (!dst->src[3] || ggml_get_op_params_i32(dst, 5))) {
  #if defined(GGML_USE_HIP)
          const char * enabled = std::getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
          if (!enabled || enabled[0] != '0' || enabled[1] != '\0') {
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index dda94b616..72b675bad 100644
+index 62cbad07ee1a6280621884b7aa12d5599e4135e6..f71bceea5fb004cd4dfc6f7feba3370440f2b4d3 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -15638,7 +15638,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -15683,7 +15683,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
              }
          case GGML_OP_FLASH_ATTN_EXT:
              {
--                if (op->src[5] && !op->src[3]) return false;
-+                if (op->src[5] && (!op->src[3] || ggml_get_op_params_i32(op, 5))) return false;
-                 bool coopmat2 = device->coopmat2;
-                 uint32_t HSK = op->src[1]->ne[0];
-                 uint32_t HSV = op->src[2]->ne[0];
+-                if (op->src[6] && !op->src[3]) return false;
++                if (op->src[6] && (!op->src[3] || ggml_get_op_params_i32(op, 5))) return false;
+                 // K/V row lists (ggml_flash_attn_ext_rows) are not supported
+                 if (op->src[5] != nullptr) {
+                     return false;
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
-index e96c395e6..a333235b0 100644
+index 7ca36182586f837fbc22683c882140649de48435..ad2ea7d4009fc77a87e2c10e2412df4a0ecc45b5 100644
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
-@@ -5651,6 +5651,12 @@ void ggml_flash_attn_ext_add_top_k(
+@@ -5698,6 +5698,12 @@ void ggml_flash_attn_ext_add_top_k(
      ggml_set_op_params_i32(a, 4, (int32_t) n_kv_raw);
  }
  
 +void ggml_flash_attn_ext_set_top_k_mask(struct ggml_tensor * a) {
-+    GGML_ASSERT(a->op == GGML_OP_FLASH_ATTN_EXT && a->src[5]);
++    GGML_ASSERT(a->op == GGML_OP_FLASH_ATTN_EXT && a->src[6]);
 +    GGML_ASSERT(ggml_get_op_params_i32(a, 4) == 0);
 +    ggml_set_op_params_i32(a, 5, 1);
 +}
@@ -93,10 +102,19 @@ index e96c395e6..a333235b0 100644
  
  struct ggml_tensor * ggml_flash_attn_back(
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index c2ef3d144..1d6dcc49a 100644
+index 8f57cc73bab23b27694116186b563e2a56554780..436bf59dde7dd9f1704f7248bee3fd44962adb51 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -3009,6 +3009,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -1236,7 +1236,7 @@ bool llm_graph_input_mem_hybrid::can_reuse(const llm_graph_params & params) {
+     res &= inp_attn->self_k_idxs->ne[0] == params.ubatch.n_tokens;
+   //res &= inp_attn->self_v_idxs->ne[0] == params.ubatch.n_tokens; // TODO: need to move this to the unified cache and check there
+ 
+-    res &= can_reuse_attn_mask(inp_attn->self_attn_mask, mctx->get_attn(), params.ubatch, params.cparams);
++    res &= can_reuse_attn_mask(inp_attn->self_attn_mask, mctx->get_attn(), params.ubatch, inp_attn->cparams);
+ 
+     res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
+ 
+@@ -3049,6 +3049,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
          ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
          if (top_k) {
              ggml_flash_attn_ext_add_top_k(cur, top_k, n_kv_raw);
@@ -106,11 +124,26 @@ index c2ef3d144..1d6dcc49a 100644
          }
          ggml_prec_set_acc(cur, GGML_PREC_F32);
  
+@@ -4063,7 +4066,13 @@ llm_graph_input_mem_hybrid * llm_graph_context::build_inp_mem_hybrid() const {
+     const auto * mctx_cur = static_cast<const llama_memory_hybrid_context *>(mctx);
+ 
+     auto inp_rs   = build_rs_inp_impl     (ctx0, ubatch, mctx_cur->get_recr());
+-    auto inp_attn = build_attn_inp_kv_impl(ctx0, ubatch, hparams, cparams, mctx_cur->get_attn());
++    auto attn_cparams = cparams;
++    // Selected QSA IDs name full-cache cells, not upstream's compressed row
++    // list. Preserve the existing Qwen4exp mask and its graph-reuse layout.
++    if (arch == LLM_ARCH_QWEN4EXP) {
++        attn_cparams.fused_kv_rows = false;
++    }
++    auto inp_attn = build_attn_inp_kv_impl(ctx0, ubatch, hparams, attn_cparams, mctx_cur->get_attn());
+ 
+     auto inp = std::make_unique<llm_graph_input_mem_hybrid>(cparams, std::move(inp_attn), std::move(inp_rs), mctx_cur);
+ 
 diff --git a/src/models/models.h b/src/models/models.h
-index c8102df98..f2245e543 100644
+index b10cea272cb805599321087486e60bba0f08b9d1..a599860c6ae1632ee761c61d89def830574366d1 100644
 --- a/src/models/models.h
 +++ b/src/models/models.h
-@@ -2782,7 +2782,9 @@ struct llama_model_qwen4exp : public llama_model_base {
+@@ -2856,7 +2856,9 @@ struct llama_model_qwen4exp : public llama_model_base {
                      ggml_tensor * kq_mask,
                              int * sections,
                              int   il,
@@ -122,10 +155,10 @@ index c8102df98..f2245e543 100644
          ggml_tensor * build_layer_attn_linear(
               llm_graph_input_rs * inp,
 diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
-index faf852e4c..93bdfc51f 100644
+index e72c1256fc26238ba027cd873767560f991354d7..aaa0ceb7263ea814ddf67a74c4b86f62f410e81d 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -854,7 +854,9 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+@@ -856,7 +856,9 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
          ggml_tensor *                           kq_mask,
          int *                                   sections,
          int                                     il,
@@ -136,19 +169,17 @@ index faf852e4c..93bdfc51f 100644
      const llama_kv_cache_context * mctx_idx = mctx_hyb->get_idx();
  
      const int64_t idx_dim = hparams.indexer_head_size;
-@@ -924,7 +926,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+@@ -929,7 +931,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
  
      // keep the cells of the live picked pools and the tail, -inf elsewhere
      // all retained cells are in the token's sequence, so the kq_mask is not needed
 -    if (cparams.fused_top_k_mask) {
-+    // The fused dense mask returns before selected IDs are constructed. Keep
-+    // the accepted selected-key path (including its graph-disabled control)
-+    // authoritative; other layouts retain upstream's mask-free selection.
++    // The early dense return cannot bypass the selected-key control.
 +    if (cparams.fused_top_k_mask && !selected_keys) {
          GGML_ASSERT(kpool*n_top_pool + inp_kpool->tail_idxs->ne[0] == inp_kpool->n_sel);
  
-         ggml_tensor * keep = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, kq_mask->type, inp_kpool->n_kv), 0.0f);
-@@ -983,13 +988,24 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+         ggml_tensor * keep = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, type_mask, inp_kpool->n_kv), 0.0f);
+@@ -989,13 +992,24 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
      // Keep the full upstream mask authoritative for every fallback backend.
      *selected_ids = sel_idx;
  
@@ -174,19 +205,30 @@ index faf852e4c..93bdfc51f 100644
      cb(sel, "indexer_sel", il);
  
      return sel;
-@@ -1045,10 +1061,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
-     ggml_tensor * k = mctx_cur->get_k(ctx0, il);
-     ggml_tensor * v = mctx_cur->get_v(ctx0, il);
+@@ -1047,14 +1061,17 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+ 
+     // the selection replaces the kq_mask: split it into the streams of the K view
+     const int64_t n_stream = k->ne[3];
+-    GGML_ASSERT(sel->ne[0] == k->ne[2] && sel->ne[1] % n_stream == 0);
+-    sel = ggml_reshape_4d(ctx0, sel, sel->ne[0], sel->ne[1]/n_stream, 1, n_stream);
++    GGML_ASSERT(sel->ne[0] == k->ne[2] && n_tokens % n_stream == 0);
++    // Preserve canonical masks by identity: per-layer identity views of the
++    // shared host mask become separate backend copies, each full-cache sized.
++    // A nonfused fallback may already have split its query dimension by stream.
++    if (sel->ne[1] != n_tokens/n_stream || sel->ne[2] != 1 || sel->ne[3] != n_stream) {
++        sel = ggml_reshape_4d(ctx0, sel, sel->ne[0], n_tokens/n_stream, 1, n_stream);
++    }
+     cb(sel, "kq_mask_qsa", il);
  
 -    const char * qsa_kernel = getenv("PARACETAMOL_QWEN4EXP_QSA_KERNEL");
 -    const bool selected_keys = qsa_kernel && qsa_kernel[0] == '1' && qsa_kernel[1] == '\0';
-     ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, sel, nullptr, nullptr, n_sel, kq_scale, il,
+     ggml_tensor * cur = build_attn_mha(q, k, v, nullptr, sel, nullptr, nullptr, nullptr, n_sel, kq_scale, il,
 -            selected_keys ? selected_ids : nullptr, 0);
 +            selected_ids, 0);
      cb(cur, "kqv_out", il);
  
      // the rotation is its own inverse, so undo it on the value side of the output
-@@ -1073,8 +1087,25 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+@@ -1079,8 +1096,25 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
      // indexer reads the same block input as q/k/v; no cache or no ratio means dense
      const bool qsa = inp_kpool != nullptr && hparams.dsv4_compress_ratios[il] > 0;
  
@@ -196,7 +238,7 @@ index faf852e4c..93bdfc51f 100644
 +    const char * graph = getenv("PARACETAMOL_QWEN4EXP_QSA_GRAPH");
 +    const auto * cache_k = qsa ? inp->mctx->get_k(ctx0, il) : nullptr;
 +    const auto * cache_v = qsa ? inp->mctx->get_v(ctx0, il) : nullptr;
-+    auto * causal = inp->get_kq_mask();
++    auto * causal = inp->self_attn_mask.raw;
 +    const bool selected_keys = qsa && kernel && std::string(kernel) == "1" &&
 +        cparams.flash_attn && n_embd_head == 256 && n_head_kv > 0 && n_head == 12*n_head_kv &&
 +        cache_k->type == GGML_TYPE_F16 && cache_v->type == GGML_TYPE_F16 &&
@@ -207,13 +249,13 @@ index faf852e4c..93bdfc51f 100644
 +        causal && causal->ne[2] == 1 && causal->ne[3] == 1;
 +    const bool compact_selection = selected_keys && graph && std::string(graph) == "1";
      ggml_tensor * selected_ids = nullptr;
--    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->get_kq_mask(), sections, il, &selected_ids) : nullptr;
+-    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->self_attn_mask.raw, sections, il, &selected_ids) : nullptr;
 +    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, causal,
 +            sections, il, &selected_ids, selected_keys, compact_selection) : nullptr;
  
      // Qwen3Next uses a single Q projection that outputs query + gate
      ggml_tensor * Qcur_full = build_lora_mm(model.layers[il].wq, cur, model.layers[il].wq_s); // [ (n_embd_head * 2) * n_head, n_tokens ]
-@@ -1127,7 +1158,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+@@ -1133,7 +1167,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
      const float kq_scale = hparams.f_attention_scale == 0.0f ? 1.0f / sqrtf(float(n_embd_head)) : hparams.f_attention_scale;
  
      if (sel) {
@@ -224,10 +266,10 @@ index faf852e4c..93bdfc51f 100644
          cur = build_attn(inp,
                      nullptr, nullptr, nullptr,
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index a89c06f6d..08f6ae35f 100644
+index f7cbb85f6e331ea37ba2cb06c5e850cc5c00c646..20d67aa42697e64b85a1ac040e4d1721294d91f2 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10409,6 +10409,109 @@ struct test_qsa_order : public test_qsa_prefill {
+@@ -10543,6 +10543,109 @@ struct test_qsa_order : public test_qsa_prefill {
      }
  };
  
@@ -337,7 +379,7 @@ index a89c06f6d..08f6ae35f 100644
  // Maskless selected attention is compared against the same FP64 oracle as the
  // masked path. The unused mask is only an independent visibility oracle.
  struct test_qsa_maskless : public test_qsa_decode {
-@@ -12932,6 +13035,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13176,6 +13279,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      // Selected-key paths retain an independent full-mask CPU reference.
      for (int queries : {1, 16, 513}) {
          test_cases.emplace_back(new test_qsa_order(queries, 2051));

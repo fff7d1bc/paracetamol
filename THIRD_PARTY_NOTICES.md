@@ -36,7 +36,7 @@ revisions recorded in `catalog/catalog.json`.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `c6fb3b5be2209f6c12339833198190f6f6829581`. The license is installed
+  commit `740251a920abf92b7744d9c0518ca157db0db579`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally. RPC, remote UI assets and
   optional prebuilt llama-connect helper downloads are disabled. It applies

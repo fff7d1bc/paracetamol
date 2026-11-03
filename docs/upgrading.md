@@ -384,7 +384,64 @@ protected behavior is fixed.
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 | `server-speculative-metrics.patch` | Local reporting-only change exposing the existing `n_draft_verif_steps` as `timings.draft_verif_steps`. The gateway records it as optional request metadata. This counts accounted rounds, not every verification attempt or replay. | Upstream exposes the equivalent explicit counter and the matching-source CPU serialization fixture passes. Do not estimate it from draft-token counts. |
 
-The subsequent `c6fb3b5-r65` image adds that server-only reporting patch to
+The November 3 refresh selects frozen upstream
+[`740251a920abf92b7744d9c0518ca157db0db579`](https://github.com/ggml-org/llama.cpp/commit/740251a920abf92b7744d9c0518ca157db0db579),
+181 commits after `c6fb3b5`, in image `740251a-r69`. All fourteen patches
+remain. Eleven retain unchanged code, three need semantic rebases, and the
+reporting patch receives updated source/tree provenance. No removal gate is met.
+
+Upstream [PR 29510](https://github.com/ggml-org/llama.cpp/pull/29510) uses
+flash-attention `src[5]` for shared-cache row lists. Selected QSA IDs now use
+`src[6]`, with explicit mutual-exclusion guards. Keep the Qwen4exp full-cache
+causal/sequence mask as a real dependency and use that same layout policy when
+checking graph reuse. Do not substitute compressed row-list indices for
+full-cache cell IDs. The new generic row-list accelerator path is NVIDIA-only
+at this pin; HIP backend probing retains its ordinary non-row-list GPU path.
+
+The HC output-struct refactor in
+[PR 31142](https://github.com/ggml-org/llama.cpp/pull/31142) retains the raw
+F32 injection projection followed by one explicit scale. The pipeline patch
+also excludes upstream fused MoE gate inputs from its private small tiles.
+The graph rebase normalizes fallback mask shapes using the full token count,
+not an already stream-divided dimension. This prevents double-splitting a 4-D
+non-unified mask. Already-canonical masks retain their tensor identity instead
+of receiving per-layer identity views. The scheduler keys backend input copies
+by tensor pointer, so distinct views of one shared host mask become separate
+GPU copies. The initial rebase exposed about 11 GiB of extra target compute
+reservation with the 256K pool. Reshape only when stream dimensions differ,
+preserving the same mask values and dependencies.
+`test-qwen4exp-multistream.cpp` forces the nonfused two-stream branch in a
+bounded hardware fixture. It changes only that disposable context's policy,
+not a production default. Preserve shape, consumer, alias and lifetime guards
+rather than broadening matchers to make an update pass.
+
+The source range includes
+[DFlash feature device copies](https://github.com/ggml-org/llama.cpp/commit/2cbca389f515df455412dafa07e2b1359cc72a6d),
+[graph-eviction protection](https://github.com/ggml-org/llama.cpp/commit/00f113eceb2758158582d56f98bf476b2fe3ed32).
+These are upstream changes, not new downstream optimizations or independent
+speedup claims. Model files, templates, gateway samplers, F16 KV, the ordinary
+quantized/F32 matrix precision policy, greedy DFlash2 depth three and four
+shared slots stay fixed. This does not promise bit-identical outputs across
+upstream revisions.
+
+The checked head `28b812d` is held, seven commits ahead of the selected pin.
+Its [Q8_1 activation correction change](https://github.com/ggml-org/llama.cpp/commit/8fc0376721e9662d498a5706d7ee8e7574ce99f4)
+is intended to align the correction sum with quantized inputs and CPU behavior.
+In the matched Flash-Next thinking-off tool replay, however, that candidate
+adds a closing thinking tag and repeats the correct value. Both old-source
+images pass the short matrix. In a separate DFlash2 replay, five seeds and
+temperature zero all miss the exact-output oracle at that head, while the
+old-production and selected-pin controls pass all six. Rendered prompts and
+native sampling settings match. Replacing only the physical HIP library with
+the previous correction calculation restores all six checks, with other
+native payloads unchanged.
+This isolates the observed output difference, not a general model-quality
+loss or proof that the intended numerical correction is wrong. Select the
+immediately preceding upstream commit rather than carrying a permanent reverse
+patch or hiding generated text in the gateway. Revisit with the same replay
+fixture and broader task-quality evidence before advancing past this boundary.
+
+The October 26 `c6fb3b5-r65` image added that server-only reporting patch to
 the same source pin, making fourteen patches. It changes no inference or
 sampling behavior. The build applies it after the existing native build and
 rebuilds the server, retaining the compiled GPU kernels. A matching-source CPU
