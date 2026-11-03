@@ -10,8 +10,8 @@ revisions recorded in `catalog/catalog.json`.
 
 ## Direct components
 
-- The host gateway uses `modernc.org/sqlite` v1.60.1, under BSD-3-Clause,
-  for local usage statistics. It embeds SQLite 3.53.4, which is public domain,
+- The host gateway uses `modernc.org/sqlite` v1.61.1, under BSD-3-Clause,
+  for local usage statistics. It embeds SQLite 3.54.1, which is public domain,
   without depending on system SQLite or CGO. Module versions and checksums
   are pinned in `go.mod` and `go.sum`. The driver license and its full upstream
   third-party notices are retained in `licenses/modernc-sqlite/`. That upstream
