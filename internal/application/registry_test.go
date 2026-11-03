@@ -1,9 +1,27 @@
 package application
 
 import (
+	"os"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestContainerfilePrerequisiteImagesMatchRegistry(t *testing.T) {
+	containerfile, err := os.ReadFile("../../Containerfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for argument, identifier := range map[string]BuildID{
+		"ROCM_RUNTIME_IMAGE": BuildRuntime,
+		"ROCM_BASE_IMAGE":    BuildPyTorchBase,
+	} {
+		unit, ok := BuildUnitByID(string(identifier))
+		if !ok || !strings.Contains(string(containerfile), "\nARG "+argument+"="+unit.Image+"\n") {
+			t.Errorf("Containerfile %s does not match registered prerequisite %q", argument, unit.Image)
+		}
+	}
+}
 
 func TestLlamaGuideActionsUseRecommendedSelection(t *testing.T) {
 	spec, ok := ByID(string(LlamaCPP))

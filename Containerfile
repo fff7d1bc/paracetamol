@@ -1,12 +1,13 @@
-# docker.io/library/ubuntu:resolute-20260724.1 (26.04), resolved 2026-08-17.
-ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r4
-ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.13-r7
-ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914d4afc7a03
+# docker.io/library/ubuntu:resolute-20261024.1 (26.04), multi-architecture index resolved 2026-11-03.
+ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r5
+ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.14-r8
+ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 ARG ROCM_PACKAGE_INDEX=https://stable.repo.amd.com/rocm/whl-next/
 ARG ROCM_VERSION=10.1.0
-ARG TORCH_VERSION=2.13.0
-ARG TORCHVISION_VERSION=0.28.0
-ARG TORCHAUDIO_VERSION=2.11.0.2
+ARG TORCH_VERSION=2.14.0
+# AMD's documented ROCm 10.1 PyTorch 2.14 tuple uses this exact alpha-labeled wheel.
+ARG TORCHVISION_VERSION=0.29.0a0
+ARG TORCHAUDIO_VERSION=2.11.0.3
 ARG LLAMA_CPP_COMMIT=c6fb3b5be2209f6c12339833198190f6f6829581
 
 FROM ${UBUNTU_IMAGE} AS content-tools
@@ -385,7 +386,7 @@ FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 ARG DEBIAN_FRONTEND=noninteractive
 ARG LLAMA_CPP_COMMIT
 ARG ROCM_VERSION
-ARG MESA_VULKAN_VERSION=26.0.3-1ubuntu1
+ARG MESA_VULKAN_VERSION=26.0.8-1ubuntu0.3
 ARG VULKAN_VERSION=1.4.341.0-1
 ARG PIP_NO_CACHE_DIR=true
 ARG PIP_CACHE_DIR=/var/cache/paracetamol/pip

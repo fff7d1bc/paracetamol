@@ -29,6 +29,60 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Container foundation refresh (2026-11-03)
+
+The starting Ubuntu 26.04 image advances from `resolute-20260724.1` to
+`resolute-20261024.1`, OCI index
+`6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c`.
+The new rootfs includes glibc `2.43-2ubuntu2.4` and OpenSSL
+`3.5.5-1ubuntu3.7`, with the corresponding
+[glibc](https://lists.ubuntu.com/archives/ubuntu-security-announce/2026-September/011154.html)
+and [OpenSSL](https://lists.ubuntu.com/archives/ubuntu-security-announce/2026-October/011328.html)
+security fixes. The digest freezes the starting rootfs, not the subsequent
+Ubuntu package archive.
+
+ROCm remains `10.1.0`. AMD's documented matching tuple is PyTorch `2.14.0`,
+torchvision `0.29.0a0` and torchaudio `2.11.0.3`, all with `+rocm10.1.0`.
+The alpha suffix is the exact build prescribed by
+[AMD](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html),
+not a substitute nightly. Wheels retain all four managed GPU device extras.
+Mesa advances to `26.0.8-1ubuntu0.3`; Vulkan loader/development, glslc and
+SPIR-V header pins stay unchanged.
+
+A cold `build all --no-cache` passes for content tools, minimal runtime,
+PyTorch base, ComfyUI and llama.cpp. Every image passes `pip check`, and the
+base and ComfyUI retain the exact AMD tuple after application dependencies
+are installed. The `gfx1151` doctor passes its device-isolation and small GPU
+sum check. ComfyUI passes CPU-only HTTP startup with a read-only root,
+dropped capabilities, no GPU devices and loopback-only publication.
+ComfyUI and bundled-extension sources and constraints remain unchanged.
+No ComfyUI GPU workflow acceptance is claimed for this new foundation.
+
+The ordinary ROCm gateway screen also passes on the unchanged `c6fb3b5`
+llama.cpp source with the regular Flash-Next DFlash2 model. It covers natural
+32K retrieval and a history edit, prefix reuse, four actually overlapping
+generations, label/history isolation, cancellation and recovery. Cold prefill
+is 697.4 tokens/s, warm serial fixed-256 output is 27.43 tokens/s, and
+four-worker aggregate output is 40.67 tokens/s. The fresh old-foundation
+control measures 700.0, 23.96 and 39.59 respectively. These are one matched
+screen per arm with varying draft acceptance, not an isolated speedup claim.
+Timing outputs deliberately reach their output limit; separate natural-answer
+checks supply the quality evidence.
+
+Built foundation identities, before the separate llama.cpp source refresh:
+
+| Image suffix | Image ID |
+| --- | --- |
+| `runtime-ubuntu26.04-rocm10.1-r5` | `7639688d697541cffdce130e844a6050d46d9378d0a3b30eb2cb91b790c7d6b2` |
+| `base-ubuntu26.04-rocm10.1-torch2.14-r8` | `871f8638ec5c37ef64315571ab651cf703284f11c27458491a7665cd4c855949` |
+| `comfyui-ubuntu26.04-rocm10.1-0.28.0-r14` | `bf3cdafe723606eaad299f94dba5c94fc699eb93e31ae1a34b237d2e533cc249` |
+| `llama-cpp-ubuntu26.04-rocm10.1-c6fb3b5-r66` | `c8b9b759ad3274d4a2d936fd3ec8692b0f2fd68f2e722cbb40e50f8d124c1da9` |
+
+Evidence is retained below ignored `build/refresh-20261103/`. The host kernel,
+driver, power policy, swap, model files, templates, F16 KV cache and gateway
+sampling policy are unchanged. `gfx1150`, `gfx1200` and `gfx1201` are compiled
+targets, not GPU-accepted by this screen.
+
 ### Strix Halo Gufo-inspired optimization screen (2026-10-26)
 
 The [independent screen](qwen3.8-flash-next-gufo-optimization-screen.md)

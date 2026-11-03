@@ -306,13 +306,13 @@ does not authenticate the case outcomes and is not a signed attestation.
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
 Every application build ensures and tags this prerequisite as
-`localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r1`; `content install`
+`localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r2`; `content install`
 uses it without building anything itself. This keeps downloads independent of
 ComfyUI and makes a llama.cpp-only initial setup complete.
 
 `Containerfile` defines a minimal `rocm-runtime` target, which the launcher
 builds and tags as the managed local prerequisite
-`localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r4`. It owns the pinned
+`localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r5`. It owns the pinned
 Ubuntu runtime, Python environment, and AMD's modular ROCm core, libraries,
 and exact `gfx1150`, `gfx1151`, `gfx1200`, and `gfx1201` device wheels. It
 does not contain PyTorch or a compiler toolchain.
@@ -320,7 +320,7 @@ does not contain PyTorch or a compiler toolchain.
 The `rocm-base` target starts from `ROCM_RUNTIME_IMAGE`, adds PyTorch,
 torchvision, torchaudio, and the common Python-application build tools, and is
 tagged as
-`localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.13-r7`. Each final
+`localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.14-r8`. Each final
 PyTorch application target starts from the `ROCM_BASE_IMAGE` build argument:
 
 - `comfyui`

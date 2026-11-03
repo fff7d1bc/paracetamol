@@ -113,7 +113,7 @@ Build through one application so the normal prerequisite path is exercised:
 ```bash
 ./paracetamol build comfyui --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r1 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface1.27-r2 \
   -m pip check
 ```
 
@@ -133,7 +133,7 @@ ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:...
 Choose the intended Ubuntu release explicitly, resolve its current manifest
 digest, record the corresponding dated Ubuntu snapshot tag in the comment
 above it, and review whether package names in the `apt-get` layer changed. The
-official Ubuntu image publishes dated tags such as `resolute-20260724.1` as well
+official Ubuntu image publishes dated tags such as `resolute-20261024.1` as well
 as the moving `26.04` release tag. The dated tag keeps the selected snapshot
 visible upstream; the digest proves its exact identity. Do not replace that
 pair with a floating tag.
@@ -154,7 +154,7 @@ Validate with:
 ```bash
 ./paracetamol build all --no-cache
 podman run --rm --entrypoint /bin/bash \
-  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.1-0.28.0-r13 \
+  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.1-0.28.0-r14 \
   -lc 'cat /etc/os-release; python --version'
 ```
 
@@ -177,13 +177,20 @@ device extras for gfx1150, gfx1151, gfx1200, and gfx1201
 ```
 
 Consult AMD's current
-[ROCm PyTorch installation documentation](https://rocm.docs.amd.com/en/latest/)
+[ROCm PyTorch installation documentation](https://rocm.docs.amd.com/projects/ai-ecosystem/en/latest/frameworks/pytorch/install.html)
 and the exact package inventory at the release's documented aggregate index.
 ROCm 10.0 and later use
 `https://stable.repo.amd.com/rocm/whl-next/`; older TheRock releases remain at
 the legacy multi-architecture index. Confirm that the selected release still
 supplies all four device extras. Ordinary upstream PyPI wheels are not a
 substitute for this multi-architecture image.
+
+The current AMD-documented ROCm 10.1.0 tuple is PyTorch 2.14.0,
+torchvision 0.29.0a0, and torchaudio 2.11.0.3. The alpha suffix on torchvision
+is intentional: AMD prescribes that exact build for this tuple, including all
+four managed device extras. Do not substitute the stable 0.29.0 wheel built
+for ROCm 10.0.0. Review the wheel metadata and upstream installation instructions
+again on the next upgrade rather than inferring compatibility from version names.
 
 Update:
 
