@@ -133,6 +133,12 @@ func Install(options InstallOptions) error {
 		return err
 	}
 	defer releaseInstallLock(lock)
+	client := podman.Client{Runner: options.Runner}
+	// A killed launcher releases flock without necessarily stopping its child
+	// container. Check before touching staging, even for offline-only reuse.
+	if err := requireNoDownloaders(options.Context, client); err != nil {
+		return err
+	}
 
 	store, err := verification.Load(options.DataRoot)
 	if err != nil {
@@ -142,7 +148,6 @@ func Install(options InstallOptions) error {
 	if err != nil {
 		return err
 	}
-	client := podman.Client{Runner: options.Runner}
 	needsNetwork := false
 	mirrorMatches := make(map[string]string)
 	for _, artifact := range options.Artifacts {
@@ -226,6 +231,23 @@ func Install(options InstallOptions) error {
 		}
 		if err := os.RemoveAll(staging); err != nil {
 			return fmt.Errorf("remove completed staging %s: %w", staging, err)
+		}
+	}
+	return nil
+}
+
+func requireNoDownloaders(ctx context.Context, client podman.Client) error {
+	names, err := client.ManagedContainerNames(ctx, "")
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		labels, err := client.ContainerLabels(ctx, name)
+		if err != nil {
+			return err
+		}
+		if labels[podman.ManagedContainerLabel] == "true" && labels[podman.ManagedRoleLabel] == "download" {
+			return controlerr.New("content downloader container still exists: %s\nConfirm that it is stale, then remove only that container and retry:\n  podman rm --force %s", name, name)
 		}
 	}
 	return nil

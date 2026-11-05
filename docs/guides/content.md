@@ -254,8 +254,10 @@ Ctrl-C kills the downloader, waits until its exact container is gone, and keeps
 partial data for the next attempt.
 
 If a host crash or older launcher leaves a `paracetamol-download-*` container,
-the next download refuses to start and prints its exact name. Confirm that it
-is stale, remove only that named container with the printed
+the next installation refuses to access staging and prints its exact name,
+including when it would only reuse staged files or a local mirror. Real
+installs require successful Podman inspection even without network transfer.
+Confirm that it is stale, remove only that named container with the printed
 `podman rm --force NAME` command, and retry; staging remains available for
 resume.
 

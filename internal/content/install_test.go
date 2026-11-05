@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,11 @@ type relabelRunner struct{}
 func (relabelRunner) LookPath(name string) (string, error) { return "/usr/bin/" + name, nil }
 func (relabelRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
 	switch filepath.Base(command.Name) {
+	case "podman":
+		if len(command.Args) > 0 && command.Args[0] == "ps" {
+			return process.Result{}, nil
+		}
+		return process.Result{}, fmt.Errorf("unexpected podman command %v", command.Args)
 	case "getenforce":
 		return process.Result{Stdout: []byte("Enforcing\n")}, nil
 	case "chcon":
@@ -37,7 +43,10 @@ func (relabelRunner) Run(_ context.Context, command process.Command) (process.Re
 type noSELinuxRunner struct{}
 
 func (noSELinuxRunner) LookPath(string) (string, error) { return "", fmt.Errorf("missing") }
-func (noSELinuxRunner) Run(context.Context, process.Command) (process.Result, error) {
+func (noSELinuxRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
+	if command.Name == "podman" && len(command.Args) > 0 && command.Args[0] == "ps" {
+		return process.Result{}, nil
+	}
 	return process.Result{}, fmt.Errorf("unexpected process")
 }
 
@@ -48,6 +57,11 @@ func (corruptingRelabelRunner) LookPath(name string) (string, error) {
 }
 func (corruptingRelabelRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
 	switch filepath.Base(command.Name) {
+	case "podman":
+		if len(command.Args) > 0 && command.Args[0] == "ps" {
+			return process.Result{}, nil
+		}
+		return process.Result{}, fmt.Errorf("unexpected podman command %v", command.Args)
 	case "getenforce":
 		return process.Result{Stdout: []byte("Enforcing\n")}, nil
 	case "chcon":
@@ -84,6 +98,95 @@ func testArtifact(contents []byte) catalog.Artifact {
 	return catalog.Artifact{ID: "fixture", Destination: "fixture/model.gguf", Target: "llama-models", Size: int64(len(contents)), SHA256: fmt.Sprintf("%x", digest), Source: catalog.Source{Path: "model.gguf"}, License: catalog.License{Status: "verified"}}
 }
 
+type interlockRunner struct {
+	noSELinuxRunner
+	labels map[string]string
+	err    error
+	calls  []string
+}
+
+func (runner *interlockRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
+	runner.calls = append(runner.calls, strings.Join(command.Args, " "))
+	if command.Name != "podman" {
+		return process.Result{}, fmt.Errorf("unexpected process %s", command.Name)
+	}
+	switch command.Args[0] {
+	case "ps":
+		if !strings.Contains(strings.Join(command.Args, " "), "label="+podman.ManagedContainerLabel+"=true") {
+			return process.Result{}, fmt.Errorf("missing ownership filter")
+		}
+		return process.Result{Stdout: []byte("paracetamol-download-stale\n")}, runner.err
+	case "inspect":
+		raw, err := json.Marshal(runner.labels)
+		return process.Result{Stdout: raw}, err
+	default:
+		return process.Result{}, fmt.Errorf("unexpected podman mutation %v", command.Args)
+	}
+}
+
+func TestInstallInterlocksBeforeEveryStagingPath(t *testing.T) {
+	for _, reuse := range []string{"network", "mirror", "staged", "archive"} {
+		t.Run(reuse, func(t *testing.T) {
+			root := t.TempDir()
+			contents := []byte("exact fixture")
+			artifact := testArtifact(contents)
+			if reuse == "archive" {
+				artifact.Source.ArchiveMember = "model.gguf"
+				artifact.Source.ArchiveMaxSize = 1024
+			}
+			payload := payloadPath(root, artifact)
+			if err := os.MkdirAll(filepath.Dir(payload), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(payload, contents, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if reuse == "network" || reuse == "mirror" {
+				if err := os.Remove(payload); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runner := &interlockRunner{labels: map[string]string{podman.ManagedContainerLabel: "true", podman.ManagedRoleLabel: "download"}}
+			options := InstallOptions{Runner: runner, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}}
+			if reuse == "mirror" {
+				// The interlock must run before even indexing the mirror.
+				options.LocalMirror = filepath.Join(t.TempDir(), "absent-mirror")
+			}
+			err := Install(options)
+			if err == nil || !strings.Contains(err.Error(), "podman rm --force paracetamol-download-stale") {
+				t.Fatalf("missing exact-container guidance: %v", err)
+			}
+			if len(runner.calls) != 2 {
+				t.Fatalf("unexpected operations: %v", runner.calls)
+			}
+			if reuse == "staged" || reuse == "archive" {
+				if got, err := os.ReadFile(payload); err != nil || !bytes.Equal(got, contents) {
+					t.Fatalf("staging was changed: %q, %v", got, err)
+				}
+			}
+			if _, err := os.Stat(ArtifactPath(root, artifact)); !os.IsNotExist(err) {
+				t.Fatalf("content was installed: %v", err)
+			}
+		})
+	}
+}
+
+func TestDownloaderInterlockChecksBothLabelsAndFailsClosed(t *testing.T) {
+	for _, labels := range []map[string]string{
+		{podman.ManagedContainerLabel: "true", podman.ManagedRoleLabel: "application"},
+		{podman.ManagedContainerLabel: "false", podman.ManagedRoleLabel: "download"},
+	} {
+		runner := &interlockRunner{labels: labels}
+		if err := requireNoDownloaders(context.Background(), podman.Client{Runner: runner}); err != nil {
+			t.Fatalf("unrelated container blocked installation: %v", err)
+		}
+	}
+	runner := &interlockRunner{err: fmt.Errorf("inspection failed")}
+	if err := requireNoDownloaders(context.Background(), podman.Client{Runner: runner}); err == nil {
+		t.Fatal("inspection failure was ignored")
+	}
+}
+
 func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 	dataRoot := filepath.Join(t.TempDir(), "data")
 	mirror := filepath.Join(t.TempDir(), "mirror")
@@ -97,7 +200,7 @@ func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := Install(InstallOptions{Context: context.Background(), DataRoot: dataRoot, Artifacts: []catalog.Artifact{artifact}, LocalMirror: mirror, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}, Output: &output}); err != nil {
+	if err := Install(InstallOptions{Context: context.Background(), Runner: noSELinuxRunner{}, DataRoot: dataRoot, Artifacts: []catalog.Artifact{artifact}, LocalMirror: mirror, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}, Output: &output}); err != nil {
 		t.Fatal(err)
 	}
 	if count := strings.Count(output.String(), "Checking local mirror candidate"); count != 1 {
@@ -144,7 +247,7 @@ func TestInstallMovesOldSourceNamesToPublisherNamedDestinations(t *testing.T) {
 		}
 	}
 	if err := Install(InstallOptions{
-		Context: context.Background(), DataRoot: dataRoot, Artifacts: artifacts,
+		Context: context.Background(), Runner: noSELinuxRunner{}, DataRoot: dataRoot, Artifacts: artifacts,
 		LocalMirror: mirror, MoveFromMirror: true,
 		Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")},
 	}); err != nil {
@@ -332,7 +435,7 @@ func TestInstallKeepsSharedArchiveUntilEverySelectedMemberIsInstalled(t *testing
 	if err := os.WriteFile(download, archive.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Install(InstallOptions{Context: context.Background(), DataRoot: dataRoot, Artifacts: []catalog.Artifact{first, second}, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}}); err != nil {
+	if err := Install(InstallOptions{Context: context.Background(), Runner: noSELinuxRunner{}, DataRoot: dataRoot, Artifacts: []catalog.Artifact{first, second}, Environment: map[string]string{"XDG_RUNTIME_DIR": runtimeRoot}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range []struct {
