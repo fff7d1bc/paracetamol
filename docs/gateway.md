@@ -339,6 +339,10 @@ The body limit is 16 MiB and the waiting queue holds at most 64 requests.
 Client cancellation removes a queued request or propagates to the upstream
 request. A proxy transport failure marks the allocation failed so it is
 drained and recycled rather than silently reused.
+If upstream data is truncated after response headers have been sent, the
+gateway records the failure and aborts the downstream response too. Clients
+must receive a transport error rather than mistake a partial answer for a
+normally completed response.
 
 The llama.cpp router keeps one model child loaded by default. Its
 `--models-max` limit counts loaded children; it does not predict whether their

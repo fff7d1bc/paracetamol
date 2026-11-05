@@ -390,12 +390,17 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	record.Timing.UpstreamMilliseconds = elapsedMilliseconds(upstreamStarted, upstreamFinished)
 	server.completeRequest(&record, started, waitStarted, waitFinished)
 	server.logRequestFinish(record)
+	if proxyAborted {
+		// Accounting must finish before net/http aborts the downstream stream.
+		// Returning normally would turn truncated upstream data into a clean EOF.
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // ReverseProxy uses http.ErrAbortHandler to terminate a response whose stream
-// breaks after headers were committed. Contain that sentinel so the gateway
-// can release the lease normally and still publish its privacy-safe finish
-// record; any unrelated panic remains a programming error.
+// breaks after headers were committed. Defer that sentinel until chat has
+// published its privacy-safe finish record, then re-panic to preserve broken
+// downstream framing. Any unrelated panic remains a programming error.
 func serveReverseProxy(proxy *httputil.ReverseProxy, writer http.ResponseWriter, request *http.Request) (aborted bool) {
 	defer func() {
 		if recovered := recover(); recovered != nil {

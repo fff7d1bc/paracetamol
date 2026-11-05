@@ -241,6 +241,50 @@ func TestServerPropagatesCancellationAndReleasesLease(t *testing.T) {
 	}
 }
 
+func TestServerAbortsTruncatedUpstreamResponseAfterAccounting(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		contentType string
+		partial     string
+		stream      bool
+	}{
+		{"stream", "text/event-stream", "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n", true},
+		{"json", "application/json", `{"choices":[{"message":{"content":"partial`, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", test.contentType)
+				_, _ = io.WriteString(writer, test.partial)
+				writer.(http.Flusher).Flush()
+				panic(http.ErrAbortHandler)
+			}))
+			defer upstream.Close()
+			server, scheduler, handler := testGatewayServer(t, upstream)
+			payload, err := json.Marshal(map[string]any{"model": "fixture", "stream": test.stream})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := http.Post(server.URL+"/v1/chat/completions", "application/json", bytes.NewReader(payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			if response.StatusCode != http.StatusOK || string(body) != test.partial || !errors.Is(readErr, io.ErrUnexpectedEOF) {
+				t.Fatalf("status=%d body=%q read error=%v", response.StatusCode, body, readErr)
+			}
+			waitForStatus(t, scheduler, func(status SchedulerStatus) bool { return status.ActiveRequests == 0 })
+			recent := handler.requests.Recent(2)
+			if len(recent) != 1 || recent[0].Outcome != OutcomeUpstreamError || recent[0].HTTPStatus != http.StatusOK {
+				t.Fatalf("request accounting=%+v", recent)
+			}
+			if report, ok := handler.requests.Lookup(recent[0].ID); !ok || report.State != "completed" {
+				t.Fatalf("request report=%+v", report)
+			}
+		})
+	}
+}
+
 func TestStatusRedactsLifecycleErrors(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		hijacker := writer.(http.Hijacker)
