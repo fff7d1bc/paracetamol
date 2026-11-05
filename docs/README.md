@@ -121,7 +121,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
      screen](qwen3.8-flash-next-ngram-precision-screen.md)
    - [Qwen3.8 Flash-Next always-on vision and DFlash2
      compatibility](qwen3.8-flash-next-vision-feasibility.md)
-   - [Flash-Next Gufo optimization and DFlash2 tuning
+   - [Flash-Next Gufo optimization, engine recheck and DFlash2 tuning
      screen](qwen3.8-flash-next-gufo-optimization-screen.md)
    - [Swift 1.5 model retirement](swift-retirement.md)
 

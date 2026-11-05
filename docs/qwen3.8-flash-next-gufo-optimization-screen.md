@@ -5,6 +5,10 @@ The goal is useful ROCm speed without changing model bytes, matrix precision,
 F16 KV, sampling policy or output quality. Gufo is inspected as source, not
 installed or run as another inference engine.
 
+That scope belongs to the original extraction work. The separate
+[2026-11-05 engine recheck](#2026-11-05-source-built-engine-recheck) below
+actually builds and runs newer Gufo. It also leaves production unchanged.
+
 **Outcome: keep production unchanged.** Exact DPP transport passes numerical
 qualification but does not establish a useful isolated speedup. Reader reuse
 and lookahead have too little measured work to recover. Deeper greedy DFlash2
@@ -278,3 +282,170 @@ No prompts, user sessions, host addresses or personal paths are published.
 These are model- and workload-specific Strix Halo screens. They do not
 establish broad coding quality, other-hardware acceptance or performance for
 different GGUF releases. No host configuration or downloaded content changes.
+
+## 2026-11-05 source-built engine recheck
+
+**Keep Gufo out of the managed applications for now.** The speed advantage is
+real, including at long context. The tested MTP path also fails a harmless
+exact-output task that the llama.cpp and Gufo non-MTP controls pass. That
+failure reproduces after a fresh process start. This does not meet the
+requirement for confidence without known task regressions.
+
+This is not a finding that every Gufo mode is broken or that MTP alone causes
+the failures. Non-MTP Gufo passes its nine-case 32K screen. Neither that smoke
+nor a fast coding result establishes broad quality parity.
+
+### Matched conditions
+
+The control is the production llama.cpp source pin
+`740251a920abf92b7744d9c0518ca157db0db579`, image
+`llama-cpp-ubuntu26.04-rocm10.1-740251a-r71`, ID
+`9ea0d1277fb74bad75f5c22b093209dcf715abd24d759c090934ac760e7344d7`.
+It uses greedy DFlash2 at depth three and four slots sharing one 262144-token
+pool. This recheck measures one active client, not four-client throughput.
+
+Gufo is built from
+[`2c97b72`](https://github.com/gufo-org/gufo/tree/2c97b72d8671ddd0c74ae7d517b8cef4ebb78871),
+after v0.30.0, against the same project ROCm 10.1 SDK and minimal runtime.
+Its image ID is
+`6924fb309226a0d989d57134ec5f77eae53d198cedeba7b2c70cc70da1506ce0`.
+No prebuilt Gufo image is used. The ROCr runtime is the unmodified project
+wheel, not Gufo's Nix queue-memory-patched runtime. Gufo uses one 262144-token
+session, an 8 GiB RAM checkpoint budget and no persistent disk cache.
+Separate arms use no speculation or its shared-Q8_0 MTP sidecar with adaptive
+draft length one through seven. Gufo does not support Flash-Next DFlash2.
+The experimental sidecar is
+`MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf` from Unsloth revision
+`38bb39ee97821de2c9009abb7e93950eec396e66`, size 2786568256 bytes and SHA-256
+`5ff54097406a905cf3a724c709124ceb0e3e10235ee862298969e91c96fa96e6`.
+
+Both engines receive the same managed Unsloth UD-Q4_K_XL target shards and
+BF16 vision sidecar, with F16 KV. Only text is tested. Hardware is 128 GB
+Strix Halo `gfx1151` on Fedora 45 with kernel 7.2.15. Host settings, power
+profile, swap policy and model bytes remain unchanged. Builds and inference
+do not overlap. The containers remain rootless, read-only, capability-free,
+restricted to the selected GPU devices and published only on loopback.
+
+Every generation passes through the production gateway or an isolated
+transport using the actual gateway sampler, proxy and reporting code. The
+probe explicitly requests `xhigh` and seed 42, omits the six managed sampler
+fields, and verifies their resolved values and gateway provenance. Gufo's
+native default `min_p=0` therefore does not replace the managed `min_p=0.05`.
+Tool schemas stay present and identical across the entire coding exchange.
+Assistant reasoning and tool results are replayed. The task goals and inputs
+match, but compiled Gufo rendering and managed Jinja rendering are not claimed
+to produce identical token streams.
+
+### Measured results
+
+The context labels describe frozen archive lengths. Request framing adds a
+few hundred tokens. The near-256K cold request has 247241 input tokens and
+its appended turn reaches about 254K, safely inside the 262144 ceiling.
+
+| Measurement | llama.cpp with DFlash2 | Gufo with MTP |
+| --- | ---: | ---: |
+| 32K cold native prefill, tokens/s | 716 | 1678 |
+| 128K cold native prefill, tokens/s | 601 | 1583 |
+| Near-256K cold native prefill, tokens/s | 572 | 1502 |
+| 32K warm 256-token HTTP output rate, tokens/s | 30.25 | 49.96 |
+| 128K cold retrieval request wall, seconds | 229.16 | 88.72 |
+| Near-256K cold retrieval request wall, seconds | 444.31 | 170.36 |
+| Three-task coding suite wall, seconds | 518.88 | 271.41 |
+| Coding tasks completed and graded successfully | 2/3 | 2/3 |
+
+Non-MTP Gufo separately reaches 1753 native prefill tokens/s and 29.08 warm
+HTTP output tokens/s at 32K. Its faster cold path does not by itself provide
+the large decode gain. Some Gufo MTP retrieval responses approach 78 native
+decode tokens/s at 128K. That is not a general workflow rate or the matched
+fixed-length result in the table.
+
+All engines recover the six distributed values in their tested cold,
+repeated and appended histories. Gufo MTP passes those checks at 32K, 128K
+and near 256K. At near 256K its repeated request takes 6.36 seconds and its
+6144-token history extension takes 10.81 seconds, versus 11.55 and 21.38
+seconds for llama.cpp. Cache counters are inspected rather than assuming a
+sequential turn is warm. Gufo also restores intermediate checkpoints for the
+32K late-edit case, so its gain there includes avoiding prefill work, not
+just faster arithmetic.
+
+The coding tasks are small synthetic Go functions covering wrapped EINTR
+retry, exact JSON numeric literal extraction and interval merging. The same
+hidden tests run in network- and filesystem-isolated graders. Both engines
+complete retry and merging in one submission. Both exhaust the same
+8192-token budget on numeric extraction without submitting code. The suite
+wall therefore includes an incomplete task, not three completed jobs.
+Grading time is recorded separately. Fixed 256-token outputs are deliberately
+truncated throughput fixtures, not completed-task quality scores.
+
+### Failures that block qualification
+
+The tool-marker checks were prompted by the linked
+[quality discussion](https://www.reddit.com/r/StrixHalo/comments/1wwz2io/qwen_38_flash_next_does_gufo_make_more_errors/).
+The historical tool-parser fixes are already included in the tested pin.
+Their presence does not substitute for acceptance of this version.
+
+- With a tool available, a request to echo a harmless literal XML string
+  succeeds on llama.cpp and non-MTP Gufo. Gufo MTP instead ends after 30
+  reasoning tokens with an empty visible answer. Its reasoning calls the
+  requested literal a prompt-injection attack. The exact failure repeats
+  after a fresh MTP process start.
+- A request to print a literal marker and call `read` exactly once exhausts
+  4096 tokens with repeated calls on Gufo MTP in both buffered and streaming
+  responses. A fresh diagnostic replay produces 76 parsed calls. This is
+  **not a clean Gufo-only regression**. The 32K llama.cpp arm also misses the
+  same oracle, returning three calls and no requested literal. Non-MTP Gufo
+  passes it. All initial failures remain in the evidence.
+
+Diagnostic replays retain Gufo's pre-parser generated text as well as API
+responses and the effective sampling values. The XML response contains only
+the refusal-like reasoning, not a correct answer removed by the gateway.
+The repeated native tool-call blocks also occur in generated text. They are
+not invented by the gateway. Reasoning-token counters alone cannot locate
+the parser boundary because Gufo also accepts a canonical tool header as an
+implicit end to reasoning. Traced runs are excluded from timing comparisons.
+
+This establishes candidate task failures, not their numerical or sampler
+root cause. It does not establish an error-rate ranking from one seed or
+prove MTP causality. Successful coding and long-context retrieval do not
+erase these separate misses under the confidence requirement.
+The engines have their own sampling and automatic tool-grammar
+implementations. Matching request parameters does not make those
+implementations identical.
+
+### Numerical and capacity limits
+
+Same GGUF files and F16 KV do not make the numerical implementations
+equivalent. Current Gufo still narrows some F32 tensors and uses F16 HC and
+quantized activation paths, with upstream fast-math compilation. See its
+[device-model loader](https://github.com/gufo-org/gufo/blob/2c97b72d8671ddd0c74ae7d517b8cef4ebb78871/src/models/qwen38_flash_next/kernels/rocm/device_model.cpp).
+Those choices do not prove worse answers. They do rule out describing this
+as unchanged-arithmetic speed for the existing llama.cpp model path.
+
+Gufo's native phase rates exclude separate cache restoration, checkpoint
+capture, queueing and HTTP work. Client wall time and task completion remain
+the practical comparison. Output lengths and seeded trajectories can differ
+between engines and speculation modes.
+
+Gufo also allocates context per session rather than borrowing from one
+shared token pool. Four 262144-token MTP sessions add about 20.59 GiB of core
+state over one, before other per-session allowances. This is derived from
+[`SessionBytes`](https://github.com/gufo-org/gufo/blob/2c97b72d8671ddd0c74ae7d517b8cef4ebb78871/src/models/qwen38_flash_next/kernels/rocm/executor.cpp#L1624),
+not a measured four-session footprint or an OOM result. A four-by-64K setup
+would not preserve the single-session 256K capability. The concurrency
+matrix is not expanded after the quality gate fails.
+
+### Evidence and restoration
+
+Private fixtures, grader logs, source-build recipe, request reports, raw
+diagnostic traces and memory records are retained under the ignored
+`build/gufo-recheck-20261105/` tree. The first coding run is retained only as
+calibration because it removed tool definitions on the final turn. The
+reported version-two runs fix that prompt/cache confound before comparing
+engines and distinguish passing code from successful final completion.
+
+The memory guard never intervenes. No new GPU fault or OOM appears in the
+inspected kernel journal. Experimental containers, guards and proxy
+processes are stopped and removed where applicable. The test host returns
+to its original idle state with no host reconfiguration. The experimental
+image and verified MTP sidecar remain available for a later investigation.
+No managed application, default, content pin or client configuration changes.
