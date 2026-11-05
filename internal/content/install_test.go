@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 
 	"paracetamol/internal/catalog"
@@ -224,6 +227,122 @@ func TestInstallReusesVerifiedLocalMirror(t *testing.T) {
 	}
 	if plan.Ready != 1 {
 		t.Fatalf("ready = %d", plan.Ready)
+	}
+}
+
+func TestInstallRetriesInterruptedMirrorCopy(t *testing.T) {
+	root, mirrorRoot := t.TempDir(), t.TempDir()
+	contents := []byte("complete mirror model")
+	artifact := testArtifact(contents)
+	source := filepath.Join(mirrorRoot, artifact.Source.Path)
+	if err := os.WriteFile(source, contents, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	payload := payloadPath(root, artifact)
+	if err := os.MkdirAll(filepath.Dir(payload), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Reproduce the old interrupted direct copy, plus a killed new-style copy.
+	if err := os.WriteFile(payload, contents[:5], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(filepath.Dir(payload), ".mirror-interrupted.partial")
+	if err := os.WriteFile(scratch, contents[:3], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(InstallOptions{Runner: noSELinuxRunner{}, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, LocalMirror: mirrorRoot, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{source, ArtifactPath(root, artifact)} {
+		if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, contents) {
+			t.Fatalf("wrong bytes at %s: %q, %v", path, got, err)
+		}
+	}
+}
+
+func TestMirrorCopyRefusesLinksAndUnexpectedDestinations(t *testing.T) {
+	for _, kind := range []string{"symlink", "hardlink", "directory", "complete", "source-symlink", "source-hardlink"} {
+		t.Run(kind, func(t *testing.T) {
+			mirrorRoot, staging := t.TempDir(), t.TempDir()
+			contents := []byte("complete mirror model")
+			source := filepath.Join(mirrorRoot, "model.gguf")
+			destination := filepath.Join(staging, "model.gguf")
+			victim := filepath.Join(t.TempDir(), "unrelated")
+			if err := os.WriteFile(source, contents, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch kind {
+			case "symlink":
+				err = os.Symlink(victim, destination)
+			case "hardlink":
+				err = os.Link(victim, destination)
+			case "directory":
+				err = os.Mkdir(destination, 0o755)
+			case "complete":
+				err = os.WriteFile(destination, contents, 0o644)
+			case "source-symlink", "source-hardlink":
+				if err = os.Remove(source); err == nil {
+					if kind == "source-symlink" {
+						err = os.Symlink(victim, source)
+					} else {
+						err = os.Link(victim, source)
+					}
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, move := range []bool{false, true} {
+				if err := (localMirror{root: mirrorRoot, move: move}).materialize(source, destination); err == nil {
+					t.Fatalf("accepted %s with move=%v", kind, move)
+				}
+			}
+			if got, err := os.ReadFile(victim); err != nil || string(got) != "keep" {
+				t.Fatalf("linked bytes changed: %q, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestMirrorCopyHonorsHostUmask(t *testing.T) {
+	const childMask = "PARACETAMOL_TEST_MIRROR_COPY_UMASK"
+	if text := os.Getenv(childMask); text != "" {
+		mask, err := strconv.ParseUint(text, 8, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Change umask only in a dedicated subprocess, never alongside other
+		// tests or goroutines in the parent test binary.
+		syscall.Umask(int(mask))
+		root := t.TempDir()
+		source, destination := filepath.Join(root, "source.gguf"), filepath.Join(root, "copy.gguf")
+		if err := os.WriteFile(source, []byte("model"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := (localMirror{root: root}).materialize(source, destination); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(destination)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := info.Mode().Perm(), os.FileMode(0o644)&^os.FileMode(mask); got != want {
+			t.Fatalf("copy mode=%#o want=%#o", got, want)
+		}
+		return
+	}
+	for _, mask := range []string{"0022", "0027", "0077"} {
+		t.Run(mask, func(t *testing.T) {
+			command := exec.Command(os.Args[0], "-test.run=^TestMirrorCopyHonorsHostUmask$")
+			command.Env = append(os.Environ(), childMask+"="+mask)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("umask=%s: %v\n%s", mask, err, output)
+			}
+		})
 	}
 }
 

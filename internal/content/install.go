@@ -11,11 +11,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"paracetamol/internal/atomicfile"
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
@@ -257,6 +259,11 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	payload := payloadPath(options.DataRoot, artifact)
 	download := downloadPath(options.DataRoot, artifact)
 	if err := storage.ValidateManagedParent(payload, stagingPartition(options.DataRoot, artifact), options.DataRoot, "staging"); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(payload); err == nil && !singleRegular(info) {
+		return controlerr.New("staged payload is not a singly linked regular file: %s", payload)
+	} else if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(payload), 0o755); err != nil {
@@ -759,33 +766,71 @@ func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, 
 }
 
 func (mirror localMirror) materialize(source, destination string) error {
+	if err := storage.ValidateManagedParent(source, mirror.root, mirror.root, "local mirror"); err != nil {
+		return err
+	}
+	input, err := os.OpenFile(source, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	original, err := input.Stat()
+	if err != nil {
+		return err
+	}
+	if !singleRegular(original) {
+		return controlerr.New("local mirror source is not a singly linked regular file: %s", source)
+	}
+	// Older installs copied directly to the payload. Only an incomplete,
+	// unaliased regular file may be replaced after a complete new copy exists.
+	if existing, err := os.Lstat(destination); err == nil {
+		if !singleRegular(existing) || existing.Size() >= original.Size() {
+			return controlerr.New("refusing to replace unexpected mirror staging: %s", destination)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	if mirror.move {
 		if err := os.Rename(source, destination); err == nil {
 			return nil
 		}
 	}
-	input, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer input.Close()
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	output, err := os.CreateTemp(filepath.Dir(destination), ".mirror-*.partial")
 	if err != nil {
 		return err
 	}
 	_, copyErr := io.Copy(output, input)
 	closeErr := output.Close()
 	if copyErr != nil || closeErr != nil {
-		_ = os.Remove(destination)
 		if copyErr != nil {
 			return copyErr
 		}
 		return closeErr
 	}
+	current, err := os.Lstat(source)
+	if err != nil || !singleRegular(current) || fileIdentity(current) != fileIdentity(original) {
+		return controlerr.New("local mirror source changed during copying: %s", source)
+	}
+	// A killed copy leaves only a scratch file; the payload name is published
+	// atomically and retries can replace an old interrupted direct copy.
+	mask, err := strconv.ParseUint(podman.CurrentUmask(), 8, 32)
+	if err != nil {
+		return fmt.Errorf("read mirror copy umask: %w", err)
+	}
+	// Publish chmods its input explicitly, so apply the host mask ourselves
+	// rather than widening permissions selected by a restrictive caller.
+	if err := atomicfile.Publish(destination, output.Name(), 0o644&^fs.FileMode(mask), atomicfile.ReplaceRegular); err != nil {
+		return err
+	}
 	if mirror.move {
 		return os.Remove(source)
 	}
 	return nil
+}
+
+func singleRegular(info os.FileInfo) bool {
+	status, ok := info.Sys().(*syscall.Stat_t)
+	return ok && info.Mode().IsRegular() && status.Nlink == 1
 }
 
 func withinPath(candidate, root string) bool {

@@ -348,6 +348,11 @@ reflinks, exact validated matches can be moved:
   --accept-license --acknowledge-license-risk
 ```
 
+Mirror copies publish the staged payload only after the copy completes. An
+interrupted copy can be retried without removing partial files manually;
+the source is preserved in copy mode. Linked or unexpected staging files are
+refused instead of overwritten.
+
 Move mode removes only catalog-hash matches, but may leave the old tree's
 managed symlinks broken. Keep the active data directory outside the mirror,
 verify the new installation, then remove the old directory. Dry-run validates
