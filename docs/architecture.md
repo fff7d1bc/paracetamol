@@ -306,7 +306,7 @@ does not authenticate the case outcomes and is not a signed attestation.
 `Containerfile` defines a small `content-tools` target containing pinned
 Hugging Face download dependencies and the resumable direct-HTTPS helper.
 `build all` includes it as
-`localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r1`.
+`localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r2`.
 Use `build content-tools` to build or refresh it independently. Selected
 application builds follow their own prerequisite closure and do not build the
 download image. `content install` requires it but builds nothing itself.

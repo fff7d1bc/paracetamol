@@ -93,6 +93,62 @@ class ContainerDownloadTests(unittest.TestCase):
                 )
 
     @patch("containers.content_tools.download.urllib.request.urlopen")
+    def test_exact_download_bounds_streamed_bytes_in_every_range_mode(self, urlopen):
+        for prefix, status in [(b"", 200), (b"com", 206), (b"com", 200)]:
+            for declared in [None, "1"]:
+                with self.subTest(prefix=prefix, status=status, declared=declared):
+                    headers = {"Content-Range": "bytes 3-99/100"}
+                    if declared is not None:
+                        headers["Content-Length"] = declared
+                    response = FakeResponse(b"x" * 100, status=status, headers=headers)
+                    urlopen.return_value = response
+                    with tempfile.TemporaryDirectory() as directory:
+                        output = Path(directory) / "model.bin"
+                        output.write_bytes(prefix)
+                        with self.assertRaisesRegex(RuntimeError, "exceeds expected"):
+                            download("https://example.invalid/model", output, 8)
+                        self.assertLessEqual(output.stat().st_size, 8)
+                        if status == 206:
+                            self.assertTrue(output.read_bytes().startswith(prefix))
+                        allowance = 8 - len(prefix) if status == 206 else 8
+                        self.assertLessEqual(response.contents.tell(), allowance + 1)
+
+    @patch("containers.content_tools.download.urllib.request.urlopen")
+    def test_exact_download_rejects_oversized_declaration_before_mutation(self, urlopen):
+        for status, declared in [(200, "9"), (206, "6")]:
+            with self.subTest(status=status):
+                response = FakeResponse(
+                    b"x" * 100,
+                    status=status,
+                    headers={"Content-Length": declared, "Content-Range": "bytes 3-8/9"},
+                )
+                urlopen.return_value = response
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "model.bin"
+                    output.write_bytes(b"com")
+                    with self.assertRaisesRegex(RuntimeError, "declares"):
+                        download("https://example.invalid/model", output, 8)
+                    self.assertEqual(output.read_bytes(), b"com")
+                    self.assertEqual(response.contents.tell(), 0)
+
+    @patch("containers.content_tools.download.urllib.request.urlopen")
+    @patch("containers.content_tools.download._CHUNK_SIZE", 4)
+    def test_exact_download_never_writes_overflow_after_full_chunks(self, urlopen):
+        for prefix in [b"", b"com"]:
+            with self.subTest(prefix=prefix):
+                status = 206 if prefix else 200
+                urlopen.return_value = FakeResponse(
+                    b"x" * 100, status=status,
+                    headers={"Content-Range": "bytes 3-99/100"},
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "model.bin"
+                    output.write_bytes(prefix)
+                    with self.assertRaisesRegex(RuntimeError, "exceeds expected"):
+                        download("https://example.invalid/model", output, 8)
+                    self.assertLessEqual(output.stat().st_size, 8)
+
+    @patch("containers.content_tools.download.urllib.request.urlopen")
     def test_bounded_download_stops_at_the_size_limit(self, urlopen):
         urlopen.return_value = FakeResponse(b"x" * 11)
         with tempfile.TemporaryDirectory() as directory:
@@ -102,6 +158,15 @@ class ContainerDownloadTests(unittest.TestCase):
                     "https://example.invalid/workflow", output, maximum_size=10
                 )
             self.assertLessEqual(output.stat().st_size, 10)
+
+    @patch("containers.content_tools.download.urllib.request.urlopen")
+    def test_bounded_download_rejects_short_eof_despite_successful_reads(self, urlopen):
+        urlopen.return_value = FakeResponse(b"short", headers={"Content-Length": "10"})
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "workflow.zip"
+            with self.assertRaisesRegex(RuntimeError, "server declared 10"):
+                download("https://example.invalid/workflow", output, maximum_size=20)
+            self.assertEqual(output.read_bytes(), b"short")
 
     def test_download_requires_one_size_policy_and_https(self):
         with tempfile.TemporaryDirectory() as directory:

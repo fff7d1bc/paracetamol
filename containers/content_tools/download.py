@@ -99,12 +99,35 @@ def download(
                     "server returned an unexpected content range"
                 )
         mode = "ab" if append else "wb"
+        downloaded = current_size if append else 0
+        content_length = response.headers.get("Content-Length")
+        if content_length:
+            try:
+                declared_size = int(content_length)
+            except ValueError:
+                declared_size = 0
+            if declared_size > expected_size - downloaded:
+                raise RuntimeError(
+                    "download declares {} bytes; expected at most {}".format(
+                        declared_size, expected_size - downloaded
+                    )
+                )
         with output.open(mode) as handle:
             while True:
-                block = response.read(_CHUNK_SIZE)
+                # Probe one byte beyond the remaining allowance, but never
+                # write an oversized block, including after a resumed prefix.
+                remaining = expected_size - downloaded
+                block = response.read(min(_CHUNK_SIZE, remaining + 1))
                 if not block:
                     break
+                if len(block) > remaining:
+                    raise RuntimeError(
+                        "download exceeds expected size of {} bytes".format(
+                            expected_size
+                        )
+                    )
                 handle.write(block)
+                downloaded += len(block)
 
     actual_size = output.stat().st_size
     if actual_size != expected_size:
@@ -124,12 +147,13 @@ def _download_bounded(
     response = urllib.request.urlopen(_request(url, 0, token))
     with response:
         content_length = response.headers.get("Content-Length")
+        declared_size = None
         if content_length:
             try:
                 declared_size = int(content_length)
             except ValueError:
-                declared_size = 0
-            if declared_size > maximum_size:
+                pass
+            if declared_size is not None and declared_size > maximum_size:
                 raise RuntimeError(
                     "download declares {} bytes; maximum is {}".format(
                         declared_size, maximum_size
@@ -150,6 +174,12 @@ def _download_bounded(
                     )
                 handle.write(block)
                 downloaded += len(block)
+    if declared_size is not None and downloaded != declared_size:
+        raise RuntimeError(
+            "downloaded size is {} bytes; server declared {}".format(
+                downloaded, declared_size
+            )
+        )
     if downloaded == 0:
         raise RuntimeError("downloaded file is empty")
 

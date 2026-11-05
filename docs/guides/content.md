@@ -233,6 +233,12 @@ separate exact-byte verification progress for local-mirror candidates, existing
 managed files, and newly staged payloads. A terminal updates one line, while
 redirected output emits periodic newline-delimited milestones.
 
+Direct HTTPS downloads enforce the pinned byte count while streaming, also
+when resuming a partial file; oversized responses are rejected before bytes
+beyond that limit can reach staging.
+Build the current helper image with `./paracetamol build content-tools` after
+updating. An older content-tools image does not satisfy the new image revision.
+
 One content installation may mutate a given data directory at a time. A second
 installer fails immediately with a clear message instead of sharing staging,
 verification, or final moves with the active command. The lock is released on

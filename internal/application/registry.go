@@ -85,7 +85,7 @@ var specs = []Spec{
 var units = []BuildUnit{
 	{ID: BuildRuntime, DisplayName: "minimal ROCm runtime", Target: "rocm-runtime", Image: identity.Image("runtime-ubuntu26.04-rocm10.1-r5")},
 	{ID: BuildPyTorchBase, DisplayName: "ROCm/PyTorch base", Target: "rocm-base", Image: identity.Image("base-ubuntu26.04-rocm10.1-torch2.14-r8"), Prerequisites: []BuildID{BuildRuntime}},
-	{ID: BuildContentTools, DisplayName: "content tools", Target: "content-tools", Image: identity.Image("content-ubuntu26.04-huggingface2.4-r1")},
+	{ID: BuildContentTools, DisplayName: "content tools", Target: "content-tools", Image: identity.Image("content-ubuntu26.04-huggingface2.4-r2")},
 	{ID: BuildComfyUI, DisplayName: "ComfyUI", Target: "comfyui", Image: specs[0].Image, Prerequisites: []BuildID{BuildPyTorchBase}, Application: string(ComfyUI)},
 	{ID: BuildLlamaCPP, DisplayName: "llama.cpp", Target: "llama-cpp", Image: specs[1].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(LlamaCPP)},
 }

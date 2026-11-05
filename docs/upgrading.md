@@ -108,6 +108,9 @@ upgrading `huggingface-hub`, resolve its full environment in a clean Python
 virtual environment, review every transitive change, replace the complete pin
 set, and update the content-tools image identity in
 `internal/application/registry.go`.
+Advance that image's revision when the bundled HTTPS helper changes too, so
+an older locally built helper cannot silently satisfy the installer's image
+check.
 
 Build the independent content-tools target explicitly. A selected application
 build does not include it in that application's prerequisite closure:
@@ -115,7 +118,7 @@ build does not include it in that application's prerequisite closure:
 ```bash
 ./paracetamol build content-tools --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r1 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r2 \
   -m pip check
 ```
 
