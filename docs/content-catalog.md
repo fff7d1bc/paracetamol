@@ -661,6 +661,12 @@ The staging key is derived from the provider, version, and filename, so one
 download can serve every selected member. Staging is pruned only after all
 selected members are installed.
 
+Archive staging records successful transfer completion separately from member
+verification. Interrupted unmarked downloads restart; older complete ZIPs are
+reused only after central-directory validation. A completed archive that fails
+member layout, size, or SHA-256 checks remains available for review and does
+not trigger an automatic replacement download on retry.
+
 For Civitai, query the official API for the exact model version and file.
 Record the immutable version ID, filename, reported size, and SHA-256, then
 verify the downloaded bytes. If authentication is required, send

@@ -261,6 +261,18 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 	if err := storage.ValidateManagedParent(payload, stagingPartition(options.DataRoot, artifact), options.DataRoot, "staging"); err != nil {
 		return err
 	}
+	if artifact.Source.ArchiveMember != "" {
+		// Archive transport and extracted payload have different parents. Check
+		// the transport path before a downloader can truncate an aliased ZIP.
+		if err := storage.ValidateManagedParent(download, stagingPartition(options.DataRoot, artifact), options.DataRoot, "archive staging"); err != nil {
+			return err
+		}
+		if info, err := os.Lstat(download); err == nil && !singleRegular(info) {
+			return controlerr.New("staged archive is not a singly linked regular file: %s", download)
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
 	if info, err := os.Lstat(payload); err == nil && !singleRegular(info) {
 		return controlerr.New("staged payload is not a singly linked regular file: %s", payload)
 	} else if err != nil && !os.IsNotExist(err) {
@@ -345,6 +357,11 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 				}
 				if cleanupErr != nil {
 					return cleanupErr
+				}
+				if artifact.Source.ArchiveMember != "" {
+					if err := recordArchiveCompletion(download, artifact.Source.ArchiveMaxSize); err != nil {
+						return err
+					}
 				}
 			}
 			if artifact.Source.ArchiveMember != "" {
@@ -605,14 +622,52 @@ func stagedPayloadReady(dataRoot string, artifact catalog.Artifact) bool {
 }
 
 func stagedDownloadReady(dataRoot string, artifact catalog.Artifact) bool {
-	info, err := os.Lstat(downloadPath(dataRoot, artifact))
-	if err != nil || !info.Mode().IsRegular() {
+	path := downloadPath(dataRoot, artifact)
+	info, err := os.Lstat(path)
+	if err != nil || !singleRegular(info) {
 		return false
 	}
 	if artifact.Source.ArchiveMember != "" {
-		return info.Size() > 0 && info.Size() <= artifact.Source.ArchiveMaxSize
+		if info.Size() <= 0 || info.Size() > artifact.Source.ArchiveMaxSize {
+			return false
+		}
+		marker := path + ".complete"
+		if status, err := os.Lstat(marker); err == nil && singleRegular(status) && status.Size() < 1024 {
+			if contents, err := os.ReadFile(marker); err == nil && string(contents) == fileIdentity(info) {
+				return true
+			}
+		}
+		// Older downloads have no completion marker. A readable ZIP central
+		// directory supplies the validation boundary; a nonempty prefix does not.
+		reader, err := zip.OpenReader(path)
+		if err != nil {
+			return false
+		}
+		return reader.Close() == nil
 	}
 	return info.Size() == artifact.Size
+}
+
+func recordArchiveCompletion(path string, maximumSize int64) error {
+	handle, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer handle.Close()
+	if err := handle.Sync(); err != nil {
+		return err
+	}
+	info, err := handle.Stat()
+	if err != nil {
+		return err
+	}
+	if !singleRegular(info) || info.Size() <= 0 || info.Size() > maximumSize {
+		return controlerr.New("downloader did not create the expected bounded archive: %s", path)
+	}
+	// Record transfer completion independently of member validation. A complete
+	// but changed archive must remain available for review, not be redownloaded
+	// every time its pinned member or layout fails validation.
+	return atomicfile.Write(path+".complete", []byte(fileIdentity(info)), 0o644, atomicfile.ReplaceRegular)
 }
 
 func extractArchive(artifact catalog.Artifact, archive, destination string) error {

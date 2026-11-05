@@ -570,3 +570,184 @@ func TestInstallKeepsSharedArchiveUntilEverySelectedMemberIsInstalled(t *testing
 		t.Fatalf("completed archive staging remains: %v", err)
 	}
 }
+
+type archiveRunner struct {
+	noSELinuxRunner
+	path      string
+	contents  []byte
+	status    int
+	downloads int
+}
+
+func (runner *archiveRunner) LookPath(name string) (string, error) {
+	if name == "podman" {
+		return "/usr/bin/podman", nil
+	}
+	return runner.noSELinuxRunner.LookPath(name)
+}
+
+func (runner *archiveRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
+	if command.Name != "podman" {
+		return process.Result{}, fmt.Errorf("unexpected process %s", command.Name)
+	}
+	switch command.Args[0] {
+	case "ps", "image", "rm":
+		return process.Result{}, nil
+	case "info":
+		return process.Result{Stdout: []byte("true\n")}, nil
+	case "run":
+		runner.downloads++
+		return process.Result{Status: runner.status}, os.WriteFile(runner.path, runner.contents, 0o644)
+	default:
+		return process.Result{}, fmt.Errorf("unexpected podman operation %v", command.Args)
+	}
+}
+
+func archiveFixture(t *testing.T, member string, contents []byte) (catalog.Artifact, []byte) {
+	t.Helper()
+	artifact := testArtifact(contents)
+	artifact.Source = catalog.Source{Provider: "civitai", Path: "model.zip", ArchiveMember: "model.gguf", ArchiveMaxSize: 1024 * 1024}
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	file, err := writer.Create(member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(contents); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return artifact, archive.Bytes()
+}
+
+func TestArchiveRetryRedownloadsInterruptedTransfer(t *testing.T) {
+	root := t.TempDir()
+	artifact, archive := archiveFixture(t, "model.gguf", []byte("fixture model"))
+	path := downloadPath(root, artifact)
+	runner := &archiveRunner{path: path, contents: archive[:len(archive)/2], status: 1}
+	options := InstallOptions{Runner: runner, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}}
+	if err := Install(options); err == nil || !strings.Contains(err.Error(), "download failed") {
+		t.Fatalf("expected interrupted transfer: %v", err)
+	}
+	if stagedDownloadReady(root, artifact) {
+		t.Fatal("nonempty interrupted ZIP counted as complete")
+	}
+	if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, runner.contents) {
+		t.Fatalf("interrupted bytes were removed: %v", err)
+	}
+	runner.contents, runner.status = archive, 0
+	if err := Install(options); err != nil {
+		t.Fatal(err)
+	}
+	if runner.downloads != 2 {
+		t.Fatalf("downloads = %d, expected retry", runner.downloads)
+	}
+}
+
+func TestCompletedArchiveMismatchRemainsFailClosedOnRetry(t *testing.T) {
+	for _, mismatch := range []string{"malformed", "layout", "size", "hash"} {
+		t.Run(mismatch, func(t *testing.T) {
+			root := t.TempDir()
+			member := "model.gguf"
+			if mismatch == "layout" {
+				member = "other.gguf"
+			}
+			artifact, archive := archiveFixture(t, member, []byte("fixture model"))
+			if mismatch == "malformed" {
+				archive = []byte("a completely transferred non-ZIP response")
+			} else if mismatch == "size" {
+				artifact.Size++
+			} else if mismatch == "hash" {
+				artifact.SHA256 = strings.Repeat("0", 64)
+			}
+			path := downloadPath(root, artifact)
+			runner := &archiveRunner{path: path, contents: archive}
+			options := InstallOptions{Runner: runner, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}}
+			for attempt := 0; attempt < 2; attempt++ {
+				if err := Install(options); err == nil {
+					t.Fatal("accepted changed archive")
+				}
+				if !stagedDownloadReady(root, artifact) {
+					t.Fatal("completed rejected archive was marked for redownload")
+				}
+				if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, archive) {
+					t.Fatalf("rejected archive changed: %v", err)
+				}
+			}
+			if runner.downloads != 1 {
+				t.Fatalf("redownloaded rejected archive: %d", runner.downloads)
+			}
+		})
+	}
+}
+
+func TestArchiveCompletionIsBoundToExactFileIdentity(t *testing.T) {
+	root := t.TempDir()
+	artifact, archive := archiveFixture(t, "model.gguf", []byte("fixture model"))
+	path := downloadPath(root, artifact)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, archive, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordArchiveCompletion(path, artifact.Source.ArchiveMaxSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("interrupted replacement"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if stagedDownloadReady(root, artifact) {
+		t.Fatal("stale completion marker accepted replacement partial")
+	}
+}
+
+func TestArchiveDownloadRefusesUnexpectedTransportPaths(t *testing.T) {
+	for _, kind := range []string{"symlink", "hardlink", "directory", "parent-symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			artifact, archive := archiveFixture(t, "model.gguf", []byte("fixture model"))
+			if kind == "parent-symlink" {
+				artifact.Source.Path = "nested/model.zip"
+			}
+			path := downloadPath(root, artifact)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			victimRoot := t.TempDir()
+			victim := filepath.Join(victimRoot, "model.zip")
+			if err := os.WriteFile(victim, []byte("keep unrelated bytes"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch kind {
+			case "symlink":
+				err = os.Symlink(victim, path)
+			case "hardlink":
+				err = os.Link(victim, path)
+			case "directory":
+				err = os.Mkdir(path, 0o755)
+			case "parent-symlink":
+				if err = os.Remove(filepath.Dir(path)); err == nil {
+					err = os.Symlink(victimRoot, filepath.Dir(path))
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner := &archiveRunner{path: path, contents: archive}
+			err = Install(InstallOptions{Runner: runner, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}})
+			if err == nil {
+				t.Fatal("accepted unexpected archive path")
+			}
+			if runner.downloads != 0 {
+				t.Fatalf("launched %d downloaders against unsafe path", runner.downloads)
+			}
+			if got, err := os.ReadFile(victim); err != nil || string(got) != "keep unrelated bytes" {
+				t.Fatalf("aliased bytes changed: %q, %v", got, err)
+			}
+		})
+	}
+}

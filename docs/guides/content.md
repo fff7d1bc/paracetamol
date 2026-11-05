@@ -238,6 +238,9 @@ when resuming a partial file; oversized responses are rejected before bytes
 beyond that limit can reach staging.
 Build the current helper image with `./paracetamol build content-tools` after
 updating. An older content-tools image does not satisfy the new image revision.
+Interrupted archive transfers restart on retry. Complete staged ZIPs are
+reused, while completed archives that fail member validation stay available
+for inspection rather than being downloaded again automatically.
 
 One content installation may mutate a given data directory at a time. A second
 installer fails immediately with a clear message instead of sharing staging,
