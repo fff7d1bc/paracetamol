@@ -4,6 +4,57 @@ Validation is layered so ordinary development on a host without suitable
 target GPU capacity remains useful without pretending it replaces
 target-hardware acceptance.
 
+## Development and deployment
+
+The checkout launcher keeps binaries, module and build caches, temporary
+files and telemetry state below the ignored `build/` directory. `make build`
+is the normal incremental path. Force the ordinary binary through publication
+with `make -B build` before finishing Go or Makefile changes. `make clean`
+removes only the repository's anchored `build/` tree.
+
+Normal builds use CGO, glibc and the host NSS resolver. They require a C
+compiler and glibc development headers. `make static` explicitly builds the
+optional pure-Go binary. It supports DNS and `/etc/hosts`, but not NSS-only
+name sources such as mDNS. The optional native-Linux `make race` also uses CGO.
+
+Normal commands use `GOTOOLCHAIN=local`, so the installed Go toolchain must
+satisfy `go.mod`. Use `make GOTOOLCHAIN=auto -B build` only when automatic
+toolchain selection is intentional. Its Go state stays below `build/`.
+
+### Transfer a source checkout
+
+To copy a checkout to a test host without transferring repository-local
+binaries or Go caches, use:
+
+```bash
+rsync -a -v --progress --delete \
+  --exclude=/.git/ --exclude=/build/ \
+  --exclude='__pycache__/' --exclude='*.py[cod]' \
+  ~/src/paracetamol/ gateway.example:src/paracetamol
+```
+
+`gateway.example` and the checkout paths are examples. The anchored exclusions
+preserve the destination's own Git metadata and `build/` cache, while the
+Python patterns keep ignored container-test bytecode out of a deployment.
+`--delete` still removes obsolete source files. Do not add `--delete-excluded`.
+
+### Build a custom product identity
+
+The pre-release product identity has one definition shared by the Go packages.
+For example:
+
+```bash
+make -B PRODUCT_ID=new-name DISPLAY_NAME='New Name' build
+```
+
+This changes the built command, host-configuration environment prefix
+(`NEW_NAME_*`), persistent namespace, local image namespace, container names
+and ownership-label namespace together. Set `ENV_PREFIX` explicitly only when
+a renamed command needs another spelling. Changing identity selects new state
+and image ownership. It does not migrate an existing Paracetamol data
+directory. See [identity ownership and protocol boundaries](architecture.md#command-flow)
+before making a source-level product rename.
+
 ## Validation tiers
 
 ### Tier 1: static and unit checks

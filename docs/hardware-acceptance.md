@@ -29,6 +29,20 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo host refresh (2026-11-05)
+
+The 128 GB Framework Desktop development system now reports Fedora Linux 45,
+kernel `7.2.15-300.fc45.x86_64` and BIOS `03.06`. This is a read-only inventory
+update, not a new hardware-acceptance `PASS` or a measured speed improvement.
+The Fedora 44 entries and dated results above and below describe their
+original environments and must not be relabeled as Fedora 45 measurements.
+
+No post-upgrade inference benchmark was run for this update. Establish a new
+matched gateway baseline before attributing a performance change to Fedora,
+firmware or a later kernel. The
+[IOMMU and kernel guidance](guides/tuning.md#iommu-and-kernel-upgrades)
+describes the Linux 7.4 PerfOpt follow-up without prescribing host changes.
+
 ### Strix Halo Flash-Next vision (2026-11-03)
 
 PASS on `gfx1151` with the locally built `740251a-r71` image. The source pin,

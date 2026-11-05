@@ -12,6 +12,8 @@ then choose a user guide or maintainer reference below.
   verification, resumable downloads, mirrors, imports, and workflows.
 - [Operations](guides/operations.md) covers hardware acceptance, builds,
   caches, image transfer, persistent data, logs, and scoped cleanup.
+- [Upgrade notes](guides/upgrade-notes.md) covers pre-release state changes,
+  retired applications, model IDs and client configuration refreshes.
 - [Tuning and benchmarks](guides/tuning.md) covers host GPU access, runtime
   policies, memory configuration, and repeatable performance comparisons.
 - [Qwen3.8 Dynamic Q4 versus Q8](guides/qwen3.8-dynamic-quant-comparison.md)

@@ -236,6 +236,51 @@ quiet on newer kernels because the live GPU operation is the more useful
 positive check. This extra KFD requirement is specific to the Ryzen AI Max /
 `gfx1151` family and does not apply to Strix Point.
 
+### IOMMU and kernel upgrades
+
+AMD's PerfOpt support entered the
+[Linux 7.4 IOMMU merge](https://github.com/torvalds/linux/commit/4da9dedf3fc59137fd86d664693776aa38cb97f5).
+It optimizes the system-memory access path for supported integrated GPUs in
+an identity domain. This is distinct from disabling the IOMMU for the whole
+machine. It does not supply DMA containment for an identity-mapped GPU.
+
+Check the selected GPU's domain, not just the boot log's global default.
+A global translated default can coexist with an identity-mapped GPU. These
+read-only commands use an example render node that must match your selection:
+
+```bash
+uname -r
+cat /sys/class/drm/renderD128/device/iommu_group/type
+journalctl -k -b --no-pager -o cat | rg -i PerfOpt
+```
+
+An identity domain alone does not prove PerfOpt is active. Check the running
+kernel's implementation, backports and activation messages. A distribution
+release label or BIOS update alone does not establish support on a 7.2 kernel.
+The initial implementation had an `amdgpu.iommu_perfopt` parameter. A
+[subsequent AMD patch](https://www.mail-archive.com/amd-gfx@lists.freedesktop.org/msg153946.html)
+proposes moving enablement into the IOMMU driver and removing that parameter.
+Do not copy flags from an experimental kernel without checking the packaged
+kernel you actually booted.
+
+PerfOpt is a plausible performance opportunity, not an explanation already
+established for a particular prefill gap. Online rates may use a different
+model, quantization, context depth, cache state, backend or internal arithmetic.
+A short-context dense-model result does not predict populated long-context
+Flash-Next performance. Paracetamol has no measured PerfOpt gain to claim.
+
+After an OS, kernel or BIOS update, record the new versions and recheck GPU
+access and memory limits before starting a workload. Firmware settings may
+need review after a flash. Preserve earlier results under their original
+environment rather than silently changing their labels. Compare the same
+image, model, F16 KV, draft policy and actual prompt depth through the gateway,
+including cached continuations and the concurrency you use. Record available
+memory and kernel faults alongside speed.
+
+Prefer validating the normal distribution kernel when it gains the feature.
+Neither this guidance nor Doctor changes firmware, disables the IOMMU,
+installs a custom kernel or adds boot arguments automatically.
+
 ## Radeon RDNA 4 (`gfx1200` and `gfx1201`)
 
 The Radeon AI PRO R9700 and RX 9070 family report `gfx1201`. The RX 9060
