@@ -419,6 +419,15 @@ The independent greedy DFlash2 depth-five screen also supplies no adoption
 case. Serial throughput barely changes and four-client throughput is lower.
 Keep depth three instead of copying Gufo's different-model adaptive widths.
 
+The later [developer-only Gufo recheck kit](qwen3.8-flash-next-gufo-optimization-screen.md#developer-only-recheck-kit)
+preserves an explicitly gated source-build recipe and frozen failures. Its
+source pin is not a managed application dependency and need not advance in
+an ordinary llama.cpp refresh. A deliberate Gufo candidate updates the full
+pin in `tools/gufo-recheck/prepare.go` and both matching fragment declarations,
+then prepares a fresh build against the current production ROCm inputs.
+Run its cheap regression gate before expanding performance work. A passing
+screen never automatically enables an application or client model.
+
 ### llama.cpp downstream patch ledger
 
 The `740251a-r71` packaging follow-up retains the fourteen-patch `r70` stack

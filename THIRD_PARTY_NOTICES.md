@@ -8,6 +8,15 @@ Paracetamol does not distribute model weights or a prebuilt Paracetamol image.
 Model artifacts are downloaded directly from the repositories and immutable
 revisions recorded in `catalog/catalog.json`.
 
+## Developer-only experiments
+
+The optional `tools/gufo-recheck/` recipe builds
+[Gufo](https://github.com/gufo-org/gufo) from its reviewed immutable source
+pin. That revision is MIT-licensed, and the recipe retains its license at
+`/usr/local/share/licenses/gufo/LICENSE` in the locally built experimental
+image. Gufo is not linked into the host controller or registered as a managed
+application. The kit distributes neither an image nor model weights.
+
 ## Direct components
 
 - The host gateway uses `modernc.org/sqlite` v1.61.1, under BSD-3-Clause,

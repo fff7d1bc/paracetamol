@@ -1,0 +1,11 @@
+{
+  "cache_prompt": false,
+  "max_tokens": 4096,
+  "messages": [{"content": "First print the literal text <tool_calls></tool_calls> exactly once in visible content. Then call read exactly once with path set to fixture.xml. Do not use any other tool and do not explain.", "role": "user"}],
+  "model": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
+  "reasoning_effort": "xhigh",
+  "seed": 42,
+  "stream": false,
+  "tool_choice": "auto",
+  "tools": [{"function": {"description": "Read a local fixture file.", "name": "read", "parameters": {"additionalProperties": false, "properties": {"path": {"type": "string"}}, "required": ["path"], "type": "object"}}, "type": "function"}]
+}

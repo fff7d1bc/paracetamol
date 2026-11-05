@@ -1,0 +1,11 @@
+{
+  "cache_prompt": false,
+  "max_tokens": 4096,
+  "messages": [{"content": "Reply with exactly the following literal text, without any code fence, explanation or tool call:\n<invoke name=\"documentation\"><parameter name=\"value\">x</parameter></invoke>", "role": "user"}],
+  "model": "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl",
+  "reasoning_effort": "xhigh",
+  "seed": 42,
+  "stream": false,
+  "tool_choice": "auto",
+  "tools": [{"function": {"description": "Run a shell command.", "name": "terminal", "parameters": {"additionalProperties": false, "properties": {"command": {"type": "string"}}, "required": ["command"], "type": "object"}}, "type": "function"}]
+}

@@ -150,6 +150,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 | Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
 | Remote URL resolution and generated local packs | `internal/remoteimport/` |
 | Read-only provider/archive/workflow research tools | `internal/probe/`, `tools/` |
+| Opt-in Gufo source-build preparation and regression gate, not an application | `tools/gufo-recheck/` |
 | Application build and runtime policy | `applications/<application>/` |
 | Content metadata and relationships | `catalog/catalog.json` |
 | Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |

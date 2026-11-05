@@ -89,6 +89,10 @@ in the same change. Important ownership boundaries are:
   publication policy.
 - `internal/probe/` and `tools/`: read-only archive, provider-metadata, and
   workflow research probes.
+- `tools/gufo-recheck/`: explicitly opted-in developer source-build preparation
+  and frozen regression checks. This is not a managed application or a normal
+  gateway backend. Keep its backend lifecycle manual and its artifacts below
+  `build/`.
 - `bin/paracetamol`: PATH-friendly delegation to the checkout launcher.
 - `internal/clientconfig/`: portable native Maki example configuration from
   the gateway's frozen capabilities. No client execution, installation,

@@ -22,7 +22,7 @@ func TestMakePublishesOnlySuccessfulBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal("make is required for checkout build tests")
 	}
-	for _, target := range []string{"build", "static"} {
+	for _, target := range []string{"build", "static", "gufo-recheck"} {
 		for _, failure := range []string{"none", "compile", "empty", "mktemp", "chmod", "mv", "INT", "TERM", "HUP"} {
 			t.Run(target+"/"+failure, func(t *testing.T) {
 				testMakePublication(t, makePath, makefile, target, failure, true)
@@ -58,6 +58,12 @@ func testMakePublication(t *testing.T, makePath string, makefile []byte, target,
 	write("Makefile", makefile, 0o644)
 	write("go.mod", []byte("module fixture\n\ngo 1.26.0\n"), 0o644)
 	write("main.go", []byte("package main\nfunc main() {}\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "tools", "gufo-recheck", "testdata"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("tools/gufo-recheck/Containerfile.fragment", []byte("# experiment fixture\n"), 0o644)
+	write("tools/gufo-recheck/main.go", []byte("package main\nfunc main() {}\n"), 0o644)
+	write("tools/gufo-recheck/testdata/literal-xml.json", []byte("{}\n"), 0o644)
 	write("internal/gateway/assets/gateway.css", []byte("body {}\n"), 0o644)
 	write("fake-bin/go", []byte(`#!/bin/sh
 set -eu
@@ -89,6 +95,8 @@ esac
 	name := "paracetamol"
 	if target == "static" {
 		name += "-static"
+	} else if target == "gufo-recheck" {
+		name = "gufo-recheck"
 	}
 	destination := filepath.Join(outputDir, name)
 	const previous = "previous executable fixture\n"
@@ -152,6 +160,24 @@ esac
 			}
 		}
 		check(false)
+		if target == "gufo-recheck" {
+			for _, asset := range []string{"Containerfile.fragment", "testdata/literal-xml.json"} {
+				path := filepath.Join(root, "tools", "gufo-recheck", asset)
+				before, err := os.Stat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				later := time.Now().Add(time.Second)
+				if err := os.Chtimes(path, later, later); err != nil {
+					t.Fatal(err)
+				}
+				check(true)
+				if err := os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+					t.Fatal(err)
+				}
+				check(false)
+			}
+		}
 		later := time.Now().Add(time.Second)
 		if err := os.Chtimes(filepath.Join(root, "internal/gateway/assets/gateway.css"), later, later); err != nil {
 			t.Fatal(err)

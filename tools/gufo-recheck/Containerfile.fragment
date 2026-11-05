@@ -1,0 +1,83 @@
+# Isolated research target: not part of the application registry or build DAG.
+# Inherit the current production SDK and minimal runtime, without PyTorch.
+FROM native-rocm-sdk AS gufo-recheck-sdk
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        cmake ninja-build pkg-config \
+        libicu-dev libcurl4-openssl-dev libssl-dev \
+        libpng-dev libjpeg-dev libwebp-dev \
+        libsndfile1-dev libsoxr-dev \
+        libavformat-dev libavcodec-dev libavutil-dev libswscale-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+FROM gufo-recheck-sdk AS gufo-recheck-builder
+
+ARG GUFO_COMMIT=2c97b72d8671ddd0c74ae7d517b8cef4ebb78871
+ARG GUFO_BUILD_JOBS=12
+WORKDIR /opt/gufo
+RUN git init . && \
+    git remote add origin https://github.com/gufo-org/gufo.git && \
+    git fetch --depth=1 origin "${GUFO_COMMIT}" && \
+    git checkout --detach FETCH_HEAD && \
+    test "$(git rev-parse HEAD)" = "${GUFO_COMMIT}" && \
+    rocm_root="$(rocm-sdk path --root)" && \
+    site_packages="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENGINE_ENABLE_HIP=ON \
+        -DCMAKE_HIP_ARCHITECTURES=gfx1151 \
+        "-DCMAKE_HIP_COMPILER=${rocm_root}/lib/llvm/bin/clang++" \
+        "-DCMAKE_PREFIX_PATH=${rocm_root};$(rocm-sdk path --cmake)" \
+        "-DCMAKE_BUILD_RPATH=${rocm_root}/lib" \
+        "-DCMAKE_INSTALL_RPATH=${site_packages}/_rocm_sdk_core/lib;${site_packages}/_rocm_sdk_libraries/lib" \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_TESTING=OFF \
+        -DGUFO_BUILD_TOOLS=OFF \
+        "-DGUFO_RELEASE_VERSION=$(tr -d '\n' < version.txt)" \
+        "-DGUFO_REVISION=${GUFO_COMMIT}" && \
+    cmake --build build --parallel "${GUFO_BUILD_JOBS}" --target gufo && \
+    DESTDIR=/opt/gufo-install cmake --install build --config Release
+
+FROM ${ROCM_RUNTIME_IMAGE} AS gufo-recheck
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG ROCM_VERSION
+ARG GUFO_COMMIT=2c97b72d8671ddd0c74ae7d517b8cef4ebb78871
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libicu78 libcurl4t64 libssl3t64 \
+        libpng16-16t64 libjpeg-turbo8 libwebp7 \
+        libsndfile1 libsoxr0 libgomp1 ffmpeg && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=gufo-recheck-builder /opt/gufo-install/usr/local/ /usr/local/
+COPY --chmod=0644 --from=gufo-recheck-builder /opt/gufo/LICENSE /usr/local/share/licenses/gufo/LICENSE
+# These are loader/help checks, never inference or a GPU diagnostic.
+RUN test ! -e /dev/kfd && \
+    test ! -e /dev/dri && \
+    ldd /usr/local/bin/gufo > /tmp/gufo-ldd.txt && \
+    cat /tmp/gufo-ldd.txt && \
+    ! grep -q 'not found' /tmp/gufo-ldd.txt && \
+    gufo --help >/dev/null && \
+    gufo help serve llm >/dev/null && \
+    gufo --version && \
+    python -m pip check && \
+    rm /tmp/gufo-ldd.txt && \
+    mkdir -p /data /content
+
+ENV HOME=/tmp \
+    XDG_CACHE_HOME=/tmp
+LABEL org.opencontainers.image.title="Gufo isolated source-built experiment" \
+      org.opencontainers.image.description="Unmanaged gfx1151 research image; current Paracetamol ROCm runtime, no inference acceptance implied" \
+      org.opencontainers.image.revision="${GUFO_COMMIT}" \
+      io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
+      io.github.fff7d1bc.paracetamol.gpu.targets="gfx1151" \
+      experiment.gufo.rocr="unmodified-project-runtime-wheel" \
+      experiment.gufo.build-type="Release" \
+      experiment.gufo.extension-selection="upstream-default-discovery"
+
+WORKDIR /data
+EXPOSE 8080
+STOPSIGNAL SIGINT
+ENTRYPOINT ["/usr/local/bin/gufo"]

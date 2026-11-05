@@ -21,6 +21,8 @@ PLATFORM_BUILD_DIR := $(BUILD_ROOT)/$(PLATFORM)
 BIN_DIR := $(PLATFORM_BUILD_DIR)/bin
 BIN := $(BIN_DIR)/$(PRODUCT_ID)
 STATIC_BIN := $(BIN_DIR)/$(PRODUCT_ID)-static
+GUFO_RECHECK_BIN := $(BIN_DIR)/gufo-recheck
+GUFO_RECHECK_ASSETS := tools/gufo-recheck/Containerfile.fragment $(wildcard tools/gufo-recheck/testdata/*.json)
 # Keep host packages explicit: frozen evaluation modules and ignored local
 # content are repository inputs, not control-plane packages.
 GO_SOURCE_ROOTS := main.go internal tools $(wildcard cmd)
@@ -55,13 +57,16 @@ export GOFLAGS
 export GOTOOLCHAIN
 export GOTELEMETRY=off
 
-.PHONY: all build static test race check clean print-bin launcher-binary
+.PHONY: all build static gufo-recheck test race check clean print-bin launcher-binary
 
 all: build
 
 build: $(BIN)
 
 static: $(STATIC_BIN)
+
+# Developer-only research tool. Never part of all, build, or managed images.
+gufo-recheck: $(GUFO_RECHECK_BIN)
 
 test: | $(GOTMPDIR)
 	go test $(GO_PACKAGES)
@@ -118,6 +123,23 @@ $(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	mv -f "$$temporary" "$(STATIC_BIN)"; \
 	trap - EXIT INT TERM HUP
 	@printf '%s\n' "static binary: $(STATIC_BIN)"
+
+$(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GOTMPDIR)
+	@test "$$(go env CGO_ENABLED)" = 1 || { \
+		printf '%s\n' 'normal developer-tool builds require CGO'; \
+		exit 2; \
+	}
+	@set -eu; \
+	temporary="$$(mktemp "$(BIN_DIR)/.gufo-recheck.XXXXXX")"; \
+	trap 'rm -f "$$temporary"' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
+	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" \
+		-o "$$temporary" ./tools/gufo-recheck; \
+	test -s "$$temporary"; \
+	chmod 0755 "$$temporary"; \
+	mv -f "$$temporary" "$(GUFO_RECHECK_BIN)"; \
+	trap - EXIT INT TERM HUP
+	@printf '%s\n' "developer tool: $(GUFO_RECHECK_BIN)"
 
 $(BIN_DIR) $(GOTMPDIR):
 	mkdir -p "$(BIN_DIR)" "$(GOCACHE)" "$(GOMODCACHE)" \

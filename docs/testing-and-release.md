@@ -163,6 +163,15 @@ toolchain. Keep host toolchains on a supported security patch release through
 the host's package or configuration management. Normal Make targets use the
 installed toolchain and do not download an update automatically.
 
+The optional `make gufo-recheck` target builds a developer-only experiment
+tool, never an application image. Its `prepare` operation generates a recipe
+from the current Containerfile without a build or download. Its `proxy` and
+`check` operations require `--experimental`; ordinary package tests substitute
+HTTP fixtures and never load a model. See the
+[Gufo recheck procedure](qwen3.8-flash-next-gufo-optimization-screen.md#developer-only-recheck-kit)
+for the explicit source build, operator-owned backend, regression gate and
+acceptance limits. It is not part of `build all` or production discovery.
+
 The optional native-Linux race pass is appropriate after changes to process,
 signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 
