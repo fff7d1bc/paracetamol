@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,6 +59,13 @@ type backendLogFollower struct {
 	cancel     context.CancelFunc
 	done       chan struct{}
 }
+
+// A startup failure normally leaves no backend behind. If exact-owned cleanup
+// also fails, the scheduler must retain the allocation rather than start a
+// replacement or forget the container that still needs shutdown cleanup.
+type backendCleanupError struct{ error }
+
+func (err *backendCleanupError) Unwrap() error { return err.error }
 
 func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error) {
 	if options.Runner == nil || options.DataRoot == "" || options.Profile == "" || len(options.Registry.Models) == 0 {
@@ -131,7 +139,7 @@ func (lifecycle *ContainerLifecycle) Preflight(ctx context.Context, allocations 
 	return nil
 }
 
-func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Allocation) (*url.URL, error) {
+func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Allocation) (_ *url.URL, err error) {
 	if _, ok := gatewayContainerNames[allocation]; !ok {
 		return nil, fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
@@ -143,6 +151,18 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 		return nil, err
 	}
 	logLine(lifecycle.options.Log, "gateway | starting %s backend", allocation)
+	// Podman can create the detached backend before its client is canceled or
+	// otherwise fails. Every failure after attempting run therefore needs the
+	// same exact-owned cleanup, independent of the startup context's lifetime.
+	defer func() {
+		if err == nil {
+			return
+		}
+		lifecycle.stopFollowingBackendLogs(allocation)
+		if cleanupErr := lifecycle.removeOwned(context.WithoutCancel(ctx), allocation); cleanupErr != nil {
+			err = &backendCleanupError{errors.Join(err, fmt.Errorf("clean up gateway %s backend: %w", allocation, cleanupErr))}
+		}
+	}()
 	result, err := lifecycle.options.Runner.Run(ctx, process.Command{Name: command[0], Args: command[1:]})
 	if err != nil {
 		return nil, fmt.Errorf("start gateway %s backend: %w", allocation, err)
@@ -155,22 +175,17 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 		return nil, fmt.Errorf("start gateway %s backend: %s", allocation, detail)
 	}
 	if err := lifecycle.followBackendLogs(allocation); err != nil {
-		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
 	name := gatewayContainerNames[allocation]
 	hostPort, err := lifecycle.podman.PublishedLoopbackPort(ctx, name, internalPort)
 	if err != nil {
-		lifecycle.stopFollowingBackendLogs(allocation)
-		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
 	upstream, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", hostPort))
 	readyContext, cancel := context.WithTimeout(ctx, lifecycle.options.StartupTimeout)
 	defer cancel()
 	if err := lifecycle.waitReady(readyContext, allocation, upstream.ResolveReference(&url.URL{Path: readinessPath})); err != nil {
-		lifecycle.stopFollowingBackendLogs(allocation)
-		_ = lifecycle.removeOwned(context.Background(), allocation)
 		return nil, err
 	}
 	logLine(lifecycle.options.Log, "gateway | %s backend ready on private port %d", allocation, hostPort)

@@ -352,6 +352,11 @@ cleanup attempt; a failed shutdown reports the removal error. After resolving
 the underlying Podman problem, restart the gateway to reclaim its exact stale
 backend during normal preflight.
 
+A failed startup also attempts exact-owned cleanup, including when the Podman
+client was canceled after creating its detached container. Cleanup does not
+inherit startup cancellation. If that cleanup fails, both errors are reported
+and the scheduler retains the failed allocation under the same policy above.
+
 The llama.cpp router keeps one model child loaded by default. Its
 `--models-max` limit counts loaded children; it does not predict whether their
 combined weights and contexts fit memory. Increase it only for a model set

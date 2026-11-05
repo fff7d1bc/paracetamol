@@ -30,6 +30,8 @@ var (
 )
 
 type Lifecycle interface {
+	// Failed starts must leave no backend, or return backendCleanupError so
+	// the scheduler can retain ownership until explicit shutdown cleanup.
 	Start(context.Context, Allocation) (*url.URL, error)
 	Stop(context.Context, Allocation) error
 }
@@ -235,7 +237,7 @@ func (scheduler *Scheduler) run() {
 	shuttingDown := false
 	var shutdownReplies []chan error
 	lastError := ""
-	var stopError error
+	var cleanupError error
 
 	failWaiter := func(waiting *waiter, err error) {
 		select {
@@ -304,10 +306,10 @@ func (scheduler *Scheduler) run() {
 		if operation {
 			return false
 		}
-		// A failed stop leaves residency uncertain. Retain its exact allocation
+		// Failed cleanup leaves residency uncertain. Retain its exact allocation
 		// and fail closed until explicit shutdown retries cleanup once; ordinary
 		// scheduler events must never turn this into a Podman retry loop.
-		if stopError != nil {
+		if cleanupError != nil {
 			return false
 		}
 		if state == StateFailed && current != "" {
@@ -360,8 +362,8 @@ func (scheduler *Scheduler) run() {
 		case request := <-scheduler.requests:
 			if shuttingDown {
 				failWaiter(&waiter{request}, ErrShuttingDown)
-			} else if stopError != nil {
-				failWaiter(&waiter{request}, stopError)
+			} else if cleanupError != nil {
+				failWaiter(&waiter{request}, cleanupError)
 			} else if len(queue) >= scheduler.queueMax {
 				failWaiter(&waiter{request}, ErrQueueFull)
 			} else {
@@ -379,7 +381,7 @@ func (scheduler *Scheduler) run() {
 				active--
 			}
 		case event := <-scheduler.failures:
-			if event.allocation == current && event.generation == generation && stopError == nil {
+			if event.allocation == current && event.generation == generation && cleanupError == nil {
 				state = StateFailed
 				lastError = event.err.Error()
 			}
@@ -399,6 +401,16 @@ func (scheduler *Scheduler) run() {
 						result.err = errors.New("backend returned no upstream URL")
 					}
 					lastError = result.err.Error()
+					var cleanupFailure *backendCleanupError
+					if errors.As(result.err, &cleanupFailure) {
+						state = StateFailed
+						cleanupError = fmt.Errorf("start %s: %w", current, result.err)
+						for _, waiting := range queue {
+							failWaiter(waiting, cleanupError)
+						}
+						queue = nil
+						break
+					}
 					failed := current
 					current, upstream, state = "", nil, StateUnloaded
 					kept := queue[:0]
@@ -416,9 +428,9 @@ func (scheduler *Scheduler) run() {
 			case "stop":
 				if result.err != nil {
 					state, lastError = StateFailed, result.err.Error()
-					stopError = fmt.Errorf("stop %s: %w", current, result.err)
+					cleanupError = fmt.Errorf("stop %s: %w", current, result.err)
 					for _, waiting := range queue {
-						failWaiter(waiting, stopError)
+						failWaiter(waiting, cleanupError)
 					}
 					queue = nil
 					if shuttingDown {
@@ -427,7 +439,7 @@ func (scheduler *Scheduler) run() {
 					}
 				} else {
 					current, upstream, state = "", nil, StateUnloaded
-					stopError = nil
+					cleanupError = nil
 				}
 			}
 		case request := <-scheduler.statuses:
