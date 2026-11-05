@@ -344,6 +344,14 @@ gateway records the failure and aborts the downstream response too. Clients
 must receive a transport error rather than mistake a partial answer for a
 normally completed response.
 
+If backend removal fails, the scheduler keeps the exact allocation in
+`failed` state and rejects queued and new work with that cleanup error. It
+does not retry removal in the background or start another allocation while
+ownership is uncertain. Stop the gateway to request one final exact-owned
+cleanup attempt; a failed shutdown reports the removal error. After resolving
+the underlying Podman problem, restart the gateway to reclaim its exact stale
+backend during normal preflight.
+
 The llama.cpp router keeps one model child loaded by default. Its
 `--models-max` limit counts loaded children; it does not predict whether their
 combined weights and contexts fit memory. Increase it only for a model set

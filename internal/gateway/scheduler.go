@@ -210,7 +210,14 @@ func (scheduler *Scheduler) Shutdown(ctx context.Context) error {
 	case err := <-request.reply:
 		return err
 	case <-scheduler.done:
-		return nil
+		// finish publishes this caller's result before closing done. Preserve a
+		// cleanup error even when both channels become ready together.
+		select {
+		case err := <-request.reply:
+			return err
+		default:
+			return nil
+		}
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -226,8 +233,9 @@ func (scheduler *Scheduler) run() {
 	operation := false
 	var operationCancel context.CancelFunc
 	shuttingDown := false
-	var shutdownReply chan error
+	var shutdownReplies []chan error
 	lastError := ""
+	var stopError error
 
 	failWaiter := func(waiting *waiter, err error) {
 		select {
@@ -267,8 +275,8 @@ func (scheduler *Scheduler) run() {
 		}()
 	}
 	finish := func(err error) {
-		if shutdownReply != nil {
-			shutdownReply <- err
+		for _, reply := range shutdownReplies {
+			reply <- err
 		}
 		close(scheduler.done)
 	}
@@ -294,6 +302,12 @@ func (scheduler *Scheduler) run() {
 			return true
 		}
 		if operation {
+			return false
+		}
+		// A failed stop leaves residency uncertain. Retain its exact allocation
+		// and fail closed until explicit shutdown retries cleanup once; ordinary
+		// scheduler events must never turn this into a Podman retry loop.
+		if stopError != nil {
 			return false
 		}
 		if state == StateFailed && current != "" {
@@ -346,6 +360,8 @@ func (scheduler *Scheduler) run() {
 		case request := <-scheduler.requests:
 			if shuttingDown {
 				failWaiter(&waiter{request}, ErrShuttingDown)
+			} else if stopError != nil {
+				failWaiter(&waiter{request}, stopError)
 			} else if len(queue) >= scheduler.queueMax {
 				failWaiter(&waiter{request}, ErrQueueFull)
 			} else {
@@ -363,7 +379,7 @@ func (scheduler *Scheduler) run() {
 				active--
 			}
 		case event := <-scheduler.failures:
-			if event.allocation == current && event.generation == generation {
+			if event.allocation == current && event.generation == generation && stopError == nil {
 				state = StateFailed
 				lastError = event.err.Error()
 			}
@@ -400,8 +416,9 @@ func (scheduler *Scheduler) run() {
 			case "stop":
 				if result.err != nil {
 					state, lastError = StateFailed, result.err.Error()
+					stopError = fmt.Errorf("stop %s: %w", current, result.err)
 					for _, waiting := range queue {
-						failWaiter(waiting, fmt.Errorf("stop %s: %w", current, result.err))
+						failWaiter(waiting, stopError)
 					}
 					queue = nil
 					if shuttingDown {
@@ -410,6 +427,7 @@ func (scheduler *Scheduler) run() {
 					}
 				} else {
 					current, upstream, state = "", nil, StateUnloaded
+					stopError = nil
 				}
 			}
 		case request := <-scheduler.statuses:
@@ -419,13 +437,12 @@ func (scheduler *Scheduler) run() {
 			}
 			request.reply <- SchedulerStatus{Allocation: current, State: state, ActiveRequests: active, QueuedRequests: len(queue), LastError: lastError, Upstream: upstreamURL}
 		case request := <-scheduler.shutdown:
+			shutdownReplies = append(shutdownReplies, request.reply)
 			if !shuttingDown {
-				shuttingDown, shutdownReply = true, request.reply
+				shuttingDown = true
 				if operationCancel != nil {
 					operationCancel()
 				}
-			} else {
-				request.reply <- nil
 			}
 		}
 	}
