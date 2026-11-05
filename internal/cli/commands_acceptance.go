@@ -658,7 +658,10 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 	case "llama-cpp":
 		preset := managed.LlamaPresets["qwen-qwen3-0.6b-q8-0"]
 		artifact := managed.Artifacts[preset.Artifact]
-		command := runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: configApplicationImage("llama-cpp"), Profile: profile, DataDir: dataRoot, Backend: "rocm", ManagedModel: artifact.Destination, RenderNodes: []string{renderNode}, Repetitions: 1, PromptTokens: 32, GenerationTokens: 16, BatchSize: 2048, UBatchSize: 512, CacheTypeK: "f16", CacheTypeV: "f16", FlashAttention: "auto"}, app.podman().SELinuxVolumeSuffix(app.Context))
+		command, err := runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: configApplicationImage("llama-cpp"), Profile: profile, DataDir: dataRoot, Backend: "rocm", ManagedModel: artifact.Destination, RenderNodes: []string{renderNode}, Repetitions: 1, PromptTokens: 32, GenerationTokens: 16, BatchSize: 2048, UBatchSize: 512, CacheTypeK: "f16", CacheTypeV: "f16", FlashAttention: "auto"}, app.podman().SELinuxVolumeSuffix(app.Context))
+		if err != nil {
+			return nil, err
+		}
 		rows, err := benchmark.RunLlama(app.Context, app.Runner, command)
 		if err != nil {
 			return nil, err

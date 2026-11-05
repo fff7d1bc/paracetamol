@@ -579,6 +579,12 @@ unauthenticated-exposure warning.
 `--unconfined` only disables the seccomp filter. It does not make the
 filesystem writable or restore capabilities.
 
+External llama.cpp GGUFs use exact read-only file bind mounts, including every
+validated numbered shard when the first split shard is selected. They never
+mount or recursively SELinux-relabel the external parent directory. The same
+planner gates direct launches and native benchmarks without filesystem writes.
+Managed presets and routers retain their receipt-backed model partition mount.
+
 ## Profile validation
 
 Profiles exist on both sides of the container boundary:

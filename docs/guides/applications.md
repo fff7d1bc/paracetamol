@@ -816,8 +816,15 @@ Any local regular `.gguf` file can also be used:
   --prompt 'Explain unified memory briefly.'
 ```
 
-The model's parent directory is mounted read-only, supporting multi-file GGUF
-shards. A CLI invocation with `--prompt` answers once and exits; omit it for
+Only the selected model file is mounted read-only, not its parent directory.
+For split GGUF models, select `NAME-00001-of-NNNNN.gguf`: every numbered shard
+must exist as a regular file beside it; sibling shard symlinks are refused.
+Only those exact shards are mounted. On enforcing SELinux hosts, Podman applies
+the shared container label to the selected files, never recursively to their
+parent directory. Local model paths containing `:` are refused because they
+cannot be represented safely in a Podman volume. Native throughput benchmarks
+use the same file-scoped mounts and validation. Dry runs only inspect files.
+A CLI invocation with `--prompt` answers once and exits; omit it for
 an interactive terminal conversation. The server exposes an OpenAI-compatible
 API on port 8080. Remote model fetching and the mutable upstream embedded web
 UI are disabled. Non-loopback publication has no authentication unless

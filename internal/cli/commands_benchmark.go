@@ -220,7 +220,10 @@ func (app *App) benchmarkLlama(args []string) error {
 	parameters := benchmark.LlamaParameters{Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash}
 	commands := make(map[string][]string)
 	for _, candidate := range backends {
-		commands[candidate] = runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: image, Profile: profile, DataDir: dataRoot, Backend: candidate, Model: model, ManagedModel: managedModel, RenderNodes: selectedNodes, Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash, Unconfined: *unconfined}, app.podman().SELinuxVolumeSuffix(app.Context))
+		commands[candidate], err = runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: image, Profile: profile, DataDir: dataRoot, Backend: candidate, Model: model, ManagedModel: managedModel, RenderNodes: selectedNodes, Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash, Unconfined: *unconfined}, app.podman().SELinuxVolumeSuffix(app.Context))
+		if err != nil {
+			return err
+		}
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintf(app.Stdout, "%s %s\n%s depth %d, pp%d, tg%d, batch %d/%d, KV %s/%s, FA %s, %d repetitions\n", terminal.Label("Model:"), modelMetadata.Path, terminal.Label("Parameters:"), *contextDepth, *promptTokens, *generationTokens, *batch, *ubatch, *cacheK, *cacheV, *flash, *repetitions)

@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"paracetamol/internal/config"
@@ -93,13 +92,9 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	if options.ContainerRole == "" {
 		options.ContainerRole = "application"
 	}
-	modelRoot := layout.LlamaModels()
-	containerModel := ""
-	if options.Model != "" {
-		modelRoot = filepath.Dir(options.Model)
-		containerModel = "/content/models/" + filepath.Base(options.Model)
-	} else if options.ManagedModel != "" {
-		containerModel = "/content/models/" + options.ManagedModel
+	modelMounts, containerModel, err := llamaModelMounts(layout, options.Model, options.ManagedModel, volumeSuffix)
+	if err != nil {
+		return nil, err
 	}
 	command := []string{"podman", "run"}
 	if options.AutoRemove {
@@ -107,7 +102,8 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 	}
 	command = append(command, "--userns", "keep-id", "--umask", podman.CurrentUmask(), "--name", options.ContainerName)
 	command = append(command, podman.ManagedArguments("llama-cpp", options.ContainerRole)...)
-	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("llama-cpp")+":/data"+volumeSuffix, "--volume", modelRoot+":/content/models"+readOnly)
+	command = append(command, "--read-only", "--cap-drop", "all", "--security-opt", "no-new-privileges", "--pids-limit", "2048", "--ulimit", "core=0:0", "--shm-size", "8g", "--tmpfs", "/tmp:rw,nosuid,nodev,size=1g", "--volume", layout.Application("llama-cpp")+":/data"+volumeSuffix)
+	command = append(command, modelMounts...)
 	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
 	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
 	command = env(command, "PARACETAMOL_LLAMA_ALLOWED_PROFILES", strings.Join(options.AllowedProfiles, ","))
@@ -197,14 +193,11 @@ func LlamaCommand(options LlamaOptions, volumeSuffix string) ([]string, error) {
 // LlamaBenchmarkCommand deliberately bypasses the interactive/server policy
 // surface and exposes only the bounded llama-bench measurements maintained by
 // the control plane.
-func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) []string {
+func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) ([]string, error) {
 	layout := storage.Layout{Root: options.DataDir}
-	readOnly := readOnlySharedSuffix(volumeSuffix)
-	modelRoot := layout.LlamaModels()
-	containerModel := "/content/models/" + options.ManagedModel
-	if options.Model != "" {
-		modelRoot = filepath.Dir(options.Model)
-		containerModel = "/content/models/" + filepath.Base(options.Model)
+	modelMounts, containerModel, err := llamaModelMounts(layout, options.Model, options.ManagedModel, volumeSuffix)
+	if err != nil {
+		return nil, err
 	}
 	command := []string{
 		"podman", "run", "--rm", "--userns", "keep-id", "--umask", podman.CurrentUmask(),
@@ -216,9 +209,9 @@ func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) [
 		"--security-opt", "no-new-privileges", "--pids-limit", "2048",
 		"--ulimit", "core=0:0", "--shm-size", "8g",
 		"--tmpfs", "/tmp:rw,nosuid,nodev,size=1g",
-		"--volume", modelRoot+":/content/models"+readOnly,
 		"--env", "HOME=/tmp",
 	)
+	command = append(command, modelMounts...)
 	command = env(command, "PARACETAMOL_PROFILE", options.Profile)
 	command = env(command, "PARACETAMOL_LLAMA_BACKEND", options.Backend)
 	command = env(command, "PARACETAMOL_LLAMA_MODE", "bench")
@@ -241,5 +234,5 @@ func LlamaBenchmarkCommand(options LlamaBenchmarkOptions, volumeSuffix string) [
 		"--cache-type-v", options.CacheTypeV,
 		"--flash-attn", options.FlashAttention,
 		"--output", "json", "--progress",
-	)
+	), nil
 }

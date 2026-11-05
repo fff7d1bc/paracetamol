@@ -30,7 +30,10 @@ func TestWildcardPublicationConstrainsPastaToIPv4(t *testing.T) {
 }
 
 func TestLlamaBenchmarkCommandIsOfflineAndConstrained(t *testing.T) {
-	command := LlamaBenchmarkCommand(LlamaBenchmarkOptions{Image: "image", Profile: "strix-halo", Backend: "rocm", DataDir: "/data", ManagedModel: "model.gguf", RenderNodes: []string{"/dev/dri/renderD128"}, Repetitions: 2, PromptTokens: 32, GenerationTokens: 16, BatchSize: 128, UBatchSize: 64, CacheTypeK: "f16", CacheTypeV: "f16", FlashAttention: "auto"}, ":rw")
+	command, err := LlamaBenchmarkCommand(LlamaBenchmarkOptions{Image: "image", Profile: "strix-halo", Backend: "rocm", DataDir: "/data", ManagedModel: "model.gguf", RenderNodes: []string{"/dev/dri/renderD128"}, Repetitions: 2, PromptTokens: 32, GenerationTokens: 16, BatchSize: 128, UBatchSize: 64, CacheTypeK: "f16", CacheTypeV: "f16", FlashAttention: "auto"}, ":rw")
+	if err != nil {
+		t.Fatal(err)
+	}
 	joined := strings.Join(command, " ")
 	for _, required := range []string{"--network none", "--read-only", "--cap-drop all", "/dev/kfd", "/dev/dri/renderD128", "--output json"} {
 		if !strings.Contains(joined, required) {
