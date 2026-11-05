@@ -91,51 +91,64 @@ func Llama(managed catalog.Catalog, dataRoot string, scanPaths []string) ([]Llam
 		if models[left].Source != models[right].Source {
 			return models[left].Source == "catalog"
 		}
-		return strings.ToLower(models[left].Path) < strings.ToLower(models[right].Path)
+		leftPath, rightPath := strings.ToLower(models[left].Path), strings.ToLower(models[right].Path)
+		if leftPath != rightPath {
+			return leftPath < rightPath
+		}
+		return strings.Join(models[left].Presets, "\x00") < strings.Join(models[right].Presets, "\x00")
 	})
 	return models, nil
 }
 
 func catalogLlamaModels(managed catalog.Catalog, dataRoot string, store *verification.Store) ([]LlamaModel, map[string]bool, error) {
-	presetsByArtifact := make(map[string][]string)
+	// Sharing target bytes does not imply sharing launch requirements. Keep
+	// plain and speculative bundles separate, while grouping true aliases.
+	type group struct{ artifact, bundle string }
+	presetsByGroup := make(map[group][]string)
 	for id, preset := range managed.LlamaPresets {
-		presetsByArtifact[preset.Artifact] = append(presetsByArtifact[preset.Artifact], id)
+		key := group{preset.Artifact, preset.Bundle}
+		presetsByGroup[key] = append(presetsByGroup[key], id)
 	}
-	artifactIDs := make([]string, 0, len(presetsByArtifact))
-	for id := range presetsByArtifact {
-		artifactIDs = append(artifactIDs, id)
+	groups := make([]group, 0, len(presetsByGroup))
+	for key := range presetsByGroup {
+		groups = append(groups, key)
 	}
-	sort.Strings(artifactIDs)
+	sort.Slice(groups, func(left, right int) bool {
+		if groups[left].artifact != groups[right].artifact {
+			return groups[left].artifact < groups[right].artifact
+		}
+		return groups[left].bundle < groups[right].bundle
+	})
 	claimed := make(map[string]bool)
-	models := make([]LlamaModel, 0, len(artifactIDs))
-	for _, primaryID := range artifactIDs {
-		presets := presetsByArtifact[primaryID]
+	models := make([]LlamaModel, 0, len(groups))
+	for _, key := range groups {
+		presets := presetsByGroup[key]
 		sort.Strings(presets)
 		required := make(map[string]catalog.Artifact)
-		projectors := make(map[string]bool)
-		bundleSet := make(map[string]bool)
+		auxiliary := make(map[string]bool)
 		for _, presetID := range presets {
 			preset := managed.LlamaPresets[presetID]
 			if preset.MMProjArtifact != "" {
-				projectors[preset.MMProjArtifact] = true
+				auxiliary[preset.MMProjArtifact] = true
 			}
-			bundleSet[preset.Bundle] = true
-			for _, artifactID := range managed.Bundles[preset.Bundle].Artifacts {
-				artifact := managed.Artifacts[artifactID]
-				if artifact.Target == "llama-models" {
-					required[artifactID] = artifact
-				}
+			if preset.DraftArtifact != "" {
+				auxiliary[preset.DraftArtifact] = true
+			}
+		}
+		for _, artifactID := range managed.Bundles[key.bundle].Artifacts {
+			artifact := managed.Artifacts[artifactID]
+			if artifact.Target == "llama-models" {
+				required[artifactID] = artifact
 			}
 		}
 		requiredIDs := sortedKeys(required)
-		bundles := sortedBoolKeys(bundleSet)
 		states := make([]content.State, 0, len(requiredIDs))
 		var expected, observed int64
 		shards := 0
 		for _, artifactID := range requiredIDs {
 			artifact := required[artifactID]
-			// Projectors participate in readiness and size, not target sharding.
-			if !projectors[artifactID] {
+			// Drafts and projectors affect readiness and size, not target sharding.
+			if !auxiliary[artifactID] {
 				shards++
 			}
 			expected += artifact.Size
@@ -158,10 +171,10 @@ func catalogLlamaModels(managed catalog.Catalog, dataRoot string, store *verific
 		if state == "missing" {
 			size = expected
 		}
-		primary := managed.Artifacts[primaryID]
+		primary := managed.Artifacts[key.artifact]
 		models = append(models, LlamaModel{
 			Path: content.ArtifactPath(dataRoot, primary), Size: size, State: state,
-			Source: "catalog", Presets: presets, Bundles: bundles, Artifacts: requiredIDs,
+			Source: "catalog", Presets: presets, Bundles: []string{key.bundle}, Artifacts: requiredIDs,
 			ShardCount: shards, ExpectedShards: shards,
 		})
 	}
@@ -330,15 +343,6 @@ func looseModels(paths []string) ([]LlamaModel, error) {
 }
 
 func sortedKeys(values map[string]catalog.Artifact) []string {
-	result := make([]string, 0, len(values))
-	for key := range values {
-		result = append(result, key)
-	}
-	sort.Strings(result)
-	return result
-}
-
-func sortedBoolKeys(values map[string]bool) []string {
 	result := make([]string, 0, len(values))
 	for key := range values {
 		result = append(result, key)

@@ -289,6 +289,10 @@ llama.cpp managed row is named by its preset. Imported and manually copied GGUFs
 below the llama.cpp model root are shown as local files, and split GGUFs are grouped into
 one model instead of one row per shard. An incomplete split set or a catalog
 size mismatch is called out rather than presented as runnable.
+Aliases sharing one target and bundle share a row. Variants with different
+bundles have separate readiness and size, so an absent optional draft does
+not make the plain model look incomplete. Drafts and vision projectors count
+toward their variant's size and readiness, not its target shard count.
 
 Use `--details` when choosing between managed llama.cpp presets. It shows the
 exact bundle and preset IDs, catalog file count and total size, conservative

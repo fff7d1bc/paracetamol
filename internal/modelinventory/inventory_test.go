@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/content"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/verification"
 )
@@ -112,5 +113,74 @@ func TestLlamaRejectsInvalidExplicitScan(t *testing.T) {
 	}
 	if _, err := Llama(fixtureCatalog(), t.TempDir(), []string{notGGUF}); err == nil {
 		t.Fatal("non-GGUF scan succeeded")
+	}
+}
+
+func TestLlamaSeparatesVariantRequirementsAndExcludesAuxiliaryShards(t *testing.T) {
+	for _, role := range []string{"draft", "projector"} {
+		t.Run(role, func(t *testing.T) {
+			managed := fixtureCatalog()
+			extra := catalog.Artifact{ID: "extra", Destination: "extra.gguf", Target: "llama-models", Size: 4, SHA256: "0"}
+			managed.Artifacts[extra.ID] = extra
+			managed.Bundles["variant"] = catalog.Bundle{ID: "variant", Application: "llama-cpp", Artifacts: []string{"known-first", "known-second", extra.ID}}
+			variant := catalog.LlamaPreset{ID: "variant", Artifact: "known-first", Bundle: "variant"}
+			if role == "draft" {
+				variant.DraftArtifact = extra.ID
+				variant.SpeculativeType = "draft-dflash"
+			} else {
+				variant.MMProjArtifact = extra.ID
+			}
+			managed.LlamaPresets[variant.ID] = variant
+			dataRoot := t.TempDir()
+			store, err := verification.Load(dataRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			install := func(artifact catalog.Artifact) {
+				t.Helper()
+				path := content.ArtifactPath(dataRoot, artifact)
+				if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, make([]byte, artifact.Size), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := store.Record(path, artifact.Size, artifact.SHA256); err != nil {
+					t.Fatal(err)
+				}
+				if err := store.Save(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			check := func(plainState, variantState string, variantSize int64) {
+				t.Helper()
+				models, err := Llama(managed, dataRoot, nil)
+				if err != nil || len(models) != 2 {
+					t.Fatalf("models=%+v err=%v", models, err)
+				}
+				plain, separate := models[0], models[1]
+				if len(plain.Presets) != 2 || plain.Presets[0] != "known-alias" || plain.Presets[1] != "known-preset" || plain.State != plainState || plain.Size != 3 || len(plain.Artifacts) != 2 || len(plain.Bundles) != 1 || plain.Bundles[0] != "known-bundle" {
+					t.Fatalf("plain model=%+v", plain)
+				}
+				if len(separate.Presets) != 1 || separate.Presets[0] != variant.ID || separate.State != variantState || separate.Size != variantSize || len(separate.Artifacts) != 3 || len(separate.Bundles) != 1 || separate.Bundles[0] != "variant" {
+					t.Fatalf("variant=%+v", separate)
+				}
+				for _, model := range models {
+					if model.ShardCount != 2 || model.ExpectedShards != 2 {
+						t.Fatalf("auxiliary artifact counted as target shard: %+v", model)
+					}
+				}
+			}
+			check("missing", "missing", 7)
+			install(managed.Artifacts["known-first"])
+			install(managed.Artifacts["known-second"])
+			check("ready", "partial", 3)
+			install(extra)
+			check("ready", "ready", 7)
+			if err := os.WriteFile(content.ArtifactPath(dataRoot, extra), []byte("wrong size"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			check("ready", "size-mismatch", 13)
+		})
 	}
 }
