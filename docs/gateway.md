@@ -419,6 +419,48 @@ The startup banner, gateway model details, and `status llama-cpp` show the
 configured request-slot count separately from the loaded-model limit. Direct
 `run llama-cpp server` supports the same `--slots` flag and default.
 
+### Per-session windows and total cache capacity
+
+Sharing a cache allocation does not share conversation history. Each sequence
+attends only to its own permitted tokens. The advertised 262144-token window
+is a per-session limit, including prompt framing, tools, reasoning and output.
+It is not a promise that all configured slots can simultaneously retain that
+many tokens in the current shared pool.
+
+The pinned native engine supports a separate `--kv-unified-per-slot` limit.
+With no explicit `-c`/`--ctx-size`, it sizes the shared pool to that limit times
+the slot count. An explicit `-c` selects the total pool instead. For example,
+four independent 262144-token windows need 1048576 total cache tokens, while
+eight need 2097152. These are native engine semantics, not additional managed
+Paracetamol flags. The current launcher still supplies the preset's context
+as the total pool, as described above.
+
+The [November 7 capacity screen](hardware-acceptance.md#strix-halo-shared-context-capacity-screen-2026-11-07)
+kept the regular Unsloth Flash-Next target, F16 cache and greedy DFlash2
+unchanged. A 524288-token pool with an explicit 262144-token session limit
+passed a single 32K retrieval and history check, but both larger concurrent
+workloads reached the 8 GiB available-memory guard on the 128 GB system.
+Those interrupted workloads are not concurrency acceptance or quality failures.
+
+For this exact target, the F16 attention cache and indexer together require
+7.5 GiB per 262144 pool tokens. Calculated tensor payloads, excluding weights,
+draft state, recurrent state and scratch, are:
+
+| Total pool tokens | Target cache and indexer |
+| --- | ---: |
+| 1048576 | 30 GiB |
+| 2097152 | 60 GiB |
+| 2621440 | 75 GiB |
+
+Extra pool capacity may reduce allocation or eviction pressure, but a blanket
+25% reserve is not free. It adds 15 GiB of target tensors to an eight-window
+pool before other costs. The current compact Flash-Next attention path also
+has a 262144-row cache-view limit. Larger occupied views use the ordinary
+masking path, and startup scratch reservation considers the full allocation.
+Do not raise those kernel bounds blindly or extend model context metadata to
+enlarge a cache pool. A larger-memory system needs its own populated-context,
+concurrency, correctness and performance acceptance.
+
 Keep `--models-max 1` for Flash-Next on a 128 GB Strix Halo host. Its improved
 memory headroom does not mean it can coexist with the dense Q8 model. Switching
 between them uses the existing idle-child eviction. Flash-Next's allocation

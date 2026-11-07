@@ -29,6 +29,71 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo shared-context capacity screen (2026-11-07)
+
+BLOCKED for promoting a larger shared cache on the 128 GB `gfx1151` system.
+The source baseline is `92e027f`, with upstream
+`740251a920abf92b7744d9c0518ca157db0db579` and the unchanged locally built
+`llama-cpp-ubuntu26.04-rocm10.1-740251a-r71` image, ID
+`9ea0d1277fb74bad75f5c22b093209dcf715abd24d759c090934ac760e7344d7`.
+Fedora Linux 45, kernel `7.2.15-300.fc45.x86_64`, the regular Unsloth
+Flash-Next UD-Q4_K_XL, matching projector, F16 K/V, ordinary quantized/F32
+arithmetic, greedy DFlash2 depth three, four slots, batch/ubatch 2048 and
+the direct embedding reader remain fixed. No kernel, swap, power or host
+memory configuration is changed.
+
+An ignored source-guarded controller adds only a read-only slot-policy helper
+mount to the exact owned backend. Registry receipts, model capabilities,
+gateway sampling, scheduler and lifecycle remain the production path.
+The candidate supplies native `c = 524288`, `kv-unified = true` and
+`kv-unified-per-slot = 262144` in exactly the regular plain/DFlash2 sections.
+The unchanged 262144-pool control and the candidate both pass one 32K
+three-marker retrieval, a true 2K append with full assistant replay, and a
+separate fixed-256-output timing fixture. The latter intentionally reaches
+its output limit and is not a completed-task quality test. Effort is `none`,
+seed is 42, and all six sampler values are filled and recorded by the gateway.
+Native properties confirm four slots and a 262144-token per-slot ceiling.
+A separate oversized request is rejected with HTTP 400 for 263012 input
+tokens against that 262144-token limit, despite the larger total pool.
+This confirms that the pool increase does not advertise or permit a longer
+individual conversation.
+
+Ready available RAM is 23.66 GiB for the control and about 12.0 GiB for the
+524288-pool arm. Observed single-client minima are 21.94 and 10.27 GiB.
+The candidate's four-worker, 100K-per-worker run reaches 7.86 GiB available
+and is canceled by the unchanged 8 GiB guard. A separate two-worker,
+140K-per-worker run reaches 7.99 GiB and is canceled for the same reason.
+Slot samples show four and two active requests respectively, but only about
+120800 and 133120 combined processed prompt tokens before cancellation.
+Neither run establishes execution above a 262144-row occupied-cache view,
+successful concurrent generation, retrieval quality or throughput. No model
+answer is scored as incorrect solely because the operator canceled it.
+
+Bounded reads of the verified model headers and source allocation review
+account for 6 GiB of target attention K/V and 1.5 GiB of target indexer data
+per 262144 pool tokens. A 1048576-token pool therefore requires another
+15 GiB of those target tensors beyond the tested 524288 pool, already more
+than the measured memory headroom. It is not attempted. Draft context inherits
+the logical target size, but this DFlash2 model uses sliding-window attention
+throughout. Its actual F16 K/V payload is about 200 MiB for four slots under
+this policy, not a full-pool linear allocation. Recurrent rollback, scratch,
+host metadata and other buffers remain additional costs.
+
+The compact QSA graph/kernel guards require an occupied cache view no wider
+than 262144 rows. Inference views follow the highest occupied cell, while
+initial graph reservation uses the full allocated pool. This is a separate
+software acceptance issue from physical RAM capacity. No kernel bounds,
+index representation, precision or graph policy are changed in this screen.
+Eight full windows on a larger-memory host and extra pool headroom remain
+untested. There is no new supported cache-pool option or default change.
+
+Private evidence, workload/controller sources, manifests, gateway reports,
+slot samples, bounded header metadata and kernel checks remain below ignored
+`build/context-pool-screen-20261107/`. Both interrupted arms cancel their exact
+clients, drain the gateway and remove the owned backend. All arms finish
+without a GPU/SVM/OOM fault and leave the target idle. Other architectures
+are N/P for this bounded hardware-capacity screen.
+
 ### Strix Halo host refresh (2026-11-05)
 
 The 128 GB Framework Desktop development system now reports Fedora Linux 45,
