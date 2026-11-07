@@ -403,10 +403,23 @@ With multiple slots, llama.cpp shares the preset's KV token pool. A 256K
 preset is **256K total across active conversations**, not four independent
 256K allocations and not a fixed 64K limit per conversation. One conversation
 can use nearly the whole pool when the others are idle. Long simultaneous
-conversations must fit together, and running out of KV space can cause
-reprocessing or a backend error. More slots improve aggregate throughput on
-some workloads but do not promise faster individual responses. Use `--slots 1`
+conversations must fit together. Idle slots can be cleared to reclaim cache
+cells, at the cost of reprocessing their prompts if those conversations return.
+Active slots cannot be evicted this way. If the active requests alone exhaust
+the pool, smaller batches and idle-slot clearing may not suffice, and the
+backend can return an error. There is no automatic filesystem spill for active
+KV state. More slots improve aggregate throughput on some workloads but do
+not promise faster individual responses. Use `--slots 1`
 when one long conversation should have the server to itself.
+
+The ROCm Flash-Next streaming policy explicitly uses `--cache-ram 0`.
+Ordinary idle KV reuse still works, but there is no separate RAM prompt archive
+to restore after eviction. Reclaiming cells makes room inside the existing
+allocation and does not necessarily return that allocation to the host OS.
+Changing task or slot IDs after compaction does not allocate another pool.
+Slot selection favors reusable prefixes, then empty or least-recently-used
+idle slots. Pressure-driven clearing scans idle slots instead of guaranteeing
+strict LRU eviction.
 
 Per-sequence state and work buffers can still grow with the slot count,
 especially for recurrent and speculative models. Four slots reduce this
