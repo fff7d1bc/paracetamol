@@ -630,18 +630,24 @@ frozen inventory. It includes their context limits, output ceilings and native
 reasoning choices. Refresh the files explicitly when that inventory changes.
 Newly installed content first requires a gateway restart.
 
-Publish on one trusted LAN address and restrict its port with the host
-firewall. The same port remains available on local IPv4 loopback.
+Publish only on intended trusted addresses and restrict the shared port with
+the host firewall. Repeat `--listen` for multiple exact IPv4 or IPv6 addresses.
+The same port remains available on local IPv4 loopback.
 
 ```bash
-./paracetamol run gateway --listen 192.0.2.10 --port 7455
+./paracetamol run gateway \
+  --listen 192.0.2.10 --listen 198.51.100.20 --port 7455
 ```
 
 Using `--port` without `--listen` selects loopback for that invocation, even
-when configuration normally publishes another address. Use both flags when
-changing a LAN publication. Optional [Bearer authentication](../gateway.md#optional-authentication)
-protects both inference and configuration downloads. Plain HTTP still exposes
-credentials and prompts to the network.
+when configuration or the environment normally publishes other addresses.
+CLI listen flags replace that entire address list. See [gateway
+configuration](../gateway.md#configuration) for environment and TOML lists;
+direct web applications still accept only one address.
+Use both flags when changing a remote publication. Optional
+[Bearer authentication](../gateway.md#optional-authentication) protects both
+inference and configuration downloads. Plain HTTP still exposes credentials
+and prompts to the network.
 
 Native Maki runs with normal user access. There is no Paracetamol filesystem
 or network sandbox, runtime installation, credential store or session manager.

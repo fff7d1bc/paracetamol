@@ -95,7 +95,7 @@ var commandExampleArguments = map[string][][]string{
 		{"run", "llama-cpp", "cli", "--model", "/path/to/model.gguf"},
 		{"run", "llama-cpp", "cli", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2", "--prompt", "Hello"},
 	},
-	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp"}, {"run", "gateway", "--port", "18080"}},
+	"run gateway":                     {{"run", "gateway"}, {"run", "gateway", "-a", "llama-cpp"}, {"run", "gateway", "--port", "18080"}, {"run", "gateway", "--listen", "192.0.2.10", "--listen", "198.51.100.20"}},
 	"shell":                           {{"shell", "comfyui"}, {"shell", "llama-cpp"}},
 	"logs":                            {{"logs", "llama-cpp", "--follow"}, {"logs", "comfyui", "--all"}},
 	"stop":                            {{"stop", "gateway"}, {"stop", "llama-cpp"}, {"stop", "all"}},

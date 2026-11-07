@@ -140,8 +140,9 @@ Foreground runs own their lifecycle. Ctrl-C stops the service and removes its
 owned containers. The [operations guide](docs/guides/operations.md#status-logs-and-stop)
 also covers detached runs, logs, stop commands and shareable llama.cpp reports.
 
-For remote access, publish only on one trusted address, restrict the port with
-your firewall and consider [Bearer authentication](docs/gateway.md#optional-authentication).
+For remote access, publish only on intended trusted addresses, restrict the
+port with your firewall and consider
+[Bearer authentication](docs/gateway.md#optional-authentication).
 HTTP does not encrypt credentials or prompts. Direct applications are
 unauthenticated unless their reviewed mode explicitly provides authentication.
 
@@ -150,6 +151,10 @@ unauthenticated unless their reviewed mode explicitly provides authentication.
 ```
 
 `192.0.2.10` is a documentation address. Substitute the host's intended address.
+Repeat gateway `--listen` for additional exact IPv4 or IPv6 addresses on the
+same port. Local IPv4 loopback remains available. Direct web applications
+still accept one address. See [gateway configuration](docs/gateway.md#configuration)
+for address lists and precedence.
 See [remote client setup](docs/guides/remote-maki.md) before exposing a service.
 
 Persistent data defaults to

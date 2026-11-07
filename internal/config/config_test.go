@@ -52,6 +52,7 @@ retention_days = 180
 		configuration.Gateway.APIKeyFile == nil || *configuration.Gateway.APIKeyFile != "/etc/paracetamol/server.key" ||
 		configuration.Gateway.Client.APIKeyFile == nil || *configuration.Gateway.Client.APIKeyFile != "/etc/paracetamol/client.key" ||
 		!reflect.DeepEqual(configuration.Gateway.RenderNodes, []string{"/dev/dri/renderD128"}) ||
+		!reflect.DeepEqual(configuration.Gateway.Listen, []string{"192.0.2.10"}) ||
 		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != "https://gateway.example.test:7443/v1/" ||
 		configuration.Gateway.LlamaCPP.ModelsMax == nil || *configuration.Gateway.LlamaCPP.ModelsMax != 2 ||
 		configuration.Gateway.LlamaCPP.Slots == nil || *configuration.Gateway.LlamaCPP.Slots != 3 {
@@ -98,6 +99,36 @@ models_max = +2
 	}
 }
 
+func TestLoadDecodesGatewayListenAddresses(t *testing.T) {
+	for name, test := range map[string]struct {
+		value string
+		want  []string
+	}{
+		"single IPv4":   {`"192.0.2.10"`, []string{"192.0.2.10"}},
+		"single IPv6":   {`'2001:db8::1'`, []string{"2001:db8::1"}},
+		"multiple":      {`["192.0.2.10", '2001:db8::1',]`, []string{"192.0.2.10", "2001:db8::1"}},
+		"empty":         {`[]`, []string{}},
+		"mapped IPv4":   {`["::ffff:192.0.2.10"]`, []string{"::ffff:192.0.2.10"}},
+		"loopback IPv6": {`["::1"]`, []string{"::1"}},
+		"wildcard IPv4": {`["0.0.0.0"]`, []string{"0.0.0.0"}},
+		"wildcard IPv6": {`["::"]`, []string{"::"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte("[gateway]\nlisten = "+test.value+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			configuration, err := Load(map[string]string{}, Selection{Path: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(configuration.Gateway.Listen, test.want) {
+				t.Fatalf("listen=%#v, want %#v", configuration.Gateway.Listen, test.want)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 	for name, test := range map[string]struct {
 		contents string
@@ -111,6 +142,17 @@ func TestLoadRejectsUnknownAndInvalidSettings(t *testing.T) {
 		"outside section":     {"port = 7455\n", "outside a configuration section"},
 		"data path":           {"[storage]\ndata_dir = 'relative'\n", "non-empty absolute path"},
 		"port range":          {"[gateway]\nport = 70000\n", "between 1 and 65535"},
+		"listen hostname":     {"[gateway]\nlisten = 'gateway.example.test'\n", "IPv4 or IPv6 address"},
+		"listen empty string": {"[gateway]\nlisten = ''\n", "IPv4 or IPv6 address"},
+		"listen empty item":   {"[gateway]\nlisten = ['192.0.2.10', '']\n", "IPv4 or IPv6 address"},
+		"listen invalid item": {"[gateway]\nlisten = ['192.0.2.10', 'gateway.example.test']\n", "IPv4 or IPv6 address"},
+		"listen IPv4 port":    {"[gateway]\nlisten = '192.0.2.10:7455'\n", "IPv4 or IPv6 address"},
+		"listen IPv6 port":    {"[gateway]\nlisten = '[2001:db8::1]:7455'\n", "IPv4 or IPv6 address"},
+		"listen IPv6 zone":    {"[gateway]\nlisten = 'fe80::1%eth0'\n", "IPv4 or IPv6 address"},
+		"listen whitespace":   {"[gateway]\nlisten = [' 192.0.2.10']\n", "IPv4 or IPv6 address"},
+		"listen numeric item": {"[gateway]\nlisten = [1]\n", "quoted string"},
+		"listen wrong type":   {"[gateway]\nlisten = true\n", "quoted string"},
+		"listen multiline":    {"[gateway]\nlisten = [\n'192.0.2.10',\n]\n", "one-line string array"},
 		"models range":        {"[gateway.llama-cpp]\nmodels_max = 0\n", "at least 1"},
 		"slots zero":          {"[gateway.llama-cpp]\nslots = 0\n", "between 1 and 64"},
 		"slots overflow":      {"[gateway.llama-cpp]\nslots = 65\n", "between 1 and 64"},
@@ -189,7 +231,7 @@ func TestLoadTreatsEverySettingAsOptional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Profile != nil || configuration.Gateway.LlamaCPP.Backend != nil || configuration.Gateway.Statistics.Enabled != nil || configuration.Gateway.Statistics.RetentionDays != nil {
+	if !configuration.Loaded || configuration.Storage.DataDir != nil || configuration.Gateway.Profile != nil || configuration.Gateway.Listen != nil || configuration.Gateway.LlamaCPP.Backend != nil || configuration.Gateway.Statistics.Enabled != nil || configuration.Gateway.Statistics.RetentionDays != nil {
 		t.Fatalf("configuration=%#v", configuration)
 	}
 }
@@ -225,6 +267,7 @@ func TestDefaultContentsIsCompleteAndRunnable(t *testing.T) {
 		configuration.Gateway.Profile == nil || *configuration.Gateway.Profile != "auto" ||
 		configuration.Gateway.Applications == nil || len(configuration.Gateway.Applications) != 0 ||
 		configuration.Gateway.RenderNodes == nil || len(configuration.Gateway.RenderNodes) != 0 ||
+		!reflect.DeepEqual(configuration.Gateway.Listen, []string{DefaultListen}) ||
 		configuration.Gateway.Port == nil || *configuration.Gateway.Port != DefaultGatewayPort ||
 		configuration.Gateway.Client.URL == nil || *configuration.Gateway.Client.URL != DefaultGatewayURL ||
 		configuration.Gateway.LlamaCPP.Backend == nil || *configuration.Gateway.LlamaCPP.Backend != "rocm" ||

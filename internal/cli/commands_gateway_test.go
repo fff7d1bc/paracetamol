@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,9 @@ func TestGatewayHelpShowsApplicationAliasAndSafeModelDefault(t *testing.T) {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("gateway help lacks %q:\n%s", expected, output)
 		}
+	}
+	if !strings.Contains(output, "--listen ADDRESS") || !strings.Contains(output, "repeatable; loopback remains available") {
+		t.Fatalf("missing repeatable listen guidance: %s", output)
 	}
 }
 
@@ -139,7 +143,10 @@ func TestGatewayListenBindingsAlwaysPreserveIPv4Loopback(t *testing.T) {
 		{"IPv6 wildcard", "::", "tcp4/127.0.0.1,tcp6/::"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			bindings := gatewayListenBindings(test.requested)
+			bindings, err := gatewayListenBindings([]string{test.requested})
+			if err != nil {
+				t.Fatal(err)
+			}
 			values := make([]string, 0, len(bindings))
 			for _, binding := range bindings {
 				values = append(values, binding.network+"/"+binding.host)
@@ -154,7 +161,7 @@ func TestGatewayListenBindingsAlwaysPreserveIPv4Loopback(t *testing.T) {
 func TestOpenGatewayListenersClosesEarlierBindingsOnFailure(t *testing.T) {
 	first := &trackedGatewayListener{}
 	calls := []string{}
-	listeners, err := openGatewayListeners("192.0.2.10", 8080, func(network, address string) (net.Listener, error) {
+	listeners, err := openGatewayListeners([]string{"192.0.2.10"}, 8080, func(network, address string) (net.Listener, error) {
 		calls = append(calls, network+"/"+address)
 		if len(calls) == 1 {
 			return first, nil
@@ -260,15 +267,15 @@ func TestGatewayConfigurationProvidesOptionalDefaultsAndFlagsWin(t *testing.T) {
 }
 
 func TestGatewayScalarPrecedenceIsFlagEnvironmentConfigurationDefault(t *testing.T) {
-	configuredListen := "192.0.2.10"
-	environment := map[string]string{"PARACETAMOL_GATEWAY_LISTEN": "192.0.2.20"}
-	if got := gatewayStringSetting("192.0.2.30", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.30" {
+	configuredProfile := "strix-halo"
+	environment := map[string]string{"PARACETAMOL_PROFILE": "rdna4"}
+	if got := gatewayStringSetting("strix-point", environment, "PROFILE", &configuredProfile, "auto"); got != "strix-point" {
 		t.Fatalf("flag precedence=%q", got)
 	}
-	if got := gatewayStringSetting("", environment, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.20" {
+	if got := gatewayStringSetting("", environment, "PROFILE", &configuredProfile, "auto"); got != "rdna4" {
 		t.Fatalf("environment precedence=%q", got)
 	}
-	if got := gatewayStringSetting("", map[string]string{}, "GATEWAY_LISTEN", &configuredListen, "127.0.0.1"); got != "192.0.2.10" {
+	if got := gatewayStringSetting("", map[string]string{}, "PROFILE", &configuredProfile, "auto"); got != "strix-halo" {
 		t.Fatalf("configuration precedence=%q", got)
 	}
 	configuredPort := 18080
@@ -313,32 +320,93 @@ func TestGatewayStatisticsDefaultsConfigurationAndExplicitOverrides(t *testing.T
 }
 
 func TestGatewayExplicitPortWithoutListenForcesLoopback(t *testing.T) {
-	configuredListen := "192.0.2.10"
+	configuredListen := []string{"192.0.2.10", "198.51.100.10"}
 	environment := map[string]string{
-		"PARACETAMOL_GATEWAY_LISTEN": "192.0.2.20",
+		"PARACETAMOL_GATEWAY_LISTEN": "192.0.2.20, 2001:db8::20",
 		"PARACETAMOL_GATEWAY_PORT":   "17070",
 	}
 	tests := []struct {
 		name string
 		args []string
-		want string
+		want []string
 	}{
-		{name: "resolved settings remain published", want: "192.0.2.20"},
-		{name: "port only", args: []string{"--port", "18080"}, want: config.DefaultListen},
-		{name: "listen only", args: []string{"--listen", "192.0.2.30"}, want: "192.0.2.30"},
-		{name: "listen and port", args: []string{"--port", "18080", "--listen", "192.0.2.30"}, want: "192.0.2.30"},
+		{name: "resolved settings remain published", want: []string{"192.0.2.20", "2001:db8::20"}},
+		{name: "port only", args: []string{"--port", "18080"}, want: []string{config.DefaultListen}},
+		{name: "listen only", args: []string{"--listen", "192.0.2.30"}, want: []string{"192.0.2.30"}},
+		{name: "repeated listen replaces lower lists", args: []string{"--listen", "192.0.2.30", "--listen=2001:db8::30"}, want: []string{"192.0.2.30", "2001:db8::30"}},
+		{name: "listen and port", args: []string{"--port", "18080", "--listen", "192.0.2.30", "--listen", "198.51.100.30"}, want: []string{"192.0.2.30", "198.51.100.30"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			app, _, _ := testApp(t, &commandRunner{})
 			set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
-			listen := set.String("listen", "", "fixture")
+			var listen stringList
+			set.Var(&listen, "listen", "fixture")
 			_ = set.String("port", "", "fixture")
 			if err := parseFlags(set, test.args); err != nil {
 				t.Fatal(err)
 			}
-			if got := gatewayListenSetting(set, *listen, environment, &configuredListen); got != test.want {
+			if got := gatewayListenSetting(set, listen, environment, configuredListen); !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("listen=%q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestGatewayListenListConfigurationAndDefault(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		environment map[string]string
+		configured  []string
+		want        []string
+	}{
+		{name: "default", want: []string{config.DefaultListen}},
+		{name: "configuration", configured: []string{"192.0.2.10", "2001:db8::10"}, want: []string{"192.0.2.10", "2001:db8::10"}},
+		{name: "empty configuration is loopback only", configured: []string{}, want: nil},
+		{name: "empty environment falls back", environment: map[string]string{"PARACETAMOL_GATEWAY_LISTEN": ""}, configured: []string{"192.0.2.10"}, want: []string{"192.0.2.10"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app, _, _ := testApp(t, &commandRunner{})
+			set := app.flags("run gateway", usage("run", "gateway", "[OPTIONS]"))
+			got := gatewayListenSetting(set, nil, test.environment, test.configured)
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("listen=%v want=%v", got, test.want)
+			}
+			if len(got) > 0 && len(test.configured) > 0 {
+				got[0] = "127.0.0.2"
+				if test.configured[0] == got[0] {
+					t.Fatal("resolved listen list aliases configuration")
+				}
+			}
+		})
+	}
+}
+
+func TestGatewayInvalidListenListRejectsBeforeHostProbes(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		args        []string
+		environment string
+	}{
+		{name: "empty flag", args: []string{"--listen="}},
+		{name: "invalid second flag", args: []string{"--listen", "192.0.2.10", "--listen", "gateway.example"}},
+		{name: "comma-separated flags unsupported", args: []string{"--listen", "192.0.2.10,198.51.100.20"}},
+		{name: "environment with empty entry", environment: "192.0.2.10,,198.51.100.20"},
+		{name: "environment with invalid entry", environment: "192.0.2.10,gateway.example"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &commandRunner{}
+			app, _, _ := testApp(t, runner)
+			if test.environment != "" {
+				app.Environment["PARACETAMOL_GATEWAY_LISTEN"] = test.environment
+			}
+			dataRoot := filepath.Join(t.TempDir(), "absent")
+			err := app.runGateway(append(test.args, "--data-dir", dataRoot))
+			if err == nil || !strings.Contains(err.Error(), "listen address") || len(runner.commands) != 0 {
+				t.Fatalf("err=%v probes=%v", err, runner.commands)
+			}
+			if _, err := os.Lstat(dataRoot); !os.IsNotExist(err) {
+				t.Fatalf("data root mutated: %v", err)
 			}
 		})
 	}
@@ -396,7 +464,7 @@ func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
 	label, published := gatewayAdditionalEndpoint("192.0.2.10", config.DefaultGatewayPort)
 	app.writeGatewayStartup(gatewayStartup{
-		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, config.DefaultGatewayPort), AdditionalLabel: label, AdditionalEndpoint: published,
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, config.DefaultGatewayPort), AdditionalEndpoints: [][2]string{{label, published}},
 		Applications: []string{"llama-cpp"}, Profile: "strix-halo", Backend: "rocm", ModelsMax: 1,
 		Registry: gateway.Registry{Fingerprint: "1234567890abcdef", Models: []gateway.Model{{ID: "qwen"}}},
 	})
@@ -407,6 +475,48 @@ func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
 	} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("startup output lacks %q:\n%s", expected, output)
+		}
+	}
+}
+
+func TestGatewayMultiAddressStartupAndExposureWarnings(t *testing.T) {
+	for _, authenticated := range []bool{false, true} {
+		app, stdout, stderr := testApp(t, &commandRunner{})
+		bindings, err := gatewayListenBindings([]string{
+			"192.0.2.10", "::ffff:192.0.2.10", "198.51.100.20", "2001:db8::10", "::1",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var endpoints [][2]string
+		for _, binding := range bindings {
+			label, endpoint := gatewayAdditionalEndpoint(binding.host, config.DefaultGatewayPort)
+			if endpoint != "" {
+				endpoints = append(endpoints, [2]string{label, endpoint})
+			}
+		}
+		app.writeGatewayPublicationWarnings(bindings, config.DefaultGatewayPort, authenticated)
+		app.writeGatewayStartup(gatewayStartup{LocalEndpoint: config.DefaultGatewayURL, AdditionalEndpoints: endpoints, Authenticated: authenticated})
+		for _, endpoint := range []string{
+			"http://127.0.0.1:7455/v1", "http://192.0.2.10:7455/v1", "http://198.51.100.20:7455/v1",
+			"http://[2001:db8::10]:7455/v1", "http://[::1]:7455/v1",
+		} {
+			if !strings.Contains(stdout.String(), endpoint) {
+				t.Fatalf("banner lacks %q: %s", endpoint, stdout)
+			}
+		}
+		if strings.Count(stdout.String(), "Published endpoint") != 3 || strings.Count(stderr.String(), "WARNING:") != 3 {
+			t.Fatalf("wrong published endpoint/warning count: stdout=%s stderr=%s", stdout, stderr)
+		}
+		if strings.Contains(stderr.String(), "127.0.0.1") || strings.Contains(stderr.String(), "[::1]") || strings.Contains(stdout.String(), "::ffff:") {
+			t.Fatalf("unexpected loopback warning or duplicate alias: stdout=%s stderr=%s", stdout, stderr)
+		}
+		warning := "without authentication"
+		if authenticated {
+			warning = "requires a Bearer key, but HTTP does not encrypt keys or prompts"
+		}
+		if strings.Count(stderr.String(), warning) != 3 {
+			t.Fatalf("wrong authentication warnings: %s", stderr)
 		}
 	}
 }

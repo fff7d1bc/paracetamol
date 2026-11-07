@@ -807,13 +807,18 @@ limits, agent-tool eligibility, and reasoning choices.
 
 `internal/gateway/` owns a frozen receipt-backed model registry, the bounded
 FIFO allocation scheduler, the OpenAI-compatible proxy, and exact backend
-lifecycle. The foreground host process always retains an IPv4 loopback
-listener. A concrete non-loopback publication adds one exact listener on the
-same port; an IPv4 wildcard listener already includes loopback. IPv6 listeners
-use an explicit `tcp6` socket beside IPv4 loopback so platform dual-stack
-policy cannot break managed local clients. A lazily started llama.cpp router
-remains in its normal constrained container and publishes
-only one ephemeral loopback port. With no application selection, the CLI
+lifecycle. The foreground host process always retains IPv4 loopback access.
+Repeatable gateway `--listen` values select exact literal IPv4 or IPv6
+addresses on one shared port. The CLI list replaces the environment or
+configuration list rather than merging. Canonical-equivalent addresses are
+deduplicated; an IPv4 wildcard subsumes all IPv4 bindings, including loopback,
+while an IPv6 wildcard subsumes only IPv6 bindings. IPv6 listeners use explicit
+`tcp6` sockets so platform dual-stack policy cannot break managed local
+clients. The whole list is validated before binding, and a bind failure closes
+every acquired socket. Startup output and exposure warnings show the effective
+bound addresses. Direct web applications retain single-address publication.
+A lazily started llama.cpp router remains in its normal constrained container
+and publishes only one ephemeral loopback port. With no application selection, the CLI
 discovers built applications that contribute at least one compatible
 receipt-verified model. Explicit selections replace discovery and retain
 strict missing-image and missing-content failures. The foreground lifecycle

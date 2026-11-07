@@ -102,8 +102,8 @@ Empty `applications` and `render_nodes` arrays retain automatic discovery:
 applications = []
 profile = "auto"
 render_nodes = []
-# Loopback remains available when this selects another exact address.
-listen = "127.0.0.1"
+# An empty list is loopback-only. Loopback also remains available with other IPs.
+listen = []
 port = 7455
 startup_timeout = "30m"
 
@@ -126,8 +126,10 @@ Select another file globally either before or after the command:
 
 Explicit command flags win over corresponding environment variables where
 defined; both win over the selected configuration, which wins over built-in
-defaults. A command-line `-a` list replaces `gateway.applications`; it does not
-append to it. Use `--no-config` to bypass the optional XDG file. An explicitly
+defaults. A command-line `-a` list replaces `gateway.applications`; repeated
+`--listen` flags replace the entire environment or configuration listen list.
+Neither list is merged with lower-precedence settings.
+Use `--no-config` to bypass the optional XDG file. An explicitly
 selected missing file, an unknown key, or a malformed value is an error.
 Configuration exposes the reviewed typed gateway surface rather than arbitrary
 upstream llama.cpp arguments; security-relaxing `--unconfined` remains
@@ -146,22 +148,47 @@ comments, and the documented table headers. `config init` and
 `config.example.toml` emit that supported subset. Multiline strings, multiline
 arrays, dotted assignments, and other general TOML features are rejected.
 
+To publish on several exact addresses, repeat `--listen`. Every listener uses
+the same `--port`:
+
+```bash
+./paracetamol run gateway \
+  --listen 192.0.2.10 --listen 198.51.100.20 --port 7455
+```
+
+Listen values must be literal IPv4 or IPv6 addresses, not hostnames or
+addresses with ports. `PARACETAMOL_GATEWAY_LISTEN` accepts a comma-separated
+list, such as `192.0.2.10,198.51.100.20`. Configuration uses a string array:
+
+```toml
+[gateway]
+listen = ["192.0.2.10", "198.51.100.20"]
+```
+
+An existing scalar such as `listen = "192.0.2.10"` remains valid shorthand for
+one address. `listen = []` selects loopback-only publication. Multiple listen
+addresses are specific to `run gateway`; direct web applications still accept
+one `--listen` address.
+
 One command-line exception keeps an ad hoc port change local. An explicit
 `--port` without an explicit `--listen` selects `127.0.0.1` for that invocation,
-even when configuration or the environment normally publishes another
-address. Supplying both options applies that address and port. A port selected
-only by configuration or the environment does not suppress the resolved
-listen address.
+even when configuration or the environment normally publishes other
+addresses. Supplying both options applies the complete CLI address list and
+port. A port selected only by configuration or the environment does not
+suppress the resolved listen list.
 
-The compact startup card shows the local endpoint, any additional publication,
+The compact startup card shows the local endpoint, the effective bound addresses,
 selected profile and render nodes, applications, loaded configuration path,
 verified model count, short inventory fingerprint, and the copyable local
 status command. The gateway always remains available to managed local clients
-at `http://127.0.0.1:PORT/v1`. A concrete non-loopback `--listen` adds that exact
-address on the same port; `0.0.0.0` uses one wildcard socket, which already
-includes IPv4 loopback. IPv6 uses a separate `tcp6` listener alongside IPv4
-loopback rather than relying on host dual-stack policy. Opening every required
-listener is all-or-nothing.
+at `http://127.0.0.1:PORT/v1`. Each concrete non-loopback address adds an exact
+listener on the same port. Duplicate and canonical-equivalent IPs are removed.
+`0.0.0.0` subsumes every explicit IPv4 binding, including loopback. `::`
+subsumes IPv6 bindings only, retaining separate IPv4 loopback unless an IPv4
+wildcard already covers it. IPv6 uses explicit `tcp6` listeners rather than
+relying on host dual-stack policy. The complete list is validated before any
+socket opens. If any bind fails, every acquired socket is closed and startup
+fails.
 
 There is no daemon or detach mode. The foreground process owns listener and
 backend cleanup. Ctrl-C, `stop gateway`, and `stop all` stop accepting work on
@@ -171,10 +198,10 @@ private same-user Unix socket, never the published HTTP API. Its location is
 `$XDG_RUNTIME_DIR/paracetamol/gateway.sock`, or
 `$HOME/.local/share/paracetamol/run/gateway.sock` when the runtime directory is
 unset. One gateway may run per user. A gateway started by an older build has no
-control socket and still needs Ctrl-C or SIGTERM. A non-loopback `--listen` is
-visibly warned about. Without a configured key it is an unauthenticated
-trusted-LAN publication. With a key, the warning still identifies unencrypted
-HTTP.
+control socket and still needs Ctrl-C or SIGTERM. Non-loopback publication is
+visibly warned about using the effective bound addresses. Without a configured
+key it is an unauthenticated trusted-network publication. With a key, the
+warning still identifies unencrypted HTTP.
 
 ## Optional authentication
 

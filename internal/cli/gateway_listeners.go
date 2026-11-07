@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
+	"slices"
+
+	"paracetamol/internal/config"
 )
 
 const gatewayLoopbackAddress = "127.0.0.1"
@@ -15,26 +19,56 @@ type gatewayListenBinding struct {
 
 type gatewayListenFunc func(network, address string) (net.Listener, error)
 
-// gatewayListenBindings preserves the stable IPv4 loopback control path while
-// adding exactly the requested publication address. IPv4 wildcard publication
-// already contains loopback. IPv6 uses an explicit tcp6 socket so its
-// dual-stack behavior never determines whether managed local clients work.
-// runGateway validates requested as an IP address before reaching this plan.
-func gatewayListenBindings(requested string) []gatewayListenBinding {
-	ip := net.ParseIP(requested)
+// gatewayListenBindings validates the complete publication set before sockets
+// open, canonicalizes aliases, and keeps the IPv4 loopback control path.
+// Wildcards subsume only their explicit socket family: tcp6 never depends on
+// platform dual-stack policy to serve managed IPv4 clients.
+func gatewayListenBindings(requested []string) ([]gatewayListenBinding, error) {
 	local := gatewayListenBinding{network: "tcp4", host: gatewayLoopbackAddress}
-	if ipv4 := ip.To4(); ipv4 != nil {
-		host := ipv4.String()
-		if ipv4.IsUnspecified() || host == gatewayLoopbackAddress {
-			return []gatewayListenBinding{{network: "tcp4", host: host}}
+	unique := map[gatewayListenBinding]bool{local: true}
+	for _, address := range requested {
+		if err := config.ValidateListenAddress(address); err != nil {
+			return nil, fmt.Errorf("gateway listen address %q: %w", address, err)
 		}
-		return []gatewayListenBinding{local, {network: "tcp4", host: host}}
+		ip := net.ParseIP(address)
+		binding := gatewayListenBinding{network: "tcp6", host: ip.String()}
+		if ipv4 := ip.To4(); ipv4 != nil {
+			binding = gatewayListenBinding{network: "tcp4", host: ipv4.String()}
+		}
+		unique[binding] = true
 	}
-	return []gatewayListenBinding{local, {network: "tcp6", host: ip.String()}}
+	wildcard4 := unique[gatewayListenBinding{network: "tcp4", host: "0.0.0.0"}]
+	wildcard6 := unique[gatewayListenBinding{network: "tcp6", host: "::"}]
+	bindings := make([]gatewayListenBinding, 0, len(unique))
+	for binding := range unique {
+		if binding.network == "tcp4" && binding.host != "0.0.0.0" && wildcard4 {
+			continue
+		}
+		if binding.network == "tcp6" && binding.host != "::" && wildcard6 {
+			continue
+		}
+		bindings = append(bindings, binding)
+	}
+	slices.SortFunc(bindings, func(a, b gatewayListenBinding) int {
+		if a == local && b != local {
+			return -1
+		}
+		if b == local && a != local {
+			return 1
+		}
+		if order := cmp.Compare(a.network, b.network); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.host, b.host)
+	})
+	return bindings, nil
 }
 
-func openGatewayListeners(requested string, port int, listen gatewayListenFunc) ([]net.Listener, error) {
-	bindings := gatewayListenBindings(requested)
+func openGatewayListeners(requested []string, port int, listen gatewayListenFunc) ([]net.Listener, error) {
+	bindings, err := gatewayListenBindings(requested)
+	if err != nil {
+		return nil, err
+	}
 	listeners := make([]net.Listener, 0, len(bindings))
 	for _, binding := range bindings {
 		address := net.JoinHostPort(binding.host, fmt.Sprint(port))

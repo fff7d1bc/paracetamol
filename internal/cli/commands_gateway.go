@@ -32,7 +32,8 @@ func (app *App) runGateway(args []string) (result error) {
 	var nodes stringList
 	set.Var(&nodes, "render-node", "exact GPU render node; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
-	listenFlag := set.String("listen", "", "additional host IP on which to publish; loopback remains available (default: loopback only)")
+	var listenFlags stringList
+	set.Var(&listenFlags, "listen", "additional host IP on which to publish; repeatable; loopback remains available (default: loopback only)")
 	portFlag := set.String("port", "", fmt.Sprintf("gateway port shared by local and published endpoints. Using --port alone selects loopback (default: %d)", config.DefaultGatewayPort))
 	backend := set.String("backend", "rocm", "llama.cpp backend: rocm or vulkan")
 	modelsMax := set.Int("models-max", 1, "llama.cpp router simultaneous models")
@@ -83,8 +84,9 @@ func (app *App) runGateway(args []string) (result error) {
 	if *startupTimeout <= 0 {
 		return controlerr.Usage("--startup-timeout must be positive")
 	}
-	listen := gatewayListenSetting(set, *listenFlag, app.Environment, gatewayConfiguration.Listen)
-	if err := config.ValidateListenAddress(listen); err != nil {
+	listen := gatewayListenSetting(set, listenFlags, app.Environment, gatewayConfiguration.Listen)
+	bindings, err := gatewayListenBindings(listen)
+	if err != nil {
 		return err
 	}
 	port, err := config.ValidatePort(gatewayIntSetting(*portFlag, app.Environment, "GATEWAY_PORT", gatewayConfiguration.Port, config.DefaultGatewayPort))
@@ -212,16 +214,16 @@ func (app *App) runGateway(args []string) (result error) {
 		Handler: handler, ErrorLog: log.New(gatewayLog, "gateway | http: ", 0),
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
-	if !isLoopback(listen) {
-		if apiKey == "" {
-			fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
-		} else {
-			fmt.Fprintf(app.Stderr, "%s gateway on %s requires a Bearer key, but HTTP does not encrypt keys or prompts. Use a trusted network or TLS reverse proxy.\n", errorTerminal.Warning("WARNING:"), net.JoinHostPort(listen, fmt.Sprint(port)))
+	app.writeGatewayPublicationWarnings(bindings, port, apiKey != "")
+	var additionalEndpoints [][2]string
+	for _, binding := range bindings {
+		label, endpoint := gatewayAdditionalEndpoint(binding.host, port)
+		if endpoint != "" {
+			additionalEndpoints = append(additionalEndpoints, [2]string{label, endpoint})
 		}
 	}
-	additionalLabel, additionalEndpoint := gatewayAdditionalEndpoint(listen, port)
 	app.writeGatewayStartup(gatewayStartup{
-		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalLabel: additionalLabel, AdditionalEndpoint: additionalEndpoint,
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, port), AdditionalEndpoints: additionalEndpoints,
 		Applications: applications, Profile: profile, RenderNodes: selectedNodes,
 		Backend: *backend, ModelsMax: *modelsMax, Slots: *slots, Registry: registry, Configuration: configuration.Path,
 		Authenticated:     apiKey != "",
@@ -254,8 +256,7 @@ func (app *App) runGateway(args []string) (result error) {
 
 type gatewayStartup struct {
 	LocalEndpoint           string
-	AdditionalLabel         string
-	AdditionalEndpoint      string
+	AdditionalEndpoints     [][2]string
 	Applications            []string
 	Profile                 string
 	RenderNodes             []string
@@ -303,11 +304,26 @@ func gatewayStringSetting(flagValue string, environment map[string]string, envir
 	return firstNonEmpty(flagValue, config.EnvironmentValue(environment, environmentName, ""), stringValue(configured), fallback)
 }
 
-func gatewayListenSetting(set *commandFlags, flagValue string, environment map[string]string, configured *string) string {
-	if set.changed("port") && !set.changed("listen") {
-		return config.DefaultListen
+func gatewayListenSetting(set *commandFlags, flagValues []string, environment map[string]string, configured []string) []string {
+	if set.changed("listen") {
+		return append([]string(nil), flagValues...)
 	}
-	return gatewayStringSetting(flagValue, environment, "GATEWAY_LISTEN", configured, config.DefaultListen)
+	// An explicit port alone remains a safe loopback-only override, even when
+	// lower-precedence settings publish the gateway on external addresses.
+	if set.changed("port") {
+		return []string{config.DefaultListen}
+	}
+	if value := config.EnvironmentValue(environment, "GATEWAY_LISTEN", ""); value != "" {
+		addresses := strings.Split(value, ",")
+		for index := range addresses {
+			addresses[index] = strings.TrimSpace(addresses[index])
+		}
+		return addresses
+	}
+	if configured != nil {
+		return append([]string(nil), configured...)
+	}
+	return []string{config.DefaultListen}
 }
 
 func gatewayIntSetting(flagValue string, environment map[string]string, environmentName string, configured *int, fallback int) string {
@@ -386,6 +402,21 @@ func (app *App) builtGatewayApplications() ([]string, error) {
 	return applications, nil
 }
 
+func (app *App) writeGatewayPublicationWarnings(bindings []gatewayListenBinding, port int, authenticated bool) {
+	terminal := app.terminal(app.Stderr)
+	for _, binding := range bindings {
+		if isLoopback(binding.host) {
+			continue
+		}
+		address := net.JoinHostPort(binding.host, fmt.Sprint(port))
+		if !authenticated {
+			fmt.Fprintf(app.Stderr, "%s gateway is published on %s without authentication.\n", terminal.Warning("WARNING:"), address)
+		} else {
+			fmt.Fprintf(app.Stderr, "%s gateway on %s requires a Bearer key, but HTTP does not encrypt keys or prompts. Use a trusted network or TLS reverse proxy.\n", terminal.Warning("WARNING:"), address)
+		}
+	}
+}
+
 func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	terminal := app.terminal(app.Stdout)
 	modelCount := len(summary.Registry.Models)
@@ -398,13 +429,11 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 		profile += " · " + strings.Join(summary.RenderNodes, ", ")
 	}
 	endpointLabel := "Endpoint"
-	if summary.AdditionalEndpoint != "" {
+	if len(summary.AdditionalEndpoints) > 0 {
 		endpointLabel = "Local endpoint"
 	}
 	rows := [][2]string{{endpointLabel, summary.LocalEndpoint}}
-	if summary.AdditionalEndpoint != "" {
-		rows = append(rows, [2]string{summary.AdditionalLabel, summary.AdditionalEndpoint})
-	}
+	rows = append(rows, summary.AdditionalEndpoints...)
 	rows = append(rows,
 		[2]string{"Web UI", strings.TrimSuffix(summary.LocalEndpoint, "/v1") + "/"},
 		[2]string{"Profile", profile},

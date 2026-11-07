@@ -109,11 +109,19 @@ func applyConfigurationSetting(configuration *Configuration, section, key, rawVa
 		}
 		configuration.Gateway.RenderNodes = value
 	case "gateway.listen":
+		if strings.HasPrefix(rawValue, "[") {
+			value, err := parseConfigurationStringArray(rawValue)
+			if err != nil {
+				return invalidConfigurationValue(setting, err)
+			}
+			configuration.Gateway.Listen = value
+			break
+		}
 		value, err := parseConfigurationString(rawValue)
 		if err != nil {
 			return invalidConfigurationValue(setting, err)
 		}
-		configuration.Gateway.Listen = &value
+		configuration.Gateway.Listen = []string{value}
 	case "gateway.port":
 		value, err := parseConfigurationInteger(rawValue)
 		if err != nil {

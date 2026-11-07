@@ -56,7 +56,7 @@ type GatewayConfiguration struct {
 	Applications   []string
 	Profile        *string
 	RenderNodes    []string
-	Listen         *string
+	Listen         []string
 	Port           *int
 	StartupTimeout *string
 	APIKeyFile     *string
@@ -175,6 +175,11 @@ func validateConfiguration(configuration Configuration, path string) error {
 			return controlerr.New("[gateway].applications supports only llama-cpp, got %q: %s", application, path)
 		}
 	}
+	for _, address := range configuration.Gateway.Listen {
+		if err := ValidateListenAddress(address); err != nil {
+			return controlerr.New("invalid [gateway].listen address %q in %s: %v", address, path, err)
+		}
+	}
 	for _, setting := range []struct {
 		name  string
 		value *string
@@ -193,7 +198,6 @@ func validateConfiguration(configuration Configuration, path string) error {
 		value *string
 	}{
 		{"[gateway].profile", configuration.Gateway.Profile},
-		{"[gateway].listen", configuration.Gateway.Listen},
 		{"[gateway].startup_timeout", configuration.Gateway.StartupTimeout},
 		{"[gateway.client].url", configuration.Gateway.Client.URL},
 		{"[gateway.llama-cpp].backend", configuration.Gateway.LlamaCPP.Backend},
@@ -269,11 +273,11 @@ func DefaultContents(dataDir string) []byte {
 		"data_dir = " + strconv.Quote(dataDir) + "\n\n" +
 		"[gateway]\n" +
 		"# Empty lists keep automatic backend and render-node discovery.\n" +
-		"# Loopback is always available; a non-loopback listen address adds publication.\n" +
+		"# Loopback is always available; non-loopback listen addresses add publication.\n" +
 		"applications = []\n" +
 		"profile = \"auto\"\n" +
 		"render_nodes = []\n" +
-		"listen = \"127.0.0.1\"\n" +
+		"listen = [\"127.0.0.1\"]\n" +
 		"port = " + strconv.Itoa(DefaultGatewayPort) + "\n" +
 		"startup_timeout = \"30m\"\n" +
 		"# Optional Bearer authentication. Use a private file containing a random key.\n" +
