@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 
 	"paracetamol/internal/config"
 )
@@ -15,6 +16,12 @@ const gatewayLoopbackAddress = "127.0.0.1"
 type gatewayListenBinding struct {
 	network string
 	host    string
+}
+
+type gatewayStartupEndpoint struct {
+	Label    string
+	Endpoint string
+	WebUI    string
 }
 
 type gatewayListenFunc func(network, address string) (net.Listener, error)
@@ -95,27 +102,24 @@ func gatewayEndpoint(host string, port int) string {
 	return "http://" + net.JoinHostPort(host, fmt.Sprint(port)) + "/v1"
 }
 
-func gatewayAdditionalEndpoint(requested string, port int) (string, string) {
+func gatewayAdditionalEndpoint(requested string, port int) gatewayStartupEndpoint {
 	ip := net.ParseIP(requested)
+	host, family := ip.String(), "IPv6"
 	if ipv4 := ip.To4(); ipv4 != nil {
-		host := ipv4.String()
-		if host == gatewayLoopbackAddress {
-			return "", ""
-		}
-		if ipv4.IsUnspecified() {
-			return "Published on", net.JoinHostPort(host, fmt.Sprint(port)) + " · all IPv4 interfaces"
-		}
-		if ipv4.IsLoopback() {
-			return "Additional endpoint", gatewayEndpoint(host, port)
-		}
-		return "Published endpoint", gatewayEndpoint(host, port)
+		host, family = ipv4.String(), "IPv4"
 	}
-	host := ip.String()
+	if host == gatewayLoopbackAddress {
+		return gatewayStartupEndpoint{}
+	}
 	if ip.IsUnspecified() {
-		return "Published on", net.JoinHostPort(host, fmt.Sprint(port)) + " · all IPv6 interfaces"
+		// A wildcard describes publication, not a client destination. Keep the
+		// concrete local link rather than inventing a URL for an unspecified IP.
+		return gatewayStartupEndpoint{Label: "Published on", Endpoint: net.JoinHostPort(host, fmt.Sprint(port)) + " · all " + family + " interfaces"}
 	}
+	label := "Published endpoint"
 	if ip.IsLoopback() {
-		return "Additional endpoint", gatewayEndpoint(host, port)
+		label = "Additional endpoint"
 	}
-	return "Published endpoint", gatewayEndpoint(host, port)
+	endpoint := gatewayEndpoint(host, port)
+	return gatewayStartupEndpoint{Label: label, Endpoint: endpoint, WebUI: strings.TrimSuffix(endpoint, "/v1") + "/"}
 }

@@ -215,11 +215,11 @@ func (app *App) runGateway(args []string) (result error) {
 		ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute,
 	}
 	app.writeGatewayPublicationWarnings(bindings, port, apiKey != "")
-	var additionalEndpoints [][2]string
+	var additionalEndpoints []gatewayStartupEndpoint
 	for _, binding := range bindings {
-		label, endpoint := gatewayAdditionalEndpoint(binding.host, port)
-		if endpoint != "" {
-			additionalEndpoints = append(additionalEndpoints, [2]string{label, endpoint})
+		endpoint := gatewayAdditionalEndpoint(binding.host, port)
+		if endpoint.Endpoint != "" {
+			additionalEndpoints = append(additionalEndpoints, endpoint)
 		}
 	}
 	app.writeGatewayStartup(gatewayStartup{
@@ -256,7 +256,7 @@ func (app *App) runGateway(args []string) (result error) {
 
 type gatewayStartup struct {
 	LocalEndpoint           string
-	AdditionalEndpoints     [][2]string
+	AdditionalEndpoints     []gatewayStartupEndpoint
 	Applications            []string
 	Profile                 string
 	RenderNodes             []string
@@ -432,10 +432,17 @@ func (app *App) writeGatewayStartup(summary gatewayStartup) {
 	if len(summary.AdditionalEndpoints) > 0 {
 		endpointLabel = "Local endpoint"
 	}
-	rows := [][2]string{{endpointLabel, summary.LocalEndpoint}}
-	rows = append(rows, summary.AdditionalEndpoints...)
+	rows := [][2]string{
+		{endpointLabel, summary.LocalEndpoint},
+		{"Web UI", strings.TrimSuffix(summary.LocalEndpoint, "/v1") + "/"},
+	}
+	for _, endpoint := range summary.AdditionalEndpoints {
+		rows = append(rows, [2]string{endpoint.Label, endpoint.Endpoint})
+		if endpoint.WebUI != "" {
+			rows = append(rows, [2]string{"Web UI", endpoint.WebUI})
+		}
+	}
 	rows = append(rows,
-		[2]string{"Web UI", strings.TrimSuffix(summary.LocalEndpoint, "/v1") + "/"},
 		[2]string{"Profile", profile},
 		[2]string{"Applications", strings.Join(summary.Applications, ", ")},
 		[2]string{"Inventory", fmt.Sprintf("%d verified %s · %s", modelCount, plural(modelCount, "model", "models"), fingerprint)},

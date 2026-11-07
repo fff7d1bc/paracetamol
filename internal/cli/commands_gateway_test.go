@@ -181,16 +181,18 @@ func TestGatewayAdditionalEndpointPresentation(t *testing.T) {
 		requested string
 		label     string
 		value     string
+		webUI     string
 	}{
-		{"127.0.0.1", "", ""},
-		{"127.0.0.2", "Additional endpoint", "http://127.0.0.2:8080/v1"},
-		{"192.0.2.10", "Published endpoint", "http://192.0.2.10:8080/v1"},
-		{"0.0.0.0", "Published on", "0.0.0.0:8080 · all IPv4 interfaces"},
-		{"::", "Published on", "[::]:8080 · all IPv6 interfaces"},
+		{"127.0.0.1", "", "", ""},
+		{"127.0.0.2", "Additional endpoint", "http://127.0.0.2:8080/v1", "http://127.0.0.2:8080/"},
+		{"192.0.2.10", "Published endpoint", "http://192.0.2.10:8080/v1", "http://192.0.2.10:8080/"},
+		{"2001:db8::10", "Published endpoint", "http://[2001:db8::10]:8080/v1", "http://[2001:db8::10]:8080/"},
+		{"0.0.0.0", "Published on", "0.0.0.0:8080 · all IPv4 interfaces", ""},
+		{"::", "Published on", "[::]:8080 · all IPv6 interfaces", ""},
 	} {
-		label, value := gatewayAdditionalEndpoint(test.requested, 8080)
-		if label != test.label || value != test.value {
-			t.Fatalf("requested=%s label=%q value=%q", test.requested, label, value)
+		endpoint := gatewayAdditionalEndpoint(test.requested, 8080)
+		if endpoint.Label != test.label || endpoint.Endpoint != test.value || endpoint.WebUI != test.webUI {
+			t.Fatalf("requested=%s endpoint=%+v", test.requested, endpoint)
 		}
 	}
 }
@@ -462,9 +464,9 @@ func TestGatewayStartupIsCompactAndActionable(t *testing.T) {
 
 func TestGatewayStartupDistinguishesLocalAndPublishedEndpoints(t *testing.T) {
 	app, stdout, _ := testApp(t, &commandRunner{})
-	label, published := gatewayAdditionalEndpoint("192.0.2.10", config.DefaultGatewayPort)
+	published := gatewayAdditionalEndpoint("192.0.2.10", config.DefaultGatewayPort)
 	app.writeGatewayStartup(gatewayStartup{
-		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, config.DefaultGatewayPort), AdditionalEndpoints: [][2]string{{label, published}},
+		LocalEndpoint: gatewayEndpoint(gatewayLoopbackAddress, config.DefaultGatewayPort), AdditionalEndpoints: []gatewayStartupEndpoint{published},
 		Applications: []string{"llama-cpp"}, Profile: "strix-halo", Backend: "rocm", ModelsMax: 1,
 		Registry: gateway.Registry{Fingerprint: "1234567890abcdef", Models: []gateway.Model{{ID: "qwen"}}},
 	})
@@ -488,11 +490,11 @@ func TestGatewayMultiAddressStartupAndExposureWarnings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var endpoints [][2]string
+		var endpoints []gatewayStartupEndpoint
 		for _, binding := range bindings {
-			label, endpoint := gatewayAdditionalEndpoint(binding.host, config.DefaultGatewayPort)
-			if endpoint != "" {
-				endpoints = append(endpoints, [2]string{label, endpoint})
+			endpoint := gatewayAdditionalEndpoint(binding.host, config.DefaultGatewayPort)
+			if endpoint.Endpoint != "" {
+				endpoints = append(endpoints, endpoint)
 			}
 		}
 		app.writeGatewayPublicationWarnings(bindings, config.DefaultGatewayPort, authenticated)
@@ -508,6 +510,18 @@ func TestGatewayMultiAddressStartupAndExposureWarnings(t *testing.T) {
 		if strings.Count(stdout.String(), "Published endpoint") != 3 || strings.Count(stderr.String(), "WARNING:") != 3 {
 			t.Fatalf("wrong published endpoint/warning count: stdout=%s stderr=%s", stdout, stderr)
 		}
+		webUIs := []string{
+			"http://127.0.0.1:7455/", "http://192.0.2.10:7455/", "http://198.51.100.20:7455/",
+			"http://[2001:db8::10]:7455/", "http://[::1]:7455/",
+		}
+		if strings.Count(stdout.String(), "Web UI") != len(webUIs) {
+			t.Fatalf("wrong Web UI count: %s", stdout)
+		}
+		for _, url := range webUIs {
+			if !strings.Contains(stdout.String(), url+"\n") {
+				t.Fatalf("banner lacks Web UI URL %q: %s", url, stdout)
+			}
+		}
 		if strings.Contains(stderr.String(), "127.0.0.1") || strings.Contains(stderr.String(), "[::1]") || strings.Contains(stdout.String(), "::ffff:") {
 			t.Fatalf("unexpected loopback warning or duplicate alias: stdout=%s stderr=%s", stdout, stderr)
 		}
@@ -517,6 +531,31 @@ func TestGatewayMultiAddressStartupAndExposureWarnings(t *testing.T) {
 		}
 		if strings.Count(stderr.String(), warning) != 3 {
 			t.Fatalf("wrong authentication warnings: %s", stderr)
+		}
+	}
+}
+
+func TestGatewayWildcardStartupKeepsConcreteWebUILink(t *testing.T) {
+	app, stdout, _ := testApp(t, &commandRunner{})
+	app.writeGatewayStartup(gatewayStartup{
+		LocalEndpoint: config.DefaultGatewayURL,
+		AdditionalEndpoints: []gatewayStartupEndpoint{
+			gatewayAdditionalEndpoint("0.0.0.0", config.DefaultGatewayPort),
+			gatewayAdditionalEndpoint("::", config.DefaultGatewayPort),
+		},
+	})
+	output := stdout.String()
+	if strings.Count(output, "Web UI") != 1 || !strings.Contains(output, "http://127.0.0.1:7455/\n") {
+		t.Fatalf("missing concrete local Web UI: %s", output)
+	}
+	for _, unsupported := range []string{"http://0.0.0.0", "http://[::]"} {
+		if strings.Contains(output, unsupported) {
+			t.Fatalf("wildcard advertised as client destination: %s", output)
+		}
+	}
+	for _, binding := range []string{"0.0.0.0:7455 · all IPv4 interfaces", "[::]:7455 · all IPv6 interfaces"} {
+		if !strings.Contains(output, binding) {
+			t.Fatalf("missing wildcard publication %q: %s", binding, output)
 		}
 	}
 }

@@ -177,7 +177,10 @@ addresses. Supplying both options applies the complete CLI address list and
 port. A port selected only by configuration or the environment does not
 suppress the resolved listen list.
 
-The compact startup card shows the local endpoint, the effective bound addresses,
+The compact startup card pairs each concrete API endpoint with its Web UI URL.
+The same API and Web UI are served on every bound address. Wildcard bindings
+are labelled as all-interface publications rather than shown as client URLs.
+The card also shows the effective bound addresses,
 selected profile and render nodes, applications, loaded configuration path,
 verified model count, short inventory fingerprint, and the copyable local
 status command. The gateway always remains available to managed local clients
