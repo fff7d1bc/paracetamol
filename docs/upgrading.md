@@ -644,6 +644,26 @@ masked and maskless selection, duplicate and invalid IDs, and poisoned
 padding against an independent numerical oracle. The correction changes no
 KV precision, model bytes, sampling policy, or matrix arithmetic.
 
+The November 7 shared-pool investigation reviews the Strix fork at
+`62a3f414447eb8487294c34678ddc8974be7c7f9`. Its merged
+[PR 215](https://github.com/halo-box/strix-llama.cpp/pull/215)
+widens compact-QSA block descriptors and raises the operator bound to 1048576
+rows. That is a different change from the accepted 262140-to-262144 correction
+above. A private width-only extraction removes the fallback beyond 262144
+without changing F16 KV, matrix arithmetic or the model's session window.
+A separate local fused-indexer score-strip prototype tests the fork's memory
+lifetime idea without importing its different indexer or RoPE machinery.
+Neither is adopted because the 327680-token concurrent workload still reaches
+the 8 GiB memory guard. The [capacity record](hardware-acceptance.md#320-ki-token-follow-up-and-fork-extraction)
+preserves the successful checks and the uncompleted acceptance boundaries.
+
+The same sweep does not select the fork's GDN consumer-view, input-sync,
+compact visibility or incremental-QSA changes. Some require fork-only graph
+and cache machinery, while the available evidence does not establish a useful
+gain for the managed four-slot DFlash2 path. Do not treat their merge status
+as a reason to import them or add a global synchronization barrier. Existing
+precision-preserving production patches and the normal image remain unchanged.
+
 The October 22 refresh selects frozen upstream
 `e197cef4554d466e0becac20e453a355daba8e5d`, 63 commits after `dd002b9`,
 in image `e197cef-r58`. Thirteen patches remain. Twelve apply unchanged;

@@ -94,6 +94,75 @@ clients, drain the gateway and remove the owned backend. All arms finish
 without a GPU/SVM/OOM fault and leave the target idle. Other architectures
 are N/P for this bounded hardware-capacity screen.
 
+#### 320 Ki-token follow-up and fork extraction
+
+BLOCKED for adoption. The production image and 262144-token shared pool
+remain unchanged. This follow-up keeps the same hardware, model, projector,
+F16 cache, ordinary arithmetic, greedy DFlash2, four slots and 2048 batches.
+The private gateway controller selects only exact source-built experimental
+images. Session limits remain 262144 even when the total pool is 327680.
+
+Matched two-worker controls use 180K and 70K prompts, followed by true 2K
+appends and three fixed-output timing batches. Both pool sizes pass retrieval
+and history checks. Minimum available memory is 13.29 GiB at 262144 and
+11.07 GiB at 327680. Warm aggregate output rates are about 40–45 tokens/s
+in both arms, calculated from total output divided by shared batch wall time.
+This is not evidence that the larger allocation itself improves throughput.
+
+Four-worker stress uses one 180K prompt and three distinct 40K prompts, then
+2K appends with full assistant replay. A frozen 32K retrieval/timing sentinel
+runs before the stress, with another scheduled afterward. Effort is `none`,
+seed is 42, and the real gateway supplies and records all six sampler values.
+
+| Private 327680-token candidate | Completed checks | Reason for stopping |
+| --- | --- | --- |
+| Unchanged native source | Two primary retrievals | Above the 262144-row view bound, 2K prefill batches slow to about 21 seconds. Canceled at about 276K summed slot prompt tokens. |
+| Wider compact-QSA indices | All four primary retrievals | The slow fallback is removed, but the 8 GiB available-memory guard stops the append phase. |
+| Wider indices plus query-strip score storage | All four primary retrievals and all four appends | The guard stops the first four-worker timing batch at 7.73 GiB available. |
+
+The last candidate records four active slots and about 308787 summed slot
+prompt tokens after appends. Its four append responses finish naturally and
+pass the exact worker-marker/history checks in 21.22–22.10 seconds. This
+establishes populated execution beyond the old bound, not sustained four-way
+decode acceptance. No post-append four-worker timing batch or post-stress
+sentinel completes.
+Canceled requests and their later assertion failures are not incorrect model
+answers. No throughput result is claimed for those canceled batches.
+
+The width extraction follows merged [Strix PR 215](https://github.com/halo-box/strix-llama.cpp/pull/215),
+not its server/RoPE changes. Twenty-four actual ROCm operator cases cover
+262148, 270336, 327680 and 1048576 keys with masked/maskless and partial-query
+layouts against an independent numerical oracle. Legacy supported cases stay
+unchanged. A separate real-model state fixture passes restore checks, and
+all 248320 next-token logits match the control bit for bit. The 1048576-key
+operator cases do not establish a one-million-token model allocation.
+
+The separate local score-strip prototype retains the fused indexer, its
+eight-query tile boundaries and the native zero/negative-infinity pool mask.
+Corrected synthetic and broad-input GPU tests preserve the tested score bits
+with no observed nonthreshold key-membership change. Exact cutoff ties can
+change selected cells in both the unchanged top-k operation and the candidate.
+This is not universal output-equivalence evidence. Fractional finite pool
+biases are not qualified. An input-generator defect invalidates the earlier
+fixture's advertised class coverage, which is excluded from these conclusions.
+
+The wider-index image ID is
+`6e313f63aca60c574d5e1b41638b97d3d09facb3e3bc7616df88d8b55f2733d6`.
+The width-plus-strip image ID is
+`e2ba2a3f3a2b98f5a5575f72b68cdffeda2c9f02ebb43afb9df5cacfdffcebdb`.
+Both use the same upstream `740251a` and existing fifteen-patch baseline.
+Neither candidate is installed as the normal image or carried as a production
+patch. Revisit them with more memory and repeat populated concurrency checks
+before changing the serving policy. No guard, precision or host setting is
+relaxed to obtain a pass.
+
+Private source proposals, manifests, corrected diagnostics and runtime evidence
+remain under ignored `build/context-pool-screen-20261107/`. Every arm drains
+its exact gateway/backend and leaves the host idle without GPU/SVM/OOM faults.
+The normal generated model configuration remains byte-identical. Other
+architectures, Huihui, Vulkan and long-running agent sessions are not qualified
+by this follow-up.
+
 ### Strix Halo host refresh (2026-11-05)
 
 The 128 GB Framework Desktop development system now reports Fedora Linux 45,

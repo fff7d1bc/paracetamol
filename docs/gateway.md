@@ -454,6 +454,12 @@ unchanged. A 524288-token pool with an explicit 262144-token session limit
 passed a single 32K retrieval and history check, but both larger concurrent
 workloads reached the 8 GiB available-memory guard on the 128 GB system.
 Those interrupted workloads are not concurrency acceptance or quality failures.
+The subsequent 327680-token trial also fails the memory-headroom gate.
+A private candidate with wider indices and query-strip score storage passes
+four retrievals and their 2K follow-ups, but reaches the same memory guard as
+the four-worker timing batch begins. The normal image and 262144-token pool
+are retained.
+The fork's larger operator bound does not remove the physical-memory cost.
 
 For this exact target, the F16 attention cache and indexer together require
 7.5 GiB per 262144 pool tokens. Calculated tensor payloads, excluding weights,
