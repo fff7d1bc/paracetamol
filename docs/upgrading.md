@@ -8,6 +8,26 @@ Upgrade one layer at a time. A combined Ubuntu, ROCm, PyTorch, ComfyUI, and
 model refresh makes failures difficult to attribute and weakens review of
 licenses and source patches.
 
+## Foundation refresh (2026-11-13)
+
+The Ubuntu-only refresh selects dated snapshot `resolute-20261105.1`, OCI
+index `sha256:66b8084a0d45bd4877992bd38e04b51bfa99bd57293364cb6391fb674771846e`.
+Managed image revisions advance to runtime `r6`, PyTorch base `r9`, ComfyUI
+`0.28.0-r15`, llama.cpp `740251a-r72`, and content-tools `huggingface2.4-r3`.
+ROCm 10.1.0, the AMD PyTorch tuple, application sources, all fifteen native
+patches, content-tools' fifteen-package lock, catalog and runtime policies
+remain unchanged. This is separate from later application or dependency
+updates.
+
+All five cold image builds, installed dependency and device-payload checks,
+native dependency closure, confined ComfyUI CPU startup and Strix Halo
+diagnostics/gateway checks pass. Python remains 3.14.4, avoiding AMD
+torchvision's excluded 3.14.1 interpreter. The twenty compared native
+binaries/libraries match `r71` byte for byte; the small paired screen does not
+establish a foundation-caused inference speed change. See the
+[bounded acceptance record](hardware-acceptance.md#strix-halo-ubuntu-foundation-refresh-2026-11-13)
+for scope and deferred hardware checks.
+
 ## Pin inventory
 
 Start every upgrade by locating the current values:
@@ -118,7 +138,7 @@ build does not include it in that application's prerequisite closure:
 ```bash
 ./paracetamol build content-tools --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r2 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r3 \
   -m pip check
 ```
 
@@ -149,7 +169,7 @@ ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:...
 Choose the intended Ubuntu release explicitly, resolve its current manifest
 digest, record the corresponding dated Ubuntu snapshot tag in the comment
 above it, and review whether package names in the `apt-get` layer changed. The
-official Ubuntu image publishes dated tags such as `resolute-20261024.1` as well
+official Ubuntu image publishes dated tags such as `resolute-20261105.1` as well
 as the moving `26.04` release tag. The dated tag keeps the selected snapshot
 visible upstream; the digest proves its exact identity. Do not replace that
 pair with a floating tag.
@@ -170,7 +190,7 @@ Validate with:
 ```bash
 ./paracetamol build all --no-cache
 podman run --rm --entrypoint /bin/bash \
-  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.1-0.28.0-r14 \
+  localhost/paracetamol:comfyui-ubuntu26.04-rocm10.1-0.28.0-r15 \
   -lc 'cat /etc/os-release; python --version'
 ```
 

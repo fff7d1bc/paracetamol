@@ -57,7 +57,7 @@ func TestDFlashMultimodalPositionPatchPackaging(t *testing.T) {
 		t.Fatal("native patch provenance label omits or reorders the late correction")
 	}
 	spec, ok := ByID(string(LlamaCPP))
-	if !ok || !strings.HasSuffix(spec.Image, "-740251a-r71") {
-		t.Fatalf("new native patch must use its r71 image identity: %q", spec.Image)
+	if !ok || !strings.HasSuffix(spec.Image, "-740251a-r72") {
+		t.Fatalf("native patch packaging must use its current r72 image identity: %q", spec.Image)
 	}
 }

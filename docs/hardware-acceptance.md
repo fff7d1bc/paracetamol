@@ -29,6 +29,50 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo Ubuntu foundation refresh (2026-11-13)
+
+PASS for the bounded foundation checks on `gfx1151`, not the complete
+application/hardware matrix. Ubuntu remains 26.04; the immutable snapshot
+advances to `resolute-20261105.1`, OCI index
+`sha256:66b8084a0d45bd4877992bd38e04b51bfa99bd57293364cb6391fb674771846e`.
+ROCm 10.1.0, PyTorch 2.14.0, torchvision 0.29.0a0, torchaudio 2.11.0.3,
+application sources, all fifteen native patches, models, content-tools pins
+and runtime policies remain unchanged.
+
+| Locally built image | Image ID |
+| --- | --- |
+| `runtime-ubuntu26.04-rocm10.1-r6` | `bfd098e7712039c2e17714351f7ad52f4f0727e5c9e192605352cbb84c461539` |
+| `base-ubuntu26.04-rocm10.1-torch2.14-r9` | `76a2dc80e32dff2636538a2db4016b4083555e58b189272e05ffa92710f32840` |
+| `comfyui-ubuntu26.04-rocm10.1-0.28.0-r15` | `e5cc1fa376d22c7bd203bbd1ff0d66d55da9ca660ff04f96ab7577d44ae85f27` |
+| `llama-cpp-ubuntu26.04-rocm10.1-740251a-r72` | `0815681935e92569d982cf6c789828db30e6ebcaeeb568eea7daa0b53c94a71f` |
+| `content-ubuntu26.04-huggingface2.4-r3` | `8726cf53c1a50367a2338e290d9d5373ae5c7f617a85e9ba55f93c3ec817885a` |
+
+All five images build without cache and pass `pip check`, installed-version
+and exact selected-device-payload checks. Old/new distro package inventories
+are retained; runtime changes include apt, base-files, CA certificates and
+PCRE2. The installed interpreter remains Python 3.14.4. Native HIP/Vulkan
+dependency closure and model-free version/help checks pass. ComfyUI starts
+on an ephemeral loopback port with fresh disposable data, read-only root,
+no capabilities or GPU devices, and read-only empty model content; its HTTP
+page and system statistics respond, then its exact owned container stops and
+is removed. This does not test GPU image generation.
+
+The PyTorch GPU diagnostic and ordinary-gateway Flash-Next short and paired
+four-worker performance screens pass on Strix Halo. F16 K/V, ordinary
+quantized/F32 arithmetic, greedy DFlash2 depth three, four slots and the
+262144-token shared pool remain fixed. All twenty compared installed native
+binaries/libraries are byte-identical to `740251a-r71`. Small timing variation
+does not establish an inference speed improvement caused by the foundation.
+Tier 1 and forced normal CGO builds pass; no host setting is changed.
+
+Private evidence remains below ignored `build/refresh-20261113/`. The corrected
+foundation-validation run verifies exactly twenty-five metadata probes across
+all five images plus native closure before publishing success. Its earlier
+incomplete-coverage run is excluded. No GPU/SVM/OOM fault is observed, and
+owned containers are removed. Other GPU architectures, ComfyUI GPU inference,
+new source/dependency candidates and the full long-context matrix are not
+qualified by this bounded foundation screen.
+
 ### Strix Halo shared-context capacity screen (2026-11-07)
 
 BLOCKED for promoting a larger shared cache on the 128 GB `gfx1151` system.
