@@ -43,6 +43,9 @@ The matched historical follow-up below identifies upstream `8fc0376`, the
 immediate child of the accepted source, as the introducing change for this
 replay on the existing local execution path. That is source-causal
 attribution, not a demonstrated wrong quantizer or a validated repair.
+The later [internal-mechanism tests](#internal-numerical-mechanism) separate
+the sum-value effect from producer code generation and demonstrate a locally
+valid F32 reduction choice changing natural termination.
 
 The same frozen six-case nonthinking tool replay, prompt and sampler values
 are checked with regular Flash-Next UD-Q4_K_XL through the ordinary gateway,
@@ -413,14 +416,124 @@ origin-fork review through `c054baa8`; upstream was reviewed through
 
 The seed-7 `</br>` output belongs to the separate attention-only or ordinary
 HC diagnostic paths. It is not the five repeated-answer failure and is not
-claimed fixed by this attribution. The bounded conclusion is a source-caused
-numerical interaction, not evidence assigning an incorrect implementation to
-either upstream or a particular local patch. Retain the source hold and use
-the matched source/hunk controls when discussing the regression upstream.
+claimed fixed by this attribution. The initial bounded conclusion was a
+source-caused numerical interaction, not evidence assigning an incorrect
+implementation to either upstream or a particular local patch. Retain the
+source hold and use the matched source/hunk controls when discussing the
+regression upstream.
 Any proposed local-path adaptation must pass the unchanged replay and broader
 model acceptance before the pin advances. Reversing a format correction or
 changing the selected HC result to recover this one oracle is not yet a
 justified production accuracy fix.
+
+#### Internal numerical mechanism
+
+The follow-up establishes a concrete, bounded numerical mechanism, not a
+wrong quantizer formula or a demonstrated broken HC projection. Changing only
+the MMQ auxiliary sum values changes the original replay's natural
+continuation. A separate same-input counterfactual shows that legitimate F32
+projection rounding can also reverse the model's termination preference.
+Neither experiment is a production repair or a whole-model accuracy ranking.
+
+All controls retain the historical 8K context, one slot, F16 K/V, plain target,
+model, template, explicit samplers, six requests, exact oracle and natural
+EOS. This is not a production-sized context or performance comparison.
+
+First, checkpoint observations record the actual prompt batches and internal
+microbatches as `292 + 90 + 4`, including all four position planes. Normal
+saves, saves without state readback, and saves without either readback or
+their explicit synchronization produce the same six responses and every
+natural sampled token. The latter controls retain checkpoint metadata and
+host allocation sizes, and refuse invalid-state restoration. Thus neither
+readback nor that synchronization is necessary under this schedule. This
+does not prove that partitioning alone explains the checkpoint-off result.
+
+Next, a balanced HC projection selector localizes an adjacent conditional
+cut. Both arms select ordinary results at the first five sites and fused
+results after site six. Only site six,
+`blk.3.hc_ffn_inject.weight`, changes between its fused and ordinary F32
+projection result. Both candidates are computed in both arms, with unchanged
+graph, allocation and dispatch work.
+
+| Site-six result in that mixed prefix | Exact passes | Natural continuation |
+| --- | ---: | --- |
+| Fused F32 reduction | 0/6 | Answer, closing thinking tag, repeated answer |
+| Ordinary F32 matrix product | 6/6 | Answer and newline, then EOS |
+
+Bounded captures in both arms preserve all six responses and every retained
+raw-logit hash, score and sampled-token record against their capture-disabled
+controls. Each capture adds bounded device copies and synchronization, so
+preserving both endpoints is an explicit observation gate, not an assumption.
+Their normalized operands, weights and both candidate result arrays
+are byte-identical across arms. Each of the 1,168 fused outputs exactly
+matches an independently reconstructed F32 FMA reduction tree. Both paths
+satisfy individual forward-error bounds against scalar higher-precision
+references, including reference uncertainty and underflow allowances. A second
+independently written parser, long-double reference and FMA-tree checker
+agrees. Aggregate NMSE is not the acceptance gate.
+
+The largest candidate-result difference is `0.0001010894775390625`. The fused
+result is closer to the reference on 1,125 captured dots, the ordinary result
+on sixteen, with twenty-seven ties. Those are local arithmetic observations,
+not model-quality scores. After ten identical naturally selected token IDs,
+the raw thinking-tag-minus-EOS margin changes from `+3.26377487` to
+`-2.87835693`. Every sampler, including temperature zero, then chooses the
+opposite token. Raw logits already differ at the first generated position,
+so this is not the first internal divergence. The source feeds this projection
+through `2 * sigmoid(z / 4)` and residual injection. The first downstream
+nonlinear amplifier is not localized. Site six is a conditional causal cut,
+not a uniquely faulty layer on the untouched original path.
+
+Finally, a separate post-quantization value selector retains the original
+quantizer and consumer code. Of 157 original HIP objects, 155 remain exactly
+byte-identical, including the quantizer and all separate MMQ/Qwen consumers.
+Only two host-dispatch objects change, with one new post-processing object.
+Normal CMake configuration, compilation and installation retain identical
+cache and producer-command bytes, without object substitution, device LTO,
+reduced precision or unsafe arithmetic flags.
+
+Both modes execute the same post kernel. Its control copies the already-stored
+corrected sum half-bits unchanged. The alternate selects the old input-sum
+half-bits instead. Neither writes integer quants or scales, recomputes the
+corrected value from a rounded scale, allocates GPU storage, reads back tensors
+or adds explicit synchronization. The no-sum D4 layout gets no post kernel.
+
+| Same-binary MMQ auxiliary values | Exact passes | Natural output |
+| --- | ---: | --- |
+| Existing corrected half-bits | 1/6 | Exact original five repeats and clean seed seven |
+| Old input-sum half-bits | 6/6 | Ten-token answers without trailing newline |
+
+The control also exactly matches every retained raw-logit and sampled-token
+record from the original all-fused control. Both value arms report the same
+six affine dispatch geometries before sampling. They share nine natural
+tokens, then the alternate chooses EOS where the corrected path chooses a
+newline. This matches the earlier MMQ-only source reversal without changing
+the producer's compiled arithmetic. An earlier in-kernel dual-sum diagnostic
+changed its corrected control to 5/6 and was rejected. Its alternate mode was
+not run or treated as a successful repair.
+
+These results establish an auxiliary-value effect on the original path and a
+validated local F32 rounding effect on natural termination. Together they
+support a numerical-trajectory sensitivity exposed by the format correction,
+not merely an introducing-commit association. The exact intermediate chain
+from each changed sum to the later logits remains inferred, not traced node
+by node. No wrong operation was demonstrated at the checked quantizer,
+consumer or causal projection. This does not prove every downstream operation
+correct or the failing answers harmless. The separate extra-tag cases remain
+separate. Neither reversing the sum convention nor selecting the ordinary
+projection is justified as a production quality fix from this fixture alone.
+
+The post-selector image is
+`d1a66bd3d51e50e469b8eb3c474a0c1b9c18549682a7650945ee614298becf53`,
+source tree `bd6e0859e634a58923277c7716226223e8dc8f14`. The site-capture image is
+`d8b0ff270bb31fdebfd435c9cea1fefab23ef23c8a979583335263a54eb758e2`,
+source tree `c7d4c3c2094dbe8fd925eae1eb71f3e805ba4db2`. Source, object,
+installed-prefix, protocol, arithmetic and lifecycle audits pass. No matching
+GPU/OOM fault occurs. Raw evidence remains under ignored
+`build/q8-isolation-20261113/root-cause/mechanism/` and
+`build/refresh-20261113/q8-followup/`. Production pins, defaults and host
+configuration are unchanged. Keep the source hold until a proposed adaptation
+passes the unchanged replay and the remaining acceptance gates.
 
 ### Content-tools dependency follow-up (2026-11-13)
 

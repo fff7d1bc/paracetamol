@@ -107,6 +107,19 @@ correct. Do not promote a source or arithmetic reversal merely because it
 cleans up this fixture. Keep the accepted production pin until a proposed
 adaptation passes the unchanged replay and broader acceptance.
 
+The [internal-mechanism follow-up](hardware-acceptance.md#internal-numerical-mechanism)
+now separates the auxiliary-value effect from original quantizer code
+generation. A same-binary post-selector preserves the original 1/6 failure,
+including every retained raw-logit record, when it copies the existing sum
+bits unchanged. Selecting only the old sum bits gives 6/6 with the original
+producer and separate consumer objects byte-identical. A different, matched
+HC projection cut validates all 1,168 outputs against independent F32-tree
+and higher-precision references, yet reverses natural EOS preference between
+two locally valid reductions. Checkpoint readback and its explicit sync are
+not necessary under the observed prompt split. This establishes concrete
+numerical-trajectory sensitivity, not a wrong-operation finding, universal
+accuracy claim or accepted repair. Production remains on the accepted pin.
+
 ## Pin inventory
 
 Start every upgrade by locating the current values:
