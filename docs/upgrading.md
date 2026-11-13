@@ -52,8 +52,22 @@ non-speculative corrected/reversed pair subsequently passes six chat cases
 in each arm, but is not pristine upstream. Raw continuation and
 teacher-forced prefill follow different execution histories; their bounded
 near-EOS divergence is not a numerical-accuracy, KLD or broad-quality result.
-The full-stack cause remains unisolated, and the evidence does not identify
-DFlash2 alone or establish that the upstream correction has wrong math.
+Later pristine corrected and exact-reverse-only arms at the same 8K/one-slot
+scale both pass all six cases using non-mmap general loading and explicit
+lazy CPU embedding reads. The earlier forced-mmap loading block is not a
+permanent upstream-inference block. In the full fourteen-patch binary at
+8K/one slot, the same replay passes 6/6 with both QSA environment switches
+absent and only 1/6 after enabling both. The graph/pipeline-only control also
+gives 1/6; the attention-only control gives 5/6 with a different extra tag.
+The binary, native arguments, prompt and samplers are unchanged within this
+grid. A local fast-path execution sensitivity therefore reproduces the
+symptom without DFlash2 or production-sized context. Neither a six-control
+normalization/recurrent disable nor a twelve-control combined disable makes
+all cases clean. These results do not yet identify a faulty individual
+optimization or prove reduced numerical accuracy. The subsequent half-split
+narrows the repeated-answer sensitivity to the three normalization controls,
+not the recurrent/convolution half. Keep the source hold until the original
+configuration is resolved and the remaining acceptance gates pass.
 
 ## Pin inventory
 

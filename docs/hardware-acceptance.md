@@ -79,20 +79,71 @@ upstream results. A raw corrected continuation takes the closing-tag/repeated
 value path while the reverse stops cleanly. Teacher-forced prefill uses a
 different execution history from natural decoding; those samples cannot
 establish its exact logits, full-vocabulary KLD or reference accuracy.
-Context, slots, fusions and other full/minimal differences are not isolated,
-so the full-stack failure is not attributed to DFlash2 alone. The
+That initial comparison does not isolate context, slots or fusions, so the
+full-stack failure is not attributed to DFlash2 alone. The
 [upstream NVIDIA reply](https://github.com/ggml-org/llama.cpp/pull/31247#issuecomment-6825182003)
 favors the correction numerically and reports the opposite replay outcome;
 these local observations do not establish wrong upstream arithmetic.
 
-Pristine corrected upstream does not reach inference: loading plateaus with
-an HSA wait and idle GPU, without a matching kernel fault. Its exact owned
-run is canceled with exit 143; a subsequent GPU doctor passes. Pristine
-inference is therefore BLOCKED, not a model-answer pass or failure. Remaining
-candidate long-context, performance and vision gates are stopped because of
-the known replay failure. There is no new long-context or speed claim.
-Private requests, outputs, manifests and diagnostic evidence remain below
-ignored `build/refresh-20261113/`; no host configuration is changed.
+The first pristine attempt forces general mmap and stalls in an HSA wait,
+without a matching kernel fault. It is canceled with exit 143 and a subsequent
+GPU doctor passes. A later upstream-only run changes general loading to
+`--load-mode none`, retains explicit lazy CPU embedding reads, and adds debug
+logging. This respects upstream's integrated-GPU mmap capability guard. It
+loads successfully and passes all six original chat cases. The same source
+with only the quantizer correction reversed also passes all six. This
+supersedes the earlier BLOCKED pristine-inference status, not its retained
+failed-load evidence. Both runs use 8K context, one slot, F16 K/V and no
+projector or speculative model. No downstream source patch is required.
+
+The full fourteen-patch `r74` binary is then tested at 8K/one slot with
+direct embedding reads, no projector and no draft. Native arguments, binary,
+model, template, all six request bodies, rendered prompts and sampler values
+stay fixed while only the two local QSA environment switches change:
+
+| `QSA_KERNEL` | `QSA_GRAPH` | Exact replay passes |
+| --- | --- | ---: |
+| absent | absent | 6/6 |
+| `1` | `0` | 5/6, seed 7 adds `</br>` |
+| `0` | `1` | 1/6, seed 7 clean |
+| `1` | `1` | 1/6, seed 7 clean |
+
+Both switch names have prefix `PARACETAMOL_QWEN4EXP_`. In the last two arms,
+the other five cases repeat the value around a closing thinking tag. API and
+native verbose content agree, with normal EOS termination and no truncation,
+grammar or extra stop filter. This isolates local fast-path execution
+sensitivity without requiring large context, multiple slots, vision or
+DFlash2. The combined/compact path is not necessary for the severe symptom.
+Neither switch absence nor this grid disables every local optimization.
+
+With both switches fixed at `1`, disabling six normalization/recurrent/
+convolution controls gives 5/6, again with only seed 7 adding `</br>`.
+Disabling six matrix/routing controls instead retains 1/6. Disabling their
+twelve-control union gives 5/6, not a clean fix. The first group contains
+`HC_NORM`, `HC_INJECT`, `NARROW_NORM`, `GDN_DECODE`, `GDN_CONV` and
+`PLE_CONV`; the second contains `Q8_MMV`, `MMV_GROUP`, `MMQ_PREFETCH`,
+`MMQ_TILES`, `MOE_V4` and `MOE_IDS`, all with the same prefix. These are
+bounded runtime controls on the same binary, not patch-removal builds.
+They narrow the execution paths that change the answer but do not yet
+identify an individual faulty optimization, establish wrong arithmetic or
+measure broader task quality. All branches still terminate normally.
+
+A final half-split gives 5/6 with only `HC_NORM`, `HC_INJECT` and
+`NARROW_NORM` disabled, and 1/6 with only `GDN_DECODE`, `GDN_CONV` and
+`PLE_CONV` disabled. This narrows the repeated-answer sensitivity to the
+normalization-side group under these controls. It does not prove one of
+those three features has incorrect arithmetic, and the separate extra-tag
+case on the selected-key path is unresolved. No experimental switch value
+is promoted as a production fix. The eleven native arms contain sixty-six
+short requests, all on the same six-case fixture, not sixty-six independent
+task-quality samples. Host Tier 1 checks pass; no matching GPU/SVM/OOM fault
+or exact-owned-container cleanup failure occurs.
+
+Remaining candidate long-context, performance and vision acceptance gates
+stay stopped because of the known replay failure. There is no new
+long-context or speed claim. Private requests, outputs, manifests and
+diagnostic evidence remain below ignored `build/refresh-20261113/` and
+`build/q8-isolation-20261113/`; no host configuration is changed.
 
 ### Content-tools dependency follow-up (2026-11-13)
 
