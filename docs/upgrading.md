@@ -28,6 +28,33 @@ establish a foundation-caused inference speed change. See the
 [bounded acceptance record](hardware-acceptance.md#strix-halo-ubuntu-foundation-refresh-2026-11-13)
 for scope and deferred hardware checks.
 
+## Held llama.cpp source refresh (2026-11-13)
+
+HOLD upstream `951d465f5c7c16fb486ff45bb14d99984e68c6db` and the private
+`951d465-r74` image. The proposed fourteen-patch stack rebases five patches
+and replaces quantized-KV state-copy code with its equivalent upstream fix.
+Its build, operator and state checks pass, including the candidate's
+F16/Q8_0/Q4_0 device-copy removal gate, but the unchanged nonthinking replay
+fails through the ordinary gateway with both DFlash2 and the plain target.
+Passing lower-level checks does not override that acceptance failure.
+
+Production remains `740251a-r72` with all fifteen existing patches. Only the
+separate Ubuntu foundation and content-tools dependency units are selected;
+no engine source, default, sampler, client filter, forced EOS behavior or
+reverse-Q8 production patch is introduced. Remaining candidate long-context,
+performance and vision gates are stopped, not accepted. See the
+[bounded hold record](hardware-acceptance.md#strix-halo-llamacpp-source-refresh-hold-2026-11-13).
+
+The [upstream November 12 reply](https://github.com/ggml-org/llama.cpp/pull/31247#issuecomment-6825182003)
+reports clean corrected NVIDIA replay and improved agreement with its
+non-activation-quantized reference. The local three-patch, 8K, one-slot,
+non-speculative corrected/reversed pair subsequently passes six chat cases
+in each arm, but is not pristine upstream. Raw continuation and
+teacher-forced prefill follow different execution histories; their bounded
+near-EOS divergence is not a numerical-accuracy, KLD or broad-quality result.
+The full-stack cause remains unisolated, and the evidence does not identify
+DFlash2 alone or establish that the upstream correction has wrong math.
+
 ## Pin inventory
 
 Start every upgrade by locating the current values:

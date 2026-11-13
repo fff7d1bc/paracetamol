@@ -29,6 +29,71 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo llama.cpp source refresh hold (2026-11-13)
+
+FAIL for promotion of private `llama-cpp-ubuntu26.04-rocm10.1-951d465-r74`,
+image ID `870219430b4b7980e4284e35a4dcf05453d1608782ec32d073864918f43678b7`.
+The proposed upstream is `951d465f5c7c16fb486ff45bb14d99984e68c6db`, with
+fourteen patches and final source tree
+`7f44e6c236664fb395db266140dd8d652a32fd95`. Production stays on `740251a-r72`
+and its fifteen-patch stack. No engine/default change is selected; the
+foundation and content-tools updates below remain independent.
+
+The same frozen six-case nonthinking tool replay, prompt and sampler values
+are checked with regular Flash-Next UD-Q4_K_XL through the ordinary gateway,
+four slots, F16 K/V, ordinary quantized/F32 arithmetic and the unchanged
+262144-token shared pool:
+
+| Arm | Exact replay passes |
+| --- | ---: |
+| Production `740251a-r72`, greedy DFlash2 depth three | 6/6 |
+| Candidate `951d465-r74`, greedy DFlash2 depth three | 0/6 |
+| Candidate `951d465-r74`, plain target | 1/6 (seed 7) |
+
+The failed answers contain the correct requested value, a closing `</think>`
+tag, then that value again. This is an exact-output regression, not missing
+retrieval or evidence of globally worse model quality. The candidate's
+thirteen-request short screen passes protocol checks but records one quality
+failure, `tools-none-replay`; medium/xhigh, tools, streaming and prefix checks
+pass. No output filter, oracle relaxation, forced EOS or reversed quantizer
+is promoted to hide the failure.
+
+Lower-level acceptance on physical `gfx1151` passes: 1,269 GPU operator cases
+and three expected unsupported-form checks, sixteen strict HC cases at
+NMSE `1e-10`, 1,344 routing cases, 81 tie cases repeated six times, eight
+actual lifetime-callback cases, and populated state/graph/activation and
+multistream checks. Fixture-only reference/API adaptations preserve the
+numerical thresholds and introduce no downcast. Twelve device-copy/scatter
+checks with F16, Q8_0 and Q4_0 meet the candidate's upstream quantized-KV-copy
+removal gate; the unchanged production source still needs its local patch.
+The candidate builds for all four managed GPU targets with major-one native
+libraries, but only `gfx1151` receives physical testing. All twenty-four
+compared installed native-prefix files are byte-identical between candidate
+`r73` and `r74`; the latter changes test fixtures, not backend arithmetic.
+
+A separate minimally patched pair uses the same candidate upstream with only
+three loader/host-policy patches, 8K context, one slot, F16 K/V and no draft.
+Corrected and exact-reverse quantizer arms each pass the original six chat
+cases; only their installed HIP library differs. These are not pristine
+upstream results. A raw corrected continuation takes the closing-tag/repeated
+value path while the reverse stops cleanly. Teacher-forced prefill uses a
+different execution history from natural decoding; those samples cannot
+establish its exact logits, full-vocabulary KLD or reference accuracy.
+Context, slots, fusions and other full/minimal differences are not isolated,
+so the full-stack failure is not attributed to DFlash2 alone. The
+[upstream NVIDIA reply](https://github.com/ggml-org/llama.cpp/pull/31247#issuecomment-6825182003)
+favors the correction numerically and reports the opposite replay outcome;
+these local observations do not establish wrong upstream arithmetic.
+
+Pristine corrected upstream does not reach inference: loading plateaus with
+an HSA wait and idle GPU, without a matching kernel fault. Its exact owned
+run is canceled with exit 143; a subsequent GPU doctor passes. Pristine
+inference is therefore BLOCKED, not a model-answer pass or failure. Remaining
+candidate long-context, performance and vision gates are stopped because of
+the known replay failure. There is no new long-context or speed claim.
+Private requests, outputs, manifests and diagnostic evidence remain below
+ignored `build/refresh-20261113/`; no host configuration is changed.
+
 ### Content-tools dependency follow-up (2026-11-13)
 
 PASS for cold build and installer compatibility, not GPU inference. Image
