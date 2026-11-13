@@ -39,6 +39,11 @@ fourteen patches and final source tree
 and its fifteen-patch stack. No engine/default change is selected; the
 foundation and content-tools updates below remain independent.
 
+The matched historical follow-up below identifies upstream `8fc0376`, the
+immediate child of the accepted source, as the introducing change for this
+replay on the existing local execution path. That is source-causal
+attribution, not a demonstrated wrong quantizer or a validated repair.
+
 The same frozen six-case nonthinking tool replay, prompt and sampler values
 are checked with regular Flash-Next UD-Q4_K_XL through the ordinary gateway,
 four slots, F16 K/V, ordinary quantized/F32 arithmetic and the unchanged
@@ -291,6 +296,131 @@ stay stopped because of the known replay failure. There is no new
 long-context or speed claim. Private requests, outputs, manifests and
 diagnostic evidence remain below ignored `build/refresh-20261113/` and
 `build/q8-isolation-20261113/`; no host configuration is changed.
+
+#### Matched historical source attribution
+
+The historical comparison now uses the same small native runtime policy in
+every arm, rather than comparing the production DFlash2 configuration with
+a differently configured candidate. All arms use 8192 context, one slot,
+F16 K/V, both QSA switches enabled, direct CPU embedding reads, no draft or
+projector, and the original six requests with their complete explicit
+gateway-resolved sampler values. The template, rendered prompt, model file
+identities, zero cached tokens and all forty-nine returned generation-setting
+fields match. The original exact-output oracle and natural EOS remain intact.
+
+| Source intervention | Exact passes | Observed response pattern |
+| --- | ---: | --- |
+| Accepted `740251a`, full fifteen-patch stack | 6/6 | One answer, then EOS |
+| Same old stack plus only upstream `8fc0376` | 1/6 | Five repeated answers, seed 7 clean |
+| Held `951d465`, full fourteen-patch stack | 1/6 | Exactly the same six raw response choices as old plus `8fc0376` |
+| Same held stack with only `8fc0376` reversed | 6/6 | One answer, then EOS |
+
+The introducing commit is
+[`8fc0376721e9662d498a5706d7ee8e7574ce99f4`](https://github.com/ggml-org/llama.cpp/commit/8fc0376721e9662d498a5706d7ee8e7574ce99f4),
+merged by PR 31247. Its forward intervention changes only `quantize.cu`,
+sixteen additions and fourteen removals. The old source tree changes from
+`3cd21570a1bf02003a1710327d4093a3150b6f85` to
+`790974459270f57e5897b3a26a0cd7c9f29f5fc6`, without rebasing any local patch.
+The reverse intervention changes the held tree to
+`d33785a7c0db781bcac5f7f57a3113967a1d25c6` and retains newer unrelated
+quantizer code. Both use normal dependency-aware HIP compilation and CMake
+installation. Each final image changes only its physical HIP library, with
+the other twenty-three native-prefix files and every symlink unchanged.
+The reconstructed old builder's baseline HIP is byte-identical to accepted
+production, not merely built from a matching source label.
+
+These bidirectional controls establish the quantizer change as sufficient on
+the old stack and necessary for this failure on the tested held stack.
+Later local patch rebasing, DFlash2, large context, stale conversation state
+and a changed request policy are not required to produce the regression.
+They do not establish that this commit breaks pristine upstream. The earlier
+pristine corrected/reversed pair passes both arms.
+
+Separating the two original quantizer changes localizes this further on the
+full held stack:
+
+| Scalar Q8_1 sum | MMQ Q8_1 sum | Exact passes |
+| --- | --- | ---: |
+| Corrected | Corrected | 1/6 |
+| Original | Corrected | 1/6, four repeated answers and one different extra tag |
+| Corrected | Original | 6/6 |
+| Original | Original | 6/6 |
+
+Only the original scalar hunk, three additions and three removals, is
+reversed in the second row. Seed 2026 becomes clean, seed 7 adds
+`</ctrl46>`, and the other four cases still repeat, including temperature
+zero. Only the MMQ hunk, eleven additions and thirteen removals, is reversed
+in the third row. That arm keeps the scalar correction and returns ten-token
+clean answers, not the old control's eleven-token answers with a trailing
+newline. Both pass the unchanged whitespace-tolerant oracle and stop at EOS.
+The MMQ correction is therefore necessary for this failure on the tested
+held stack and sufficient for the greedy repeated answer even with the old
+scalar sum. The scalar change also affects token trajectories, but removing
+it does not repair the main failure. These are diagnostics, not proposed
+quantizer reversals for production.
+
+The arithmetic change is specific. Q8_1 stores a scale and auxiliary sum.
+Previously the GPU quantizer stored `half(sum(original F32 activations))`.
+The correction stores `half(full_scale * sum(integer quants))`, matching the
+documented Q8_1 convention and CPU reference. Affine Q4_K MMQ uses that sum
+in its weight-offset correction. The old form mixes quantized activations in
+the integer-dot term with original activations in the offset term. Q4_K MMVQ
+instead reconstructs its integer sum, so the effect is execution-path
+dependent. This must not be generalized to every format. The tested GGUF's
+Q4_K weights are routed expert gate/up tensors, its Q5_1 weights are routed
+expert-down tensors, and its dense projections are Q8_0. Q5_1's scalar
+matrix-vector path also consumes the stored sum. The filename alone cannot
+establish a dense Q4_K path or prefill-only causality. This is activation
+quantization, not a change to GGUF weights or the F16 KV cache.
+
+An actual-input check connects the format analysis to the failed replay. A
+capture-disabled control and capture-enabled run of the same diagnostic
+image both retain the original six raw response choices and 1/6 result.
+The capture observes the first layer's unfused Q5_1 expert-down MMQ at the
+292-token prompt partition. Its original expert IDs, compact routing maps
+and tile descriptors independently reconstruct the selected expert and
+output row. The observer respects the top-k ID view's 512-element physical
+row stride rather than treating its ten logical IDs as contiguous. Two
+explicit readback synchronizations are an instrumentation perturbation,
+not part of production or a performance measurement.
+
+For the captured 640-value input, all thirty-two quantization groups,
+including padding, pass exact integer, scale and corrected half-sum checks.
+Nineteen stored half sums differ from the original-input-sum convention.
+The actual output is `0.277880191803`. An independent FP64 evaluation of the
+Q5_1 weight and captured Q8 metadata gives `0.277880190140`, an absolute
+error of `1.66e-9`. This is below the separately derived conservative F32
+forward-error bound of `2.09e-5`. Using the old sum with the same captured
+integer-dot terms instead gives `0.275794022451`. The original-F32-input
+weight dot is `0.279077215946`, so the corrected result is closer for this
+one scalar. The old-sum counterfactual fixes the current input, not an input
+captured from the old runtime. These references remain distinct. This verifies
+an executed quantizer and consumer, not the whole model or the first amplified
+divergence.
+Earlier empty captures were rejected instrumentation attempts, not numerical
+passes. The complete snapshot and raw controls remain private below `build/`.
+
+Format consistency is not a universal full-model accuracy ranking. The old
+hybrid approximation can be closer to an unquantized dot for some inputs,
+and the two F32 HC reduction orders already produce different model
+trajectories in the controlled selector experiment. The evidence identifies
+an upstream-triggered interaction with the local execution path. It does
+not demonstrate an incorrect new sum formula, an HC arithmetic defect, or
+harmlessness across real tasks. The first downstream amplification site has
+not been traced. No applicable later F32 HC repair was found in the bounded
+origin-fork review through `c054baa8`; upstream was reviewed through
+`4f9dfa0e`, with no later correction for this path found.
+
+The seed-7 `</br>` output belongs to the separate attention-only or ordinary
+HC diagnostic paths. It is not the five repeated-answer failure and is not
+claimed fixed by this attribution. The bounded conclusion is a source-caused
+numerical interaction, not evidence assigning an incorrect implementation to
+either upstream or a particular local patch. Retain the source hold and use
+the matched source/hunk controls when discussing the regression upstream.
+Any proposed local-path adaptation must pass the unchanged replay and broader
+model acceptance before the pin advances. Reversing a format correction or
+changing the selected HC result to recover this one oracle is not yet a
+justified production accuracy fix.
 
 ### Content-tools dependency follow-up (2026-11-13)
 

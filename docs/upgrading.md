@@ -83,6 +83,30 @@ than the ordinary projection, not worse. No faulty HC arithmetic is
 demonstrated; do not turn a replay-changing fallback into a claimed accuracy
 repair. Full-model reference and execution-history questions remain open.
 
+The later matched historical pair identifies upstream `8fc0376` as the
+introducing source change on the local execution path. The accepted full
+old stack passes 6/6 at the same small native policy, old plus only that
+commit reproduces the held candidate's exact six responses and 1/6 score,
+and the full candidate with only that commit reversed returns to 6/6.
+Only each image's physical HIP library changes. The new auxiliary sum
+matches the Q8_1 format and CPU reference, so this is not proof that the
+upstream correction is wrong. Separate hunk controls retain the failure
+after reversing only the scalar quantizer change, but pass 6/6 after
+reversing only the matrix quantizer change while keeping the scalar
+correction. The source hold remains. See
+[matched historical attribution](hardware-acceptance.md#matched-historical-source-attribution)
+for the causal controls, limitations and separate extra-tag case.
+
+A later fault-preserving actual-input capture passes exact routed Q5_1
+quantizer checks and an independently bounded affine-consumer reference.
+The captured consumer's absolute error is `1.66e-9`; the corrected formula is
+also closer to the original-input dot for that one scalar. This supports
+format-correct numerical sensitivity on the existing optimized path, not a
+claim that the replay regression is harmless or every local operation is
+correct. Do not promote a source or arithmetic reversal merely because it
+cleans up this fixture. Keep the accepted production pin until a proposed
+adaptation passes the unchanged replay and broader acceptance.
+
 ## Pin inventory
 
 Start every upgrade by locating the current values:
