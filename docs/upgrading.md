@@ -66,8 +66,22 @@ normalization/recurrent disable nor a twelve-control combined disable makes
 all cases clean. These results do not yet identify a faulty individual
 optimization or prove reduced numerical accuracy. The subsequent half-split
 narrows the repeated-answer sensitivity to the three normalization controls,
-not the recurrent/convolution half. Keep the source hold until the original
-configuration is resolved and the remaining acceptance gates pass.
+not the recurrent/convolution half. Individual controls then implicate HC
+injection rather than narrow normalization. A diagnostic source control
+declines only runtime HC injection fusion while retaining early projection
+graph ordering and allocator dependencies. It removes the repeated-answer
+symptom but leaves the separate extra-tag case. This narrows the execution
+path, not a demonstrated arithmetic defect or a production fix. Keep the
+source hold until the original configuration is resolved and the remaining
+acceptance gates pass.
+
+A deterministic independent HC fixture subsequently passes the unchanged
+strict numerical gates with scheduler and persistent allocations. Actual
+kernel traces verify gated injection activation. Its F32 fused projection
+is closer to a separate scalar FP64 dot reference on this synthetic input
+than the ordinary projection, not worse. No faulty HC arithmetic is
+demonstrated; do not turn a replay-changing fallback into a claimed accuracy
+repair. Full-model reference and execution-history questions remain open.
 
 ## Pin inventory
 

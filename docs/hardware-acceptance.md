@@ -136,8 +136,68 @@ those three features has incorrect arithmetic, and the separate extra-tag
 case on the selected-key path is unresolved. No experimental switch value
 is promoted as a production fix. The eleven native arms contain sixty-six
 short requests, all on the same six-case fixture, not sixty-six independent
-task-quality samples. Host Tier 1 checks pass; no matching GPU/SVM/OOM fault
-or exact-owned-container cleanup failure occurs.
+task-quality samples.
+
+A deeper single-control screen keeps both QSA switches at `1` and the same
+six requests, 8K/one-slot policy and ordinary F32/F16 precision:
+
+| Additional arm | Exact replay passes |
+| --- | ---: |
+| Only `HC_NORM=0` | 5/6, seed 7 adds `</br>` |
+| Only `HC_INJECT=0` | 5/6, same extra tag |
+| Only `NARROW_NORM=0` | 1/6, seed 7 clean |
+| Fresh unchanged enabled control | 1/6, seed 7 clean |
+| Source control declining only runtime HC injection fusion | 5/6, seed 7 adds `</br>` |
+
+The last control preserves early projection graph ordering and conservative
+preallocation dependencies. Only the runtime injection matcher declines;
+ordinary operations perform the projection instead. Its diagnostic image
+`31a3d2ee9bddb39dabe8c63535ceb59b09a6c7c0b1c758f5c22624287f1eb17a`
+changes one physical HIP library. All other twenty-three installed native
+prefix files and all prefix symlinks match the candidate. The full source
+tree is `e840312fbed5db83d4c8820bbac02ef1bb595a33`. This separates the
+injection fusion's execution path from the early graph-order change, but
+does not yet separate its arithmetic from allocation, lifetime or launch
+effects. The separate selected-key extra-tag case remains unresolved.
+No disable switch or diagnostic source change is promoted.
+
+An independent deterministic HC fixture matches the model's embedding width
+2560, four residual streams, epsilon `1e-6` and gate scales `0.25`/`2`.
+All inputs, gamma and projection weights are synthetic F32 values, with 386
+token rows. Both scheduler allocation and persistent tensor allocation pass
+six repeated executions per arm with identical results. Post and normalized
+tensors match the ordinary path exactly. Fused-versus-ordinary projection
+NMSE is `6.80e-12`, below the
+unchanged `1e-10` gate. Against a separate scalar FP64 dot product on each
+arm's exact F32 normalized input, reference-denominator NMSE is `6.75e-12`
+for the ordinary projection and `3.10e-14` for the fused projection, with no
+sign or zero disagreements. This synthetic fixture favors the fused
+reduction numerically; it is not evidence of better model quality or a
+full-model reference comparison.
+
+The standalone fixture image
+`ef5eed542d94b237886c64a83c23d551cc3c2d478d43ba92ea1e9ebb62efcbed`
+preserves all twenty-four candidate native-prefix files byte-for-byte.
+Scheduler mode supplies upstream's required CPU fallback but explicitly
+assigns and verifies all twelve numerical nodes on ROCm. This exercises real
+scheduler allocation and fusion-lifetime callbacks, not the production
+model's automatic placement or every possible alias pattern. Separate kernel
+traces confirm six actual gated HC injection launches in the marked arm and
+none in the ordinary arm. The unprofiled numerical comparisons remain
+separate from that activation evidence. Initial diagnostic preparation/API
+failures are retained but excluded from the numerical passes.
+
+No concrete wrong HC formula, scale, indexing or numerical result is
+demonstrated. Ordinary F32 reduction-order sensitivity remains plausible,
+while full-model input, lifetime and execution-history effects remain open.
+A passing small fixture must not override the failed original replay or
+justify either reversing the upstream quantizer or disabling an optimization
+as a claimed quality fix.
+
+These five additional arms bring the native isolation screen to ninety-six
+requests across sixteen arms of the same fixture, not ninety-six independent
+quality tasks. Host Tier 1 checks pass; no matching GPU/SVM/OOM fault or
+exact-owned-container cleanup failure occurs.
 
 Remaining candidate long-context, performance and vision acceptance gates
 stay stopped because of the known replay failure. There is no new
