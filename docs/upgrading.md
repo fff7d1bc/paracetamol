@@ -138,7 +138,7 @@ build does not include it in that application's prerequisite closure:
 ```bash
 ./paracetamol build content-tools --no-cache
 podman run --rm --entrypoint /opt/venv/bin/python \
-  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r3 \
+  localhost/paracetamol:content-ubuntu26.04-huggingface2.4-r4 \
   -m pip check
 ```
 
@@ -157,6 +157,15 @@ run downloads the catalog-pinned Qwen3 0.6B Q8_0 artifact, verifies all
 receipt in disposable storage. TLS verification remains enabled, and no
 credentials or existing managed content are used. Authenticated Civitai
 transport is not covered by that check; its separate HTTPS helper is unchanged.
+
+The November 13 follow-up keeps Hub 2.4.0 and twelve other lock entries
+unchanged, advancing only Click to 8.5.1 and Filelock to 4.2.10 in content-tools
+`r4`. These fix upstream interrupt/help handling and a contended lock-wait
+deadline, respectively. The cold image passes `pip check`, exact installed-lock
+inspection and download-CLI checks. The normal installer passes a fresh pinned
+Qwen3 0.6B download, full hash verification, receipt publication and reuse in
+disposable storage. Dry runs remain non-mutating. Authenticated Civitai
+transport is not requalified by this small public-Hugging-Face check.
 
 ## Upgrade the Ubuntu base
 

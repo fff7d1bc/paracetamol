@@ -29,6 +29,22 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Content-tools dependency follow-up (2026-11-13)
+
+PASS for cold build and installer compatibility, not GPU inference. Image
+`content-ubuntu26.04-huggingface2.4-r4`, ID
+`80bc7178fd967e2779758c60cb0045a855b555ae0d92d7e2642287bf54cd19ca`,
+updates only Click 8.5.1 and Filelock 4.2.10 in the fifteen-package lock.
+Hub stays at 2.4.0. Four completed probes verify `pip check`, installed
+versions, the exact lock and CLI flags. The ordinary installer downloads
+the catalog-pinned 639446688-byte Qwen3 0.6B file into disposable storage,
+checks its SHA-256 and publishes a current receipt. A second install reports
+zero download and verification work, preserving file identity and receipt.
+All three dry runs satisfy their expected readiness and mutation checks.
+Credentials and existing managed content are not used. Evidence is retained
+below ignored `build/refresh-20261113/content-acceptance/`. No Civitai
+authenticated-transport or GPU qualification is claimed.
+
 ### Strix Halo Ubuntu foundation refresh (2026-11-13)
 
 PASS for the bounded foundation checks on `gfx1151`, not the complete
