@@ -237,10 +237,54 @@ out execution-history and lifetime effects elsewhere. Disabling the fusion
 to obtain cleaner output on this one fixture is still not a demonstrated
 quality fix. No source patch, runtime switch or candidate pin is promoted.
 
+A same-binary checkpoint-policy pair then retains 1/6 with the default
+checkpoint limit and passes 6/6 with only `--ctx-checkpoints 0` added. The
+requests already set `cache_prompt=false`, process zero cached tokens and
+bypass checkpoint restoration. Old-conversation restoration therefore cannot
+explain this pair. Disabling checkpoints changes both prompt partitioning and
+recurrent-state saves, so this pair does not separate those mechanisms or
+justify disabling checkpoints in production. No new microbatch geometry is
+claimed from aggregate prompt-token counts.
+
+A balanced projection-selection experiment keeps the fused graph, matching,
+skip counts, allocator dependencies and original numerical kernels intact.
+Both active arms execute the original fusion, copy its projection to dedicated
+scratch, compute the ordinary F32 projection on the live normalized tensor
+into separate scratch, then copy a selected result to the original output.
+Only that final copy's source differs. Neither arm changes precision or forces
+EOS. The same six original requests give:
+
+| Same diagnostic image | Exact replay passes |
+| --- | ---: |
+| Diagnostic disabled | 1/6, five repeated answers |
+| Matched extra work, retain fused projection | 1/6, same five repeated answers |
+| Matched extra work, select ordinary F32 projection | 5/6, no repeated answers |
+
+All six replacement response texts, token counts and termination outcomes
+match the earlier runtime injection-decline result. The remaining seed-7
+failure adds `</br>`. Both active arms record exactly 558 host dispatch
+calls in six reviewed ninety-three-site cycles, all at 292 rows. These are
+not dynamic GPU graph replay counts. Diagnostic image
+`6f9749c13a65eb0d18e103d2e0b5063165377dacf1b7a189f9b17b2e928b017c`,
+source tree `cdfe44effb60980204e4fd206dc9db58ac44b1a5`, changes only the
+physical HIP library, with the other twenty-three prefix files and every
+prefix symlink unchanged.
+
+This provides bounded causal evidence for HC projection-result selection
+during this checkpoint-enabled prefill, without needing to disable fusion
+or alter graph bookkeeping. It narrows the repeated-answer symptom to a
+numerical execution trajectory, not a demonstrated wrong fused formula.
+The earlier FP64 primitive comparison still favors the fused projection by
+per-site aggregate error. Later layers receive changed inputs, final-copy
+source addresses differ, and broader accuracy or unrelated lifetime faults
+are not resolved. The separate extra-tag case remains open. Neither this
+selector nor checkpoint disabling is selected as a production fix.
+
 The sixteen-arm native isolation screen contains ninety-six requests on the
-same fixture, not independent quality tasks. Probability and capture probes
-are separate follow-up diagnostics. Host Tier 1 checks pass; no matching
-GPU/SVM/OOM fault or exact-owned-container cleanup failure occurs.
+same fixture, not independent quality tasks. Probability, capture,
+checkpoint-policy and projection-selection probes are separate follow-up
+diagnostics. Host Tier 1 checks pass; no matching GPU/SVM/OOM fault or
+exact-owned-container cleanup failure occurs.
 
 Remaining candidate long-context, performance and vision acceptance gates
 stay stopped because of the known replay failure. There is no new
