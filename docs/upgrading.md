@@ -67,6 +67,10 @@ fork's BF16/F16 internal matrix changes remain excluded. See the
 [hardware record](hardware-acceptance.md#strix-halo-flash-next-prefill-recovery-2026-11-14)
 for measurements, combined-image acceptance and coverage limits.
 
+The later [reverse-ablation and Q4 scheduling screen](strix-llama-reverse-ablation.md)
+leaves this baseline unchanged. It records the full fork's failed replay gate
+and a numerically passing J48 follow-up without a repeatable timing win.
+
 ## llama.cpp HIP MMQ compatibility refresh (2026-11-13)
 
 The follow-up selects frozen upstream

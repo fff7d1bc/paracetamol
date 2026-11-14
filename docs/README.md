@@ -130,6 +130,8 @@ fresh clone.
      compatibility](qwen3.8-flash-next-vision-feasibility.md)
    - [Flash-Next Gufo optimization, engine recheck and DFlash2 tuning
      screen](qwen3.8-flash-next-gufo-optimization-screen.md)
+   - [Strix fork reverse-ablation and Q4 scheduling
+     screen](strix-llama-reverse-ablation.md)
    - [Swift 1.5 model retirement](swift-retirement.md)
 
 ### Sources of truth
