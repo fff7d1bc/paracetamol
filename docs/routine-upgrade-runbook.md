@@ -15,6 +15,20 @@ If a request says only “run the upgrade runbook,” perform **scan**. Do not
 infer permission to apply every available update. Include the review date in
 the report because upstream state is time-sensitive.
 
+## Resume interrupted work
+
+Recover state from the checkout, accepted hardware record and retained
+experiment files, not an earlier conversation. Check current image IDs and
+workload ownership before restarting anything. Keep passed checks, failed
+attempts and untested changes distinct. A stale plan or an old hold is not
+the current deployment state.
+
+For llama.cpp, follow [the maintenance guide](llama-cpp-maintenance.md),
+including its accepted baseline, regression procedure and evidence contract.
+It also distinguishes the bounded coding screen from retired agent benchmarks.
+If original fixtures are missing, report that limitation before reconstructing
+them. Do not present a new fixture as an exact replay of a lost one.
+
 ## Scan
 
 ### 1. Establish the current state
@@ -107,7 +121,7 @@ Use the matching guide:
 | Ubuntu base | [Upgrade the Ubuntu base](upgrading.md#upgrade-the-ubuntu-base) |
 | ROCm and PyTorch | [Upgrade ROCm and PyTorch](upgrading.md#upgrade-rocm-and-pytorch) |
 | Content download tools | [Upgrade content download tools](upgrading.md#upgrade-content-download-tools) |
-| llama.cpp | [Upgrade llama.cpp](upgrading.md#upgrade-llamacpp) |
+| llama.cpp | [Maintenance and regression workflow](llama-cpp-maintenance.md), then [source and dependency procedure](upgrading.md#upgrade-llamacpp) |
 | ComfyUI | [Upgrade ComfyUI](upgrading.md#upgrade-comfyui) |
 | Bundled ComfyUI extensions | [Upgrade bundled ComfyUI extensions](upgrading.md#upgrade-bundled-comfyui-extensions) |
 | Python dependencies | [Upgrade ordinary Python dependencies](upgrading.md#upgrade-ordinary-python-dependencies) |
@@ -153,6 +167,15 @@ report:
 For deferred target-hardware work, include the public, host-neutral handoff
 from [hardware-acceptance.md](hardware-acceptance.md#deferred-acceptance-handoff)
 rather than referring to a contributor's private machine by name.
+
+Keep a source refresh and optional performance extractions as separate
+decisions. A measured performance cost may be accepted explicitly without
+waiving correctness gates. Subsequent recovery must compare against the
+identified baseline and qualify the final combined image. It must not be
+reported as a gain over an older, faster build unless that comparison was
+actually made. For a failing update, use the
+[regression investigation procedure](llama-cpp-maintenance.md#investigate-a-regression)
+before expanding the test matrix.
 
 ## Stop and report
 

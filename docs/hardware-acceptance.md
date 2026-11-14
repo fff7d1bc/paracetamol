@@ -8,9 +8,11 @@ workflow from standing in for the complete target surface.
 DwarfStar was retired on 2026-10-17. Its dated results below remain historical
 evidence, not current setup instructions or required acceptance cases.
 
-Keep machine-specific logs, benchmark JSON, generated media, and measurements
-outside the source tree. When a row is accepted, record a short durable
-summary here with the date, Git commit, image tag, profile, and result
+Keep machine-specific logs, benchmark JSON, generated media, and raw measurements
+outside tracked source. Repository-local evidence may live under the ignored
+`build/` directory; tracked summaries must not publish private hostnames,
+addresses, user paths, prompts or logs. When a row is accepted, record a short
+durable summary here with the date, Git commit, image tag, profile, and result
 location. Use `PASS`, `FAIL`, `BLOCKED`, or `N/P`; `N/P` requires a documented
 hardware-capacity or application-policy reason.
 
@@ -7154,20 +7156,39 @@ local source image.
 | Hunyuan T2V | `hunyuan-video-1.5-t2v-480p-cfg-distilled` | pending | pending | pending | pending |
 | Hunyuan I2V | `hunyuan-video-1.5-i2v-480p-step-distilled` | pending | pending | pending | pending |
 | llama.cpp offload smoke | `llama-qwen-qwen3-0.6b-q8-0` | pending | pending | pending | pending |
-| llama.cpp Qwen3.8 tool protocol | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, complete nested tool round trip at 256K with off, low, medium, and xhigh | N/P unless model and context fit the card | N/P unless host memory is deliberately used | pending | pending |
+| llama.cpp regular Flash-Next DFlash2 | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2`, greedy depth three; populated retrieval, history, tools, reasoning, cancellation and vision | N/P by backend/profile policy | N/P by backend/profile policy | accepted 2026-11-14 within the [r77 record's scope](#strix-halo-flash-next-prefill-recovery-2026-11-14) | N/P by backend/profile policy |
+| llama.cpp regular Flash-Next plain control | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, same target without speculation; ROCm protocol/cancellation control and short Vulkan reply/tool smoke | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-11-14 for the bounded [r77 controls](#strix-halo-flash-next-prefill-recovery-2026-11-14), not a full Vulkan matrix | ROCm N/P by model policy, Vulkan pending |
+| llama.cpp regular dense Qwen3.8 | `unsloth-qwen3.8-27b-ud-q8-k-xl`, short completion and nested tool round trip without speculation | pending, subject to model/context capacity | pending, subject to model/context capacity | short ROCm reply/tool control accepted 2026-11-14; not full dense-model acceptance | pending |
 | llama.cpp Huihui dense Qwen3.8 | `huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl`, ordinary dense policy without MTP | pending | pending | accepted 2026-10-22 for ROCm 32K retrieval and short Vulkan/API compatibility at 256K allocation; native Maki off passes, xhigh final-answer miss recorded | pending |
 | llama.cpp Huihui Flash-Next | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`, shared regular Flash-Next policy with off, low, medium and xhigh | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-10-16 on ROCm at 256K capacity and Vulkan at 32K input | ROCm N/P by model policy, Vulkan pending |
-| llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, 128K medium-effort tool round trip; compare ROCm and Vulkan | pending | pending | accepted 2026-08-18 on ROCm; 64K Vulkan protocol accepted 2026-08-16 | pending |
-| llama.cpp Muse DFlash | `meta-models-muse-glimmer-30b-kquant-dynamic-q4-k-xl-dflash-256k`, ROCm depth 12 or Vulkan depth 4, high strength | N/P unless model and context fit the card | N/P unless host memory is deliberately used for offload | accepted 2026-08-14 on ROCm | pending |
+| llama.cpp Qwen3.8 Q4 optional path | `unsloth-qwen3.8-27b-ud-q4-k-xl`, non-speculative completion/tool control; deeper comparison when this path changes | pending | pending | pending for this non-MTP preset; historical MTP results do not transfer | pending |
 
-For the Qwen tool-protocol row, start the managed router and inspect `/props`
-for the expected template capabilities and context. Send a developer message
-and a tool schema with a nested object, require a structured tool call, return
-the result as a tool message, and require a final answer. Repeat the exchange
-with streaming enabled. If either MTP preset fails, repeat it with its matching
-non-MTP preset to separate template handling from speculative decoding.
-Only after the raw API exchange passes should Pi and Maki tasks be used as the
-final integration checks.
+For a llama.cpp source update, follow the
+[source-update acceptance procedure](testing-and-release.md#llamacpp-source-update-acceptance).
+Regular Unsloth Flash-Next is the primary large-model case, with greedy
+DFlash2 and its matching plain target. Keep the default F16 K/V, four slots,
+262144-token shared pool and gateway-owned sampling policy fixed. ROCm
+Flash-Next is restricted to Strix Halo; its DFlash2 presets do not support
+Vulkan. Dense 27B controls need a short completion and tool round trip, not
+another full long-context matrix, unless the changed path or a failed control
+requires it. Optional variants retain their own acceptance evidence; passing
+the regular model does not accept different weights or a different preset.
+
+Through the ordinary gateway, verify the selected model and native runtime
+settings, then send a developer message and a tool schema with a nested
+object. Require a structured tool call, return its result as a tool message,
+and require a final answer. Preserve complete assistant history, including
+reasoning, and repeat with streaming enabled. Exercise supported reasoning
+levels and the original nonthinking replay without weakening their oracles.
+Compare DFlash2 with the matching plain target to separate protocol handling
+from speculative decoding. Only after raw API checks pass should a separately
+installed native Maki client be used for an integration round trip. Its
+normal user access and permission prompts are not a Paracetamol sandbox.
+
+Muse and dense Qwen MTP presets, the managed Pi client and the coding-agent
+runner are retired. Their dated records remain historical evidence,
+not current acceptance requirements. Updating a preset ID here does not
+transfer an older variant's acceptance to its replacement.
 
 For a future agent comparison, declare explicit model-native selectors rather
 than treating one label as equivalent across families. Run every candidate
@@ -7185,19 +7206,6 @@ failure-recovery prompt policy. If the official-template baseline exposes a
 matching failure, run a Qwen3.8-only A/B with the target GGUF, image, native
 reasoning choice, sampling, task, and repetition count fixed; identify the
 template revision in the result notes.
-
-For the Muse row, begin with the forced-256K DFlash default for a complete
-managed tool loop, then repeat the task with the 128K DFlash and
-non-speculative controls when behavior or output is suspect. Exercise prompts
-extending beyond 128K and inspect retrieval quality, tool selection, draft
-acceptance, latency, and memory rather than treating successful startup as
-acceptance.
-Pi and Maki remain exposed through the same reviewed
-function-tool contract, but protocol compatibility does not establish
-comparative quality. Complete the intended live task in each client before
-allowing unattended writes. Confirm `reasoning-preserve = true` in
-router mode or `--reasoning-preserve` in direct-server startup; do not confuse
-that history policy with Muse's client-selectable reasoning strength.
 
 For a host with two matching GPUs, add these single-workload checks:
 

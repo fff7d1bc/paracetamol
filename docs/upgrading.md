@@ -8,6 +8,13 @@ Upgrade one layer at a time. A combined Ubuntu, ROCm, PyTorch, ComfyUI, and
 model refresh makes failures difficult to attribute and weakens review of
 licenses and source patches.
 
+For llama.cpp, start with [the maintenance guide](llama-cpp-maintenance.md).
+It identifies the accepted 2026-11-14 baseline and remaining HIP compatibility
+issue, then routes reproduction, coding checks and performance attribution.
+Current pins and image tags always come from source. Dated sections below
+record decisions at the time, including superseded holds and retired paths.
+They are not all active instructions or outstanding work.
+
 ## Foundation refresh (2026-11-13)
 
 The Ubuntu-only refresh selects dated snapshot `resolute-20261105.1`, OCI
@@ -76,8 +83,9 @@ This refresh is accepted on 2026-11-14 with the documented prefill cost of
 about 19% in matched 32K screens. The original regression and bounded runtime
 gates pass, including two successful fresh coding attempts after a retained
 one-shot failure. This is not a claim of universal quality equivalence.
-Batch and microbatch remain 2048. Performance recovery continues separately
-without importing the private scheduling experiments into this image.
+Batch and microbatch remain 2048. This `r76` acceptance kept performance
+recovery separate. The later [prefill recovery](#flash-next-prefill-recovery-2026-11-14)
+is accepted in `r77`; it is no longer pending work on this image.
 See the [acceptance record](hardware-acceptance.md#strix-halo-hip-mmq-compatibility-refresh-2026-11-13)
 for exact results and limits.
 
@@ -632,6 +640,13 @@ screen never automatically enables an application or client model.
 
 ### llama.cpp downstream patch ledger
 
+The [current patch contracts](#current-patch-contracts) below define scope
+and removal gates. The Containerfile owns their exact application order.
+Historical packaging and source-refresh notes retain provenance but do not
+override the current contracts or the latest accepted hardware record.
+
+#### Historical multimodal packaging (2026-11-03)
+
 The `740251a-r71` packaging follow-up retains the fourteen-patch `r70` stack
 and adds the DFlash multimodal-position correction as patch fifteen. It freezes
 [upstream PR 30220](https://github.com/ggml-org/llama.cpp/pull/30220) at
@@ -658,6 +673,8 @@ tuple. Source correction and image construction do not establish hardware
 acceptance, resolution bounds, model quality, or distribution equivalence.
 Target-hardware results belong in `hardware-acceptance.md`.
 
+#### Current patch contracts
+
 Treat every row as part of the pinned source rather than as incidental build
 machinery. On an update, classify each patch as unchanged, rebased, replaced
 upstream, or blocked. A patch that stops applying has not proved that its
@@ -680,6 +697,8 @@ protected behavior is fixed.
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 | `server-speculative-metrics.patch` | Local reporting-only change exposing the existing `n_draft_verif_steps` as `timings.draft_verif_steps`. The gateway records it as optional request metadata. This counts accounted rounds, not every verification attempt or replay. | Upstream exposes the equivalent explicit counter and the matching-source CPU serialization fixture passes. Do not estimate it from draft-token counts. |
 | `dflash-mtmd-position-gap.patch` | Carries [PR 30220](https://github.com/ggml-org/llama.cpp/pull/30220) at `73647e8ade6fb4293d221c4b92aafb7e82976418`. Seeds missing DFlash draft-cache logical positions with zero target-feature rows after M-RoPE media bypasses draft injection. Target image encoding, target verification, model bytes, samplers and precision remain unchanged. | The selected upstream pin fills the equivalent draft-cache gaps and passes image decoding, unchanged/changed-media history, actual prefix reuse, natural text recovery, populated near-256K and relevant slot/rewind checks without draft-process errors. Requalify remaining cross-request/slot limitations; do not remove it merely because the earlier pinned-image skip or `pos_next()` change is present. |
+
+#### Earlier source refresh records
 
 The November 3 refresh selects frozen upstream
 [`740251a920abf92b7744d9c0518ca157db0db579`](https://github.com/ggml-org/llama.cpp/commit/740251a920abf92b7744d9c0518ca157db0db579),

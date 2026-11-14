@@ -46,6 +46,12 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 ### Start here after time away
 
+For llama.cpp work, use [llama.cpp maintenance](llama-cpp-maintenance.md).
+It separates the accepted baseline from historical holds, routes the native
+and coding checks, and explains how to resume a regression investigation
+without the original session. Private experiment files are not part of a
+fresh clone.
+
 1. Read the [architecture and invariants](architecture.md).
 2. Inspect the current pins rather than trusting remembered version numbers:
 
@@ -89,6 +95,7 @@ baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 5. Use the maintainer guide or dated research record matching the task:
 
    - [Routine upgrade scan and execution checklist](routine-upgrade-runbook.md)
+   - [llama.cpp maintenance and regression investigation](llama-cpp-maintenance.md)
    - [Upgrading dependencies and upstream applications](upgrading.md)
    - [Adding or updating models, bundles, workflows, and benchmarks](content-catalog.md)
    - [Adding applications, commands, modes, or hardware profiles](extending.md)

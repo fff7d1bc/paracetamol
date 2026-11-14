@@ -25,6 +25,9 @@ making every document mandatory startup reading.
   higher-tier checks, release acceptance, or destructive housekeeping.
 - Read [upgrading](docs/upgrading.md) before changing external pins,
   dependencies, base images, ROCm, PyTorch, or application sources.
+- For llama.cpp refreshes or inference regressions, start with
+  [llama.cpp maintenance](docs/llama-cpp-maintenance.md) for the accepted
+  baseline, open issues, test sequence and evidence needed to resume work.
 - Read [content catalog maintenance](docs/content-catalog.md) before changing
   models, bundles, recipes, workflows, licenses, or benchmark resources.
 - Read [extension points](docs/extending.md) before adding or changing an
