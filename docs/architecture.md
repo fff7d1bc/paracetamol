@@ -68,9 +68,11 @@ redirected streams preserve useful plain text. Human-oriented stdout is not
 an incidental machine-readable API.
 
 Read-only inspection and dry runs resolve absent data paths without creating
-them. Mutating commands prepare only required partitions after validation and
-approval. Dry runs use real planning and validation, but start no workload,
-download no content, delete nothing and do not create persistent data.
+them. Mutating commands complete argument and selection validation plus
+required approvals before preparing partitions. Host and image availability
+checks still run at the execution boundary. Dry runs use real planning and
+validation, but start no workload, download no content, delete nothing and do
+not create persistent data.
 
 The [documentation index](README.md#source-ownership) maps authoritative
 packages and files. Keep policy at its owning boundary instead of adding
@@ -259,10 +261,10 @@ models. Read-only `content status --verify` audits bytes without refreshing
 receipts.
 
 Failed/interrupted staging remains resumable. Complete bytes with a bad hash
-are quarantined with an `.invalid-*` suffix. Local mirrors never follow
-symlinks, cannot overlap data roots and reuse candidates only after size/hash
-verification. Explicit move mode can remove files from the old library;
-interruption does not restore them.
+are quarantined with an `.invalid-*` suffix. Local mirror traversal never follows
+symlinks. Mirror and data roots cannot overlap, and candidates are reused only
+after size/hash verification. Explicit move mode can remove files from the
+old library. Interruption does not restore them.
 
 `internal/atomicfile/` has two publication policies. Final results, archives
 and immutable resources are create-once. Exact owned checkpoints, reports,
@@ -341,11 +343,13 @@ graphs and a fresh process for its first request. Native throughput, backend
 comparisons and speculative depth screens measure distinct things; none is
 interchangeable with quality evidence.
 
-Checkpoint fingerprints bind run definitions, inputs, images and runtime
-policy. Resume rejects changed inputs and validates paths/state before trusting
-progress. Clean source uses Git revision; changed tracked or untracked
-runtime/build inputs add a content digest. Fingerprints check compatibility,
-not authenticity of outcomes.
+Acceptance and speculative-benchmark checkpoint fingerprints bind run
+definitions, inputs, images, runtime policy and host source identity. Clean
+source uses the Git revision. Tracked or untracked changes add a content digest.
+ComfyUI suite signatures bind bundle, artifact and workflow identities plus
+image and runtime configuration, but not host source identity. Resume rejects
+incompatible checkpoints and validates paths/state before trusting progress.
+These checks establish compatibility, not authenticity of outcomes.
 
 [Testing](testing-and-release.md) defines checks and
 [hardware acceptance](hardware-acceptance.md) records applicable evidence.

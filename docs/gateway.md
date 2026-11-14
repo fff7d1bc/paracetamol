@@ -679,12 +679,15 @@ responses carry `X-Paracetamol-Request-ID` for correlation.
 Every response also carries `X-Paracetamol-Instance-ID`. Request IDs contain
 that instance identity and a sequence number, so an ID from before a restart
 cannot resolve to a different request. Treat the complete ID as opaque.
-At most 64 session aggregates are retained, with least-recently-used eviction;
-`--requests` returns the lifetime-since-gateway-start aggregates for sessions
-represented in that recent request window. Omitting `--requests` excludes both
-individual request history and session identifiers. Raw prefixed runtime
-output remains on gateway stderr; status exposes no host path or process
-detail.
+At most 64 session aggregates are retained, with least-recently-used eviction.
+`--requests` returns aggregates for sessions represented in that recent request
+window. Totals accumulate while each session remains retained, including
+requests outside the window. Reusing a session UUID after eviction starts new
+totals. These process-local session totals are not durable session accounting
+and do not affect the separate daily SQLite statistics. Omitting `--requests`
+excludes both individual request history and session identifiers. Raw prefixed
+runtime output remains on gateway stderr; status exposes no host path or
+process detail.
 
 Native Maki configuration comes from the [gateway export](guides/remote-maki.md).
 The client needs no checkout, local catalog or controller. Download and merge

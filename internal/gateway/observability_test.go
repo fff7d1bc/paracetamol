@@ -273,6 +273,53 @@ func TestRequestLedgerAggregatesLifetimeModelsAndBoundedRecentSessions(t *testin
 	}
 }
 
+func TestRequestLedgerSessionReuseAfterEvictionStartsFresh(t *testing.T) {
+	var ledger requestLedger
+	const session = "00000000-0000-4000-8000-000000000000"
+	input, output := int64(10), int64(4)
+	add := func(id, started string, input, output int64) {
+		ledger.Add(RequestRecord{
+			SessionID: id, Model: "qwen", Application: "llama-cpp", Outcome: OutcomeSucceeded,
+			StartedAt: started, FinishedAt: started,
+			Tokens: TokenUsage{Input: &input, Output: &output},
+		})
+	}
+	for range 2 {
+		add(session, "2026-01-01T00:00:00Z", input, output)
+	}
+	_, retained := ledger.Snapshot(1)
+	if len(retained.Sessions) != 1 || retained.Sessions[0].Usage.Requests != 2 {
+		t.Fatalf("retained session did not accumulate requests: %#v", retained.Sessions)
+	}
+	for index := 1; index <= RecentSessionLimit; index++ {
+		add(fmt.Sprintf("00000000-0000-4000-8000-%012x", index), "2026-01-01T00:01:00Z", input, output)
+	}
+	const restarted = "2026-01-01T00:10:00Z"
+	add(session, restarted, 7, 2)
+	_, summary := ledger.Snapshot(1)
+	if len(summary.Sessions) != 1 {
+		t.Fatalf("reused session missing: %#v", summary.Sessions)
+	}
+	got := summary.Sessions[0]
+	if got.ID != session || got.FirstRequestAt != restarted || got.LastRequestAt != restarted ||
+		got.Usage.Requests != 1 || got.Usage.Tokens.Input.Total != 7 || got.Usage.Tokens.Output.Total != 2 {
+		t.Fatalf("evicted session retained earlier usage: %#v", got)
+	}
+	// Only the bounded session entry resets. Process-wide and per-model totals
+	// still include traffic from before its eviction.
+	wantRequests := uint64(RecentSessionLimit + 3)
+	wantInput := uint64((RecentSessionLimit+2)*10 + 7)
+	if summary.Overall.Requests != wantRequests || summary.Overall.Tokens.Input.Total != wantInput ||
+		len(summary.Models) != 1 || summary.Models[0].Usage.Requests != wantRequests ||
+		summary.Models[0].Usage.Tokens.Input.Total != wantInput {
+		t.Fatalf("lifetime totals lost evicted usage: %#v", summary)
+	}
+	_, withoutRequests := ledger.Snapshot(0)
+	if len(withoutRequests.Sessions) != 0 || withoutRequests.Overall.Requests != wantRequests {
+		t.Fatalf("session-free snapshot changed accounting: %#v", withoutRequests)
+	}
+}
+
 func TestResponseObserverReadsJSONAndFragmentedSSEUsage(t *testing.T) {
 	jsonObserver := newResponseObserver("application/json")
 	jsonObserver.Observe([]byte(`{"usage":{"prompt_tokens":12,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":5},"completion_tokens_details":{"reasoning_tokens":3}}}`))

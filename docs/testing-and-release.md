@@ -188,31 +188,69 @@ make race
 
 ### Tier 2: CLI and dry-run checks
 
-Exercise user-visible composition:
+Exercise help, catalog planning and CPU command composition without installed
+models, managed images, rootless Podman or GPU devices:
 
 ```bash
 ./paracetamol --help
 ./paracetamol guide comfyui
 ./paracetamol run --help
-./paracetamol images export all --output /tmp/paracetamol-images.tar --dry-run
 ./paracetamol doctor --help
 ./paracetamol content install all --dry-run
+./paracetamol content install llama-cpp qwen3.8 --dry-run
 ./paracetamol run comfyui --profile cpu \
   --listen 127.0.0.1 --dry-run
+```
+
+For the external-model path, replace the placeholder with an existing regular
+GGUF file. Dry-run still validates the model path:
+
+```bash
 ./paracetamol run llama-cpp server --model /path/to/model.gguf \
   --profile cpu --listen 127.0.0.1 --dry-run
-./paracetamol content install llama-cpp qwen3.8 --dry-run
+```
+
+With the tiny `llama-qwen-qwen3-0.6b-q8-0` bundle installed through the normal
+installer and carrying current verification receipts, check managed-model CPU
+composition. The router requires at least one compatible verified preset:
+
+```bash
 ./paracetamol run llama-cpp server --router \
   --profile cpu --listen 127.0.0.1 --dry-run
 ./paracetamol benchmark llama-cpp throughput \
   --preset qwen-qwen3-0.6b-q8-0 --profile cpu --dry-run
+```
+
+The following benchmark plans also require supported GPU device access and
+unambiguous render-node selection. Use an explicit `--render-node` when needed:
+
+```bash
 ./paracetamol benchmark llama-cpp throughput \
   --preset qwen-qwen3-0.6b-q8-0 --compare-backends --dry-run
 ./paracetamol benchmark llama-cpp throughput \
   --preset qwen-qwen3-0.6b-q8-0 --context-depth 32768 \
   --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --dry-run
+```
+
+Hardware acceptance planning requires exactly one selected GPU render node.
+It reports missing images and content as preparation requirements rather than
+requiring them to be ready:
+
+```bash
 ./paracetamol acceptance --dry-run
 ```
+
+Image export planning requires working rootless Podman and every selected
+managed image already built locally. The output must not exist and its parent
+must be an existing directory:
+
+```bash
+./paracetamol images export all --output /tmp/paracetamol-images.tar --dry-run
+```
+
+These plans start no workload. Record unavailable files, receipts, images,
+Podman or hardware as check prerequisites, not code regressions. Do not weaken
+validation to make a plan pass on an unprepared host.
 
 For remote-import changes, also exercise one exact Hugging Face LFS file and
 one exact Civitai version with `content import ... --dry-run`. Confirm that

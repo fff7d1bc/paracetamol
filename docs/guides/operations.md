@@ -122,8 +122,8 @@ one without building an application:
 ./paracetamol build content-tools
 ```
 
-`base` builds the minimal ROCm runtime and the ROCm/PyTorch diagnostic base.
-`content-tools` builds the verified downloader image. Native applications
+`pytorch-base` builds the minimal ROCm runtime and the ROCm/PyTorch diagnostic
+base. `content-tools` builds the verified downloader image. Native applications
 share the lower ROCm runtime without inheriting PyTorch.
 
 Use `--no-layer-cache` to rerun the selected application image while retaining
@@ -200,12 +200,15 @@ Export the complete managed set to one archive:
 `export all` writes content tools, the minimal ROCm runtime, the managed
 ROCm/PyTorch base, and application images to one Docker-format archive while
 retaining shared layers once. A selected PyTorch application includes both
-base layers. llama.cpp includes content tools and the lower ROCm runtime but
-not the unrelated PyTorch base:
+base layers. A selected llama.cpp export includes only the lower ROCm runtime
+and application image, not content tools or the unrelated PyTorch base.
+Export `content-tools` separately if the destination also needs the downloader.
 
 ```bash
 ./paracetamol images export comfyui \
   --output /path/to/backup/paracetamol-comfyui.tar
+./paracetamol images export content-tools \
+  --output /path/to/backup/paracetamol-content-tools.tar
 ```
 
 The output must be new. Export writes a same-directory partial file and
