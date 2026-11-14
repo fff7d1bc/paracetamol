@@ -7,6 +7,9 @@ apply, [upgrading](upgrading.md#upgrade-llamacpp) owns dependency and patch
 policy, and [source-update acceptance](testing-and-release.md#llamacpp-source-update-acceptance)
 owns the required checks.
 
+The [upstream-base and patchset design](architecture.md#upstream-base-and-broken-out-patches)
+explains why local changes stay separate and how that supports regression isolation.
+
 ## Establish the starting point
 
 Inspect the checkout before building or contacting an inference host:

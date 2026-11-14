@@ -406,6 +406,54 @@ The build checks `git rev-parse HEAD` before removing `.git`. Upstream license
 files remain with their source trees; application stages may also copy them to
 documented paths below `/usr/share/licenses/paracetamol`.
 
+### Upstream base and broken-out patches
+
+Paracetamol deliberately keeps an immutable upstream revision and an explicit
+set of local changes, rather than adopting a downstream fork wholesale. This
+follows the same principle as a broken-out kernel patchset. For llama.cpp,
+the changes are reviewable `.patch` files under `applications/llama-cpp/`,
+applied in the order defined by the Containerfile. Other applications follow
+the same principle, using strict build-time transformations where appropriate.
+The result is modified upstream software, not a claim to run vanilla upstream.
+
+The separation serves several practical purposes:
+
+- Each change has an identifiable purpose, provenance, scope and validation
+  requirement. Useful work from upstream PRs or forks can be adapted without
+  importing unrelated precision, backend or runtime-policy changes.
+- Regression work can compare pristine upstream, the minimum patches needed
+  for a workload, and the complete stack. We can bisect upstream history and
+  reduce patch groups separately, making interactions easier to investigate
+  and upstream reports more specific.
+- Upstream refreshes do not depend on another fork's rebase schedule. Each
+  local change is reviewed against the new base, and an upstream equivalent
+  can replace it once the same checks pass.
+
+The [Flash-Next repeated-answer investigation](hardware-acceptance.md#strix-halo-llamacpp-source-refresh-hold-2026-11-13)
+used that separation to compare pristine, minimally patched and full-stack
+builds, then narrow the execution path that changed the result. It did not
+establish that upstream arithmetic was wrong. Keeping the local changes
+separate made those controls practical without discarding the accepted build.
+
+A well-maintained fork can offer the same controls. Here the upstream pin and
+local changes live together in the integration repository, and Paracetamol
+owns their review, rebasing and testing. Patches can depend on one another or
+interact at runtime.
+Use dependency-valid groups for diagnostic builds, record their exact source
+and image identities, and do not treat arbitrary subsets as supported runtime
+configurations. A clean patch application is not evidence of correct inference
+or preserved performance.
+
+Keep each patch focused on a coherent behavior, document dependencies and
+retain source and license attribution when adapting outside work. Review the
+final combined image as well as individual changes. Remove a patch only when
+its protected behavior is covered upstream or no longer needed, with the
+relevant checks still passing. The [llama.cpp patch contracts](upgrading.md#current-patch-contracts)
+record those requirements and removal gates. A patch that fails to apply
+during an upgrade calls for review, not a relaxed matcher or silent omission.
+
+### Application-specific source policy
+
 Application-specific build inputs live below `applications/<application>/`.
 ComfyUI Manager policy uses a strict build-time patch program. It matches
 expected upstream text exactly and refuses zero or multiple matches. An

@@ -26,6 +26,13 @@ machines, workloads and remaining gaps.
 - The gateway loads models on demand and exports native Maki configuration.
   Other clients can use the same OpenAI-compatible API.
 
+For llama.cpp, Paracetamol deliberately keeps a pinned upstream base and a
+reviewed, broken-out patchset rather than adopting a performance fork wholesale.
+That keeps local changes visible and lets us compare upstream with selected
+patches when investigating regressions. The
+[design rationale](docs/architecture.md#upstream-base-and-broken-out-patches)
+explains the benefits and maintenance costs.
+
 ## Requirements
 
 The Linux host needs rootless Podman, GNU Make, Go 1.26 or newer, a C compiler
