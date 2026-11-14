@@ -23,7 +23,9 @@
 !applications/llama-cpp/hip-qwen4exp-qsa-kernels.patch
 !applications/llama-cpp/hip-qwen4exp-graph-optimizations.patch
 !applications/llama-cpp/hip-qwen4exp-pipeline.patch
-!applications/llama-cpp/quantized-kv-state-copy.patch
+!applications/llama-cpp/hip-mmq-activation-sum-compat.patch
+!applications/llama-cpp/test-mmq-activation-sum.cpp
+!applications/llama-cpp/build-mmq-activation-sum-test.sh
 !applications/llama-cpp/server-stream-keepalive.patch
 !applications/llama-cpp/server-speculative-metrics.patch
 !applications/llama-cpp/dflash-mtmd-position-gap.patch

@@ -14,10 +14,10 @@ explicitly exclude simultaneous shared-cache row lists; keep their semantics
 separate in CPU fallbacks and accelerator dispatch.
 
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
-index 3ed418140..a576f5cff 100644
+index 2341fa6..e6a8c23 100644
 --- a/ggml/include/ggml.h
 +++ b/ggml/include/ggml.h
-@@ -2552,6 +2552,15 @@ extern "C" {
+@@ -2283,6 +2283,15 @@ extern "C" {
              struct ggml_tensor * a,
              struct ggml_tensor * sinks);
  
@@ -34,7 +34,7 @@ index 3ed418140..a576f5cff 100644
      GGML_API struct ggml_tensor * ggml_flash_attn_back(
             struct ggml_context * ctx,
 diff --git a/ggml/src/ggml-cpu/ops.cpp b/ggml/src/ggml-cpu/ops.cpp
-index dbdde6997..70b90f794 100644
+index eed5d69..3d43fdc 100644
 --- a/ggml/src/ggml-cpu/ops.cpp
 +++ b/ggml/src/ggml-cpu/ops.cpp
 @@ -11,6 +11,7 @@
@@ -45,7 +45,7 @@ index dbdde6997..70b90f794 100644
  
  // ggml_compute_forward_dup
  
-@@ -8846,6 +8847,11 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+@@ -8739,6 +8740,11 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
      const ggml_tensor * sinks = dst->src[4];
      const ggml_tensor * kv_rows = dst->src[5];
  
@@ -57,7 +57,7 @@ index dbdde6997..70b90f794 100644
      GGML_TENSOR_LOCALS(int64_t, neq, q,   ne)
      GGML_TENSOR_LOCALS(size_t,  nbq, q,   nb)
      GGML_TENSOR_LOCALS(int64_t, nek, k,   ne)
-@@ -8958,7 +8964,18 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
+@@ -8846,7 +8852,18 @@ static void ggml_compute_forward_flash_attn_ext_f16_one_chunk(
          // loop over n_kv and n_head_kv
          // ref: https://arxiv.org/pdf/2112.05682.pdf
  
@@ -77,7 +77,7 @@ index dbdde6997..70b90f794 100644
              const float mv = mp ? slope*GGML_CPU_FP16_TO_FP32(mp[ic]) : 0.0f;
              if (mv == -INFINITY) {
                  continue;
-@@ -9555,7 +9572,9 @@ static void ggml_compute_forward_flash_attn_ext_f16(
+@@ -9422,7 +9439,9 @@ static void ggml_compute_forward_flash_attn_ext_f16(
          const int64_t dr = (nr + nchunk - 1) / nchunk;
  
          static constexpr int64_t Q_TILE_SZ  = ggml_fa_tile_config::Q;
@@ -89,7 +89,7 @@ index dbdde6997..70b90f794 100644
                                  kv_is_f32_or_f16 &&
                                  k->type == v->type &&
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index 8432b31f0..3f7815be8 100644
+index ecca88b..289fab4 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
 @@ -4,6 +4,11 @@
@@ -104,7 +104,7 @@ index 8432b31f0..3f7815be8 100644
  
  #if !defined(GGML_USE_MUSA)
  
-@@ -804,6 +809,22 @@ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * d
+@@ -829,6 +834,22 @@ size_t ggml_cuda_flash_attn_ext_get_alloc_size(int device, const ggml_tensor * d
  
  void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
      ggml_cuda_set_device(ctx.device);
@@ -127,7 +127,7 @@ index 8432b31f0..3f7815be8 100644
      switch (ggml_cuda_get_best_fattn_kernel(ggml_cuda_get_device(), dst)) {
          case BEST_FATTN_KERNEL_NONE:
              GGML_ABORT("fatal error");
-@@ -820,5 +841,15 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
+@@ -845,5 +866,15 @@ void ggml_cuda_flash_attn_ext(ggml_backend_cuda_context & ctx, ggml_tensor * dst
  }
  
  bool ggml_cuda_flash_attn_ext_supported(int device, const ggml_tensor * dst) {
@@ -145,7 +145,7 @@ index 8432b31f0..3f7815be8 100644
  }
 diff --git a/ggml/src/ggml-cuda/qsa-decode-wmma.cuh b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
 new file mode 100644
-index 000000000..63af09d3a
+index 0000000..63af09d
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode-wmma.cuh
 @@ -0,0 +1,121 @@
@@ -272,7 +272,7 @@ index 000000000..63af09d3a
 +}
 diff --git a/ggml/src/ggml-cuda/qsa-decode.cu b/ggml/src/ggml-cuda/qsa-decode.cu
 new file mode 100644
-index 000000000..6cac8b49d
+index 0000000..6cac8b4
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode.cu
 @@ -0,0 +1,174 @@
@@ -452,7 +452,7 @@ index 000000000..6cac8b49d
 +#endif
 diff --git a/ggml/src/ggml-cuda/qsa-decode.cuh b/ggml/src/ggml-cuda/qsa-decode.cuh
 new file mode 100644
-index 000000000..c3778cccd
+index 0000000..c3778cc
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-decode.cuh
 @@ -0,0 +1,7 @@
@@ -465,7 +465,7 @@ index 000000000..c3778cccd
 +void ggml_cuda_flash_attn_ext_qsa_decode(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
 diff --git a/ggml/src/ggml-cuda/qsa-prefill.cu b/ggml/src/ggml-cuda/qsa-prefill.cu
 new file mode 100644
-index 000000000..9718951ed
+index 0000000..9718951
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-prefill.cu
 @@ -0,0 +1,513 @@
@@ -984,7 +984,7 @@ index 000000000..9718951ed
 +#endif
 diff --git a/ggml/src/ggml-cuda/qsa-prefill.cuh b/ggml/src/ggml-cuda/qsa-prefill.cuh
 new file mode 100644
-index 000000000..027ff763d
+index 0000000..027ff76
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/qsa-prefill.cuh
 @@ -0,0 +1,4 @@
@@ -993,10 +993,10 @@ index 000000000..027ff763d
 +bool ggml_cuda_flash_attn_ext_qsa_prefill_supported(int device, const ggml_tensor * dst);
 +void ggml_cuda_flash_attn_ext_qsa_prefill(ggml_backend_cuda_context & ctx, ggml_tensor * dst);
 diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-index 89f0470cb..62cbad07e 100644
+index 22641f5..b37a8c7 100644
 --- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
 +++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
-@@ -15683,6 +15683,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
+@@ -16045,6 +16045,7 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
              }
          case GGML_OP_FLASH_ATTN_EXT:
              {
@@ -1005,10 +1005,10 @@ index 89f0470cb..62cbad07e 100644
                  if (op->src[5] != nullptr) {
                      return false;
 diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
-index b91d98845..a99ceb5d0 100644
+index 1fca258..f59d2bd 100644
 --- a/ggml/src/ggml.c
 +++ b/ggml/src/ggml.c
-@@ -5682,6 +5682,22 @@ void ggml_flash_attn_ext_add_sinks(
+@@ -5520,6 +5520,22 @@ void ggml_flash_attn_ext_add_sinks(
      a->src[4] = sinks;
  }
  
@@ -1032,10 +1032,10 @@ index b91d98845..a99ceb5d0 100644
  
  struct ggml_tensor * ggml_flash_attn_back(
 diff --git a/src/llama-graph.cpp b/src/llama-graph.cpp
-index edf1ca71f..8f57cc73b 100644
+index a47cb1e..de7bd76 100644
 --- a/src/llama-graph.cpp
 +++ b/src/llama-graph.cpp
-@@ -2998,7 +2998,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -3015,7 +3015,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
           ggml_tensor * v_mla,
               int64_t   n_kv_max,
                 float   kq_scale,
@@ -1046,7 +1046,7 @@ index edf1ca71f..8f57cc73b 100644
      const bool v_trans = v->nb[1] > v->nb[2];
  
      // split the batch into streams if needed
-@@ -3045,6 +3047,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
+@@ -3062,6 +3064,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
          ggml_flash_attn_ext_add_sinks(cur, sinks);
          GGML_ASSERT(n_kv_max >= 0 && n_kv_max <= INT32_MAX);
          ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
@@ -1057,10 +1057,10 @@ index edf1ca71f..8f57cc73b 100644
  
          if (v_mla) {
 diff --git a/src/llama-graph.h b/src/llama-graph.h
-index e1804fb3d..422d3406f 100644
+index 5591495..5f67fd6 100644
 --- a/src/llama-graph.h
 +++ b/src/llama-graph.h
-@@ -1276,7 +1276,9 @@ struct llm_graph_context {
+@@ -1287,7 +1287,9 @@ struct llm_graph_context {
              ggml_tensor * v_mla,   // [n_embd_head_v_mla, n_embd_head_v, n_head_v]
                  int64_t   n_kv_max,
                    float   kq_scale,
@@ -1072,9 +1072,10 @@ index e1804fb3d..422d3406f 100644
      llm_graph_input_attn_no_cache * build_attn_inp_no_cache() const;
  
 diff --git a/src/models/models.h b/src/models/models.h
+index dcf2bd3..4b522c1 100644
 --- a/src/models/models.h
 +++ b/src/models/models.h
-@@ -2841,7 +2841,8 @@ struct llama_model_qwen4exp : public llama_model_base {
+@@ -2741,7 +2741,8 @@ struct llama_model_qwen4exp : public llama_model_base {
                      ggml_tensor * sel,
                          int64_t   n_sel,
                            float   kq_scale,
@@ -1084,35 +1085,33 @@ diff --git a/src/models/models.h b/src/models/models.h
  
          // the QSA layers share one set of k-pool inputs, see llama_memory_hybrid_idx
          llm_graph_input_kpool * build_inp_kpool(const llama_memory_hybrid_idx_context * mctx_hyb);
-@@ -2854,8 +2855,10 @@ struct llama_model_qwen4exp : public llama_model_base {
+@@ -2752,7 +2753,9 @@ struct llama_model_qwen4exp : public llama_model_base {
            llm_graph_input_kpool * inp_kpool,
                      ggml_tensor * cur,
                      ggml_tensor * inp_pos,
-+                    ggml_tensor * kq_mask,
-                             int * sections,
 -                            int   il);
++                    ggml_tensor * kq_mask,
 +                            int   il,
 +                    ggml_tensor ** selected_ids);
  
          ggml_tensor * build_layer_attn_linear(
               llm_graph_input_rs * inp,
 diff --git a/src/models/qwen4exp.cpp b/src/models/qwen4exp.cpp
-index 03e4c0727..d23b1d687 100644
+index d643f7a..8e5a787 100644
 --- a/src/models/qwen4exp.cpp
 +++ b/src/models/qwen4exp.cpp
-@@ -819,8 +819,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+@@ -811,7 +811,9 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
          llm_graph_input_kpool *                 inp_kpool,
          ggml_tensor *                           cur,
          ggml_tensor *                           inp_pos,
-+        ggml_tensor *                           kq_mask,
-         int *                                   sections,
 -        int                                     il) {
++        ggml_tensor *                           kq_mask,
 +        int                                     il,
 +        ggml_tensor **                          selected_ids) {
      const llama_kv_cache_context * mctx_idx = mctx_hyb->get_idx();
  
      const int64_t idx_dim = hparams.indexer_head_size;
-@@ -948,9 +950,17 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
+@@ -935,9 +937,17 @@ ggml_tensor * llama_model_qwen4exp::graph::build_qsa_sel(
      idx_f   = ggml_add(ctx0, ggml_mul(ctx0, ggml_sub(ctx0, idx_f, dump), live), dump);
      sel_idx = ggml_cast(ctx0, idx_f, GGML_TYPE_I32);
  
@@ -1131,7 +1130,7 @@ index 03e4c0727..d23b1d687 100644
      sel = ggml_cont(ctx0, sel);
      cb(sel, "indexer_sel", il);
  
-@@ -966,7 +976,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+@@ -953,7 +963,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
          ggml_tensor *             sel,
          int64_t                   n_sel,
          float                     kq_scale,
@@ -1141,7 +1140,7 @@ index 03e4c0727..d23b1d687 100644
      // rotate q/k/v before they reach a quantized cache, as the dense path does. the indexer
      // has already scored with its own query in build_qsa_sel, so the selection is unaffected.
      if (inp->self_k_rot[il]) {
-@@ -1006,7 +1017,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
+@@ -993,7 +1004,10 @@ ggml_tensor * llama_model_qwen4exp::graph::build_attn_qsa(
      sel = ggml_reshape_4d(ctx0, sel, sel->ne[0], sel->ne[1]/n_stream, 1, n_stream);
      cb(sel, "kq_mask_qsa", il);
  
@@ -1153,17 +1152,17 @@ index 03e4c0727..d23b1d687 100644
      cb(cur, "kqv_out", il);
  
      // the rotation is its own inverse, so undo it on the value side of the output
-@@ -1031,7 +1045,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+@@ -1017,7 +1031,8 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
      // indexer reads the same block input as q/k/v; no cache or no ratio means dense
      const bool qsa = inp_kpool != nullptr && hparams.dsv4_compress_ratios[il] > 0;
  
--    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, sections, il) : nullptr;
+-    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, il) : nullptr;
 +    ggml_tensor * selected_ids = nullptr;
-+    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->self_attn_mask.raw, sections, il, &selected_ids) : nullptr;
++    ggml_tensor * sel = qsa ? build_qsa_sel(mctx_hyb, inp_kpool, cur, inp_pos, inp->self_attn_mask.raw, il, &selected_ids) : nullptr;
  
      // Qwen3Next uses a single Q projection that outputs query + gate
      ggml_tensor * Qcur_full = build_lora_mm(model.layers[il].wq, cur, model.layers[il].wq_s); // [ (n_embd_head * 2) * n_head, n_tokens ]
-@@ -1084,7 +1099,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
+@@ -1061,7 +1076,7 @@ ggml_tensor * llama_model_qwen4exp::graph::build_layer_attn(
      const float kq_scale = hparams.f_attention_scale == 0.0f ? 1.0f / sqrtf(float(n_embd_head)) : hparams.f_attention_scale;
  
      if (sel) {
@@ -1173,10 +1172,10 @@ index 03e4c0727..d23b1d687 100644
          cur = build_attn(inp,
                      nullptr, nullptr, nullptr,
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 7153b2cd0..41695a54f 100644
+index 8e4fcd7..65bcf2d 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10069,6 +10069,171 @@ struct test_falcon : public test_llm {
+@@ -10482,6 +10482,171 @@ struct test_falcon : public test_llm {
  };
  
  
@@ -1348,7 +1347,7 @@ index 7153b2cd0..41695a54f 100644
  // ###########################################
  // ## Section 3: GGML Op Test Instantiation ##
  // ###########################################
-@@ -12666,6 +12831,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13329,6 +13494,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      test_cases.emplace_back(new test_moe_reduce(2048, 15, 40, false, true));
      test_cases.emplace_back(new test_moe_reduce(2048, 16, 32, false, true));
  

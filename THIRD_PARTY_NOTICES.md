@@ -45,7 +45,7 @@ application. The kit distributes neither an image nor model weights.
   `/opt/paracetamol/custom_nodes/rgthree-comfy`, with its license copied to
   `/usr/share/licenses/paracetamol/rgthree-comfy`.
 - llama.cpp is built from the MIT-licensed `ggml-org/llama.cpp` repository at
-  commit `740251a920abf92b7744d9c0518ca157db0db579`. The license is installed
+  commit `ded522f8304554317e7ff8f88698dbbbca5425aa`. The license is installed
   at `/usr/local/share/licenses/paracetamol/llama-cpp/LICENSE`. Paracetamol builds
   the server, CLI, and benchmark binaries locally. RPC, remote UI assets and
   optional prebuilt llama-connect helper downloads are disabled. It applies
@@ -58,10 +58,16 @@ application. The kit distributes neither an image nor model weights.
   `4e201388c319fc9f747fbe6a666793e2dc2a6d8e`. It closes the child connection
   when the proxy request ends and bounds the response queue's wait across
   unrelated wakeups. No separate router source patch is applied.
-  The quantized on-device KV-state copy correction comes from upstream
-  PR 30541 at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`, also under MIT.
+  The quantized on-device KV-state copy correction is included upstream at
+  `e56f006ed6b416ae8b7ccb5243b204743f09df1e`, also under MIT.
   It counts tensor elements rather than quantization blocks when copying
-  saved sequence state. Managed presets still use F16 KV.
+  saved sequence state. No separate state-copy patch is applied. Managed
+  presets still use F16 KV.
+  A temporary local HIP-only MMQ compatibility patch preserves the auxiliary
+  activation-sum calculation preceding upstream PR 31247 at
+  `8fc0376721e9662d498a5706d7ee8e7574ce99f4`. The scalar quantizer and non-HIP
+  paths retain the upstream correction. This is a downstream compatibility
+  workaround, not a claim that the upstream correction is incorrect.
   The successful-stream connection reuse correction and its regression test
   come from PR 30492 at `221c0b2e6c815b32b2d629a1830ad04502807ecb`, under MIT.
   Failed writes still terminate the response.

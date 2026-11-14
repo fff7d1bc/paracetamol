@@ -29,15 +29,223 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo HIP MMQ compatibility refresh (2026-11-13)
+
+Accepted on 2026-11-14 with the measured performance tradeoff below. The
+refreshed image passes the original regression and bounded runtime checks.
+The prefill slowdown is acknowledged rather than treated as a functional
+failure or hidden by a different workload. Performance recovery is separate
+work and does not hold this source refresh on the older pin.
+
+The source refresh uses upstream
+`ded522f8304554317e7ff8f88698dbbbca5425aa` and the fifteen-patch tree
+`6235aa1dff65d4866165647499e02d67d8b06d51`. The locally built image is
+`llama-cpp-ubuntu26.04-rocm10.1-ded522f-r76`, immutable ID
+`289f2519e6a2094525186f2685407a96739e59f6b13990157f6864fc09a8c2ef`.
+The comparison uses the previously accepted `740251a-r72` image
+`0815681935e92569d982cf6c789828db30e6ebcaeeb568eea7daa0b53c94a71f`.
+
+The temporary compatibility patch retains the older auxiliary MMQ activation
+sum on HIP. Scalar quantization, the newer few-row MMQ producer and non-HIP
+paths retain the upstream correction. This is an intentional numerical-path
+compatibility workaround, not proof of an upstream arithmetic defect or
+general quality equivalence. Its scope and removal gate are recorded in
+[upgrading](upgrading.md#llamacpp-hip-mmq-compatibility-refresh-2026-11-13).
+Upstream now owns the quantized-KV state-copy correction, so that local patch
+is removed after repeating its device-copy regression checks.
+
+Physical testing uses `gfx1151`, ROCm 10.1, the regular Unsloth Flash-Next
+UD-Q4_K_XL and the ordinary gateway. The model, template, gateway-owned
+sampling policy, F16 K/V, four slots and 262144-token shared pool stay
+unchanged. Greedy DFlash2 remains depth three, and vision remains enabled.
+No output filter, forced EOS, sampler adjustment or relaxed replay oracle
+is used. The existing performance firmware/EPP policy and disabled swap are
+left unchanged.
+
+The frozen six-case nonthinking replay passes **6/6 with greedy DFlash2 and
+6/6 without speculation**, with the original fixture and rendered-prompt
+hashes and natural EOS. Both thirteen-request short suites pass protocol and
+quality checks for none/medium/xhigh reasoning, nested tool arguments,
+assistant-history replay, streaming completion and actual prefix reuse.
+These supersede the earlier candidate's failed replay for this newly tested
+image, not its retained historical evidence below.
+
+An independent `xhigh` coding screen asks for Python interval coalescing
+and a Go k-way sorted unique merge, then runs unchanged deterministic edge,
+property and ownership tests in a rootless CPU-only, read-only, no-network
+sandbox. The accepted image passes both tasks with and without DFlash2.
+The candidate's DFlash2 Python answer passes, but its Go answer fails.
+Its heap `pop()` shrinks the slice without installing the last element at
+the root, causing an infinite loop in the edge tests. The answer stops
+naturally after 14,374 output tokens, below the shared 16,384 Go budget.
+This is a generated-code functional failure, not a GPU, toolchain, sandbox
+or output-truncation failure. It fails that one-shot task and must not be
+counted as a passing quality gate. One such sample does not establish a
+numerical engine defect or a broad model-quality regression.
+The candidate's plain Python answer also passes. Its plain Go attempt
+exhausts 16,384 output tokens before emitting final code, so it is a bounded
+completion miss, not a passing coding result or an executable-code failure.
+
+A separate repair turn preserves the original request and full assistant
+history, then supplies the actual test timeout and a small input/output
+counterexample, without a diagnosis or suggested fix. It identifies the
+missing root replacement in its reasoning but exhausts the same 16,384-token
+ceiling without final code. No repaired program reaches the hidden tests,
+so this is incomplete repair coverage, not a successful repair or a second
+execution of the original heap bug. The original failed answer is retained.
+
+The final predeclared coding expansion uses exactly two fresh original Go
+requests, changing only the seed to 1234 and 2026. Both pass the unchanged
+hidden tests, with natural EOS at 10,956 and 14,817 tokens. Neither receives
+feedback, previous assistant history or a repair hint. Manual review also
+confirms correct heap removal and input/output ownership. This disproves
+failure of every candidate attempt on that task. It does not erase the
+original failed answer, turn the incomplete repair into a pass, or establish
+a statistically reliable quality difference between images. No further
+coding retries or budget increases are used.
+
+The first accepted-image Go control had exhausted an 8,192-token ceiling
+before answering. That run is retained as a budget limitation. Both images
+then receive the same 16,384-token Go ceiling, with unchanged prompts,
+samplers and hidden tests. Python retains its 8,192-token ceiling. Coding
+answers have different lengths, so their wall times are not a fixed-work
+throughput comparison.
+
+Streaming and non-streaming cancellation both return all four slots to idle
+with and without DFlash2. Exact recovery follow-ups pass. Measured
+disconnect-to-idle times are 0.56–0.64 seconds for DFlash2 and 0.11–0.16
+seconds for the plain target in this screen.
+
+Near-pool retrieval passes with 247,210 actual input tokens, natural EOS
+and all six expected values. The cold request has no reused prefix. The
+exact repeat reuses 247,206 tokens and evaluates four new prompt tokens.
+The edited-value request returns the new value without the old one, but
+reprocesses all 247,168 input tokens. This establishes correct edited
+content, not efficient cache rewind.
+
+Two true append turns preserve the full previous assistant object, including
+reasoning. They reach 251,850 and 256,232 input tokens, reuse 247,705 and
+252,088 tokens, and evaluate 4,145 and 4,144 new prompt tokens. All six
+retrieved values remain correct with natural completion. Combined native
+suffix prefill is 442 tokens/s over 8,289 new tokens, excluding initial
+loading and cold prefill. This is suffix-only evidence on the new image,
+not a paired old/new speedup claim or a four-long-session capacity test.
+
+The dense Qwen3.8 27B Q8 control passes a short ROCm request and tool
+round-trip. Flash-Next also passes the same bounded smoke through Vulkan
+without speculation. Neither control is a full quality or performance
+evaluation of that model/backend.
+
+Four short vision/history requests pass with exact image answers, changed
+image content, text after images, real prefix reuse and positive DFlash
+verification counts. The initial wrapper incorrectly treats eight recurrent
+MRoPE position warnings as errors. The same warning forms occur in accepted
+historical image tests, and their emitting source is unchanged. Its exit 1
+is preserved. A separately reviewed, fixture-specific classifier distinguishes
+those exact warnings from actual failures; thirty positive/negative string
+checks and one unchanged functional rerun pass. This does not exempt
+arbitrary position warnings or establish near-256K vision acceptance.
+
+A paired 32K gateway screen records a performance tradeoff, not a speedup:
+
+| Measurement | Accepted `740251a-r72` | Candidate `ded522f-r76` |
+| --- | ---: | ---: |
+| Cold prefill, 32,977 actual tokens | 749 tokens/s | 606 tokens/s |
+| Edited-prompt full reprocessing, 32,935 tokens | 731 tokens/s | 592 tokens/s |
+| Cached single-request decode, two 256-token samples | 28.89 tokens/s | 27.48 tokens/s |
+| Four-request aggregate, 1,024 generated tokens | 40.86 tokens/s | 39.25 tokens/s |
+
+Prefill throughput is about 19% lower in both full-processing observations.
+The cold prompt takes 44.05 seconds on the accepted image and 54.42 seconds
+on the candidate. Cached decode excludes changed-suffix priming and divides
+512 tokens by summed HTTP wall time. The four-worker measurement divides
+1,024 tokens by shared wall time, with all four slots observed generating.
+It gives 0.160 versus 0.153 requests/s and individual latencies of
+24.21–25.06 versus 24.28–26.09 seconds. Individual token rates are not summed.
+
+Both arms use matching requests, content, power policy and runtime settings.
+Natural-stop retrieval, edited values and concurrent history isolation pass
+separately from the intentionally truncated timing outputs. Serial timing
+uses `xhigh`; the concurrent isolation fixture uses nonthinking mode.
+Generated token streams and draft acceptance differ between images, so the
+roughly 4–5% decode differences do not isolate a kernel-speed regression.
+The prefill loss is observed with unchanged input token counts. This is one
+paired screen, not a multi-run performance distribution or a causal bisect.
+The rebased upstream seam-and-tail matrix descriptors change scheduling
+relative to the former private compact kernel. Empty matrix tiles are still
+skipped. Source inspection alone does not prove that this change causes the
+observed loss.
+
+A follow-up paired microbatch screen keeps the same 32,937-token prompt,
+nonthinking mode, seed, gateway sampling defaults and cold KV state. All
+six old/new arms return the six expected values with natural completion.
+These are cold-KV measurements, not cold-filesystem loading measurements.
+
+| Batch / microbatch | Previous `740251a-r72` | Refreshed `ded522f-r76` |
+| --- | ---: | ---: |
+| 2048 / 1024 | 703 tokens/s | 585 tokens/s |
+| 2048 / 2048 | 757 tokens/s | 607 tokens/s |
+| 4096 / 4096 | 729 tokens/s | 564 tokens/s |
+
+Reversed-order 2048 controls give 749 and 604 tokens/s respectively. The
+existing 2048 setting is best among those tested, not a proven global
+optimum. The 4096 arm also changes the logical batch and consumes roughly
+9 GiB more memory. No default changes follow from this screen.
+
+Two private scheduling-only experiments reach 640 and 642 tokens/s. They
+preserve matrix arithmetic and pass twelve paired native cases with
+bit-identical outputs and independent CPU-reference checks. The second also
+checks actual descriptor/row-tile visitation exactly once. Both pass the
+same gateway retrieval task, but remain about 15% below the previous build.
+Neither experiment is included in the accepted image. These observations
+identify a scheduling contribution, not the complete cause of the slowdown
+or a demonstrated regression in pristine upstream. Private inputs and results
+remain under `build/refresh-20261113-mmq-compat/`.
+
+Native numerical and state checks pass on the immutable production libraries:
+
+- 36 actual MMQ cases across dense, indirect-normal and indirect-scatter
+  execution, plus 81 F32 normalization/scale/add cases.
+- 1,269 broader operator cases and exactly three reviewed unsupported forms.
+  All sixteen HC cases remain below the unchanged `1e-10` NMSE threshold.
+  The largest observed HC error is `4.28e-12`.
+- 1,344 routing cases, 81 top-k tie cases repeated six times and eight actual
+  allocation-lifetime callback cases. CPU shared-row and fallback checks
+  also pass, as do 38 separate `TOP_K_MASK` cases.
+- Twelve F16/Q8_0/Q4_0 device-copy and scatter cases pass the upstream
+  state-copy patch removal gate. Managed presets still use F16.
+- Populated restore, causal restore and repeated clear/restore produce
+  zero NMSE. Graph warmup/reuse and actual compact attention activation are
+  observed, with no graph-disabling fallback. The separate two-stream F16
+  smoke returns finite logits.
+
+The acceptance diagnostic image adds only test executables and fixtures. All 526
+production build-control/object entries and nineteen installed native files
+remain unchanged. The cold build compiles `gfx1150`, `gfx1151`, `gfx1200`
+and `gfx1201`; physical acceptance of the other three targets remains
+deferred. The build-time HIP/non-HIP source-policy check is not a substitute
+for GPU testing. Runtime dependency checks, `pip check`, CPU-only server
+startup/health/clean stop and the stock tiny-model GPU acceptance also pass.
+
+No new GPU, out-of-memory or safety-guard event is observed, and each owned
+gateway/backend is stopped after its arm. The populated append run reaches
+a minimum 13.77 GiB of available system RAM, above the 8 GiB stop guard.
+Raw artifacts, including failed coding attempts and wrapper failures, remain
+under ignored `build/refresh-20261113-mmq-compat/`. Local copies are grouped
+under `results-gateway/`, `results-native/` and `results-control/`, with
+independent checks in `review/`. These synthetic tasks contain no user
+project or conversation material.
+
 ### Strix Halo llama.cpp source refresh hold (2026-11-13)
 
 FAIL for promotion of private `llama-cpp-ubuntu26.04-rocm10.1-951d465-r74`,
 image ID `870219430b4b7980e4284e35a4dcf05453d1608782ec32d073864918f43678b7`.
 The proposed upstream is `951d465f5c7c16fb486ff45bb14d99984e68c6db`, with
 fourteen patches and final source tree
-`7f44e6c236664fb395db266140dd8d652a32fd95`. Production stays on `740251a-r72`
-and its fifteen-patch stack. No engine/default change is selected; the
-foundation and content-tools updates below remain independent.
+`7f44e6c236664fb395db266140dd8d652a32fd95`. That earlier decision retained
+`740251a-r72` and its fifteen-patch stack. The foundation and content-tools
+updates below remained independent. This section preserves the failed
+candidate and investigation, rather than prescribing the current source pin.
 
 The matched historical follow-up below identifies upstream `8fc0376`, the
 immediate child of the accepted source, as the introducing change for this

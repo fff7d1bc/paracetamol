@@ -5,10 +5,10 @@ the upstream executable-update path. Upstream owns the chunked graph-pool
 diagnostic independently of this executable-recapture workaround.
 
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
+index f8dfb5d..abfdba9 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -2843,7 +2843,19 @@ static void ggml_cuda_graph_launch_chunk(ggml_backend_cuda_context * cuda_ctx, ggml_cuda_graph * graph, size_t idx) {
-     cudaGraph_t cuda_graph = nullptr;
+@@ -3372,7 +3372,19 @@ static void ggml_cuda_graph_launch_chunk(ggml_backend_cuda_context * cuda_ctx, g
      CUDA_CHECK(cudaStreamEndCapture(cuda_ctx->stream(), &cuda_graph));
  
      if (idx < graph->instances.size()) {
@@ -18,12 +18,13 @@ diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 +            // Updating it can replay stale state after a Qwen4exp clear/restore.
 +            // Ordinary unchanged graph replay remains enabled.
 +            CUDA_CHECK(cudaGraphExecDestroy(graph->instances[idx]));
-+            graph->instances[idx] = nullptr;
-+            CUDA_CHECK(cudaGraphInstantiate(&graph->instances[idx], cuda_graph, nullptr, nullptr, 0));
++            graph->instances[idx].handle = nullptr;
++            CUDA_CHECK(cudaGraphInstantiate(&graph->instances[idx].handle, cuda_graph, nullptr, nullptr, 0));
 +        } else
 +#endif
 +        {
-         ggml_cuda_graph_update_executable(graph->instances[idx], cuda_graph);
+         ggml_cuda_graph_update_executable(graph->instances[idx], cuda_graph, cuda_ctx->device);
 +        }
      } else {
          GGML_ASSERT(idx == graph->instances.size());
+         graph->instances.emplace_back();

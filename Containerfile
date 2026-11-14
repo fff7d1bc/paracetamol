@@ -8,7 +8,7 @@ ARG TORCH_VERSION=2.14.0
 # AMD's documented ROCm 10.1 PyTorch 2.14 tuple uses this exact alpha-labeled wheel.
 ARG TORCHVISION_VERSION=0.29.0a0
 ARG TORCHAUDIO_VERSION=2.11.0.3
-ARG LLAMA_CPP_COMMIT=740251a920abf92b7744d9c0518ca157db0db579
+ARG LLAMA_CPP_COMMIT=ded522f8304554317e7ff8f88698dbbbca5425aa
 
 FROM ${UBUNTU_IMAGE} AS content-tools
 
@@ -274,8 +274,8 @@ COPY applications/llama-cpp/hip-qwen4exp-graph-optimizations.patch \
     /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch
 COPY applications/llama-cpp/hip-qwen4exp-pipeline.patch \
     /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch
-COPY applications/llama-cpp/quantized-kv-state-copy.patch \
-    /opt/paracetamol/llama-quantized-kv-state-copy.patch
+COPY applications/llama-cpp/hip-mmq-activation-sum-compat.patch \
+    /opt/paracetamol/llama-hip-mmq-activation-sum-compat.patch
 COPY applications/llama-cpp/server-stream-keepalive.patch \
     /opt/paracetamol/llama-server-stream-keepalive.patch
 COPY applications/llama-cpp/topk-moe-boundaries.patch \
@@ -284,6 +284,8 @@ COPY applications/llama-cpp/hip-qwen4exp-decode.patch \
     /opt/paracetamol/llama-hip-qwen4exp-decode.patch
 COPY applications/llama-cpp/process-allocation-policy.patch \
     /opt/paracetamol/llama-process-allocation-policy.patch
+COPY applications/llama-cpp/test-mmq-activation-sum.cpp \
+    applications/llama-cpp/build-mmq-activation-sum-test.sh /opt/paracetamol/
 RUN git init . && \
     git remote add origin https://github.com/ggml-org/llama.cpp.git && \
     git fetch --depth=1 origin "${LLAMA_CPP_COMMIT}" && \
@@ -308,14 +310,16 @@ RUN git init . && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-pipeline.patch && \
     git apply --check /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-graph-optimizations.patch && \
-    git apply --check /opt/paracetamol/llama-quantized-kv-state-copy.patch && \
-    git apply /opt/paracetamol/llama-quantized-kv-state-copy.patch && \
+    git apply --check /opt/paracetamol/llama-hip-mmq-activation-sum-compat.patch && \
+    git apply /opt/paracetamol/llama-hip-mmq-activation-sum-compat.patch && \
     git apply --check /opt/paracetamol/llama-server-stream-keepalive.patch && \
     git apply /opt/paracetamol/llama-server-stream-keepalive.patch && \
     git apply --check /opt/paracetamol/llama-topk-moe-boundaries.patch && \
     git apply /opt/paracetamol/llama-topk-moe-boundaries.patch && \
     git apply --check /opt/paracetamol/llama-hip-qwen4exp-decode.patch && \
     git apply /opt/paracetamol/llama-hip-qwen4exp-decode.patch && \
+    bash /opt/paracetamol/build-mmq-activation-sum-test.sh \
+        /opt/llama.cpp /tmp/mmq-activation-sum-test && \
     rocm_root="$(rocm-sdk path --root)" && \
     site_packages="$(python -c \
         'import sysconfig; print(sysconfig.get_paths()["purelib"])')" && \
@@ -462,7 +466,7 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,quantized-kv-state-copy,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics,dflash-mtmd-position-gap" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,hip-mmq-activation-sum-compat,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics,dflash-mtmd-position-gap" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

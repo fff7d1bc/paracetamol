@@ -11,6 +11,15 @@ mkdir -p -- "$2"
 output_dir=$(cd -- "$2" && pwd)
 source_file="$source_dir/ggml/src/ggml-cuda/mmid.cu"
 kernel_file="$output_dir/qwen4exp-routing-kernel.inc"
+types_file="$output_dir/qwen4exp-routing-types.inc"
+types_source="$source_dir/ggml/src/ggml-cuda/mmid.cuh"
+test "$(awk '/^struct ggml_cuda_mm_id_tile_spec \{/ {n++} END {print n+0}' "$types_source")" = 1
+awk '
+    /^struct ggml_cuda_mm_id_tile_spec \{/ {copy=1}
+    copy {print}
+    copy && /^static_assert\(sizeof\(ggml_cuda_mm_id_tile_spec\)/ {copy=0; done=1}
+    END {if (!done) exit 1}
+' "$types_source" > "$types_file"
 # Fail closed on the owning source boundaries. Preserve its exact helper text
 # rather than maintaining a second device implementation in the fixture.
 test "$(awk '/^static __global__ void mm_ids_helper_512_10\(/ {n++} END {print n+0}' "$source_file")" = 1
@@ -38,9 +47,9 @@ if [[ $(awk 'index($0, "if ((unsigned) expert >= 512u) continue;") {n++} END {pr
     echo 'routing invalid-ID tests require both reviewed bounds guards' >&2
     exit 1
 fi
-sha256sum "$source_file" "$kernel_file"
+sha256sum "$source_file" "$kernel_file" "$types_source" "$types_file"
 "${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror -DROUTING_CPU_ONLY \
-    "$script_dir/test-qwen4exp-routing.cpp" -o "$output_dir/test-qwen4exp-routing-cpu"
+    -I "$output_dir" "$script_dir/test-qwen4exp-routing.cpp" -o "$output_dir/test-qwen4exp-routing-cpu"
 if [[ ${ROUTING_CPU_ONLY:-0} == 1 ]]; then exit 0; fi
 hip_compiler=${HIPCXX:-$(rocm-sdk path --bin)/hipcc}
 hip_link_flags=()

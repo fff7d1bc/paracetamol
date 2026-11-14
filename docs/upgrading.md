@@ -28,7 +28,56 @@ establish a foundation-caused inference speed change. See the
 [bounded acceptance record](hardware-acceptance.md#strix-halo-ubuntu-foundation-refresh-2026-11-13)
 for scope and deferred hardware checks.
 
-## Held llama.cpp source refresh (2026-11-13)
+## llama.cpp HIP MMQ compatibility refresh (2026-11-13)
+
+The follow-up selects frozen upstream
+`ded522f8304554317e7ff8f88698dbbbca5425aa`, 293 commits after `740251a`,
+in image `ded522f-r76`. The fifteen-patch source tree is
+`6235aa1dff65d4866165647499e02d67d8b06d51`. Five patches need source/API
+rebases. Nine retained patches keep their executable changes. Upstream
+`e56f006ed6b416ae8b7ccb5243b204743f09df1e` replaces the former quantized-KV
+state-copy patch, and a temporary HIP MMQ compatibility patch brings the
+carried count back to fifteen. The failed candidate below remains historical
+evidence, not an accepted intermediate release.
+
+This refresh is accepted on 2026-11-14 with the documented prefill cost of
+about 19% in matched 32K screens. The original regression and bounded runtime
+gates pass, including two successful fresh coding attempts after a retained
+one-shot failure. This is not a claim of universal quality equivalence.
+Batch and microbatch remain 2048. Performance recovery continues separately
+without importing the private scheduling experiments into this image.
+See the [acceptance record](hardware-acceptance.md#strix-halo-hip-mmq-compatibility-refresh-2026-11-13)
+for exact results and limits.
+
+The compatibility patch retains the pre-`8fc0376` floating-input auxiliary
+sum only in `quantize_mmq_q8_1`, for normal and scatter instantiations.
+Its `GGML_USE_HIP` guard applies to every HIP device, not only Strix Halo or
+Qwen4exp. Quantized activation bytes and scales stay unchanged. The scalar
+Q8_1 quantizer, newer few-row producer and non-HIP paths retain upstream's
+corrected behavior. F16 KV, model files, matrix precision, samplers and
+runtime settings are unchanged. There is no new switch or output filter.
+
+This is a temporary compatibility mitigation for an observed local
+execution-path regression, not a mathematical correction or evidence that
+upstream is wrong. Remove it only when the corrected HIP sum passes the
+unchanged replay, speculative and non-speculative gateway checks, numerical
+and state tests, populated long context and applicable hardware acceptance.
+Do not weaken exact-output or numerical gates to remove it. Results and
+coverage limits belong in the [hardware acceptance record](hardware-acceptance.md).
+
+The pipeline rebase consumes upstream's seam-and-tail tile descriptors in
+place of the former private MoE tile representation. Existing shape guards,
+tile-width policy and invalid-expert checks remain. The routing fixture
+independently checks row coverage, maps, tiles and guards across 1,344 cases.
+Precision guards follow the current public API and still decline explicit
+overrides. The HC fixture uses the supported shape-bound F32 SGEMM reference,
+retaining F32 accumulation and its strict `1e-10` NMSE gates.
+
+## Historical held llama.cpp source refresh (2026-11-13)
+
+The following records the earlier hold and its investigation. Statements
+about retaining `740251a-r72` describe that decision at the time. The later
+compatibility refresh above is a separate candidate and acceptance decision.
 
 HOLD upstream `951d465f5c7c16fb486ff45bb14d99984e68c6db` and the private
 `951d465-r74` image. The proposed fourteen-patch stack rebases five patches
@@ -592,8 +641,8 @@ protected behavior is fixed.
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. Canonical sorting and deduplication make attention independent of upstream top-k ordering. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. A container-level value of `0` disables it. | Upstream provides equivalent selected-key attention with the order-invariance and numerical operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 | `hip-qwen4exp-graph-optimizations.patch` | Intersects upstream's visibility-filtered selected IDs with its shared causal/sequence mask, avoiding a dense per-layer selection mask. Uses upstream pooled-cache state rather than a private prefix or derived-key cache. Requires supported single-stream F16 geometry and both QSA switches. CPU fallback honors the intersection, and unsupported accelerators decline it. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` disables this and the scoped pipeline fusions. | Upstream equivalents pass the independent selected-mask oracle, unsupported-layout fallback, populated state restore, near-256K retrieval and prefix reuse, and older-model/backend checks. Never silently substitute a private reduced-precision matrix path or persistent derived cache. |
-| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV, F32 residuals and upstream quantized matrix arithmetic. The injection dot product remains F32 with numerical reference tests. The 512/10 routing helper rejects invalid expert IDs in both passes, with independent bounds/map/guard fixtures. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
-| `quantized-kv-state-copy.patch` | Carries [PR 30541](https://github.com/ggml-org/llama.cpp/pull/30541) at `0e3dbf0f23cf0ba00832a0697909e9eb8b214caf`. Counts tensor elements rather than quantization blocks for on-device sequence save, restore and scattered range copies. Protects optional quantized-cache use without changing F16 presets. | Upstream contains the equivalent correction and its `test-llama-context` device-copy and scatter cases pass with F16, Q8_0 and Q4_0 caches. |
+| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV and F32 residuals. The separate temporary MMQ compatibility patch below owns the auxiliary-sum exception. The injection dot product remains F32 with numerical reference tests. The 512/10 routing helper rejects invalid expert IDs in both passes and emits upstream tile descriptors, with independent bounds/map/guard fixtures. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
+| `hip-mmq-activation-sum-compat.patch` | Temporarily retains the pre-`8fc0376` floating-input auxiliary sum in normal/scatter MMQ on all HIP devices. Scalar, non-HIP and newer few-row corrections remain. Quantized bytes and scales are unchanged. This is local numerical-trajectory compatibility, not a mathematical fix or general accuracy claim. | The corrected HIP sum passes the unchanged compact-graph replay, speculative and non-speculative gateway checks, numerical/state gates, populated long context and applicable hardware acceptance without oracle relaxation. |
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |

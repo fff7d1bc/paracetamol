@@ -1,0 +1,66 @@
+Subject: [PATCH] HIP: temporarily retain the pre-8fc0376 MMQ activation sum
+
+The November 13 source-refresh screen isolates compact-graph nonthinking
+replay sensitivity to the auxiliary activation sum introduced by upstream
+8fc0376721e9662d498a5706d7ee8e7574ce99f4 (#31247). Same-binary selection of
+the old sum bits restores the bounded replay without changing quantized
+bytes, producer/consumer objects or samplers. This is numerical-trajectory
+sensitivity, not evidence that the upstream correction is mathematically
+wrong or that the former sum is generally more accurate.
+
+Temporarily retain the pre-correction floating-input sum only in the HIP
+quantize_mmq_q8_1 producer, for both normal and scatter instantiations.
+Keep scale and quantized-byte generation unchanged. Non-HIP MMQ, the scalar
+quantize_q8_1 producer, and the newer few-row MMQ producer retain upstream's
+corrected behavior. There is no runtime switch or broadened fusion gate.
+
+Removal gate: the corrected HIP sum must pass the unchanged compact-graph
+nonthinking replay, ordinary/speculative and non-speculative gateway tests,
+numerical/state checks, and the applicable long-context and hardware
+acceptance matrix without relaxing numerical or output oracles. This narrow
+compatibility mitigation does not establish broad model-quality equivalence.
+See docs/hardware-acceptance.md for the held refresh and mechanism evidence.
+
+diff --git a/ggml/src/ggml-cuda/quantize.cu b/ggml/src/ggml-cuda/quantize.cu
+index 2acf1f6..a87bf2f 100644
+--- a/ggml/src/ggml-cuda/quantize.cu
++++ b/ggml/src/ggml-cuda/quantize.cu
+@@ -500,6 +500,22 @@ static __global__ void quantize_mmq_q8_1(
+         amax = fmaxf(amax, __shfl_xor_sync(0xFFFFFFFF, amax, offset, WARP_SIZE));
+     }
+ 
++#if defined(GGML_USE_HIP)
++    // Temporary HIP compatibility: the compact-graph replay is sensitive to
++    // this auxiliary sum. Keep the pre-8fc0376 MMQ value until the unchanged
++    // replay and broader acceptance pass with the upstream corrected sum.
++    float sum = 0.0f;
++    if (ds_layout != MMQ_Q8_1_DS_LAYOUT_D4) {
++        sum = xi.x + xi.y + xi.z + xi.w;
++
++        // Calculate sums across vals_per_sum/4 threads.
++#pragma unroll
++        for (int offset = vals_per_sum/8; offset > 0; offset >>= 1) {
++            sum += __shfl_xor_sync(0xFFFFFFFF, sum, offset, WARP_SIZE);
++        }
++    }
++#endif
++
+     const float d_inv = 127.0f / amax;
+     char4 q;
+     q.x = roundf(xi.x*d_inv);
+@@ -508,6 +524,7 @@ static __global__ void quantize_mmq_q8_1(
+     q.w = roundf(xi.w*d_inv);
+     const float d = 1.0f / d_inv;
+ 
++#if !defined(GGML_USE_HIP)
+     float sum = 0.0f;
+     if (ds_layout != MMQ_Q8_1_DS_LAYOUT_D4) {
+         int sum_q = int(q.x) + int(q.y) + int(q.z) + int(q.w);
+@@ -520,6 +537,7 @@ static __global__ void quantize_mmq_q8_1(
+ 
+         sum = d * float(sum_q);
+     }
++#endif
+ 
+     // write the block once (normal) or to each of the token's compact rows (scatter)
+     const int nwrite = scatter ? n_expert_used : 1;

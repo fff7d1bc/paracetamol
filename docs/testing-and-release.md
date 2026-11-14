@@ -108,6 +108,24 @@ CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
+The llama.cpp build runs `build-mmq-activation-sum-test.sh` against the exact
+patched source before compiling GPU kernels. It extracts the shared MMQ
+quantization/sum body and checks HIP and non-HIP preprocessing across all
+three layouts, including independent scale and quantized-byte expectations.
+This protects the temporary HIP compatibility policy, not GPU arithmetic or
+model quality. To check an already patched source tree locally:
+
+```bash
+bash applications/llama-cpp/build-mmq-activation-sum-test.sh \
+  SOURCE_DIR build/mmq-source-check
+```
+
+Keep the numerical, routing, state, gateway and populated-context gates.
+The compatibility patch applies to every HIP device, so Strix Halo results
+do not replace checks on the other supported architectures. Upstream
+ownership of the former quantized-KV copy fix does not remove its F16,
+Q8_0 and Q4_0 device-copy regression checks.
+
 Native Maki compatibility has an optional installed-client check. The normal
 suite uses renderer and HTTP fixtures and needs no installed client.
 

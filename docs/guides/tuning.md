@@ -312,8 +312,13 @@ measured hardware workaround, not a default Paracetamol requirement.
 ## Flash-Next arithmetic
 
 The accepted Flash-Next optimizations apply automatically on Strix Halo with
-ROCm. They retain upstream quantized matrix arithmetic, F32 residuals and
-F16 KV cache. There is no mixed-math option to enable or maintain.
+ROCm. They retain quantized matrix paths, F32 residuals and F16 KV cache.
+There is no mixed-math option to enable or maintain. A temporary HIP
+compatibility patch retains the older MMQ auxiliary activation sum to avoid
+an observed repeated-answer regression on the optimized path. It does not
+change model weights, quantized activation bytes or cache precision, and is
+not a claim of better mathematical accuracy. Its scope and removal checks
+are recorded in the [upgrade ledger](../upgrading.md#llamacpp-hip-mmq-compatibility-refresh-2026-11-13).
 
 The faster BF16/F16 matrix experiment was retired rather than making reduced
 operand precision part of normal use. Its historical measurements are not

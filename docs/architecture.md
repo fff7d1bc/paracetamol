@@ -427,6 +427,14 @@ no longer patches that backend. The remaining HIP patch must be requalified
 on every applicable Paracetamol architecture whenever llama.cpp or ROCm
 moves.
 
+`applications/llama-cpp/hip-mmq-activation-sum-compat.patch` is a temporary
+HIP-wide arithmetic compatibility exception. It retains the older MMQ
+auxiliary activation sum while leaving activation bytes, scales, the scalar
+quantizer and non-HIP backends unchanged. It does not alter KV precision or
+introduce a runtime toggle. The [upgrade ledger](upgrading.md) owns its scope
+and removal gate. This workaround must not be described as a proved upstream
+numerical fix or a general model-quality improvement.
+
 The fail-closed `applications/llama-cpp/hip-strix-halo-tiled-gdn.patch`
 adds a tiled F32 gated-delta-net prefill kernel from Piotr Wilkin's commit
 `964c6f2f0`. Dispatch requires exactly `gfx1151`, 48 value heads, a 128-element

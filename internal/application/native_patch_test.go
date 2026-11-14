@@ -57,7 +57,46 @@ func TestDFlashMultimodalPositionPatchPackaging(t *testing.T) {
 		t.Fatal("native patch provenance label omits or reorders the late correction")
 	}
 	spec, ok := ByID(string(LlamaCPP))
-	if !ok || !strings.HasSuffix(spec.Image, "-740251a-r72") {
-		t.Fatalf("native patch packaging must use its current r72 image identity: %q", spec.Image)
+	if !ok || !strings.HasSuffix(spec.Image, "-ded522f-r76") {
+		t.Fatalf("native patch packaging must use its current image identity: %q", spec.Image)
+	}
+}
+
+func TestHIPMMQCompatibilityPackaging(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		value, err := os.ReadFile("../../" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(value)
+	}
+	containerfile := read("Containerfile")
+	allowlist := read(".containerignore")
+	for _, name := range []string{
+		"hip-mmq-activation-sum-compat.patch",
+		"test-mmq-activation-sum.cpp",
+		"build-mmq-activation-sum-test.sh",
+	} {
+		path := "applications/llama-cpp/" + name
+		if !strings.Contains(allowlist, "\n!"+path+"\n") || !strings.Contains(containerfile, path) {
+			t.Errorf("missing build-context input %s", path)
+		}
+	}
+	for _, required := range []string{
+		"git apply --check /opt/paracetamol/llama-hip-mmq-activation-sum-compat.patch",
+		"git apply /opt/paracetamol/llama-hip-mmq-activation-sum-compat.patch",
+		"bash /opt/paracetamol/build-mmq-activation-sum-test.sh",
+		",hip-mmq-activation-sum-compat,",
+	} {
+		if !strings.Contains(containerfile, required) {
+			t.Errorf("missing HIP compatibility packaging %q", required)
+		}
+	}
+	if strings.Contains(containerfile, "quantized-kv-state-copy") || strings.Contains(allowlist, "quantized-kv-state-copy") {
+		t.Fatal("upstream-owned state-copy correction must not remain in the local build")
+	}
+	if _, err := os.Stat("../../applications/llama-cpp/quantized-kv-state-copy.patch"); !os.IsNotExist(err) {
+		t.Fatalf("obsolete state-copy patch remains or cannot be checked: %v", err)
 	}
 }
