@@ -18,6 +18,20 @@ histogram and scatter skip IDs outside [0, 512); valid routing, the serial
 prefix scan and dispatch remain unchanged. Skipped inverse-map entries and
 unused compact tails remain untouched rather than receiving invented rows.
 
+Convolution tail materialization also recognizes upstream rollback stores:
+overlapping [H, Kw, C, 1] windows feed SET_ROWS without skipping the store.
+Keep unknown-reader rejection, direct-input write guards and allocation
+dependencies intact; legacy tail views remain supported. Numerical operator
+checks alone cannot detect lost fusion after a graph-shape change. The
+current-window fixture checks postallocation matcher eligibility and rollback
+contents; normal graph-enabled model traces verify actual kernel activation.
+
+Small-MoE scheduling retains upstream descriptors and per-tile arithmetic,
+using output-row-first folded traversal only for guarded gfx1151 512-expert /
+10-used shapes. Empty seams cannot terminate traversal because later records
+may still contain expert tails. Maintained cases include multiple K chunks
+and current projection dimensions.
+
 diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
 index e6a8c23..5205707 100644
 --- a/ggml/include/ggml.h
@@ -43,16 +57,41 @@ index e6a8c23..5205707 100644
              enum ggml_op_hint    hint);
 diff --git a/ggml/src/ggml-cuda/conv-tail.cuh b/ggml/src/ggml-cuda/conv-tail.cuh
 new file mode 100644
-index 0000000..3d13229
+index 0000000..ee43a71
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/conv-tail.cuh
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,175 @@
 +#pragma once
 +#include "common.cuh"
 +
-+// Readers of a conv-history concat that a tail-only materialization can serve: the rollback-slot views of the
-+// last H columns, their CONTs, and copies of either. Anything else reading the concat needs the whole tensor.
++// Current rollback stores use overlapping [H, Kw, C, seq] windows. They read
++// one suffix, not the whole concat; SET_ROWS must still execute normally.
++static inline int64_t ggml_cuda_conv_rollback_window_col(const ggml_tensor * t, const ggml_tensor * cc, int64_t H) {
++    if (!t || t->op != GGML_OP_VIEW || t->view_src != cc || t->type != GGML_TYPE_F32 || H <= 0 ||
++        cc->ne[1] <= 0 || cc->ne[2] != 1 || cc->ne[3] != 1 || t->ne[0] != H || t->ne[1] < 1 ||
++        t->ne[1] > cc->ne[0] - H || t->ne[2] != cc->ne[1] || t->ne[3] != 1 ||
++        t->nb[0] != sizeof(float) || t->nb[1] != sizeof(float) ||
++        t->nb[2] != cc->nb[1] || t->nb[3] != cc->nb[2] || t->view_offs % sizeof(float) != 0) {
++        return -1;
++    }
++    const int64_t col = (int64_t) (t->view_offs / sizeof(float));
++    // Avoid overflow while requiring the exact overlapping tail window made by
++    // build_conv_state_store: its last rollback window ends at the concat end.
++    if (col < 0 || col > cc->ne[0] || H > cc->ne[0] - col ||
++        t->ne[1] - 1 != cc->ne[0] - col - H) {
++        return -1;
++    }
++    return col;
++}
++
++// Readers of a conv-history concat that a tail-only materialization can serve:
++// legacy rollback views/CONT/CPY and current overlapping windows/SET_ROWS.
++// Every other reader still requires full materialization.
 +static inline int64_t ggml_cuda_conv_tail_view_col(const ggml_tensor * t, const ggml_tensor * cc, int64_t H) {
++    const int64_t window_col = ggml_cuda_conv_rollback_window_col(t, cc, H);
++    if (window_col >= 0) {
++        return window_col;
++    }
 +    if (t->op != GGML_OP_VIEW || t->view_src != cc || t->type != GGML_TYPE_F32 ||
 +        t->ne[0] != H || t->ne[1] != cc->ne[1] || t->ne[2] != cc->ne[2] || t->ne[3] != 1 ||
 +        t->nb[1] != cc->nb[1] || t->nb[2] != cc->nb[2] || t->view_offs % sizeof(float) != 0) {
@@ -83,6 +122,33 @@ index 0000000..3d13229
 +            s = s->src[0];
 +        }
 +        return s && ggml_cuda_conv_tail_view_col(s, cc, H) >= 0;
++    }
++    if (t->op == GGML_OP_SET_ROWS) {
++        // ggml_set_rows stores values/indices/destination in src[0/1/2]. Only
++        // recognize the current rollback window reader, never skip the store.
++        const auto * windows = t->src[0];
++        const auto * indices = t->src[1];
++        const auto * slots = t->src[2];
++        const int64_t col = ggml_cuda_conv_rollback_window_col(windows, cc, H);
++        if (col < 0 || !indices || !slots || t->type != GGML_TYPE_F32 || slots->type != GGML_TYPE_F32 ||
++            slots->op != GGML_OP_VIEW || slots == cc || slots->view_src == cc ||
++            !ggml_are_same_shape(t, slots) || !ggml_are_same_stride(t, slots) ||
++            slots->ne[0] != H || slots->ne[1] < windows->ne[1] || slots->ne[2] != cc->ne[1] || slots->ne[3] != 1 ||
++            slots->nb[0] != sizeof(float) || slots->nb[2] != H*sizeof(float) ||
++            slots->nb[3] != size_t(H)*size_t(cc->ne[1])*sizeof(float) ||
++            slots->nb[1] < slots->nb[3] || slots->nb[1] % slots->nb[3] != 0 ||
++            indices->type != GGML_TYPE_I32 || indices->ne[0] != windows->ne[1] ||
++            indices->ne[1] != 1 || indices->ne[2] != 1 || indices->ne[3] != 1 || indices->nb[0] != sizeof(int32_t)) {
++            return false;
++        }
++        if (t->data && cc->data) {
++            const uintptr_t a = uintptr_t(t->data), b = uintptr_t(cc->data);
++            if (a <= b ? b - a < ggml_nbytes(t) : a - b < ggml_nbytes(cc)) {
++                return false; // a store into the concat would change the later convolution
++            }
++        }
++        tail_from = std::min(tail_from, col);
++        return true;
 +    }
 +    return false;
 +}
@@ -746,7 +812,7 @@ index a75dd04..47a9900 100644
  }
 -
 diff --git a/ggml/src/ggml-cuda/mmq.cu b/ggml/src/ggml-cuda/mmq.cu
-index 2e61997..52494f3 100644
+index 2e6199766..f604bf3b8 100644
 --- a/ggml/src/ggml-cuda/mmq.cu
 +++ b/ggml/src/ggml-cuda/mmq.cu
 @@ -5,6 +5,8 @@
@@ -811,8 +877,41 @@ index 2e61997..52494f3 100644
          CUDA_CHECK(cudaGetLastError());
      }
  
+@@ -389,6 +419,32 @@ void ggml_cuda_mul_mat_q(
+         ne03, ne13, s03, s13, s3,
+         ntj, J_best, fusion_device};
+ 
++#if defined(GGML_USE_HIP)
++    // These small-MoE shapes favor output-row-first scheduling. Fold traversal
++    // of the original seam-and-tail records, without repacking descriptors or
++    // changing producer bytes, output ownership or per-tile arithmetic.
++    if (!fusion && !fallback && prec_src1 == GGML_PREC_Q8 &&
++            ggml_prec_get_acc(dst) == GGML_PREC_UNDEFINED && ggml_prec_get_src(dst, 1) == GGML_PREC_UNDEFINED &&
++            ggml_get_op_params_i32(dst, 1) == GGML_HINT_SMALL_MOE_TILES &&
++            cc == GGML_CUDA_CC_OFFSET_AMD + 0x1151 && ne01 % 128 == 0 &&
++            ne02 == 512 && n_expert_used == 10 && ne12 >= 256 && ne12 <= 4096 &&
++            (ne11 == 1 || ne11 == n_expert_used) && ne03 == 1 && ne13 == 1 &&
++            (!qwen_tiles || strcmp(qwen_tiles, "0") != 0) && (!qwen_compact || strcmp(qwen_compact, "0") != 0)) {
++        if (src0->type == GGML_TYPE_Q4_K && J_best == 32) {
++            launch_mul_mat_q<GGML_TYPE_Q4_K, 32, false, GGML_PREC_Q8, false, false, true>(ctx, args, stream);
++            return;
++        }
++        if (src0->type == GGML_TYPE_Q5_1 && J_best == 32) {
++            launch_mul_mat_q<GGML_TYPE_Q5_1, 32, false, GGML_PREC_Q8, false, false, true>(ctx, args, stream);
++            return;
++        }
++        if (src0->type == GGML_TYPE_Q8_0 && J_best == 48) {
++            launch_mul_mat_q<GGML_TYPE_Q8_0, 48, false, GGML_PREC_Q8, false, false, true>(ctx, args, stream);
++            return;
++        }
++    }
++#endif
++
+     ggml_cuda_mul_mat_q_switch_type(ctx, args, stream, prec_src1);
+ }
+ 
 diff --git a/ggml/src/ggml-cuda/mmq.cuh b/ggml/src/ggml-cuda/mmq.cuh
-index d645a8a..b3d0946 100644
+index d645a8aac..fdba59da2 100644
 --- a/ggml/src/ggml-cuda/mmq.cuh
 +++ b/ggml/src/ggml-cuda/mmq.cuh
 @@ -524,7 +524,19 @@ static __device__ __forceinline__ void ggml_cuda_mmq_write_back_mma(
@@ -958,20 +1057,144 @@ index d645a8a..b3d0946 100644
  // The mul_mat_q kernel implements "stream-k" work partitioning as described in https://arxiv.org/abs/2301.03598
  
 -template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion>
-+template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion, bool prefetch = false>
++template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion, bool prefetch = false, bool row_major_grid = false>
  __launch_bounds__(ggml_cuda_mmq_get_nthreads(type, J, fallback, prec_src1), ggml_cuda_mmq_get_occupancy(type, J, fallback, prec_src1))
  static __global__ void mul_mat_q(
          const char * __restrict__ x, const char * __restrict__ x_gate, const int * __restrict__ y, const int32_t * __restrict__ ids_dst,
-@@ -1132,7 +1229,7 @@ static __global__ void mul_mat_q(
-         const float * gate_scale_tile = gate_scale && ids_dst ? gate_scale + zt : gate_scale;
+@@ -1076,66 +1173,83 @@ static __global__ void mul_mat_q(
+         // The fused kernel writes the GLU of I/2 up rows and I/2 gate rows per tile.
+         constexpr int I_dst = has_fusion ? I/2 : I;
  
-         constexpr bool fixup = false;
+-        const uint2 tmp2 = fast_div_modulo(blockIdx.z, nchannels_y);
+-        const int wt = tmp2.x;
+-        int       zt = tmp2.y;
+-        const int jt = blockIdx.x;
+-        const int it = blockIdx.y;
+-
+-        // Defaults for regular matrix multiplication:
+-        int col_low        = jt*J;
+-        int col_high       = min(col_low + J, ncols_dst);
+-        int offset_y       = wt*stride_sample_y   + zt*stride_channel_y;
+-        int offset_y_scale = wt*nchannels_y.z*ncols_y + zt*ncols_y;
+-        int offset_dst     = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst;
+-
+-        if (ids_dst) {
+-            const ggml_cuda_mm_id_tile_spec tsj = tile_spec[jt];
+-            zt       = tsj.expert;
+-            col_low  = tsj.col_low;
+-            col_high = tsj.col_high;
+-
+-            offset_y       = 0;
+-            offset_y_scale = 0;
+-            offset_dst     = 0;
+-
+-            if (col_low == col_high) {
+-                return;
++        const int first_jt = row_major_grid ? blockIdx.y : blockIdx.x;
++        const int end_jt = row_major_grid ? int(ntj.z) : first_jt + 1;
++        const int step_jt = row_major_grid ? int(gridDim.y) : 1;
++        for (int jt = first_jt; jt < end_jt; jt += step_jt) {
++            if constexpr (row_major_grid) {
++                // Every thread reaches this barrier, including after empty tiles.
++                // Previous writeback may still read shared IDs or tile storage.
++                __syncthreads();
+             }
++            const uint2 tmp2 = fast_div_modulo(blockIdx.z, nchannels_y);
++            const int wt = tmp2.x;
++            int       zt = tmp2.y;
++            const int it = row_major_grid ? blockIdx.x : blockIdx.y;
++
++            // Defaults for regular matrix multiplication:
++            int col_low        = jt*J;
++            int col_high       = min(col_low + J, ncols_dst);
++            int offset_y       = wt*stride_sample_y   + zt*stride_channel_y;
++            int offset_y_scale = wt*nchannels_y.z*ncols_y + zt*ncols_y;
++            int offset_dst     = wt*stride_sample_dst + zt*stride_channel_dst + jt*J*stride_col_dst;
++
++            if (ids_dst) {
++                const ggml_cuda_mm_id_tile_spec tsj = tile_spec[jt];
++                zt       = tsj.expert;
++                col_low  = tsj.col_low;
++                col_high = tsj.col_high;
++
++                offset_y       = 0;
++                offset_y_scale = 0;
++                offset_dst     = 0;
++
++                if (col_low == col_high) {
++                    if constexpr (row_major_grid) {
++                        continue;
++                    } else {
++                        return;
++                    }
++                }
+ 
+-            // __syncthreads(); // There is no previous tile that could cause a race condition.
+-#pragma unroll
+-            for (int j0 = 0; j0 < J; j0 += nwarps*warp_size) {
+-                const int j = j0 + threadIdx.y*warp_size + threadIdx.x;
++                // Folded iterations synchronize before reusing the previous tile's shared storage.
++    #pragma unroll
++                for (int j0 = 0; j0 < J; j0 += nwarps*warp_size) {
++                    const int j = j0 + threadIdx.y*warp_size + threadIdx.x;
+ 
+-                if (j0 + nwarps*warp_size > J && j >= J) {
+-                    break;
+-                }
++                    if (j0 + nwarps*warp_size > J && j >= J) {
++                        break;
++                    }
+ 
+-                ids_dst_shared[j] = ids_dst[col_low + j];
++                    ids_dst_shared[j] = ids_dst[col_low + j];
++                }
++                __syncthreads();
+             }
+-            __syncthreads();
+-        }
+ 
+-        offset_y       += col_low * (sizeof(block_q8_1_mmq)/sizeof(int));
+-        offset_y_scale += col_low;
+-        offset_dst     += it*I_dst;
++            offset_y       += col_low * (sizeof(block_q8_1_mmq)/sizeof(int));
++            offset_y_scale += col_low;
++            offset_dst     += it*I_dst;
+ 
+-        const float * y_scale_tile = type == GGML_TYPE_NVFP4 && y_scale ? y_scale + offset_y_scale : nullptr;
++            const float * y_scale_tile = type == GGML_TYPE_NVFP4 && y_scale ? y_scale + offset_y_scale : nullptr;
+ 
+-        const int tile_x_i_max = nrows_x - it*I_dst - 1;
++            const int tile_x_i_max = nrows_x - it*I_dst - 1;
+ 
+-        const int offset_x = fastdiv(wt, sample_ratio)*stride_sample_x + fastdiv(zt, channel_ratio)*stride_channel_x + it*I_dst*stride_row_x;
++            const int offset_x = fastdiv(wt, sample_ratio)*stride_sample_x + fastdiv(zt, channel_ratio)*stride_channel_x + it*I_dst*stride_row_x;
+ 
+-        // With ids the NVFP4 weight scales are per expert.
+-        const float * x_scale_tile    = x_scale    && ids_dst ? x_scale    + zt : x_scale;
+-        const float * gate_scale_tile = gate_scale && ids_dst ? gate_scale + zt : gate_scale;
++            // With ids the NVFP4 weight scales are per expert.
++            const float * x_scale_tile    = x_scale    && ids_dst ? x_scale    + zt : x_scale;
++            const float * gate_scale_tile = gate_scale && ids_dst ? gate_scale + zt : gate_scale;
+ 
+-        constexpr bool fixup = false;
 -        mul_mat_q_process_tile<type, J, fallback, fixup, prec_src1, has_fusion>
-+        mul_mat_q_process_tile<type, J, fallback, fixup, prec_src1, has_fusion, prefetch>
-             (x, x_gate, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
-              glu_op, glu_limit, x_scale_tile, gate_scale_tile, stride_row_x, ncols_y, stride_col_dst,
-              tile_x_i_max, col_high - col_low, 0, blocks_per_ne00.z);
-@@ -1218,7 +1315,7 @@ static __global__ void mul_mat_q(
+-            (x, x_gate, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
+-             glu_op, glu_limit, x_scale_tile, gate_scale_tile, stride_row_x, ncols_y, stride_col_dst,
+-             tile_x_i_max, col_high - col_low, 0, blocks_per_ne00.z);
++            constexpr bool fixup = false;
++            mul_mat_q_process_tile<type, J, fallback, fixup, prec_src1, has_fusion, prefetch>
++                (x, x_gate, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
++                 glu_op, glu_limit, x_scale_tile, gate_scale_tile, stride_row_x, ncols_y, stride_col_dst,
++                 tile_x_i_max, col_high - col_low, 0, blocks_per_ne00.z);
++
++            if constexpr (!row_major_grid) {
++                return;
++            }
++        }
+         return;
+     }
+ 
+@@ -1218,7 +1332,7 @@ static __global__ void mul_mat_q(
          const float * x_scale_tile = x_scale && ids_dst ? x_scale + zt : x_scale;
  
          constexpr bool fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
@@ -980,7 +1203,7 @@ index d645a8a..b3d0946 100644
              (x, x_gate, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
               glu_op, glu_limit, x_scale_tile, gate_scale, stride_row_x, ncols_y, stride_col_dst,
               tile_x_i_max, col_high - col_low, kb0_start, kb0_stop);
-@@ -1294,7 +1391,7 @@ static __global__ void mul_mat_q(
+@@ -1294,7 +1408,7 @@ static __global__ void mul_mat_q(
      const float * x_scale_tile = x_scale && ids_dst ? x_scale + zt : x_scale;
  
      constexpr bool fixup = true; // Last index writes its data to fixup buffer to avoid data races with other blocks.
@@ -989,42 +1212,59 @@ index d645a8a..b3d0946 100644
          (x, x_gate, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup, y_scale_tile,
           glu_op, glu_limit, x_scale_tile, gate_scale, stride_row_x, ncols_y, stride_col_dst,
           tile_x_i_max, col_high - col_low, kb0_start, kb0_stop);
-@@ -1461,7 +1558,7 @@ static size_t mmq_get_nbytes_shared(const ggml_cuda_mmq_config & config, const i
+@@ -1461,7 +1575,7 @@ static size_t mmq_get_nbytes_shared(const ggml_cuda_mmq_config & config, const i
      return nbs_ids + nbs_x + GGML_PAD(nbs_y, config.nthreads*sizeof(int));
  }
  
 -template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion>
-+template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion, bool prefetch = false>
++template <ggml_type type, int J, bool fallback, ggml_prec prec_src1, bool has_fusion, bool prefetch = false, bool row_major_grid = false>
  static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & args, cudaStream_t stream) {
      const int id = ggml_cuda_get_device();
      const int cc = ggml_cuda_info().devices[id].cc;
-@@ -1475,9 +1572,9 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+@@ -1475,16 +1589,24 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
  
      const dim3 block_dims(warp_size, nwarps, 1);
  
 -    CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ false, prec_src1, has_fusion>), nbytes_shared);
-+    CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ false, prec_src1, has_fusion, prefetch>), nbytes_shared);
++    CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ false, prec_src1, has_fusion, prefetch, row_major_grid>), nbytes_shared);
      if constexpr (!has_fusion) {
 -        CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ true, prec_src1, false>), nbytes_shared);
-+        CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ true, prec_src1, false, prefetch>), nbytes_shared);
++        CUDA_SET_SHARED_MEMORY_LIMIT((mul_mat_q<type, J, /*fallback =*/ true, prec_src1, false, prefetch, row_major_grid>), nbytes_shared);
      }
  
      const int I_dst = has_fusion ? config.I/2 : config.I; // Rows of dst per tile, see mul_mat_q.
-@@ -1500,7 +1597,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+     const int nti   = (args.nrows_x + I_dst - 1) / I_dst;
+     const int ntzw  = args.nchannels_y * args.nsamples_y;
+-    // Column tiles innermost so that the concurrently running blocks share the same tile of x and read it from L2.
+-    const dim3 block_nums_xy_tiling(args.ntj, nti, ntzw);
++    // Default column-first order shares x tiles. The hinted row-major path
++    // instead puts output rows on x and traverses the same descriptor set.
++    const int grid_j = row_major_grid ? (args.ncols_dst + J - 1) / J : args.ntj;
++    const dim3 block_nums_xy_tiling = row_major_grid ? dim3(nti, grid_j, ntzw) : dim3(args.ntj, nti, ntzw);
++    if constexpr (row_major_grid) {
++        // Fewer blocks still visit every descriptor, including empty seams
++        // before later expert tails; no alternate packed format is needed.
++        GGML_ASSERT(!has_fusion && !fallback && !config.stream_k && args.ids_dst && args.tile_spec);
++        GGML_ASSERT(grid_j > 0 && grid_j <= args.ntj && grid_j <= 65535);
++    }
+ 
+     GGML_ASSERT(args.ids_dst || args.nchannels_y % args.nchannels_x == 0);
+     GGML_ASSERT(                args.nsamples_y  % args.nsamples_x  == 0);
+@@ -1500,7 +1622,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
  
      if (has_fusion || !config.stream_k) {
          GGML_ASSERT(nti <= 65535); // gridDim.y limit
 -        mul_mat_q<type, J, fallback, prec_src1, has_fusion><<<block_nums_xy_tiling, block_dims, nbytes_shared, stream>>>
-+        mul_mat_q<type, J, fallback, prec_src1, has_fusion, prefetch><<<block_nums_xy_tiling, block_dims, nbytes_shared, stream>>>
++        mul_mat_q<type, J, fallback, prec_src1, has_fusion, prefetch, row_major_grid><<<block_nums_xy_tiling, block_dims, nbytes_shared, stream>>>
              (args.x, (const char *) args.fusion.gate, args.y, args.ids_dst, args.tile_spec, args.dst, nullptr,
               args.y_scale, args.fusion.glu_op, args.fusion.glu_limit, (const float *) args.fusion.x_scale, (const float *) args.fusion.gate_scale,
               blocks_per_ne00_fd, args.nrows_x, args.ncols_dst, args.stride_row_x, args.ncols_y, args.nrows_dst,
-@@ -1532,7 +1629,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
+@@ -1532,7 +1654,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
      const dim3 block_nums_fixup(block_nums_stream_k.x, config.I/warp_size, 1);
      const dim3 block_dims_fixup(block_dims.x, block_dims.y/2, block_dims.z);
  
 -    mul_mat_q<type, J, fallback, prec_src1, has_fusion><<<block_nums_stream_k, block_dims, nbytes_shared, stream>>>
-+    mul_mat_q<type, J, fallback, prec_src1, has_fusion, prefetch><<<block_nums_stream_k, block_dims, nbytes_shared, stream>>>
++    mul_mat_q<type, J, fallback, prec_src1, has_fusion, prefetch, row_major_grid><<<block_nums_stream_k, block_dims, nbytes_shared, stream>>>
          (args.x, (const char *) args.fusion.gate, args.y, args.ids_dst, args.tile_spec, args.dst, tmp_fixup.ptr,
           args.y_scale, args.fusion.glu_op, args.fusion.glu_limit, (const float *) args.fusion.x_scale, (const float *) args.fusion.gate_scale,
           blocks_per_ne00_fd, args.nrows_x, args.ncols_dst, args.stride_row_x, args.ncols_y, args.nrows_dst,
@@ -2290,10 +2530,10 @@ index 8e5a787..ea5e34c 100644
      ggml_tensor * conv_out = nullptr;
      for (int64_t k = 0; k < kern; ++k) {
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 65bcf2d..c00ed4a 100644
+index 6f4b25ae2..41b1d3b37 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10482,6 +10482,352 @@ struct test_falcon : public test_llm {
+@@ -10514,6 +10514,352 @@ struct test_falcon : public test_llm {
  };
  
  
@@ -2531,8 +2771,8 @@ index 65bcf2d..c00ed4a 100644
 +};
 +
 +struct test_qwen_moe_tiles : public test_mul_mat_id {
-+    test_qwen_moe_tiles(ggml_type type, int rows, int tokens, bool broadcast, int experts = 8, int used = 2)
-+        : test_mul_mat_id(type, GGML_TYPE_F32, experts, used, broadcast, rows, tokens, 256) {}
++    test_qwen_moe_tiles(ggml_type type, int rows, int tokens, bool broadcast, int experts = 8, int used = 2, int inner = 256)
++        : test_mul_mat_id(type, GGML_TYPE_F32, experts, used, broadcast, rows, tokens, inner) {}
 +    std::string op_desc(ggml_tensor *) override { return "QWEN_MOE_TILES"; }
 +    bool run_whole_graph() override { return true; }
 +    ggml_tensor * build_graph(ggml_context * ctx) override {
@@ -2646,7 +2886,7 @@ index 65bcf2d..c00ed4a 100644
  struct test_qsa_prefill : public test_case {
      const int dim, queries, keys, selected, streams, ratio;
      const bool interleaved, poison;
-@@ -13502,6 +13848,74 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -13556,6 +13902,80 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
          test_cases.emplace_back(new test_qsa_order(513, selected));
          test_cases.emplace_back(new test_qsa_prefill(513, 4096, selected, true, true));
      }
@@ -2682,6 +2922,10 @@ index 65bcf2d..c00ed4a 100644
 +    test_cases.emplace_back(new test_qwen_gdn_conv(513, 256, 1));
 +    test_cases.emplace_back(new test_qwen_gdn_conv(512, 256, 3, true));
 +    for (auto type : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0 }) {
++        // Keep multi-K and actual model dimensions alongside reduced/declined
++        // shapes so later scheduling edits cannot pass on one K chunk alone.
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 2048, true, 512, 10, 2048));
++        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 2048, false, 512, 10, 2048));
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, true, 512, 10));
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 257, false, 512, 10));
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 512, 513, true));
@@ -2689,6 +2933,8 @@ index 65bcf2d..c00ed4a 100644
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 129, 513, true));
 +        test_cases.emplace_back(new test_qwen_moe_tiles(type, 256, 8, true));
 +    }
++    test_cases.emplace_back(new test_qwen_moe_tiles(GGML_TYPE_Q4_K, 640, 2048, true, 512, 10, 2560));
++    test_cases.emplace_back(new test_qwen_moe_tiles(GGML_TYPE_Q5_1, 2560, 2048, false, 512, 10, 640));
 +    test_cases.emplace_back(new test_qwen_q8_matvec(32,1));
 +    for (int cols : {320, 2560, 10240}) {
 +        for (int count : {2, 3, 4}) test_cases.emplace_back(new test_qwen_q8_group(cols, count));

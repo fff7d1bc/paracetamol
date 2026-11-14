@@ -28,6 +28,38 @@ establish a foundation-caused inference speed change. See the
 [bounded acceptance record](hardware-acceptance.md#strix-halo-ubuntu-foundation-refresh-2026-11-13)
 for scope and deferred hardware checks.
 
+## Flash-Next prefill recovery (2026-11-14)
+
+The `ded522f-r77` follow-up keeps the upstream pin, fifteen-patch stack,
+temporary HIP activation-sum compatibility policy and runtime defaults. It
+changes two parts of `hip-qwen4exp-pipeline.patch`, without introducing a new
+switch, packed routing format or reduced-precision matrix path.
+
+Small-MoE MMQ scheduling traverses the original upstream seam-and-tail
+descriptors in output-row-first order, folding multiple descriptors into
+each block. This preserves tile arithmetic and the producer's bytes. It is
+limited to hinted `gfx1151` 512-expert/10-used shapes, Q4_K/Q5_1 at width 32
+and Q8_0 at width 48, with existing precision and fusion exclusions. Empty
+seams must continue traversal rather than return before later expert tails.
+A block-wide barrier protects shared storage between iterations. The
+original routing fixture remains unchanged, while eight maintained matrix
+cases add multiple K chunks and the actual projection dimensions.
+
+The convolution matcher now recognizes upstream's overlapping rollback
+windows and `SET_ROWS` store. The old matcher rejected that changed graph
+and silently used the correct but slower full-concat path. The adaptation
+retains the store, rejects unknown readers and aliasing, and preserves input
+lifetimes. Its dedicated fixture checks current graph geometry, all rollback
+slots and unowned cells, matcher eligibility after allocation, and exact
+agreement with the unmarked path. Ordinary model traces are needed as well
+to show that production kernels actually run.
+
+Descriptor packing and a dedicated outer kernel were tested separately but
+did not improve the selected scheduling path, so neither is carried. The
+fork's BF16/F16 internal matrix changes remain excluded. See the
+[hardware record](hardware-acceptance.md#strix-halo-flash-next-prefill-recovery-2026-11-14)
+for measurements, combined-image acceptance and coverage limits.
+
 ## llama.cpp HIP MMQ compatibility refresh (2026-11-13)
 
 The follow-up selects frozen upstream
@@ -641,7 +673,7 @@ protected behavior is fixed.
 | `hip-qwen4exp-qsa-kernels.patch` | Adds selected-key F16 QSA prefill and short-query kernels adapted from `halo-box/strix-llama.cpp` at `7a9196dad8b13b70fb3420886aadaf98fc09b849`. Dispatch requires exact `gfx1151` geometry. Canonical sorting and deduplication make attention independent of upstream top-k ordering. The Qwen4exp graph supplies selected IDs only when `PARACETAMOL_QWEN4EXP_QSA_KERNEL=1`; the entrypoint enables it by default only for Strix Halo ROCm. A container-level value of `0` disables it. | Upstream provides equivalent selected-key attention with the order-invariance and numerical operator tests, Flash-Next correctness, near-256K checks, and paired prefill gain intact, without changing older Qwen paths. |
 | `process-allocation-policy.patch` | Adds a native `--no-unified-memory` startup option. Preset inspection is pure, while the selected model process removes the inherited CUDA/HIP allocation variable before loading. | Upstream supports an equivalent per-model allocator opt-out without modifying sibling processes. Recheck ordinary models before and after a Flash-Next router switch. |
 | `hip-qwen4exp-graph-optimizations.patch` | Intersects upstream's visibility-filtered selected IDs with its shared causal/sequence mask, avoiding a dense per-layer selection mask. Uses upstream pooled-cache state rather than a private prefix or derived-key cache. Requires supported single-stream F16 geometry and both QSA switches. CPU fallback honors the intersection, and unsupported accelerators decline it. A container-level `PARACETAMOL_QWEN4EXP_QSA_GRAPH=0` disables this and the scoped pipeline fusions. | Upstream equivalents pass the independent selected-mask oracle, unsupported-layout fallback, populated state restore, near-256K retrieval and prefix reuse, and older-model/backend checks. Never silently substitute a private reduced-precision matrix path or persistent derived cache. |
-| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV and F32 residuals. The separate temporary MMQ compatibility patch below owns the auxiliary-sum exception. The injection dot product remains F32 with numerical reference tests. The 512/10 routing helper rejects invalid expert IDs in both passes and emits upstream tile descriptors, with independent bounds/map/guard fixtures. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
+| `hip-qwen4exp-pipeline.patch` | Scoped Qwen4exp convolution, normalization/injection, expert routing/reduction and Q8 scheduling on `gfx1151`. Retains F16 KV and F32 residuals. The separate temporary MMQ compatibility patch below owns the auxiliary-sum exception. The injection dot product remains F32 with numerical reference tests. The 512/10 routing helper rejects invalid expert IDs in both passes and emits upstream tile descriptors, with independent bounds/map/guard fixtures. Selected MMQ shapes traverse those descriptors in folded row-major order without repacking or changing tile arithmetic. The convolution matcher recognizes current overlapping rollback windows and preserves their `SET_ROWS` stores. Unsupported shapes, precision overrides and unsafe fusions fall back. | Upstream equivalents pass the operator and fusion-lifetime checks, current rollback-window fixture and observed kernel activation, near-256K retrieval, state/cancellation screens, and older-model/backend regression checks. No BF16/F16 matrix or residual downcast belongs in this precision-preserving patch. |
 | `hip-mmq-activation-sum-compat.patch` | Temporarily retains the pre-`8fc0376` floating-input auxiliary sum in normal/scatter MMQ on all HIP devices. Scalar, non-HIP and newer few-row corrections remain. Quantized bytes and scales are unchanged. This is local numerical-trajectory compatibility, not a mathematical fix or general accuracy claim. | The corrected HIP sum passes the unchanged compact-graph replay, speculative and non-speculative gateway checks, numerical/state gates, populated long context and applicable hardware acceptance without oracle relaxation. |
 | `server-stream-keepalive.patch` | Carries [PR 30492](https://github.com/ggml-org/llama.cpp/pull/30492) at `221c0b2e6c815b32b2d629a1830ad04502807ecb`. Reports successful completion after the last SSE chunk instead of closing a reusable HTTP connection. Failed writes still fail. | Upstream contains the equivalent fix, a follow-up request succeeds on the exact same socket without reconnect, and streaming/non-streaming gateway cancellation still idles the child slot. |
 | `topk-moe-boundaries.patch` | Uses the inclusive allocation-lifetime endpoint from Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`. Local bounds checks protect terminal and partial normalization groups in the same matcher. No kernel arithmetic or fusion eligibility is widened. | Upstream passes `test-topk-moe-lifetime.cpp` with actual dependency callbacks in all eight terminal/suffix cases, plus numerical top-k MoE and model-level checks. |

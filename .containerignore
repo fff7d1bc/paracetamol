@@ -37,5 +37,7 @@
 !applications/llama-cpp/test-qwen4exp-multistream.cpp
 !applications/llama-cpp/test-qwen4exp-routing.cpp
 !applications/llama-cpp/build-routing-test.sh
+!applications/llama-cpp/test-qwen4exp-conv-rollback.cpp
+!applications/llama-cpp/build-conv-rollback-test.sh
 !applications/llama-cpp/chat-templates/
 !applications/llama-cpp/chat-templates/*.jinja

@@ -29,6 +29,125 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo Flash-Next prefill recovery (2026-11-14)
+
+Accepted on 2026-11-14. The delivery revision is the commit adding this
+record and the two pipeline changes below.
+
+The follow-up keeps upstream `ded522f8304554317e7ff8f88698dbbbca5425aa`
+and fifteen patches, with combined tree
+`aeeb3f45e00deae964a7949da69f1389fa98176a`. The normal locally built image
+is `llama-cpp-ubuntu26.04-rocm10.1-ded522f-r77`, immutable ID
+`0de2f71f6181e4fe61f1b03c3d2dc69adc532b860394d972d10e5065b78ffdaa`.
+Its comparator is the accepted `ded522f-r76` image below, not pristine
+upstream or a fresh full-fork benchmark.
+
+Two narrow pipeline changes address measured lost work. Folded row-major
+MMQ scheduling preserves upstream's routing descriptors and per-tile
+arithmetic, including the Q5_1 tensors present in the dynamic quant. The
+convolution matcher recognizes upstream's changed rollback-window graph
+instead of falling back to full concat materialization. These are scheduling
+and graph-matching changes, not lower-precision matrix or cache options.
+The separate temporary HIP activation-sum compatibility workaround remains
+unchanged and is not resolved by this performance work.
+
+Physical testing uses `gfx1151`, ROCm 10.1 and the regular Unsloth
+Flash-Next UD-Q4_K_XL through the ordinary gateway. Weights, chat template,
+gateway sampling defaults, F16 K/V, vision, four slots, the shared
+262144-token pool and greedy DFlash2 depth three are unchanged. Batch and
+microbatch remain 2048. Existing firmware/EPP performance policy and disabled
+swap are left untouched.
+
+The final image passes 1,344 actual-helper routing cases, all 26 maintained
+MoE matrix cases, and forty convolution rollback cases over 160 rounds.
+The latter cover both persistent and scheduler allocation, sixteen eligible
+and twenty-four declined cases, every rollback slot and unowned cell,
+postallocation lifetime dependencies, and exact agreement with an unmarked
+reference. They use the normal runtime libraries and graph policy, not a
+counter-instrumented backend. A separate preintegration comparator also
+checks the selected scheduling path against the original path on the same
+buffers, with 26 bitwise-equal matrix cases and four decline controls.
+
+An ordinary graph-enabled trace of the isolated convolution fix restores
+576 direct GDN and sixteen direct PLE launches, absent from the refreshed
+baseline, while retaining the `SET_ROWS` stores. That is whole-worker
+component activation evidence, not a separately measured trace of the final
+combined image. Profiled throughput is not used for the speed comparison.
+
+The fixed 32K comparison runs baseline, final, final, baseline in that order.
+Every request processes 32,937 uncached tokens and returns the same six
+values with natural EOS at 62 output tokens. All four have 54 drafted tokens,
+43 accepted tokens and eighteen verification rounds. This is cold KV state,
+not a cold filesystem-cache comparison.
+
+| Measurement | `ded522f-r76` | `ded522f-r77` |
+| --- | ---: | ---: |
+| Prefill throughput, two observations | 571–602 tokens/s | 760–779 tokens/s |
+| Native prompt-processing time | 54.68–57.69 s | 42.30–43.33 s |
+| HTTP request wall time, excluding model loading | 56.18–59.22 s | 43.79–44.89 s |
+
+Summed input tokens divided by summed prompt time give 586 versus 769
+tokens/s, about **31% more prefill throughput**. Summed HTTP wall time is
+about **23% lower**. Two observations per image establish a bounded paired
+win, not a performance distribution or a decode-throughput claim. In
+particular, a short 62-token answer is not a sustained decode benchmark.
+
+Descriptor packing and an extra dedicated outer kernel gave no useful
+increment in the preceding isolated screens, so the simpler original-seam
+implementation is retained. A separate Q4_K/J48 tile-width experiment was
+not run. No BF16/F16 internal matrix mode, new quantizer, residual downcast
+or wholesale fork import is included. This work does not establish a
+precision-equivalent threefold improvement.
+
+The original six-case nonthinking replay passes with and without DFlash2.
+Both thirteen-request short suites pass reasoning, tool, history, streaming
+and prefix-reuse checks. Streaming and non-streaming cancellation return all
+four slots to idle in both modes, followed by successful recovery requests.
+
+Near-pool retrieval passes at 247,210 actual input tokens. Its cold answer,
+including reasoning, matches the accepted refreshed baseline exactly. The
+repeat reuses 247,206 tokens and evaluates four new prompt tokens. The
+edited-value request returns the changed value without the old one. That
+request also switches from `xhigh` to `medium` and reprocesses its 247,168
+input tokens, so it is not an isolated cache-rewind measurement.
+
+Two true append turns preserve the full assistant messages, including
+reasoning. They reach 251,850 and 256,232 input tokens, reusing 247,705 and
+252,088 tokens and evaluating only the respective 4,145- and 4,144-token
+suffixes. Both pass their answer oracles and natural completion checks.
+Native suffix prefill is about 518 tokens/s, excluding the cold setup and
+answer generation. This is a populated-context acceptance observation, not
+a paired long-context speedup estimate.
+
+Four short image/history requests return the expected answers and the same
+cache counts as the accepted refreshed baseline. The original wrapper exits
+nonzero because its exact-image warning classifier does not yet recognize
+`r77`. The eight recurrent MRoPE warning records match the reviewed baseline
+forms and counts. A separate offline classification adds only this immutable
+image ID, preserves every warning pattern and error rule, passes all thirty
+positive/negative fixtures, and finds no unexpected errors. The original
+failed gate and both classifications remain retained. This is bounded
+vision acceptance, not a blanket exception for position warnings or a
+near-256K image-context claim.
+
+The dense Qwen3.8 27B ROCm reply/tool smoke and plain Flash-Next Vulkan
+reply/tool smoke pass. These are bounded fallback controls, not performance
+benchmarks or full dense-model acceptance. All model arms remain above the
+8 GiB available-memory guard, with about 13.66 GiB minimum observed during
+the longest append arm. No new kernel entries or leaked owned backends are
+observed.
+
+Normal source builds compile all four configured HIP targets and Vulkan.
+The image's CPU routing, rollback and native-policy gates, `pip check`, and
+the host Tier 1 checks pass. Physical inference on `gfx1150`, `gfx1200` and
+`gfx1201` remains `N/P` because those target devices are unavailable for this
+run. The optimization dispatch itself is limited to `gfx1151`.
+
+Private source identities, fixtures, component traces, final-image results,
+failed and reviewed vision classifications, and deployment evidence remain
+under ignored `build/flash-next-performance-20261114/`. No host identities,
+private prompts or raw logs are published here.
+
 ### Strix Halo HIP MMQ compatibility refresh (2026-11-13)
 
 Accepted on 2026-11-14 with the measured performance tradeoff below. The
@@ -120,8 +239,9 @@ Near-pool retrieval passes with 247,210 actual input tokens, natural EOS
 and all six expected values. The cold request has no reused prefix. The
 exact repeat reuses 247,206 tokens and evaluates four new prompt tokens.
 The edited-value request returns the new value without the old one, but
-reprocesses all 247,168 input tokens. This establishes correct edited
-content, not efficient cache rewind.
+reprocesses all 247,168 input tokens. That frozen request also switches from
+`xhigh` to `medium`, so it does not isolate the cost of an edit or cache
+rewind. It establishes correct edited content.
 
 Two true append turns preserve the full previous assistant object, including
 reasoning. They reach 251,850 and 256,232 input tokens, reuse 247,705 and

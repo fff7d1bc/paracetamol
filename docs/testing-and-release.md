@@ -126,6 +126,18 @@ do not replace checks on the other supported architectures. Upstream
 ownership of the former quantized-KV copy fix does not remove its F16,
 Q8_0 and Q4_0 device-copy regression checks.
 
+The llama.cpp build also runs `build-conv-rollback-test.sh` in CPU-only mode.
+The fixture follows the pinned upstream overlapping-window/`SET_ROWS` graph
+and checks all rollback slots, including cells that must remain untouched.
+It deliberately fails on a different upstream pin until reviewed. Hardware
+acceptance runs its forty cases and 160 rounds against the actual final
+runtime libraries, checking postallocation ROCm matcher eligibility and
+exact agreement with an unmarked reference. Keep graph capture enabled.
+Matcher eligibility and numerical agreement alone do not prove optimized
+kernel activation, which needs a normal model trace. The mechanically
+extracted routing fixture and maintained `QWEN_MOE_TILES` operator cases
+remain separate gates.
+
 Native Maki compatibility has an optional installed-client check. The normal
 suite uses renderer and HTTP fixtures and needs no installed client.
 

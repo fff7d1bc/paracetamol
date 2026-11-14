@@ -370,6 +370,15 @@ RUN ROUTING_CPU_ONLY=1 bash /opt/paracetamol/build-routing-test.sh \
         /opt/llama.cpp /tmp/qwen4exp-routing-test && \
     /tmp/qwen4exp-routing-test/test-qwen4exp-routing-cpu
 
+# CPU checks the rollback-state oracle. Hardware acceptance also requires the
+# allocated ROCm matcher and observed kernels, not numerical fallback alone.
+COPY applications/llama-cpp/test-qwen4exp-conv-rollback.cpp \
+    applications/llama-cpp/build-conv-rollback-test.sh /opt/paracetamol/
+RUN bash /opt/paracetamol/build-conv-rollback-test.sh \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/conv-rollback-test && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/conv-rollback-test/test-qwen4exp-conv-rollback --cpu
+
 # Keep server-only telemetry after the native build so a reporting change does
 # not invalidate the accepted GPU kernel compilation or its numerical identity.
 COPY applications/llama-cpp/server-speculative-metrics.patch \

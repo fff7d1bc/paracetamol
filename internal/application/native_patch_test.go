@@ -57,7 +57,7 @@ func TestDFlashMultimodalPositionPatchPackaging(t *testing.T) {
 		t.Fatal("native patch provenance label omits or reorders the late correction")
 	}
 	spec, ok := ByID(string(LlamaCPP))
-	if !ok || !strings.HasSuffix(spec.Image, "-ded522f-r76") {
+	if !ok || !strings.HasSuffix(spec.Image, "-ded522f-r77") {
 		t.Fatalf("native patch packaging must use its current image identity: %q", spec.Image)
 	}
 }
@@ -98,5 +98,33 @@ func TestHIPMMQCompatibilityPackaging(t *testing.T) {
 	}
 	if _, err := os.Stat("../../applications/llama-cpp/quantized-kv-state-copy.patch"); !os.IsNotExist(err) {
 		t.Fatalf("obsolete state-copy patch remains or cannot be checked: %v", err)
+	}
+}
+
+func TestConvRollbackFixturePackaging(t *testing.T) {
+	read := func(path string) string {
+		t.Helper()
+		value, err := os.ReadFile("../../" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(value)
+	}
+	containerfile := read("Containerfile")
+	allowlist := read(".containerignore")
+	for _, name := range []string{"test-qwen4exp-conv-rollback.cpp", "build-conv-rollback-test.sh"} {
+		path := "applications/llama-cpp/" + name
+		if !strings.Contains(allowlist, "\n!"+path+"\n") || !strings.Contains(containerfile, path) {
+			t.Errorf("missing rollback fixture build input %s", path)
+		}
+	}
+	for _, required := range []string{
+		"bash /opt/paracetamol/build-conv-rollback-test.sh",
+		"/opt/llama.cpp /opt/llama-install/lib /tmp/conv-rollback-test",
+		"/tmp/conv-rollback-test/test-qwen4exp-conv-rollback --cpu",
+	} {
+		if !strings.Contains(containerfile, required) {
+			t.Errorf("missing CPU-only rollback build gate %q", required)
+		}
 	}
 }
