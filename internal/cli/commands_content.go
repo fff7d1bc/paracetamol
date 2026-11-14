@@ -335,6 +335,39 @@ func (app *App) inspectContentBundle(store *verification.Store, managed catalog.
 	return statuses, nil
 }
 
+func (app *App) contentInstallDataDir(value string) (string, error) {
+	root, err := app.resolveDataDir(value, false)
+	if err != nil {
+		return "", err
+	}
+	// Resolve existing aliases even above a missing suffix, without creating
+	// it before approval. Mirror overlap checks require the canonical path.
+	ancestor := root
+	for {
+		if _, err := os.Lstat(ancestor); err == nil {
+			resolved, err := filepath.EvalSymlinks(ancestor)
+			if err != nil {
+				return "", err
+			}
+			info, err := os.Stat(resolved)
+			if err != nil {
+				return "", err
+			}
+			if !info.IsDir() {
+				return "", controlerr.New("data directory ancestor is not a directory: %s", ancestor)
+			}
+			suffix, err := filepath.Rel(ancestor, root)
+			if err != nil {
+				return "", err
+			}
+			return filepath.Join(resolved, suffix), nil
+		} else if !os.IsNotExist(err) || filepath.Dir(ancestor) == ancestor {
+			return "", err
+		}
+		ancestor = filepath.Dir(ancestor)
+	}
+}
+
 func (app *App) contentInstall(args []string) error {
 	set := app.flagsWithExamples("content install", usage("content", "install", "[TARGET [SELECTION]]", "[OPTIONS]"), []string{
 		identity.Command("content", "install"),
@@ -407,13 +440,16 @@ func (app *App) contentInstall(args []string) error {
 		}
 	}
 	agreements := uniqueAgreements(managed, bundles)
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.contentInstallDataDir(*dataFlag)
 	if err != nil {
 		return err
 	}
 	artifacts := content.UniqueArtifacts(managed, bundles)
 	plan, err := content.Plan(dataRoot, artifacts)
 	if err != nil {
+		return err
+	}
+	if err := plan.Validate(); err != nil {
 		return err
 	}
 	terminal := app.terminal(app.Stdout)
@@ -1235,6 +1271,19 @@ func (app *App) contentImport(args []string) error {
 	if strings.ToLower(filepath.Ext(packPath)) != ".json" {
 		return controlerr.Usage("import pack path must end in .json")
 	}
+	dataRoot, err := app.contentInstallDataDir(*dataFlag)
+	if err != nil {
+		return err
+	}
+	// Validate the managed destination even for a dry run. Publishing the pack
+	// stays behind the installer's own plan and approval boundary below.
+	installPlan, err := content.Plan(dataRoot, []catalog.Artifact{plan.Artifact})
+	if err != nil {
+		return err
+	}
+	if err := installPlan.Validate(); err != nil {
+		return err
+	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Remote import:"))
 	packDisplay := packPath
@@ -1250,23 +1299,28 @@ func (app *App) contentImport(args []string) error {
 	if *dryRun {
 		return nil
 	}
-	if !*acknowledge {
-		return controlerr.New("remote imports have NOASSERTION licensing; review the plan and repeat with --acknowledge-license-risk")
+	// The generated pack itself carries unresolved licensing, including when
+	// the target bytes already exist. Use the ordinary interactive approval.
+	acknowledged, err := app.confirmContentApprovals(nil, []catalog.Artifact{plan.Artifact}, false, *acknowledge, *nonInteractive)
+	if err != nil {
+		return err
 	}
 	pack, err := remoteimport.PackBytes(plan)
 	if err != nil {
 		return err
 	}
-	if err := saveImportPack(packPath, pack); err != nil {
-		return err
-	}
-	fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Saved local pack:"), packPath)
-	dataRoot, err := app.resolveDataDir(*dataFlag, true)
-	if err != nil {
-		return err
-	}
 	image := firstNonEmpty(*imageFlag, config.EnvironmentValue(app.Environment, "IMAGE", config.ContentToolsImage))
-	if err := content.Install(content.InstallOptions{Context: app.Context, DataRoot: dataRoot, Artifacts: []catalog.Artifact{plan.Artifact}, Image: image, AcceptRisk: true, Environment: app.Environment, Runner: app.Runner, Output: app.Stdout}); err != nil {
+	if err := content.Install(content.InstallOptions{
+		Context: app.Context, DataRoot: dataRoot, Artifacts: []catalog.Artifact{plan.Artifact},
+		Image: image, AcceptRisk: acknowledged, Environment: app.Environment, Runner: app.Runner, Output: app.Stdout,
+		BeforeMutation: func() error {
+			if err := saveImportPack(packPath, pack); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Saved local pack:"), packPath)
+			return nil
+		},
+	}); err != nil {
 		return err
 	}
 	if kind.Application == "llama-cpp" {

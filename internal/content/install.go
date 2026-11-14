@@ -41,6 +41,11 @@ type InstallOptions struct {
 	Environment    map[string]string
 	Runner         process.Runner
 	Output         io.Writer
+	// BeforeMutation publishes caller-owned metadata after validation and
+	// approval, before preparing the data root or taking its install lock.
+	// Dry runs and rejected plans never call it. Published metadata survives
+	// later install failures so a caller can preserve a resumable import pack.
+	BeforeMutation func() error
 }
 
 type InstallPlan struct {
@@ -49,6 +54,17 @@ type InstallPlan struct {
 	VerifyBytes   int64
 	Ready         int
 	Risky         []catalog.Artifact
+}
+
+// Validate rejects destination collisions before callers publish install
+// metadata or cross an interactive approval boundary.
+func (plan InstallPlan) Validate() error {
+	for _, status := range plan.Statuses {
+		if status.State == Unexpected || status.State == SizeMismatch || status.State == HashMismatch {
+			return controlerr.New("refusing to replace unexpected managed content: %s (%s)", status.Path, status.State)
+		}
+	}
+	return nil
 }
 
 var downloaderSequence atomic.Uint64
@@ -116,16 +132,22 @@ func Install(options InstallOptions) error {
 	if err != nil {
 		return err
 	}
-	for _, status := range plan.Statuses {
-		if status.State == Unexpected || status.State == SizeMismatch || status.State == HashMismatch {
-			return controlerr.New("refusing to replace unexpected managed content: %s (%s)", status.Path, status.State)
-		}
+	if err := plan.Validate(); err != nil {
+		return err
 	}
 	if len(plan.Risky) > 0 && !options.AcceptRisk {
 		return controlerr.New("selected missing content has unverified licensing; pass --acknowledge-license-risk after reviewing its catalog warnings")
 	}
 	if options.DryRun {
 		return nil
+	}
+	if err := options.Context.Err(); err != nil {
+		return err
+	}
+	if options.BeforeMutation != nil {
+		if err := options.BeforeMutation(); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(options.DataRoot, 0o755); err != nil {
 		return fmt.Errorf("prepare data directory: %w", err)

@@ -3,6 +3,11 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +16,8 @@ import (
 	"testing"
 
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/content"
+	"paracetamol/internal/process"
 	"paracetamol/internal/project"
 	"paracetamol/internal/recipes"
 )
@@ -140,6 +147,328 @@ func TestContentInstallDryRunStatesThatItDidNotMutateStorage(t *testing.T) {
 	}
 	if _, err := os.Stat(dataRoot); !os.IsNotExist(err) {
 		t.Fatalf("dry run created data root: %v", err)
+	}
+}
+
+func TestContentInstallApprovalFailureLeavesDataRootAbsent(t *testing.T) {
+	for _, name := range []string{"terms", "risk", "declined", "cancelled"} {
+		t.Run(name, func(t *testing.T) {
+			artifact := catalog.Artifact{ID: "model", Destination: "model.gguf", Target: "llama-models", Size: 1, SHA256: "0", License: catalog.License{Status: "unverified"}}
+			if name == "terms" {
+				artifact.Agreements = []string{"terms"}
+			}
+			managed := catalog.Catalog{
+				Artifacts:  map[string]catalog.Artifact{"model": artifact},
+				Bundles:    map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{"model"}}},
+				Agreements: map[string]catalog.Agreement{"terms": {Name: "Example terms"}},
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			runner := &commandRunner{}
+			app, _, _ := testApp(t, runner)
+			app.Context, app.catalog = ctx, &managed
+			if name == "declined" || name == "cancelled" {
+				app.Stdin = terminalPromptReader{Reader: strings.NewReader("no\n")}
+			}
+			if name == "cancelled" {
+				cancel()
+			}
+			root := filepath.Join(t.TempDir(), "data")
+			if err := app.contentInstall([]string{"bundle", "--data-dir", root}); err == nil {
+				t.Fatal("unapproved install succeeded")
+			}
+			if _, err := os.Lstat(root); !os.IsNotExist(err) {
+				t.Fatalf("unapproved install created data root: %v", err)
+			}
+			if len(runner.commands) != 0 {
+				t.Fatalf("unapproved install ran subprocesses: %v", runner.commands)
+			}
+		})
+	}
+}
+
+func TestContentInstallRejectsCollisionBeforeApprovalOrDryRun(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(strconv.FormatBool(dryRun), func(t *testing.T) {
+			artifact := catalog.Artifact{ID: "model", Destination: "model.gguf", Target: "llama-models", Size: 1, SHA256: "0"}
+			managed := catalog.Catalog{
+				Artifacts: map[string]catalog.Artifact{"model": artifact},
+				Bundles:   map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{"model"}}},
+			}
+			root := t.TempDir()
+			path := content.ArtifactPath(root, artifact)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("user bytes"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			runner := &commandRunner{}
+			app, stdout, _ := testApp(t, runner)
+			app.catalog = &managed
+			app.Stdin = terminalPromptReader{Reader: strings.NewReader("yes\n")}
+			args := []string{"bundle", "--data-dir", root}
+			if dryRun {
+				args = append(args, "--dry-run")
+			}
+			if err := app.contentInstall(args); err == nil || !strings.Contains(err.Error(), "unexpected managed content") {
+				t.Fatalf("collision error = %v", err)
+			}
+			if strings.Contains(stdout.String(), "Acknowledge") || len(runner.commands) != 0 {
+				t.Fatalf("collision crossed approval or process boundary: %q, %v", stdout, runner.commands)
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != "user bytes" {
+				t.Fatalf("collision changed: %q, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t *testing.T) {
+	app, _, _ := testApp(t, &commandRunner{})
+	base := t.TempDir()
+	target := filepath.Join(base, "real")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(target, alias); err != nil {
+		t.Fatal(err)
+	}
+	if root, err := app.contentInstallDataDir(alias); err != nil || root != target {
+		t.Fatalf("existing alias = %q, %v", root, err)
+	}
+	underAlias := filepath.Join(alias, "nested", "data")
+	want := filepath.Join(target, "nested", "data")
+	if root, err := app.contentInstallDataDir(underAlias); err != nil || root != want {
+		t.Fatalf("missing root under alias = %q, %v; want %q", root, err, want)
+	}
+	if _, err := os.Lstat(filepath.Join(target, "nested")); !os.IsNotExist(err) {
+		t.Fatalf("resolution created missing suffix under alias: %v", err)
+	}
+	missing := filepath.Join(base, "absent")
+	if root, err := app.contentInstallDataDir(missing); err != nil || root != missing {
+		t.Fatalf("missing root = %q, %v", root, err)
+	}
+	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
+		t.Fatalf("resolution created missing root: %v", err)
+	}
+	dangling := filepath.Join(base, "dangling")
+	if err := os.Symlink(missing, dangling); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.contentInstallDataDir(dangling); err == nil {
+		t.Fatal("dangling existing alias was accepted")
+	}
+	regular := filepath.Join(base, "file")
+	if err := os.WriteFile(regular, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loop := filepath.Join(base, "loop")
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{filepath.Join(dangling, "child"), regular, filepath.Join(regular, "child"), loop, filepath.Join(loop, "child")} {
+		if root, err := app.contentInstallDataDir(invalid); err == nil {
+			t.Fatalf("invalid data root %q resolved to %q", invalid, root)
+		}
+	}
+}
+
+func TestContentInstallRefusesMirrorOverlapThroughMissingDataRootAlias(t *testing.T) {
+	for _, move := range []bool{false, true} {
+		t.Run(strconv.FormatBool(move), func(t *testing.T) {
+			base := t.TempDir()
+			mirror, alias := filepath.Join(base, "real"), filepath.Join(base, "alias")
+			if err := os.Mkdir(mirror, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(mirror, alias); err != nil {
+				t.Fatal(err)
+			}
+			contents := []byte("fixture")
+			artifact := catalog.Artifact{
+				ID: "model", Destination: "model.gguf", Target: "llama-models", Size: int64(len(contents)),
+				SHA256: fmt.Sprintf("%x", sha256.Sum256(contents)), Source: catalog.Source{Path: "model.gguf"}, License: catalog.License{Status: "verified"},
+			}
+			source := filepath.Join(mirror, "model.gguf")
+			if err := os.WriteFile(source, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			managed := catalog.Catalog{
+				Artifacts: map[string]catalog.Artifact{"model": artifact},
+				Bundles:   map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{"model"}}},
+			}
+			runner := &commandRunner{run: func(command process.Command) process.Result {
+				if command.Name != "podman" || len(command.Args) == 0 || command.Args[0] != "ps" {
+					t.Errorf("unexpected command after mirror overlap: %v", command)
+					return process.Result{Status: 1}
+				}
+				return process.Result{}
+			}}
+			app, _, _ := testApp(t, runner)
+			app.catalog = &managed
+			app.Environment["XDG_RUNTIME_DIR"] = filepath.Join(base, "runtime")
+			args := []string{"bundle", "--data-dir", filepath.Join(alias, "new"), "--local-mirror", mirror}
+			if move {
+				args = append(args, "--local-mirror-move")
+			}
+			if err := app.contentInstall(args); err == nil || !strings.Contains(err.Error(), "must not overlap") {
+				t.Fatalf("overlapping mirror install = %v", err)
+			}
+			if got, err := os.ReadFile(source); err != nil || !bytes.Equal(got, contents) {
+				t.Fatalf("overlapping mirror source changed: %q, %v", got, err)
+			}
+			if _, err := os.Lstat(content.ArtifactPath(filepath.Join(mirror, "new"), artifact)); !os.IsNotExist(err) {
+				t.Fatalf("content was installed from overlapping mirror: %v", err)
+			}
+		})
+	}
+}
+
+type contentImportTransport func(*http.Request) (*http.Response, error)
+
+func (transport contentImportTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+type contentApprovalReader struct {
+	io.Reader
+	beforeRead func()
+}
+
+func (reader *contentApprovalReader) Read(buffer []byte) (int, error) {
+	if reader.beforeRead != nil {
+		before := reader.beforeRead
+		reader.beforeRead = nil
+		before()
+	}
+	return reader.Reader.Read(buffer)
+}
+
+func TestContentImportApprovalPreflightAndPackPublication(t *testing.T) {
+	contents := []byte("fixture")
+	digest := fmt.Sprintf("%x", sha256.Sum256(contents))
+	metadata := fmt.Sprintf(`{"sha":%q,"siblings":[{"rfilename":"model.gguf","lfs":{"size":%d,"sha256":%q}}]}`, strings.Repeat("a", 40), len(contents), digest)
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	// No socket or provider request is needed. Fail any unexpected HTTP route.
+	http.DefaultTransport = contentImportTransport(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() != "https://huggingface.co/api/models/example/model/revision/main?blobs=true" {
+			return nil, fmt.Errorf("unexpected metadata request: %s", request.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(metadata)), Request: request}, nil
+	})
+	for _, name := range []string{"dry-run", "declined", "noninteractive", "forced-noninteractive", "installed-needs-risk", "collision", "dry-run-collision", "late-collision", "pack-collision", "approved-terminal", "approved-flag"} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			root, pack := filepath.Join(base, "data"), filepath.Join(base, "imports", "model.json")
+			runner := &commandRunner{run: func(command process.Command) process.Result {
+				if _, err := os.Stat(pack); err != nil {
+					t.Errorf("installer reached Podman before pack publication: %v", err)
+				}
+				if command.Args[0] == "info" {
+					return process.Result{Stdout: []byte("true\n")}
+				}
+				if command.Args[0] == "image" {
+					return process.Result{Status: 1}
+				}
+				return process.Result{}
+			}}
+			app, stdout, _ := testApp(t, runner)
+			app.Environment["XDG_RUNTIME_DIR"] = filepath.Join(base, "runtime")
+			args := []string{"https://huggingface.co/example/model/blob/main/model.gguf", "--save-pack", pack, "--data-dir", root}
+			wantError, saved := "--acknowledge-license-risk", false
+			switch name {
+			case "dry-run":
+				args, wantError = append(args, "--dry-run"), ""
+			case "declined":
+				app.Stdin = terminalPromptReader{Reader: strings.NewReader("no\n")}
+				wantError = "acknowledgment declined"
+			case "forced-noninteractive":
+				app.Stdin = terminalPromptReader{Reader: strings.NewReader("yes\n")}
+				args = append(args, "--non-interactive")
+			case "approved-terminal":
+				app.Stdin = terminalPromptReader{Reader: strings.NewReader("yes\n")}
+				wantError, saved = "content tools image not found", true
+			case "approved-flag":
+				args = append(args, "--non-interactive", "--acknowledge-license-risk")
+				wantError, saved = "content tools image not found", true
+			case "late-collision":
+				// The destination changes after CLI preflight while approval is
+				// pending. Install must revalidate before publishing the pack.
+				wantError = "unexpected managed content"
+				app.Stdin = terminalPromptReader{Reader: &contentApprovalReader{
+					Reader: strings.NewReader("yes\n"),
+					beforeRead: func() {
+						path := content.ArtifactPath(root, catalog.Artifact{Target: "llama-models", Destination: "imported/model.gguf"})
+						if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+							t.Error(err)
+							return
+						}
+						if err := os.WriteFile(path, []byte("user bytes of another size"), 0o600); err != nil {
+							t.Error(err)
+						}
+					},
+				}}
+			case "pack-collision":
+				if err := os.MkdirAll(filepath.Dir(pack), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(pack, []byte("user pack"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--acknowledge-license-risk")
+				wantError = "import pack exists with different content"
+			}
+			if name == "installed-needs-risk" || name == "collision" || name == "dry-run-collision" {
+				path := content.ArtifactPath(root, catalog.Artifact{Target: "llama-models", Destination: "imported/model.gguf"})
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				payload := contents
+				if name != "installed-needs-risk" {
+					payload, wantError = []byte("user bytes of another size"), "unexpected managed content"
+				}
+				if err := os.WriteFile(path, payload, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if name == "dry-run-collision" {
+				args = append(args, "--dry-run")
+			}
+			err := app.contentImport(args)
+			if wantError == "" && err != nil || wantError != "" && (err == nil || !strings.Contains(err.Error(), wantError)) {
+				t.Fatalf("import = %v, want %q; output:\n%s", err, wantError, stdout)
+			}
+			if saved {
+				packBytes, err := os.ReadFile(pack)
+				if err != nil || !json.Valid(packBytes) || strings.Count(stdout.String(), "Saved local pack:") != 1 {
+					t.Fatalf("approved import did not preserve one valid pack: %q, %v", packBytes, err)
+				}
+			} else {
+				if len(runner.commands) != 0 || strings.Contains(stdout.String(), "Saved local pack:") {
+					t.Fatalf("rejected/dry import mutated: %v, %q", runner.commands, stdout)
+				}
+				if name == "pack-collision" {
+					if got, err := os.ReadFile(pack); err != nil || string(got) != "user pack" {
+						t.Fatalf("existing pack changed: %q, %v", got, err)
+					}
+				} else if _, err := os.Lstat(filepath.Dir(pack)); !os.IsNotExist(err) {
+					t.Fatalf("rejected/dry import created pack directory: %v", err)
+				}
+				if name != "installed-needs-risk" && name != "collision" && name != "dry-run-collision" && name != "late-collision" {
+					if _, err := os.Lstat(root); !os.IsNotExist(err) {
+						t.Fatalf("rejected/dry import created data root: %v", err)
+					}
+				}
+			}
+			if name == "approved-terminal" || name == "declined" {
+				if !strings.Contains(stdout.String(), "Acknowledge the unresolved licensing") {
+					t.Fatalf("terminal import skipped ordinary approval: %q", stdout)
+				}
+			}
+		})
 	}
 }
 

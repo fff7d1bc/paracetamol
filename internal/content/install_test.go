@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -99,6 +100,164 @@ func TestDownloadCommandIsNamedConfinedAndDoesNotInlineTokens(t *testing.T) {
 func testArtifact(contents []byte) catalog.Artifact {
 	digest := sha256.Sum256(contents)
 	return catalog.Artifact{ID: "fixture", Destination: "fixture/model.gguf", Target: "llama-models", Size: int64(len(contents)), SHA256: fmt.Sprintf("%x", digest), Source: catalog.Source{Path: "model.gguf"}, License: catalog.License{Status: "verified"}}
+}
+
+func TestInstallPlanValidateRejectsCollisions(t *testing.T) {
+	for _, state := range []State{Missing, Verified, Unverified, Unexpected, SizeMismatch, HashMismatch} {
+		t.Run(string(state), func(t *testing.T) {
+			plan := InstallPlan{Statuses: []ArtifactStatus{{Path: "/example/model.gguf", State: state}}}
+			err := plan.Validate()
+			refused := state == Unexpected || state == SizeMismatch || state == HashMismatch
+			if (err != nil) != refused {
+				t.Fatalf("Validate(%s) = %v", state, err)
+			}
+		})
+	}
+}
+
+func TestInstallBeforeMutationRequiresValidApprovedLivePlan(t *testing.T) {
+	for _, name := range []string{"invalid-plan", "collision", "license", "dry-run", "cancelled"} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			root := filepath.Join(base, "data")
+			artifact := testArtifact([]byte("fixture"))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			switch name {
+			case "invalid-plan":
+				blocked := filepath.Join(base, "not-a-directory")
+				if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				root = filepath.Join(blocked, "data")
+			case "collision":
+				path := ArtifactPath(root, artifact)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("different size"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			case "license":
+				artifact.License.Status = "unverified"
+			case "cancelled":
+				cancel()
+			}
+			calls := 0
+			err := Install(InstallOptions{
+				Context: ctx, DataRoot: root, Artifacts: []catalog.Artifact{artifact},
+				DryRun: name == "dry-run", Runner: noSELinuxRunner{},
+				BeforeMutation: func() error { calls++; return nil },
+			})
+			if name == "dry-run" && err != nil || name != "dry-run" && err == nil {
+				t.Fatalf("Install = %v", err)
+			}
+			if name == "cancelled" && !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancelled install = %v", err)
+			}
+			if calls != 0 {
+				t.Fatalf("callback called %d times for rejected/dry plan", calls)
+			}
+			if name == "license" || name == "dry-run" || name == "cancelled" {
+				if _, err := os.Lstat(root); !os.IsNotExist(err) {
+					t.Fatalf("data root was created: %v", err)
+				}
+			}
+			if name == "collision" {
+				if got, err := os.ReadFile(ArtifactPath(root, artifact)); err != nil || string(got) != "different size" {
+					t.Fatalf("collision changed: %q, %v", got, err)
+				}
+			}
+		})
+	}
+}
+
+func TestInstallBeforeMutationFailureLeavesDataRootAbsent(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "data")
+	want := errors.New("cannot publish metadata")
+	calls := 0
+	err := Install(InstallOptions{
+		DataRoot: root, Artifacts: []catalog.Artifact{testArtifact([]byte("fixture"))},
+		BeforeMutation: func() error { calls++; return want },
+	})
+	if !errors.Is(err, want) || calls != 1 {
+		t.Fatalf("Install = %v, callback calls = %d", err, calls)
+	}
+	if _, err := os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatalf("callback failure created data root: %v", err)
+	}
+}
+
+type publicationRunner struct {
+	metadata     string
+	imageMissing bool
+	downloads    int
+}
+
+func (runner *publicationRunner) LookPath(name string) (string, error) {
+	if name == "podman" {
+		return "/usr/bin/podman", nil
+	}
+	return "", fmt.Errorf("missing %s", name)
+}
+
+func (runner *publicationRunner) Run(_ context.Context, command process.Command) (process.Result, error) {
+	if contents, err := os.ReadFile(runner.metadata); err != nil || string(contents) != "reviewed pack" {
+		return process.Result{}, fmt.Errorf("metadata was not published before Podman: %q, %v", contents, err)
+	}
+	if command.Name != "podman" || len(command.Args) == 0 {
+		return process.Result{}, fmt.Errorf("unexpected process: %v", command)
+	}
+	switch command.Args[0] {
+	case "ps", "rm":
+		return process.Result{}, nil
+	case "info":
+		return process.Result{Stdout: []byte("true\n")}, nil
+	case "image":
+		if runner.imageMissing {
+			return process.Result{Status: 1}, nil
+		}
+		return process.Result{}, nil
+	case "run":
+		runner.downloads++
+		return process.Result{Status: 42}, nil
+	default:
+		return process.Result{}, fmt.Errorf("unexpected podman command: %v", command.Args)
+	}
+}
+
+func TestInstallPublishedMetadataSurvivesLaterFailures(t *testing.T) {
+	for _, failure := range []string{"missing-image", "download"} {
+		t.Run(failure, func(t *testing.T) {
+			base := t.TempDir()
+			root := filepath.Join(base, "data")
+			metadata := filepath.Join(base, "pack.json")
+			runner := &publicationRunner{metadata: metadata, imageMissing: failure == "missing-image"}
+			calls := 0
+			err := Install(InstallOptions{
+				DataRoot: root, Artifacts: []catalog.Artifact{testArtifact([]byte("fixture"))}, Runner: runner,
+				Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(base, "runtime")},
+				BeforeMutation: func() error {
+					calls++
+					if _, err := os.Lstat(root); !os.IsNotExist(err) {
+						return fmt.Errorf("data root exists before callback: %v", err)
+					}
+					return os.WriteFile(metadata, []byte("reviewed pack"), 0o600)
+				},
+			})
+			want := "content tools image not found"
+			wantDownloads := 0
+			if failure == "download" {
+				want, wantDownloads = "download failed", 1
+			}
+			if err == nil || !strings.Contains(err.Error(), want) || calls != 1 || runner.downloads != wantDownloads {
+				t.Fatalf("Install = %v, callback calls = %d, downloads = %d", err, calls, runner.downloads)
+			}
+			if got, err := os.ReadFile(metadata); err != nil || string(got) != "reviewed pack" {
+				t.Fatalf("published metadata did not survive: %q, %v", got, err)
+			}
+		})
+	}
 }
 
 type interlockRunner struct {
