@@ -1,114 +1,77 @@
 # Curated content catalog
 
-The catalog describes agreements, downloadable artifacts, shared archive
-collections, installable bundles and selector groups, deterministic UI
-workflows, and managed benchmark graphs. It contains no model weights or sample
-media. Use `./paracetamol content list bundles` for the current exact inventory.
-
-## Structure
-
-- `agreements` records non-permissive model terms that must be reviewed and
-  explicitly accepted before content installation or benchmarking.
-- `artifacts` owns one immutable remote file, its destination, exact byte
-  size, SHA-256, repository, full revision, and license provenance.
-- `archive_collections` compactly describes multiple independently verified
-  artifacts extracted from one bounded archive transport. The installer
-  downloads the shared archive once, then verifies every member separately.
-- `bundles` references shared artifact IDs, an optional workflow, and explicit
-  selector groups. Reusing an artifact prevents duplicate downloads and
-  destination ambiguity.
-- `workflows` references an official template resource already pinned in the
-  image, its source hash, deterministic renderer, rendered hash, and MIT
-  provenance.
-- `benchmarks` pins an API-format graph mechanically exported from each
-  rendered workflow by the matching ComfyUI frontend. Closely related
-  variants may additionally pin an allowlisted deterministic renderer and its
-  rendered hash.
-- `sampling_policies` owns validated thinking and non-thinking sampler
-  defaults that the gateway selects after resolving a request's native
-  reasoning mode. Presets reference these policies instead of duplicating
-  numeric tuples or encoding them in Jinja.
-- `llama_presets` connects one llama.cpp bundle and target GGUF artifact to a
-  stable router model ID and a conservative `default_context`. A preset may
-  restrict compatibility to a closed ROCm/Vulkan backend list and optional
-  per-backend hardware profiles when another runtime combination is unsafe
-  or has not passed acceptance. Direct runs, routers,
-  gateways, and managed benchmarks enforce that same boundary. A preset may
-  additionally own constrained `draft-mtp` or `draft-dflash` speculative
-  decoding with an optional closed ROCm/Vulkan draft-depth override, embedded
-  Jinja or project-bundled chat-template policy, profile-specific Flash
-  Attention, symmetric K/V-cache policy, a narrowly validated model-load
-  policy, one verified draft GGUF, and a required matching multimodal projector
-  GGUF from the same bundle. `mmproj_artifact` derives vision capability; it is
-  not an independent client toggle. A reviewed
-  experimental preset may narrowly override the target and draft
-  `context_length` metadata while disabling automatic fitting. `agent_tools`
-  records the smaller reviewed set maintained for function-tool agent clients.
-  `reasoning_control` records a reviewed native toggle, effort, or strength
-  contract; companion level, default, and off-mode fields define the exact
-  client surface without inventing cross-model reasoning levels.
-  `sampling_policy` optionally references one catalog policy when the model's
-  authoritative sampling differs between thinking and non-thinking requests.
-
-Managed DFlash uses explicit greedy proposals, independently of the target's
-gateway sampling. Flash-Next `-dflash2` bundles reuse the existing
-target shards and add one shared pinned Inco Q8_0 draft. They are limited to
-the accepted ROCm Strix Halo tuple at depth three. The regular Flash-Next
-DFlash2 bundle is the recipe launch and Maki default at xhigh. Plain
-Flash-Next remains available without speculation. Both plain and DFlash2
-regular Flash-Next bundles require the same pinned Unsloth BF16 projector;
-the Huihui pair requires its separately pinned non-Swift BF16 projector. The
-two projectors retain `NOASSERTION` licensing and explicit risk acknowledgment.
-Missing or stale projector receipts block the affected preset, even for a
-text-only request. Re-run the normal installer for an existing installation;
-verified target shards are reused rather than downloaded again.
-
-The loader rejects unsafe paths, malformed revisions and hashes, missing
-references, repeated bundle content, unknown groups, and destination
-collisions.
-
-## Included content
-
-The catalog currently covers ComfyUI image, edit, and video stacks and managed
-llama.cpp GGUF presets. Do not maintain a second inventory in this file.
-Inspect the catalog through the same public commands users run:
+The catalog describes pinned content, licenses, installable bundles, serving
+presets and workflow/benchmark provenance. It contains no weights or sample
+media. Inspect the current inventory through the public CLI:
 
 ```bash
+./paracetamol content list
 ./paracetamol content list bundles
 ./paracetamol content list models --details
 ./paracetamol content install all --dry-run
 ```
 
-The application and content guides explain how to choose and run these
-artifacts. `THIRD_PARTY_NOTICES.md` records third-party provenance, while the
-catalog itself remains authoritative for exact revisions, sizes, hashes,
-licenses, agreements, relationships, and runtime policy.
+Do not maintain another model inventory or retirement ledger here. Use the
+[content guide](../docs/guides/content.md) to choose/install content and
+[upgrade notes](../docs/guides/upgrade-notes.md) for user migration.
+[Content catalog maintenance](../docs/content-catalog.md) owns authoring,
+validation and acceptance procedures.
 
-Huihui Flash-Next abliterated v2 is an optional Unsloth-derived UD-Q4_K_XL
-variant, distinct from that repository's Swift series. It reuses regular
-Flash-Next's template and runtime policy, with a separate artifact identity.
-Its missing license text is recorded as `NOASSERTION`, requiring explicit
-acknowledgment. Qwen3.6 is no longer in the managed catalog.
+## Structure
 
-Huihui dense Qwen3.8 27B abliterated UD-Q8_K_XL is another optional exact
-bundle, separate from the ordinary Unsloth recipe. It shares the dense Qwen
-template, reasoning, sampling and 256K runtime policy without MTP. This
-repository's pinned model card declares Apache-2.0. KAT-Coder, Shisa V2.1,
-TranslateGemma and HY-MT1.5 are retired. Their unused templates and the
-Llama 3.3 and Tencent HY agreements are removed. Muse Glimmer and dense Qwen
-MTP aliases are also retired, including Muse's unused image template.
-Existing GGUFs are not deleted. Gemma terms remain for the
-ComfyUI text encoder that still needs them.
+- `agreements`: terms that require explicit user acceptance, independently
+  of hosted-artifact license-risk acknowledgment.
+- `artifacts`: one remote file's immutable source, destination, exact size,
+  SHA-256 and license provenance.
+- `archive_collections`: independently verified members sharing one bounded
+  archive transport. The loader expands them into ordinary artifacts.
+- `bundles`: application-owned artifact selections, selector groups and an
+  optional curated workflow. Shared artifact IDs avoid duplicate downloads
+  and destination ambiguity.
+- `workflows`: pinned upstream template provenance plus the rendered hash of
+  a reviewed resource in `catalog/workflows/`. Installation validates and
+  copies those exact repository bytes, without image extraction or rendering.
+- `benchmarks`: pinned ComfyUI API graphs exported from reviewed workflows.
+  Closely related variants may use a maintained allowlisted benchmark
+  renderer and a separate rendered hash.
+- `sampling_policies`: reusable thinking/non-thinking defaults selected by
+  the gateway after resolving a request's native reasoning mode.
+- `llama_presets`: public model IDs connecting a bundle and target GGUF to
+  reviewed context, backend/profile compatibility, template, speculation,
+  cache/allocation, companion-file and client-capability policy.
 
-## Import policy
+The loader and relationship tests reject unsafe paths, malformed identities,
+unknown references, repeated bundle content, unknown groups and conflicting
+destinations. A successful load does not prove every entrypoint combination
+or hardware/client review condition. See the maintainer field reference for
+the actual validation boundaries.
 
-New artifacts must be traced to their direct source and immutable revision.
-Size and SHA-256 come from the pinned Hugging Face LFS/Xet metadata and must be
-verified before catalog entry. A missing or unclear license must be represented
-honestly as `NOASSERTION`; it may never be silently treated as its upstream
-project's license.
+Local content packs have a smaller closed schema: artifacts and bundles,
+with explicit unverified-license metadata. They cannot add serving presets, executable
+code or curated renderers. Imported exact workflow artifacts make no claim
+about runnable graphs, custom nodes or installed dependencies.
 
-Benchmark graphs are independently derived from Paracetamol's pinned
-MIT-licensed official templates. Application and extension source is fetched
-directly from the pinned, attributed public repositories documented in
-`THIRD_PARTY_NOTICES.md`.
+## Provenance policy
+
+Trace artifacts to the direct source and full immutable revision. Record exact
+size and SHA-256 from pinned metadata and verify downloaded bytes. Keep the
+target, speculative draft, projector and template as one reviewed companion
+tuple; similar filenames do not establish compatibility.
+
+A missing or unclear license remains `NOASSERTION` with explicit risk
+acknowledgment. Do not inherit a conversion's license from its upstream base.
+Required model terms remain a separate agreement gate.
+`THIRD_PARTY_NOTICES.md` summarizes attribution; the catalog owns exact
+artifact identity, relationships and license evidence.
+
+Civitai model-version IDs can retain mutable hosted files. Their exact hashes
+still prevent substitution, but removed pinned bytes can make later installs
+fail. Keep Civitai artifacts in reviewed user-owned local packs, not the
+built-in catalog. The maintenance guide documents bounded archive inspection
+and import limitations.
+
+Curated workflow sources are pinned licensed official templates. Preserve
+source and transformation provenance in the checked-in resources; a rendered
+hash checks final bytes, not independent reproduction of their derivation.
+Application and extension sources are fetched directly from their pinned,
+attributed public repositories.

@@ -94,7 +94,7 @@ artifact identities are retained with the evidence. No downloads or model
 replacements were needed.
 
 The Flash-Next allocation recipe repeats the coherent experimental case in
-the [September 11 screen](hardware-acceptance.md#flash-next-rocm-memory-policy-screen).
+the [September 11 screen](hardware-acceptance-history.md#flash-next-rocm-memory-policy-screen).
 It is not a fix for the corrupt ordinary ROCm configuration. Setting the
 unified-memory variable to `0` would not make it absent. A test-only
 entrypoint removed it explicitly. Runs sampled host available memory once

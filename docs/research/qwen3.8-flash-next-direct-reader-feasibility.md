@@ -50,7 +50,7 @@ accepted process allocation policy.
 
 This makes the model usable within the ordinary ROCm gateway. It is not a
 claim that ROCm is faster than Vulkan. The earlier [populated-context Vulkan
-screen](hardware-acceptance.md#populated-near-256k-flash-next-vulkan-comparison)
+screen](hardware-acceptance-history.md#populated-near-256k-flash-next-vulkan-comparison)
 was faster under its own loading and cache recipe. Its input and conditions
 differ, so these records are not a matched backend-only comparison.
 
@@ -188,7 +188,7 @@ short candidate run with the reader disabled checked that simply carrying
 the patch did not disturb the resident path.
 
 The allocation settings repeat the coherent experimental path in the
-[September 11 memory-policy screen](hardware-acceptance.md#flash-next-rocm-memory-policy-screen).
+[September 11 memory-policy screen](hardware-acceptance-history.md#flash-next-rocm-memory-policy-screen).
 They are not the normal managed ROCm policy. A read-only test entrypoint
 explicitly removed the unified-memory variable. Setting it to `0` would not
 do that, since upstream checks whether the variable exists.

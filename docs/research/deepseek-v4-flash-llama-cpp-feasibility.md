@@ -25,8 +25,8 @@ The result was **hold, do not integrate yet**:
   Vulkan at 32K and 64K contexts;
 - the same verified bytes produced deterministic corrupt output through
   ROCm/HIP under every tested, evidence-backed workaround;
-- the default llama.cpp backend is ROCm, and a catalog preset cannot currently
-  declare that one model is valid only with Vulkan; and
+- the default llama.cpp backend was ROCm, and a catalog preset could not yet
+  declare that one model was valid only with Vulkan; and
 - the relevant Strix Halo Vulkan device-loss issue and performance fix were
   still open at the time of the test.
 
@@ -297,12 +297,18 @@ as a GPU reset without checking the container state and kernel log.
 
 ## Why a Vulkan-only catalog entry was not added
 
-The catalog can express model artifacts, context, Jinja policy, tool support,
-MTP, and per-profile Flash Attention policy. It cannot currently require or
+This was a control-plane limitation at the time of the study. The current
+catalog supports reviewed backend and backend/profile restrictions, described
+in [catalog maintenance](../content-catalog.md). That resolves the policy
+obstacle below, not the recorded ROCm correctness or Vulkan stability failures.
+No new inference acceptance is implied.
+
+At the time, the catalog could express model artifacts, context, Jinja policy,
+tool support, MTP and per-profile Flash Attention policy. It could not require or
 default one preset to a particular llama.cpp backend. The normal CLI backend
 default is ROCm.
 
-Possible future designs are:
+The possible designs considered were:
 
 1. wait until the same preset is correct on ROCm and Vulkan;
 2. add a deliberate, validated backend constraint/default to llama presets;

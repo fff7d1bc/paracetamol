@@ -74,11 +74,17 @@ For an ordinary bug, use
 [GitHub Issues](https://github.com/fff7d1bc/paracetamol/issues) and include the
 smallest useful set of details:
 
-- `./paracetamol --version` and the exact command that failed;
+- `./paracetamol --version`, `git rev-parse HEAD`, whether the checkout has
+  local changes (`git status --short`), and the exact command that failed;
 - relevant `./paracetamol doctor` output;
 - distribution, kernel, Podman version, GPU, and system memory;
 - the selected profile, render nodes, application, and content bundle; and
 - complete error output or logs around the failure.
+
+For a running llama.cpp server, `./paracetamol status llama-cpp --model MODEL_ID`
+provides its live image identity and effective runtime policy. For a gateway,
+include `./paracetamol status gateway` and the selected model ID. A source
+commit alone does not identify an already-running image.
 
 Remove access tokens, credentials, private URLs, and unrelated personal paths.
 Security-sensitive reports follow [`SECURITY.md`](SECURITY.md), not a public

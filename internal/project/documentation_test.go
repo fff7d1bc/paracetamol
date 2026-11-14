@@ -22,21 +22,25 @@ func TestDocumentationLocalLinksAndAnchors(t *testing.T) {
 		"AGENTS.md", "CONTRIBUTING.md", "README.md", "SECURITY.md",
 		"THIRD_PARTY_NOTICES.md", "catalog/README.md", "catalog/benchmarks/README.md",
 	}
-	err = filepath.WalkDir(filepath.Join(root, "docs"), func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if !entry.IsDir() && filepath.Ext(path) == ".md" {
-			relative, relErr := filepath.Rel(root, path)
-			if relErr != nil {
-				return relErr
+	// Developer procedures and frozen-evaluation notes link into the same
+	// documentation tree. Check them too when moving an archived record.
+	for _, directory := range []string{"docs", "tools", "evaluations"} {
+		err = filepath.WalkDir(filepath.Join(root, directory), func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
 			}
-			paths = append(paths, relative)
+			if !entry.IsDir() && filepath.Ext(path) == ".md" {
+				relative, relErr := filepath.Rel(root, path)
+				if relErr != nil {
+					return relErr
+				}
+				paths = append(paths, relative)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	for _, relative := range paths {

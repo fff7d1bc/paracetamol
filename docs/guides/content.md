@@ -42,97 +42,15 @@ Install interactively, or select one recipe explicitly:
   --accept-license --acknowledge-license-risk
 ```
 
-Muse Glimmer, dense Qwen MTP presets, Qwen3.6, KAT-Coder, Shisa V2.1,
-TranslateGemma and HY-MT1.5 have been retired
-from the managed catalog. Old downloads are left in place, but no longer
-appear in the gateway or generated client lists.
+Before a large install, choose the [data location](operations.md#persistent-data)
+and inspect the same selection with `--dry-run`. The plan includes all required
+companions, sizes and license gates, not only the main weight file.
+For current model choices, recipe contents, optional variants and hardware
+limits, use [choosing a managed Qwen preset](applications.md#choosing-a-managed-qwen-preset).
+The [upgrade notes](upgrade-notes.md) cover retired models and changed companions.
 
-The separate `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF.
-The recipe launches it without speculation. Its embedded MTP heads are not
-enabled by any managed dense Qwen preset. Dense Qwen remains text-only. Its
-optional vision projector remains outside the recipe until that separate
-multimodal runtime contract is accepted.
-
-The exact `llama-unsloth-qwen3.8-27b-ud-q4-k-xl` bundle installs the 16.35 GiB
-Unsloth Dynamic v3 Q4_K_XL variant. It deliberately stays outside the guided
-`qwen3.8` recipe so installing the dense Q8 model does not also download a
-second quantization:
-
-```bash
-./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl
-```
-
-Its plain preset starts at a reviewed 128K context for more constrained
-hardware. The smaller quantization is optional and never
-changes the managed-client default.
-
-The optional Huihui dense 27B abliterated UD-Q8_K_XL also stays outside the
-guided recipe. It is a full 29.30 GiB Unsloth-derived weight file with a
-separate publisher-prefixed identity, not a Swift model or an in-place edit:
-
-```bash
-./paracetamol content install llama-huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl
-```
-
-It shares regular dense Qwen's template, reasoning and sampling policy at
-256K with F16 KV and no MTP. Its pinned card declares Apache-2.0. It remains
-non-default. See the [application guide](applications.md#choosing-a-managed-qwen-preset).
-
-The separate `qwen3.8-flash-next` recipe installs four Unsloth Dynamic
-Q4_K_XL shards totaling 103.7 GiB, the shared 652 MB Inco DFlash2 draft
-and a matching 908 MB BF16 vision projector.
-It is a 125B-A6B path for a 128 GB Strix Halo host with fast local SSD storage,
-not another quantization
-of dense 27B. The regular greedy DFlash2 preset is the exported Maki default
-at `xhigh` when advertised by the gateway. It uses SSD-backed reads for the
-model's unusually large per-layer token embedding and no MTP.
-On Strix Halo it uses a model-scoped ROCm direct reader and allocator policy.
-A ROCm router or gateway includes it when the
-shards, draft and projector have current verification receipts. The plain
-target remains an explicit ROCm or Vulkan alternative. Other hardware cannot
-opt into this ROCm policy, and unknown hardware detection fails closed. See the
-[application guide](applications.md) for capacity and concurrency limits.
-Its pinned conversion repository declares license
-metadata but does not contain the referenced license text, so Paracetamol
-keeps it at `NOASSERTION` and requires explicit risk acknowledgment.
-
-Huihui's optional abliterated v2 uses the Unsloth-derived UD-Q4_K_XL shards,
-not its separate Swift-derived series. It has a distinct publisher-prefixed
-identity and reuses the regular Flash-Next runtime policy and template.
-Install it separately without changing the default:
-
-```bash
-./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl \
-  --acknowledge-license-risk
-```
-
-This download also needs explicit license-risk acknowledgment. It is another
-103.7 GiB model, not a patch file applied to existing weights.
-
-The regular recipe now installs the greedy DFlash2 bundle. The same draft
-also works with the separately installed Huihui target:
-
-```bash
-./paracetamol content install llama-unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2 \
-  --accept-license --acknowledge-license-risk
-./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl-dflash2 \
-  --acknowledge-license-risk
-```
-
-Each reuses its existing four target shards and matching projector, and adds
-the same shared 652 MB Inco draft. Installing both does not duplicate that
-file. These presets are limited to ROCm Strix Halo. Regular DFlash2 is the
-default, while both plain targets remain available.
-Restart the gateway and refresh Maki's exported provider configuration to
-see newly installed choices. See the [application guide](applications.md#greedy-flash-next-dflash2)
-for the measured speed, concurrency and memory tradeoffs.
-
-Both plain and DFlash2 Flash-Next variants always load their own pinned
-projector. The Huihui pair shares a separate matching 908 MB BF16 file from
-its own repack. Existing installations need one normal installer pass for
-the new companion, then a gateway restart and refreshed Maki provider export.
-Verified shards are reused. The projector inherits no assumed license from
-the source model and keeps its own explicit `NOASSERTION` acknowledgment.
+After installing new gateway models or required companions, restart the gateway
+to refresh its frozen inventory, then [refresh native client configuration](remote-maki.md#refreshes-and-alternative-addresses).
 
 Catalog pruning does not delete GGUFs installed by an older checkout. Retired
 files remain visible as local model rows in `content list models`; remove
@@ -146,7 +64,7 @@ between destination layouts.
 If a recipe is not specific enough, choose the exact-bundle browser in the
 guided installer. It narrows the catalog by application and task before
 showing individual bundles. Menus use shorter local names where the context is
-obvious, and the final plan always prints the complete stable bundle
+obvious, and the final plan always prints the complete bundle
 identifier.
 
 Use an explicit application aggregate when you want every managed bundle for

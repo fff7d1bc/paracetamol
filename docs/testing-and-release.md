@@ -1,4 +1,4 @@
-# Testing, release checks, and housekeeping
+# Testing, source-revision acceptance, and housekeeping
 
 Validation is layered so ordinary development on a host without suitable
 target GPU capacity remains useful without pretending it replaces
@@ -27,16 +27,19 @@ To copy a checkout to a test host without transferring repository-local
 binaries or Go caches, use:
 
 ```bash
-rsync -a -v --progress --delete \
-  --exclude=/.git/ --exclude=/build/ \
+rsync -a -n -v --progress --delete \
+  --exclude=/.git/ --exclude=/build/ --exclude=/local-content/ \
   --exclude='__pycache__/' --exclude='*.py[cod]' \
-  ~/src/paracetamol/ gateway.example:src/paracetamol
+  /absolute/source-checkout/ gateway.example:src/paracetamol/
 ```
 
-`gateway.example` and the checkout paths are examples. The anchored exclusions
-preserve the destination's own Git metadata and `build/` cache, while the
-Python patterns keep ignored container-test bytecode out of a deployment.
-`--delete` still removes obsolete source files. Do not add `--delete-excluded`.
+`gateway.example` and the paths are examples. This is a dry run for a
+dedicated deployment directory, not a contribution or user-update workflow.
+Review every deletion and transfer, then remove `-n` only when that directory
+contains no unrelated work. Excluded Git metadata, build state and private
+local packs remain at the destination; do not add `--delete-excluded`.
+Check other untracked/private files before transfer. Record the source commit
+and dirty state separately because this copy deliberately excludes Git.
 
 ### Build a custom product identity
 
@@ -76,7 +79,7 @@ git diff --check
 If a shell entrypoint or JSON manifest is added, include it explicitly.
 
 Package-local Go tests cover catalog invariants, download command confinement,
-workflow rendering, benchmark preparation, CLI resolution, profile detection,
+workflow-resource identity, benchmark preparation, CLI resolution, profile detection,
 Podman command construction, persistent verification, and client-config exports.
 Add tests for behavior and failure paths, not merely new lines or parser
 choices.
@@ -108,35 +111,9 @@ CLI dry-runs without Podman.
 Hosted CI does not replace local image builds, CPU startup, provider-network
 checks, or target-hardware acceptance.
 
-The llama.cpp build runs `build-mmq-activation-sum-test.sh` against the exact
-patched source before compiling GPU kernels. It extracts the shared MMQ
-quantization/sum body and checks HIP and non-HIP preprocessing across all
-three layouts, including independent scale and quantized-byte expectations.
-This protects the temporary HIP compatibility policy, not GPU arithmetic or
-model quality. To check an already patched source tree locally:
-
-```bash
-bash applications/llama-cpp/build-mmq-activation-sum-test.sh \
-  SOURCE_DIR build/mmq-source-check
-```
-
-Keep the numerical, routing, state, gateway and populated-context gates.
-The compatibility patch applies to every HIP device, so Strix Halo results
-do not replace checks on the other supported architectures. Upstream
-ownership of the former quantized-KV copy fix does not remove its F16,
-Q8_0 and Q4_0 device-copy regression checks.
-
-The llama.cpp build also runs `build-conv-rollback-test.sh` in CPU-only mode.
-The fixture follows the pinned upstream overlapping-window/`SET_ROWS` graph
-and checks all rollback slots, including cells that must remain untouched.
-It deliberately fails on a different upstream pin until reviewed. Hardware
-acceptance runs its forty cases and 160 rounds against the actual final
-runtime libraries, checking postallocation ROCm matcher eligibility and
-exact agreement with an unmarked reference. Keep graph capture enabled.
-Matcher eligibility and numerical agreement alone do not prove optimized
-kernel activation, which needs a normal model trace. The mechanically
-extracted routing fixture and maintained `QWEN_MOE_TILES` operator cases
-remain separate gates.
+Image builds also run native source fixtures. Their
+[regression gates](#native-build-regression-gates) are separate from the
+host-only checks here.
 
 Native Maki compatibility has an optional installed-client check. The normal
 suite uses renderer and HTTP fixtures and needs no installed client.
@@ -198,7 +175,7 @@ tool, never an application image. Its `prepare` operation generates a recipe
 from the current Containerfile without a build or download. Its `proxy` and
 `check` operations require `--experimental`; ordinary package tests substitute
 HTTP fixtures and never load a model. See the
-[Gufo recheck procedure](qwen3.8-flash-next-gufo-optimization-screen.md#developer-only-recheck-kit)
+[Gufo recheck procedure](research/qwen3.8-flash-next-gufo-optimization-screen.md#developer-only-recheck-kit)
 for the explicit source build, operator-owned backend, regression gate and
 acceptance limits. It is not part of `build all` or production discovery.
 
@@ -208,20 +185,6 @@ signal, cleanup, checkpointing, HTTP, or other concurrent boundaries:
 ```bash
 make race
 ```
-
-For llama.cpp concurrency changes, verify the running backend's slot count,
-KV layout and total token pool. Use explicit worker counts, distinct request
-markers and repeated turns to catch state leakage. Confirm overlapping
-generation rather than merely successful requests queued through one slot.
-Measure aggregate generated tokens divided by total wall time and report
-per-request latency separately. Include an overflow request and long-context
-retrieval without mistaking configured capacity for populated-context coverage.
-
-Normal builds use CGO and require a C compiler so the host binary follows
-glibc and NSS name resolution. The race target uses the same native boundary.
-`make static` is the explicit CGO-disabled build. It remains in Tier 1 as a
-separate artifact check, but it cannot resolve names supplied only by NSS
-modules such as mDNS.
 
 ### Tier 2: CLI and dry-run checks
 
@@ -288,8 +251,8 @@ image instructions to run while retaining locally downloaded Python packages:
 ./paracetamol build comfyui --no-layer-cache
 ```
 
-Before a release or after base/dependency changes, perform a genuinely cold
-build of all targets:
+Before accepting shared base/dependency changes, perform a genuinely cold
+build of all affected targets; for a shared runtime change, build all:
 
 ```bash
 ./paracetamol build all --no-cache
@@ -386,20 +349,118 @@ For gateway changes, first run the unit and race tests for `internal/gateway`,
 then start `run gateway --profile cpu`. Confirm omitted application selection
 discovers only built applications with a compatible verified model, startup
 loads no backend, `/v1/models` contains only the receipt-verified frozen
-snapshot, `status gateway` reports `unloaded`, and Ctrl-C removes an exact
-backend container, joins its log follower, prints a clean stop, and exits zero
-if one was started. With an exact non-loopback `--listen`, confirm both
+snapshot, `status gateway` reports `unloaded`, and Ctrl-C prints a clean stop
+and exits zero without creating a backend. With an exact non-loopback `--listen`, confirm both
 `127.0.0.1:PORT` and the selected address serve the same frozen inventory and
 that shutdown closes both; an occupied required address must close any listener
 opened earlier and fail startup. Confirm `-a llama-cpp` and
 `--application llama-cpp` produce the same strict inventory and the default
 llama.cpp loaded-model limit is one.
 Also exercise `stop gateway` and `stop all` through the private local control
-socket, first unloaded and then with a backend resident. Both commands must
+socket while unloaded. Both commands must
 wait for gateway cleanup, leave no gateway listener or private backend, and
 remain idempotent. `stop gateway` must work without invoking Podman; `stop all`
 must drain the gateway before removing normal application containers.
-GPU acceptance must additionally cover lazy llama.cpp start, prefixed backend
+
+### Tier 5: GPU diagnostics
+
+On each target host, use the finite
+[target-hardware acceptance matrix](hardware-acceptance.md):
+
+```bash
+./paracetamol doctor --render-node /dev/dri/renderD128
+./paracetamol run comfyui --profile EXPECTED_PROFILE \
+  --render-node /dev/dri/renderD128 --listen 127.0.0.1
+```
+
+Verify:
+
+- RX 9060 family cards report `gfx1200` and resolve `rdna4`;
+- Radeon AI PRO R9700 and RX 9070 family cards report `gfx1201` and resolve
+  `rdna4`;
+- Strix Halo reports `gfx1151` and resolves `strix-halo`;
+- Strix Point reports `gfx1150` and resolves `strix-point`;
+- forcing either other profile fails;
+- `auto` succeeds;
+- multiple render nodes require an explicit complete selection;
+- Doctor performs a tensor operation on every explicitly selected GPU and
+  rejects a mixed-architecture set;
+- one llama.cpp server selected on two matching cards reports managed layer
+  splitting and runs a model that exercises both cards;
+- one ComfyUI process selected on two matching cards completes a graph using
+  built-in component-placement or multi-GPU nodes;
+- device permissions work without changing host groups or broadening
+  container privileges.
+- enforcing SELinux hosts report `container_use_devices`, fail clearly while
+  it is off, and pass a real GPU tensor operation after it is enabled without
+  disabling container labels;
+- hosts exposing AppArmor's unprivileged-user-namespace sysctl report whether
+  it is active; a nonzero value prints the persistent opt-out, apply command,
+  bubblewrap impact, and system-wide security scope without changing the host;
+- Strix Halo and Strix Point diagnostics report system RAM, the active TTM
+  module and ceiling, and effective GTT; undersized GTT prints the expected
+  RAM-aware host recipe without changing the host. The additional KFD kernel
+  warning remains specific to Strix Halo.
+- an OSTree boot with rpm-ostree available receives a transactional
+  `rpm-ostree kargs` TTM recipe; a conventional GRUB host receives an owned
+  `/etc/default/grub.d` drop-in and `update-grub`; a conventional Fedora host
+  with `grubby` receives an all-kernel boot-entry update; other conventional
+  hosts retain the active-module `modprobe.d` and detected initramfs-tool
+  fallback.
+
+### Tier 6: representative inference
+
+Run this only on suitable target hardware. For changes affecting a family, begin with the bounded checkpointed smoke:
+
+```bash
+./paracetamol acceptance
+```
+
+Keep its JSON and Markdown result. A `BLOCKED` result means generated media
+still needs human review; resume the same result rather than rerunning passed
+cases. Then exercise the additional matrix rows coupled to the change:
+
+- each changed llama.cpp speculative preset against a non-speculative control,
+  recording prompt processing, generation speed, peak memory, acceptance
+  behavior, and output sanity on `gfx1150`, `gfx1151`, `gfx1200`, and
+  `gfx1201` where the preset is practical;
+
+- one base and one accelerated bundle;
+- every affected precision;
+- T2V and I2V/edit paths when both exist;
+- native application and ComfyUI paths if both consume related content;
+- balanced memory policy;
+- conservative policy on either RDNA 3.5 APU or another constrained-memory
+  case.
+
+Record the image tag, Git commit, profile, render-node set, model bundle,
+policy, and result. Managed benchmark JSON records much of this for ComfyUI.
+
+For llama.cpp, run the same catalog preset and explicit pp/tg/repetition
+tuple with both ROCm and Vulkan on all target hardware classes. Preserve the
+native result JSON below `apps/llama-cpp/benchmarks`; it records the selected
+backend. Do not compare a catalog-pinned result with an unhashed local-model
+result.
+
+### Service and gateway inference acceptance
+
+For llama.cpp concurrency changes, verify the running backend's slot count,
+KV layout and total token pool. Use explicit worker counts, distinct request
+markers and repeated turns to catch state leakage. Confirm overlapping
+generation rather than merely successful requests queued through one slot.
+Measure aggregate generated tokens divided by total wall time and report
+per-request latency separately. Include an overflow request and long-context
+retrieval without mistaking configured capacity for populated-context coverage.
+
+These checks run real requests on suitable target hardware. They are not
+CPU-only startup checks. Select the cases coupled to the change and keep
+source, image, model, runtime and client identity with the results.
+
+Repeat `stop gateway` and `stop all` with a resident backend. Both must drain
+requests, wait for exact backend cleanup and leave no listener or private
+backend. Also confirm clean Ctrl-C shutdown joins the backend log follower.
+
+On suitable target hardware, cover lazy llama.cpp start, prefixed backend
 output, a streamed request, client cancellation, FIFO draining, and a
 router model switch. Confirm `status gateway` derives llama.cpp child residency
 from a read-only private `/models` probe without `reload`, filters foreign
@@ -535,7 +596,7 @@ do not establish DNS, permissions, keychain or runtime behavior on a Mac.
 
 The former Pi coding-task runner is archived. Do not alter its frozen inputs
 or relabel its old results as native Maki measurements. See the
-[historical evaluation record](coding-agent-evaluation.md).
+[historical evaluation record](research/coding-agent-evaluation.md).
 
 Speculative-decoding catalog changes additionally require one single-model
 dry run and router INI inspection for every affected strategy. Cover an
@@ -560,89 +621,6 @@ inspection for the exact `override-kv` values and disabled fitting. Hardware
 acceptance must exercise prompts beyond the GGUF-declared window and compare
 retrieval, output quality, memory, and speculative acceptance with the normal
 metadata-backed preset. Successful allocation alone is not acceptance.
-
-### Tier 5: GPU diagnostics
-
-On each target host, use the finite
-[target-hardware acceptance matrix](hardware-acceptance.md):
-
-```bash
-./paracetamol doctor --render-node /dev/dri/renderD128
-./paracetamol run comfyui --profile EXPECTED_PROFILE \
-  --render-node /dev/dri/renderD128 --listen 127.0.0.1
-```
-
-Verify:
-
-- RX 9060 family cards report `gfx1200` and resolve `rdna4`;
-- Radeon AI PRO R9700 and RX 9070 family cards report `gfx1201` and resolve
-  `rdna4`;
-- Strix Halo reports `gfx1151` and resolves `strix-halo`;
-- Strix Point reports `gfx1150` and resolves `strix-point`;
-- forcing either other profile fails;
-- `auto` succeeds;
-- multiple render nodes require an explicit complete selection;
-- Doctor performs a tensor operation on every explicitly selected GPU and
-  rejects a mixed-architecture set;
-- one llama.cpp server selected on two matching cards reports managed layer
-  splitting and runs a model that exercises both cards;
-- one ComfyUI process selected on two matching cards completes a graph using
-  built-in component-placement or multi-GPU nodes;
-- device permissions work without changing host groups or broadening
-  container privileges.
-- enforcing SELinux hosts report `container_use_devices`, fail clearly while
-  it is off, and pass a real GPU tensor operation after it is enabled without
-  disabling container labels;
-- hosts exposing AppArmor's unprivileged-user-namespace sysctl report whether
-  it is active; a nonzero value prints the persistent opt-out, apply command,
-  bubblewrap impact, and system-wide security scope without changing the host;
-- Strix Halo and Strix Point diagnostics report system RAM, the active TTM
-  module and ceiling, and effective GTT; undersized GTT prints the expected
-  RAM-aware host recipe without changing the host. The additional KFD kernel
-  warning remains specific to Strix Halo.
-- an OSTree boot with rpm-ostree available receives a transactional
-  `rpm-ostree kargs` TTM recipe; a conventional GRUB host receives an owned
-  `/etc/default/grub.d` drop-in and `update-grub`; a conventional Fedora host
-  with `grubby` receives an all-kernel boot-entry update; other conventional
-  hosts retain the active-module `modprobe.d` and detected initramfs-tool
-  fallback.
-
-### Tier 6: representative inference
-
-Run this only on suitable target hardware. For changes affecting a family,
-test at least:
-
-Begin with the bounded checkpointed smoke:
-
-```bash
-./paracetamol acceptance
-```
-
-Keep its JSON and Markdown result. A `BLOCKED` result means generated media
-still needs human review; resume the same result rather than rerunning passed
-cases. Then exercise the additional matrix rows coupled to the change.
-
-- each changed llama.cpp speculative preset against a non-speculative control,
-  recording prompt processing, generation speed, peak memory, acceptance
-  behavior, and output sanity on `gfx1150`, `gfx1151`, `gfx1200`, and
-  `gfx1201` where the preset is practical;
-
-- one base and one accelerated bundle;
-- every affected precision;
-- T2V and I2V/edit paths when both exist;
-- native application and ComfyUI paths if both consume related content;
-- balanced memory policy;
-- conservative policy on either RDNA 3.5 APU or another constrained-memory
-  case.
-
-Record the image tag, Git commit, profile, render-node set, model bundle,
-policy, and result. Managed benchmark JSON records much of this for ComfyUI.
-
-For llama.cpp, run the same catalog preset and explicit pp/tg/repetition
-tuple with both ROCm and Vulkan on all target hardware classes. Preserve the
-native result JSON below `apps/llama-cpp/benchmarks`; it records the selected
-backend. Do not compare a catalog-pinned result with an unhashed local-model
-result.
 
 ### llama.cpp source-update acceptance
 
@@ -718,6 +696,38 @@ GPU with the same confinement as the state fixture below. It needs no model
 and checks allocation-lifetime callbacks for eight terminal or partial-suffix
 graphs. Zero callbacks is a failure, not a passing skipped fusion. Follow it
 with upstream's `test-backend-ops -b ROCm0 -o TOPK_MOE` numerical cases.
+
+#### Native build regression gates
+
+The llama.cpp build runs `build-mmq-activation-sum-test.sh` against the exact
+patched source before compiling GPU kernels. It extracts the shared MMQ
+quantization/sum body and checks HIP and non-HIP preprocessing across all
+three layouts, including independent scale and quantized-byte expectations.
+This protects the temporary HIP compatibility policy, not GPU arithmetic or
+model quality. To check an already patched source tree locally:
+
+```bash
+bash applications/llama-cpp/build-mmq-activation-sum-test.sh \
+  SOURCE_DIR build/mmq-source-check
+```
+
+Keep the numerical, routing, state, gateway and populated-context gates.
+The compatibility patch applies to every HIP device, so Strix Halo results
+do not replace checks on the other supported architectures. Upstream
+ownership of the former quantized-KV copy fix does not remove its F16,
+Q8_0 and Q4_0 device-copy regression checks.
+
+The llama.cpp build also runs `build-conv-rollback-test.sh` in CPU-only mode.
+The fixture follows the pinned upstream overlapping-window/`SET_ROWS` graph
+and checks all rollback slots, including cells that must remain untouched.
+It deliberately fails on a different upstream pin until reviewed. Hardware
+acceptance runs its forty cases and 160 rounds against the actual final
+runtime libraries, checking postallocation ROCm matcher eligibility and
+exact agreement with an unmarked reference. Keep graph capture enabled.
+Matcher eligibility and numerical agreement alone do not prove optimized
+kernel activation, which needs a normal model trace. The mechanically
+extracted routing fixture and maintained `QWEN_MOE_TILES` operator cases
+remain separate gates.
 
 #### Host pool and reset regressions
 
@@ -827,98 +837,37 @@ passing retrieval answer alone is not a numerical-equivalence test.
 
 #### Bounded coding-quality screen
 
-Tier 1 checks the controller and trusted fixtures without inference. Native
-operator/state tests check engine behavior; a generated program's hidden-test
-result checks one model/request/runtime combination. None replaces the others.
-The Pi runner was retired on 2026-10-16: `evaluations/coding/` preserves frozen
-historical inputs, not an active runner or a Maki replacement. See the
-[archived evaluation record](coding-agent-evaluation.md). The maintained
-`tools/gufo-recheck/` checks three literal/tool cases, not coding quality.
+Protocol/operator checks and coding quality answer different questions.
+The retired Pi runner is archival, and `tools/gufo-recheck/` is a small
+literal/tool regression gate, not a coding benchmark. Neither supplies a
+maintained general coding-quality runner.
 
-The currently retained bounded screen is an ignored experiment under
-`build/refresh-20261113-mmq-compat/`, not a fresh-checkout dependency. Its entry
-points are `acceptance/PLAN.md`, `acceptance/run-gateway.sh --phase coding`,
-and `acceptance/probe/coding.go`. The separate `acceptance-repair/README.md`
-and `acceptance-fresh-seeds/README.md` describe distinct follow-ups. Read the
-actual plans and scripts before reuse; their frozen model/image restrictions
-may intentionally reject a newer candidate. Do not bypass those guards.
+The [historical bounded screen](research/coding-quality-screen.md) preserves
+its full task, attempt, oracle, toolchain and sandbox protocol. Its ignored
+private kit is not available in a fresh clone. Exact reproduction requires the
+complete hash-verified fixtures and toolchain manifests; otherwise declare a
+new fixture identity rather than reconstructing historical bytes from prose.
+Never weaken hidden tests, leak answers into prompts, retry after observing a
+miss without a predeclared protocol, or replace an earlier miss with a later
+pass. Generated-code execution needs the recorded CPU-only no-network
+sandbox and exact-owned cleanup. Infrastructure failures are not model-quality
+results, and a single task miss does not establish an engine defect.
 
-With the retained kit and an absolute candidate checkout, local preflight is:
+## Source-revision acceptance checklist
 
-```bash
-coding_work="$PWD/build/refresh-20261113-mmq-compat/acceptance"
-(cd "$coding_work" && sha256sum --check --strict INPUTS.sha256)
-bash "$coding_work/coding/self-test.sh" --source-only
-bash "$coding_work/check.sh" /absolute/candidate-checkout
-"$coding_work/gateway-probe" --help
-```
-
-`check.sh` compiles/vets trusted helpers against that checkout and runs inherited
-fixture tests; it is not model acceptance. Verify current controller `--help`,
-compiler version, source/input manifests, full image ID, image labels and
-controller SHA-256 before target execution. Use the exact argument lists in
-the retained plan, not remembered flags. Prepare and verify the private Go
-toolchain with `coding/prepare-toolchain.sh` and `coding/toolchain-identity.sh`
-as that plan requires; never mount or relabel the system toolchain. First run
-`coding/self-test.sh --image-id FULL_IMAGE_ID` to validate trusted solutions in
-the identical sandbox. Infrastructure failure blocks model classification.
-
-The first-attempt screen uses two independent fresh user prompts: Python
-`coalesce_ranges(ranges)` merges overlapping or adjacent inclusive integer
-intervals from an iterable into sorted tuples, rejects reversed intervals,
-and preserves input. Go `MergeSortedUnique(streams [][]int) []int` merges
-sorted streams into fresh ascending unique storage, returns a non-nil empty
-slice for empty input, and handles all `int` values without overflow.
-Contracts cover empty/duplicate/negative/extreme values and ownership;
-unchanged hidden tests include deterministic edge and 120 property cases per
-language. The Go prompt requests O(N log k), but the tests do not prove that
-bound. Requests use `xhigh`, seed 42, cache disabled, gateway-owned sampling,
-and output ceilings of 8,192 Python / 16,384 Go tokens. Require natural EOS
-and exactly one bounded JSON `code` string before executing generated code.
-
-Execute it only in the retained rootless CPU-only, no-network, read-only,
-capability-free, no-new-privileges sandbox: 2 GiB, two CPUs, 128 PIDs,
-120-second lifetime and a 30-second Go test timeout. These are untrusted-code
-limits, not inference deadlines. Require exact image/owner/CID cleanup, and
-retain the gateway's memory/kernel guards and ordinary backend lifecycle.
-Run arms sequentially, with no unrelated workload stopped to make room.
-
-Keep three result classes distinct. The original first attempt remains its
-own result. One-turn repair preserves the complete original request/assistant
-object and appends bounded actual verifier feedback, without diagnosis or a
-suggested implementation. The declared fresh-seed expansion changes only Go
-seed to 1234 and 2026, with no feedback/history, no new tasks, retries or budget
-increase. A later pass never replaces an earlier miss. Do not leak hidden
-tests into prompts, weaken an oracle, cherry-pick seeds or raise a budget after
-observing a result. New protocols need a separately declared fixture identity.
-
-Retain exact prompts, hidden-test hashes, toolchain identity, requests/replies,
-code, verifier logs, finish/token evidence, runtime/sampler reports, source and
-image identities, guards and cleanup under ignored `build/`. Classify quality,
-output-limit, protocol and infrastructure failures separately. One miss is not
-proof of an engine defect or a statistically reliable quality difference.
-The final 2026-11-14 performance-recovery matrix did not rerun coding; it must
-not be described as fresh coding acceptance. See the dated
-[hardware record](hardware-acceptance.md#strix-halo-hip-mmq-compatibility-refresh-2026-11-13).
-
-If ignored artifacts are gone, recover their complete hash-verified fixture
-and toolchain manifests from retained private evidence before claiming exact
-reproduction. Otherwise reconstruct contracts, independent edge/property and
-ownership oracles, sandbox controls and predeclared attempts as a new fixture
-version. Prose task descriptions alone cannot reproduce the original bytes.
-Keep hidden answers and private host identifiers out of tracked documentation.
-
-## Release checklist
-
-Paracetamol does not currently publish prebuilt images, so “release” means a
-source state from which users build locally.
+Users build a source checkout locally; this checklist accepts the relevant
+source/pin/runtime tuple, not a versioned release package. Apply checks to the
+change's actual scope and record unavailable hardware or services explicitly.
+Do not add tags, release branches or stable-interface obligations merely to
+use this checklist.
 
 ### Source and documentation
 
 - [ ] Working tree contains only intended changes.
 - [ ] All new upstreams use full commits or image digests.
 - [ ] Default image tags match the pins.
-- [ ] No stale version or old command remains in docs or tests.
+- [ ] Current guidance matches the checkout; historical versions/commands are
+      explicitly labelled evidence rather than runnable current instructions.
 - [ ] `THIRD_PARTY_NOTICES.md` matches built and downloaded components.
 - [ ] `catalog/README.md` describes new content/license classes.
 - [ ] User README quick-start and focused `docs/guides/` examples are current.
@@ -938,7 +887,7 @@ source revision or image base.
 
 ### Catalog and provenance
 
-- [ ] Catalog and every tree manifest parse as JSON.
+- [ ] Catalog, workflow and benchmark resources parse as JSON.
 - [ ] All model revisions are full 40-character commits.
 - [ ] Sizes and SHA-256 values come from pinned metadata or verified bytes.
 - [ ] License URLs point to the exact relevant source/revision where possible.
@@ -953,7 +902,7 @@ source revision or image base.
 - [ ] Static checks and full unit suite pass.
 - [ ] All images build from cache.
 - [ ] All images build without cache after base/dependency changes.
-- [ ] `pip check` passes in each image.
+- [ ] `pip check` passes in each affected Python environment.
 - [ ] CPU HTTP smoke passes for web applications.
 - [ ] Batch dry-runs are confined and reference installed paths.
 - [ ] No managed test container remains:
@@ -1024,7 +973,7 @@ The [persistent-data](guides/operations.md#persistent-data) and
 [scoped-cleanup](guides/operations.md#scoped-cleanup) sections define what is
 irreplaceable and what each cleanup scope owns. Review those paths and back up
 user input, output, state, custom models, workflows, and benchmark results
-before any destructive release housekeeping. Catalog content and generated
+before any destructive source-update housekeeping. Catalog content and generated
 caches are reproducible, although replacing them may be expensive.
 
 For a safe rebuild:
@@ -1082,22 +1031,18 @@ Check repository visibility, gating, account acceptance, and `HF_TOKEN`.
 License acceptance in Paracetamol does not grant upstream account access, and an
 HF token does not replace `--accept-license`.
 
-### Workflow source hash mismatch
+### Curated workflow resource/hash mismatch
 
-The image's installed workflow-template package does not match the catalog.
-Check the package version, built image tag, source resource, and constraints.
-Do not update the hash until the actual source revision and license are
-understood.
+Installation reads `catalog/workflows/<ID>.json` from the checkout and
+compares its exact hash with `rendered_sha256`. Check the resource, catalog
+and source checkout together. Runtime installation does not extract a
+workflow-template package from an image.
 
-If the workflow-template package is reported missing, confirm the failing
-image reference in the error. Workflow extraction must use the managed ComfyUI
-image, not the content-tools image.
-
-### Rendered workflow hash mismatch
-
-The renderer, source graph, provenance fields, or JSON serialization changed.
-Inspect the rendered diff. Repin only after verifying the graph remains the
-intended workflow.
+For an authoring change, independently check pinned upstream source bytes,
+license and transformation provenance before updating the rendered hash.
+A hash change alone is not evidence that the graph still has the intended
+model references and behavior. See
+[workflow maintenance](content-catalog.md#add-or-update-a-curated-workflow).
 
 ### Container already exists
 

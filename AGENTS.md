@@ -32,7 +32,7 @@ making every document mandatory startup reading.
   models, bundles, recipes, workflows, licenses, or benchmark resources.
 - Read [extension points](docs/extending.md) before adding or changing an
   application, command family, mode, profile, or renderer.
-- Read the [archived coding-agent evaluation record](docs/coding-agent-evaluation.md)
+- Read the [archived coding-agent evaluation record](docs/research/coding-agent-evaluation.md)
   before changing frozen tasks or hidden fixtures. The Pi runner is retired.
 - Read [hardware acceptance](docs/hardware-acceptance.md) before making a new
   GPU, profile, ROCm, memory-policy, or inference claim.
@@ -40,79 +40,23 @@ making every document mandatory startup reading.
 Research and case-study records remain discoverable through the documentation
 index. Read only the record relevant to the current task.
 
-Source files and tests are authoritative. When a change affects a count,
-version snapshot, command, or behavior described in prose, update that prose
-in the same change. Important ownership boundaries are:
+Source files and tests are authoritative. The documentation index maintains
+one [source-ownership map](docs/README.md#source-ownership). Use it to find the
+owning boundary rather than duplicating a rule at callers. When behavior,
+counts, versions, commands or defaults change, update the affected prose in
+the same change.
 
-- `Containerfile`: content tools, base image, ROCm/PyTorch versions,
-  application commits, and final image stages.
-- `containers/content_tools/requirements.txt`: complete pinned content-tools
-  dependency set.
-- `internal/application/`: the application registry, capabilities, guide
-  actions, image identities, ports, and prerequisite build DAG.
-- `internal/config/config.go`: host settings, typed TOML loading, global file
-  selection, environment/config precedence, and runtime defaults.
-- `internal/platform/`: canonical GPU profile and architecture
-  identities.
-- `internal/cli/`: public command tree, leaf parsing, command validation,
-  orchestration, usage examples, and human-facing output.
-- `internal/ui/`: semantic terminal styling, prompt separation, and
-  TTY-safe/redirect-safe progress presentation.
-- `internal/hostdoctor/`: read-only host diagnostics, kernel/shared-memory
-  policy, and host-specific remediation planning.
-- `internal/modelinventory/`: receipt-aware managed and local text-model
-  inventory without runtime or storage mutation.
-- `internal/project/`: repository-root discovery for source-tree
-  resources and build context.
-- `internal/buildplan/`: validated local image build planning and dependency
-  closure.
-- `internal/runtime/`: constrained application Podman commands.
-- `internal/gateway/` and `internal/textmodel/`: the receipt-backed frozen
-  text-model inventory, one-pool lazy scheduler, OpenAI-compatible proxy,
-  exact backend lifecycle, and shared client capabilities.
-- `internal/storage/`: host application/content/staging partitions.
-- `internal/verification/`: durable managed-content verification
-  receipts and filesystem-identity invalidation.
-- `internal/podman/`: the host process boundary.
-- `internal/imagearchive/`: validated offline transfer of managed
-  build outputs.
-- `internal/catalog/` and `catalog/`: catalog schema, pinned content,
-  relationships, and benchmark resources.
-- `internal/recipes/`: small runnable application recipes shared by
-  guided content installation and application guides, including recipe bundle
-  validation.
-- `internal/content/`: download staging, verification, and installation.
-- `internal/remoteimport/`: allowlisted remote metadata resolution,
-  destination inference, and verified ignored local-pack generation.
-- `catalog/workflows/` and `internal/cli/commands_content.go`: immutable
-  workflow resources, deterministic transformation, and provenance.
-- `internal/benchmark/`: ComfyUI and llama.cpp benchmark preparation,
-  execution, typed results, suite resume, and cleanup.
-- `internal/atomicfile/`: durable create-once and owned-checkpoint file
-  publication policy.
-- `internal/probe/` and `tools/`: read-only archive, provider-metadata, and
-  workflow research probes.
-- `tools/gufo-recheck/`: explicitly opted-in developer source-build preparation
-  and frozen regression checks. This is not a managed application or a normal
-  gateway backend. Keep its backend lifecycle manual and its artifacts below
-  `build/`.
-- `bin/paracetamol`: PATH-friendly delegation to the checkout launcher.
-- `internal/clientconfig/`: portable native Maki example configuration from
-  the gateway's frozen capabilities. No client execution, installation,
-  sandboxing, credentials, or user-state ownership.
-- `evaluations/coding/`: archived frozen task definitions and hidden fixtures.
-  Keep historical inputs and result provenance intact, not an active runner.
-- `containers/common/profile.py` and application entrypoints: container-side
-  profile enforcement and application policy.
-- `applications/<application>/`: application-owned dependency pins,
-  entrypoints, and strict, reviewable deviations from pinned upstream sources.
-- package-local `*_test.go` files: enforced behavior and expected command
-  shapes.
+Keep `README.md`, `docs/guides/` and `docs/gateway.md` user-facing. The other
+live references directly below `docs/` are maintainer-facing. Dated evidence
+belongs under `docs/research/`, with exact inputs, limitations and links back
+to current policy. Do not turn temporary analysis or a historical experiment
+into a current source of truth.
 
-Keep `README.md` and `docs/guides/` user-facing. `docs/README.md` is the shared
-documentation index, while the other pages directly below `docs/` are
-maintainer-facing. Do not make temporary analysis or project history into a
-durable source of truth.
+`tools/gufo-recheck/` remains an explicitly opted-in developer experiment,
+not a managed application or gateway backend. Its lifecycle is manual and
+artifacts stay below `build/`. `evaluations/coding/` remains archived evidence,
+not an active Pi runner. Native Maki configuration export does not own client
+execution, installation, sandboxing, credentials or user state.
 
 ## Behavior to preserve
 

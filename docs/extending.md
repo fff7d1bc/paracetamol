@@ -68,9 +68,9 @@ FROM ${ROCM_BASE_IMAGE} AS new-application
 
 Add every copied file to the `.containerignore` allowlist.
 
-Register the application target through `config.Application`. The common build
-orchestrator will ensure the tagged base first and pass `ROCM_BASE_IMAGE` with
-pulling disabled. Do not add a separate remote or application-specific ROCm
+Register the application and its build unit in `internal/application/registry.go`.
+The build planner follows declared prerequisites and passes managed local base
+references with pulling disabled. Do not add a separate remote or application-specific ROCm
 base.
 
 Keep the target late-copy pattern: copy frequently changed Paracetamol
@@ -118,21 +118,22 @@ Pass `PARACETAMOL_MEMORY_POLICY` only to an application whose entrypoint
 implements a selectable memory behavior. A shared parser or runtime helper is
 not enough to make the policy real.
 
-Use `/opt/paracetamol/container_profile.py` to resolve and enforce profiles.
-Create writable paths before importing PyTorch. Force model libraries offline
+For a PyTorch application, use `/opt/paracetamol/container_profile.py` to
+resolve and enforce profiles; native applications need an independent detector
+as described above. Create writable paths before importing PyTorch. Force model libraries offline
 where supported, and route state, inputs, outputs, caches, and custom content
 below `/data`.
 
-A GPU-only batch application still consumes `PARACETAMOL_PROFILE` and invokes the
-same detector before its workload. Do not rely on host-side profile parsing as
-a substitute for checking the architecture PyTorch actually sees.
+A GPU-only batch application still consumes `PARACETAMOL_PROFILE` and validates
+the architecture inside its container before the workload. Host-side parsing
+cannot replace that check.
 
 `PARACETAMOL_LISTEN` is the internal container bind address; managed web runs use
 `0.0.0.0` for IPv4 host publications and `::` for IPv6 host publications
 inside a private namespace. `PARACETAMOL_HOST_LISTEN` records the exact host IP
 on which Podman publishes the one application port. Print a short startup
-banner containing the resolved profile, device, architecture, PyTorch/ROCm
-versions, data path, container bind, and host publication. Never put secrets
+banner containing the resolved profile, selected device/architecture, relevant
+runtime versions, data path, container bind and host publication. Never put secrets
 in it.
 
 ### 4. Register the application on the host
@@ -175,84 +176,46 @@ allow callers to override launcher-owned networking, paths, or security.
 
 ### 5. Add content
 
-If the application needs a native repository tree, add a tree manifest and
-bundle as described in [content-catalog.md](content-catalog.md). Runtime model
-paths must match the manifest destination exactly.
+Managed content is direct files or bounded archive members with independent
+file identities, bundles and application-owned destinations. There is no
+native repository-tree manifest contract. Follow
+[content catalog maintenance](content-catalog.md) for artifact, license,
+recipe, workflow and benchmark changes.
 
-llama.cpp is the direct-artifact exception: GGUF files use the dedicated
-`llama-models` target and an optional `llama_presets` entry. Its server router
-is the pinned upstream implementation. Keep generated INI input catalog-only,
-atomic, and mounted as one exact read-only file; do not expose arbitrary
-user-supplied presets through the managed router.
+llama.cpp GGUFs use the `llama-models` target and built-in serving presets.
+The managed router is pinned upstream llama-server, not a separate daemon.
+Keep its generated INI catalog-only, atomic and mounted as one read-only file;
+do not accept arbitrary host preset files.
 
-Use the preset's optional closed `backends` list only when one compiled
-llama.cpp backend is unsafe for the exact model and policy tuple. Omission
-means ROCm and Vulkan are both supported. A restricted preset must be rejected
-by direct explicit startup and managed benchmarks, and omitted from routers
-and gateways configured for an incompatible backend. Require meaningful
-multi-turn generation and a complete function-tool exchange on every declared
-backend. A successful load, synthetic throughput result, or short retrieval
-answer is not sufficient. Record the upstream retest condition so a temporary
-restriction does not become folklore.
+Each new optimized policy needs an explicit schema, review criteria, direct
+startup mapping, router rendering and tests. Keep backend compatibility,
+hardware profile, speculative decoding, context, cache precision, model-load,
+template and client capability separate. Do not replace those fields with a
+generic upstream-arguments collection.
 
-For speculative decoding, use the preset schema's closed
-`speculative_type` and bounded `draft_tokens` fields. `draft-mtp` accepts up
-to eight draft tokens and may use embedded prediction heads;
-`draft-dflash` accepts up to fifteen and requires `draft_artifact`. Include a
-separate draft GGUF in the same bundle as the target. Do not add a generic
-preset-arguments collection: every new optimized policy needs an explicit
-schema, validation, runtime mapping, router rendering, and hardware
-acceptance.
+The [preset field reference](content-catalog.md#add-a-direct-artifact) owns
+their current contract and enforcement boundaries. In particular:
 
-Managed DFlash proposals are explicitly greedy in direct startup and router
-sections. Do not inherit the upstream proposal-sampling default or expose
-probabilistic proposals through another configuration path. The streamed
-Flash-Next exception is narrower than the general DFlash schema. It requires
-ROCm on Strix Halo, depth three and a separate verified draft. MTP and other
-streamed speculative tuples remain unsupported.
-
-When controlled measurements establish different speculative depths for the
-ROCm and Vulkan builds, `draft_tokens_by_backend` may override the preset's
-fallback for either exact backend. Keep the common value in `draft_tokens`,
-limit override keys to `rocm` and `vulkan`, and verify both direct and router
-startup. Backend policy remains separate from hardware-profile policy.
-
-When an upstream release explicitly advertises a window beyond the GGUF
-target or draft metadata, `context_override_architectures` may name only the
-affected GGUF architecture prefixes. Its presence maps the selected context to
-those `context_length` keys and disables llama.cpp fitting. Preserve a normal
-metadata-backed control preset, document the upstream ambiguity, and do not
-promote the override until retrieval, quality, memory, and speculative
-acceptance have been measured beyond the declared window.
-
-For models that require Jinja or have a measured Flash Attention difference
-between GPU classes, use the explicit `jinja` boolean and `flash_attention`
-profile map. Only `rdna4`, `strix-halo`, and `strix-point` keys and `on`,
-`off`, or `auto` values are accepted. Keep the single-model environment
-mapping and generated router INI behavior equivalent, and add target-hardware
-acceptance for every non-default profile policy.
-
-A measured symmetric target K/V-cache policy belongs in the preset's closed
-`kv_cache` profile map. Only `f16`, `q8_0`, and `q4_0` are accepted, and a
-quantized cache requires Flash Attention explicitly on for the same profile.
-Keep draft-cache behavior independent. Validate long-context retrieval and
-generation on every listed architecture rather than carrying a Strix Halo
-result to Strix Point or RDNA 4.
-
-A model whose size depends on lazy access to its per-layer token embedding may
-use the closed `model_load` profile map. `mmap-lazy-token-embedding` is
-accepted only for Strix Halo or Strix Point and maps one exact tensor name to
-CPU with lazy mmap reads. It is not permission to expose arbitrary llama.cpp
-overrides. Keep ordinary models resident, verify direct and router parity, and
-require cold, warm, long-context, memory-headroom, output-coherence, and
-kernel-journal evidence before adding a profile.
-
-If the embedded GGUF template cannot express the managed API contract, add a
-named `chat_template` only when one fixed, reviewable adapter is enough. Keep
-the catalog allowlist, image file, entrypoint validation, single-model mapping,
-and router preset in sync. For a copied upstream template, pin its immutable
-revision, preserve its license notice, and hash the exact bundled bytes in a
-test. Do not turn this into a host path or arbitrary template loader.
+- Backend restrictions need coherent multi-turn output and a function-tool
+  exchange on every declared tuple, not only startup or throughput. Record
+  retest/removal conditions.
+- Speculative decoding needs a verified target/draft tuple, explicit greedy
+  DFlash proposals, bounded strategy-specific depth and direct/router parity.
+  Streamed allocation has a narrower reviewed exception; general DFlash
+  support does not extend it.
+- Context metadata overrides need a normal metadata-backed control and real
+  retrieval, quality, memory and speculative evidence beyond the declared
+  window before becoming a default.
+- Non-default Flash Attention, K/V-cache and model-load policies require
+  applicable hardware acceptance. Do not transfer Strix Halo evidence to
+  Strix Point or RDNA 4. Preserve cold/warm, long-context, output-coherence,
+  memory-headroom and kernel-journal checks.
+- Named chat templates need immutable source/license provenance, exact-byte
+  tests and synchronized image/entrypoint/router mappings. A host template
+  path is not a managed extension point.
+- Agent/reasoning/vision claims require the complete client protocol and
+  companion-file acceptance described in the content guide. Catalog loading
+  alone does not prove those review conditions.
 
 ### 6. Test it
 
@@ -321,8 +284,9 @@ Decide explicitly whether the new architecture is:
 - allowed only when forced;
 - supported by every image or only a subset.
 
-The detector inspects every PyTorch device visible through the selected
-render-node set and requires one supported architecture. An application must
+The container detector inspects the devices exposed through the exact selected
+render-node set and requires one supported architecture; PyTorch and native
+applications use their corresponding detector. An application must
 opt into the registry's `MultiGPU` capability before the launcher will expose more than
 one node to a workload. That capability means only that its runtime has a
 deliberate way to use the devices; document the application-specific
@@ -371,7 +335,8 @@ When adding or updating a patch:
 - match enough surrounding text to be unique;
 - require exactly one match;
 - keep replacement text readable;
-- validate the resulting source with `compileall`;
+- validate the resulting source with the appropriate language/compiler checks
+  (`compileall` for Python, matching native fixtures for C++);
 - test the security/policy outcome, not only the text replacement;
 - describe the behavioral change in `THIRD_PARTY_NOTICES.md`;
 - preserve upstream copyright and license material.

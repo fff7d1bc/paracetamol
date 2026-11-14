@@ -90,7 +90,7 @@ or performance comparison in the maintainer acceptance matrix.
 The Pi-based `benchmark agent` command is retired. Frozen task definitions and
 hidden fixtures remain under `evaluations/coding/`. Existing raw results under
 `apps/agent-evaluation/results/` and `apps/agent-evaluation/runs/` are untouched.
-See the [archived protocol](../coding-agent-evaluation.md) when interpreting or
+See the [archived protocol](../research/coding-agent-evaluation.md) when interpreting or
 reproducing an older result.
 
 The former Pi and Maki runtime and sandbox data under `apps/pi/` and
@@ -147,6 +147,40 @@ path and size and asks for confirmation:
 ```bash
 ./paracetamol cleanup build-cache
 ```
+
+## Source and image identity
+
+A full Git commit selects the checkout's controller source, software pins and
+catalog. Use the [upgrade procedure](upgrade-notes.md#update-an-existing-checkout)
+to follow `master` or choose a particular commit. Before changing a working
+setup or reporting a problem, record:
+
+```bash
+git rev-parse HEAD
+git status --short
+./paracetamol --version
+./paracetamol status
+```
+
+Keep the commit together with the dirty/clean state. Do not publish a local
+diff or untracked files without checking for secrets and personal paths.
+For a running text model, also capture
+`./paracetamol status llama-cpp --model MODEL_ID` or
+`./paracetamol status gateway`, as appropriate. The direct llama.cpp report
+includes the running image ID. General `status` lists the checkout's expected
+image tags, while gateway status describes its inventory and allocation, not
+an immutable image ID. For another known running container, record its image ID with
+`podman inspect --format '{{.Image}}' CONTAINER_NAME` using the exact container
+being investigated, not a guessed gateway backend name.
+
+Source revision, built image identity and the live service are different facts.
+A changed checkout does not replace a running container, and a rebuilt tag
+need not identify the same image bytes as an earlier local build.
+
+Immutable pins make the intended inputs reviewable. They do not promise
+byte-identical rebuilds, permanent upstream availability, or GPU inference on
+an untested host. Retain an image archive when you need the exact built
+output. Back up persistent data separately.
 
 ## Image backups and transfer
 
@@ -235,9 +269,13 @@ Major partitions are:
 
 ```text
 apps/       writable application state, input, and output
-content/    verified installed models and managed workflows
+content/    installed models and their verification receipts
 staging/    resumable downloads and reproducible caches
 ```
+
+Curated and imported workflows are below
+`apps/comfyui/user/default/workflows/`, not `content/`. Include the ComfyUI user
+tree in a backup even when the installed models can be downloaded again.
 
 Container root filesystems are read-only. Persistent mounts use Podman's
 `keep-id` user namespace, so private host files remain accessible without
@@ -296,7 +334,17 @@ prints a copyable Paracetamol command reproducing the effective launch. API-key
 values and host secret paths are redacted. A router report without `--model`
 lists its configured preset identifiers and shows how to select one.
 
-Detached application containers have independent names:
+Direct ComfyUI and llama.cpp servers can run detached:
+
+```bash
+./paracetamol run comfyui --detach
+./paracetamol run llama-cpp server \
+  --preset unsloth-qwen3.8-27b-ud-q8-k-xl --detach
+```
+
+These are separate services, not backends owned by a running gateway. The
+gateway itself runs in the foreground and has no `--detach` mode.
+Inspect and stop detached applications by their application names:
 
 ```bash
 ./paracetamol logs comfyui --follow
@@ -318,6 +366,22 @@ exact container instead of leaving it indefinitely in `Stopping`.
 An attached application or batch process that exits unsuccessfully is reported
 as a Paracetamol error containing the container's exact exit status. The launcher
 itself exits with status 1 after printing that diagnostic.
+
+## Troubleshooting a first run
+
+Use these checks for common first-run failures:
+
+| Symptom | Next check |
+| --- | --- |
+| GPU permission, queue or memory-capacity error | Run `doctor` and follow [host GPU access](tuning.md#host-gpu-access) or [APU memory guidance](tuning.md#rdna-35-apus-gfx1150-and-gfx1151). A successful build is not a GPU check. |
+| Required managed image is missing after changing source | Build the selected application from this checkout. Use [source and image identity](#source-and-image-identity) to distinguish its current tag from old local images. |
+| Managed model exists on disk but is marked unverified | Inspect `content list models --details`, then rerun its normal installer to refresh missing or stale [verification receipts](content.md#terms-and-verification). Do not delete matching model bytes to force a download. |
+| Gateway reports no verified schedulable model | Inspect `content list models --details` and the startup diagnostics. A model needs its required verified companions and a compatible backend/profile. Check [model selection](applications.md#choosing-a-managed-qwen-preset) before changing the runtime. |
+| Newly installed model or projector does not appear in Maki | Restart the gateway to refresh its frozen inventory, then [download and merge client configuration again](remote-maki.md#refreshes-and-alternative-addresses). |
+| Interrupted download cannot resume because a downloader container remains | Follow the exact stale-container recovery in [download handling](content.md#what-happens-during-a-download). Preserve staging and remove only the confirmed stale named container. |
+
+If the failure remains, collect the [bug-report details](../../CONTRIBUTING.md#bug-reports)
+and relevant logs. Review them for private paths and credentials before sharing.
 
 ## Scoped cleanup
 

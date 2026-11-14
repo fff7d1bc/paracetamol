@@ -67,6 +67,16 @@ cd paracetamol
 Before the first build, Doctor reports that its containerized PyTorch probe
 was skipped. `build all` builds ComfyUI and llama.cpp. You can instead build
 only the application you need with `build comfyui` or `build llama-cpp`.
+In that case, also run `./paracetamol build content-tools` before installing
+models. Application-only builds do not include the independent downloader.
+
+Persistent data defaults to
+`${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol`. Before a large install,
+choose a filesystem with enough space. To change the location, run
+`./paracetamol config init` and edit `[storage].data_dir` before downloading.
+Existing data is never migrated automatically. See
+[persistent data](docs/guides/operations.md#persistent-data) for precedence
+and safe moves.
 
 Choose models before downloading. Recipes range from hundreds of MiB to more
 than 100 GiB, so inspect the plan and license requirements first.
@@ -164,21 +174,11 @@ still accept one address. See [gateway configuration](docs/gateway.md#configurat
 for address lists and precedence.
 See [remote client setup](docs/guides/remote-maki.md) before exposing a service.
 
-Persistent data defaults to
-`${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol`. Configure another location
-before a large install with `./paracetamol config init` and `[storage].data_dir`.
-The [persistent-data guide](docs/guides/operations.md#persistent-data) explains
-configuration precedence and safe moves. Existing data is never migrated
-automatically.
-
 Before updating, review the [upgrade notes](docs/guides/upgrade-notes.md) for
-retired applications, model ID changes and client refreshes.
-
-```bash
-git pull --ff-only
-./paracetamol doctor
-./paracetamol build all
-```
+retired applications, model ID changes and client refreshes. You can follow
+`master` or select a full Git commit and build its pinned software and catalog.
+Record the working revision before changing it. Selecting an older commit
+does not roll back persistent data or guarantee byte-identical image rebuilds.
 
 After onboarding or updating a suitable GPU host, inspect and run the bounded
 smoke suite. This generates real workloads, not just startup checks.

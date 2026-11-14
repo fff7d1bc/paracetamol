@@ -313,18 +313,12 @@ measured hardware workaround, not a default Paracetamol requirement.
 
 The accepted Flash-Next optimizations apply automatically on Strix Halo with
 ROCm. They retain quantized matrix paths, F32 residuals and F16 KV cache.
-There is no mixed-math option to enable or maintain. A temporary HIP
-compatibility patch retains the older MMQ auxiliary activation sum to avoid
-an observed repeated-answer regression on the optimized path. It does not
-change model weights, quantized activation bytes or cache precision, and is
-not a claim of better mathematical accuracy. Its scope and removal checks
-are recorded in the [upgrade ledger](../upgrading.md#llamacpp-hip-mmq-compatibility-refresh-2026-11-13).
-
-The faster BF16/F16 matrix experiment was retired rather than making reduced
-operand precision part of normal use. Its historical measurements are not
-the performance of the supported path. See the
-[hardware acceptance record](../hardware-acceptance.md) for tested workloads
-and limitations.
+There is no mixed-math option to enable. The reduced-precision experiment is
+retired, so its historical rates do not describe the supported path.
+Implementation rationale and the temporary HIP compatibility patch are tracked
+in the [upgrade ledger](../upgrading.md#llamacpp-hip-mmq-compatibility-refresh-2026-11-13).
+Use the [hardware acceptance record](../hardware-acceptance.md) for measured
+workloads and correctness limits.
 
 ## Benchmarks
 
@@ -362,11 +356,12 @@ llama.cpp uses its native `llama-bench`:
   --prompt-tokens 512 --generation-tokens 128 --repetitions 5
 ```
 
-The one-shot container has no network, mounts only the selected model
-directory read-only, and is removed on completion or interruption. Managed
-preset results include immutable source metadata. Local `--model` results
-record only resolved path, size, and modification time and are weaker
-reproducibility evidence.
+The one-shot container has no network and is removed on completion or
+interruption. Managed presets mount the managed model root read-only.
+Local `--model` runs mount only the selected file or exact split shards,
+never the parent directory. Managed preset results include immutable source
+metadata. Local `--model` results record only resolved path, size, and
+modification time and are weaker reproducibility evidence.
 
 Speculative presets are intentionally rejected here. `llama-bench` measures
 the main model without Paracetamol's speculative-decoding policy, so accepting

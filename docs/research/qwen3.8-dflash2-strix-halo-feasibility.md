@@ -148,7 +148,7 @@ reasoning preservation, gateway-owned missing sampler defaults, normal matrix
 precision, F16 KV and the 262144-token pool. They explicitly select greedy
 proposals at depth three. They are accepted only on ROCm Strix Halo, not
 Vulkan, RDNA 4 or Strix Point. Installation and selection are described in
-the [application guide](guides/applications.md#greedy-flash-next-dflash2).
+the [application guide](../guides/applications.md#greedy-flash-next-dflash2).
 
 ### Managed-path checks
 
@@ -268,7 +268,7 @@ ROCm 10.1 and Paracetamol's thirteen reviewed patches. The locally built image
 is `llama-cpp-ubuntu26.04-rocm10.1-280141e-r60`, ID
 `83cb393c11b752e948005c43b386e04d8b0813d00c23a6da5439181bd67a2f81`.
 The coupled source refresh and its regression checks are recorded in
-[hardware acceptance](hardware-acceptance.md).
+[hardware acceptance](hardware-acceptance-history.md#strix-halo-llamacpp-source-refresh-2026-10-23).
 
 Two upstream changes matter for this test:
 

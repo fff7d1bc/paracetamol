@@ -1,234 +1,106 @@
 # Paracetamol documentation
 
-This is the complete documentation index. Start with the root
-[`README.md`](../README.md) for installation and the shortest working path,
-then choose a user guide or maintainer reference below.
+Start with the [project README](../README.md) for requirements, installation
+and the shortest working path. Command-specific `--help` is the interface
+reference. These pages explain how to use and maintain the current checkout.
 
-## User guides
+## Using Paracetamol
 
-- [Applications](guides/applications.md) covers ComfyUI, llama.cpp,
-  managed models, APIs, coding-agent clients, and multi-GPU runs.
-- [Content](guides/content.md) covers recipes, exact bundles, licensing,
-  verification, resumable downloads, mirrors, imports, and workflows.
-- [Operations](guides/operations.md) covers hardware acceptance, builds,
-  caches, image transfer, persistent data, logs, and scoped cleanup.
-- [Upgrade notes](guides/upgrade-notes.md) covers pre-release state changes,
-  retired applications, model IDs and client configuration refreshes.
-- [Tuning and benchmarks](guides/tuning.md) covers host GPU access, runtime
-  policies, memory configuration, and repeatable performance comparisons.
-- [Qwen3.8 Dynamic Q4 versus Q8](guides/qwen3.8-dynamic-quant-comparison.md)
-  reports the hidden-graded medium and `xhigh` coding-agent comparison,
-  context results, exact Unsloth artifacts, and limitations.
-- [Inference gateway](gateway.md) documents the native one-port scheduler,
-  frozen inventory, backend lifecycle, API boundary, private usage statistics,
-  and failure policy.
-- [Remote Maki](guides/remote-maki.md) connects native macOS or Linux Maki
-  through gateway-generated configuration without installing Paracetamol.
+- [Applications](guides/applications.md) covers ComfyUI, llama.cpp, current
+  model choices, direct APIs and multi-GPU runs.
+- [Content](guides/content.md) covers recipes, bundles, licensing, verification,
+  mirrors, imports and workflows.
+- [Gateway](gateway.md) covers configuration, authentication, scheduling,
+  API routes, diagnostics and private usage statistics.
+- [Remote Maki](guides/remote-maki.md) connects native Linux or macOS Maki
+  without installing Paracetamol on the client.
+- [Operations](guides/operations.md) covers builds, data and backups, image
+  transfer, logs, scoped cleanup and troubleshooting.
+- [Tuning and benchmarks](guides/tuning.md) explains host access, runtime
+  policies, context capacity and repeatable measurements.
+- [Upgrade notes](guides/upgrade-notes.md) covers selecting a source revision,
+  updating a checkout, rollback limits and deliberate pre-release changes.
 
-For a shorter application walkthrough made of copyable commands, use the
-built-in guide:
+For copyable application walkthroughs, run `./paracetamol guide`.
 
-```bash
-./paracetamol guide
-./paracetamol guide comfyui
-./paracetamol guide llama-cpp
-```
+## Maintaining Paracetamol
 
-Command-specific `--help` output remains the authoritative interface
-reference.
+Returning after time away? Check `git status --short`, read the reference
+matching the change, and establish the
+[development baseline](testing-and-release.md#tier-1-static-and-unit-checks).
+Inspect current pins and capabilities in source rather than using a dated
+experiment as a version list.
 
-## Maintainer documentation
+- [Architecture and invariants](architecture.md) defines ownership, trust,
+  images, storage and the upstream-base-plus-patches approach.
+- [Routine upgrade runbook](routine-upgrade-runbook.md) routes a dependency,
+  application and model refresh without changing everything at once.
+- [llama.cpp maintenance](llama-cpp-maintenance.md) records the accepted
+  baseline, open regressions and how to resume an investigation.
+- [Upgrading](upgrading.md) describes coupled pins, patch contracts, removal
+  gates and application-specific procedures.
+- [Content catalog maintenance](content-catalog.md) covers exact artifacts,
+  licensing, schema, recipes, workflows and benchmark resources.
+- [Extension points](extending.md) explains where new commands, applications,
+  modes and profiles belong.
+- [Testing and acceptance](testing-and-release.md) separates routine checks,
+  image/CPU checks, native fixtures and real inference acceptance.
+- [Hardware acceptance](hardware-acceptance.md) is the live coverage matrix
+  and result-recording procedure.
+- [Contribution guide](../CONTRIBUTING.md) summarizes checks and useful reports.
+- [Security policy](../SECURITY.md) defines the threat boundary and reporting.
 
-Coming back to Paracetamol after some time away? Start here. These references
-explain how the project fits together, how to change it safely, and how to
-know when an upgrade is genuinely finished. The public contribution path and
-baseline checks are summarized in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+The project does not promise stable releases or interfaces yet. A full Git
+revision identifies the integration recipe. It does not promise byte-identical
+images or restore mutable application data. See
+[revision selection and rollback](guides/upgrade-notes.md).
 
-### Start here after time away
+## Research and deferred directions
 
-For llama.cpp work, use [llama.cpp maintenance](llama-cpp-maintenance.md).
-It separates the accepted baseline from historical holds, routes the native
-and coding checks, and explains how to resume a regression investigation
-without the original session. Private experiment files are not part of a
-fresh clone.
+The [research index](research/README.md) holds dated measurements, retired
+model/client evaluations and upgrade journals. Those records preserve exact
+inputs, failures and limitations. They are evidence for the recorded tuple,
+not current defaults or a substitute for fresh hardware acceptance.
 
-1. Read the [architecture and invariants](architecture.md).
-2. Inspect the current pins rather than trusting remembered version numbers:
+The [Gufo recheck tool](../tools/gufo-recheck/README.md) is an explicit
+developer experiment with manual backend lifecycle, not a managed engine.
+The [vLLM integration direction](vllm-integration-direction.md) describes a
+possible additive engine, not implemented support.
 
-   ```bash
-   rg -n '^(ARG .*VERSION|ARG .*COMMIT|ARG .*UBUNTU_IMAGE)' Containerfile
-   cat containers/content_tools/requirements.txt
-   cat applications/comfyui/constraints.txt
-   cat applications/llama-cpp/hip-apu-host-buffer.patch
-   jq '.schema_version' catalog/catalog.json
-   ```
+## Source ownership
 
-3. Inspect the current CLI and content inventory:
+Source and package-local tests are authoritative. Update affected prose in the
+same change when behavior, commands, counts or defaults change.
 
-   ```bash
-   ./paracetamol --help
-   ./paracetamol guide
-   ./paracetamol run --help
-   ./paracetamol content list
-   ./paracetamol content list bundles
-   ./paracetamol content install all --dry-run
-   ```
-
-   Then check that the short path in the root README and the focused
-   application, content, operations, and tuning guides still match it.
-
-4. Establish a clean baseline before changing anything:
-
-   ```bash
-   git status --short
-   make check
-   make test
-   make static
-   PYTHONPYCACHEPREFIX=/tmp/paracetamol-pycache python3 -m compileall -q applications containers evaluations tests
-   bash -n applications/comfyui/entrypoint.sh \
-     applications/llama-cpp/entrypoint.sh
-   find catalog -type f -name '*.json' -print0 | \
-     xargs -0 -n1 python3 -m json.tool >/dev/null
-   git diff --check
-   ```
-
-5. Use the maintainer guide or dated research record matching the task:
-
-   - [Routine upgrade scan and execution checklist](routine-upgrade-runbook.md)
-   - [llama.cpp maintenance and regression investigation](llama-cpp-maintenance.md)
-   - [Upgrading dependencies and upstream applications](upgrading.md)
-   - [Adding or updating models, bundles, workflows, and benchmarks](content-catalog.md)
-   - [Adding applications, commands, modes, or hardware profiles](extending.md)
-   - [Testing, release checks, and routine housekeeping](testing-and-release.md)
-   - [Archived coding-agent evaluation record](coding-agent-evaluation.md)
-   - [Target-hardware acceptance matrix](hardware-acceptance.md)
-   - [Additive vLLM and NVIDIA integration
-     direction](vllm-integration-direction.md)
-   - [DeepSeek V4 Flash llama.cpp feasibility
-     snapshot](deepseek-v4-flash-llama-cpp-feasibility.md)
-   - [Historical GLM-5.3 Flash DwarfStar feasibility and tool-parser
-     follow-up](glm-5.3-flash-dwarfstar-feasibility.md)
-   - [Historical Muse Glimmer llama.cpp agent feasibility
-     snapshot](muse-glimmer-llama-cpp-agent-feasibility.md)
-   - [Ling 3.0 Flash llama.cpp feasibility
-     snapshot](ling-3.0-flash-llama-cpp-feasibility.md)
-   - [Qwen3.6 llama.cpp Strix Halo tuning feasibility
-     snapshot](qwen3.6-strix-halo-llama-cpp-tuning-feasibility.md)
-   - [Qwen3.8 Strix Halo platform power-policy feasibility
-     snapshot](qwen3.8-strix-halo-platform-power-policy-feasibility.md)
-   - [Qwen3.8 DFlash2 default, Flash-Next measurements and dense-27B
-     retest](qwen3.8-dflash2-strix-halo-feasibility.md)
-   - [Qwen3.8 RDNA head-dim-256 Flash Attention Strix Halo feasibility
-     snapshot](qwen3.8-rdna-head-dim-256-flash-attention-strix-halo-feasibility.md)
-   - [Qwen3.8 isolated tiled GDN prefill on Strix
-     Halo](qwen3.8-tiled-gdn-strix-halo-feasibility.md)
-   - [Qwen3.8 Flash-Next direct embedding reads on Strix
-     Halo](qwen3.8-flash-next-direct-reader-feasibility.md)
-   - [Qwen3.8 Flash-Next IQ4_NL versus Q8 n-gram
-     screen](qwen3.8-flash-next-ngram-precision-screen.md)
-   - [Qwen3.8 Flash-Next always-on vision and DFlash2
-     compatibility](qwen3.8-flash-next-vision-feasibility.md)
-   - [Flash-Next Gufo optimization, engine recheck and DFlash2 tuning
-     screen](qwen3.8-flash-next-gufo-optimization-screen.md)
-   - [Strix fork reverse-ablation and Q4 scheduling
-     screen](strix-llama-reverse-ablation.md)
-   - [Swift 1.5 model retirement](swift-retirement.md)
-
-### Sources of truth
-
-| Concern | Authoritative files |
+| Concern | Owner |
 | --- | --- |
-| Runtime/base images, ROCm/PyTorch, application commits | `Containerfile` |
-| Product name and durable namespace identities | `internal/identity/identity.go`, `Makefile` |
-| Application capabilities, guides, images, ports, and build DAG | `internal/application/` |
-| Host settings and environment/config precedence | `internal/config/config.go` |
-| GPU profile discovery and platform boundary | `internal/platform/` |
-| Offline managed image archives | `internal/imagearchive/` |
-| Public command tree, validation, and orchestration | `internal/cli/` |
-| Semantic terminal styling, prompts, and progress rendering | `internal/ui/` |
-| Host diagnostics and remediation planning | `internal/hostdoctor/` |
-| Receipt-aware managed and local text-model inventory | `internal/modelinventory/` |
-| Repository-root discovery | `internal/project/` |
-| Small runnable content recipes | `internal/recipes/` |
-| Built-in application walkthroughs | `internal/cli/commands_basic.go` |
-| Local image build commands | `internal/buildplan/` |
-| Podman process boundary and runtime command construction | `internal/podman/`, `internal/runtime/` |
-| Lazy text-inference inventory, proxy, scheduler, and backend lifecycle | `internal/gateway/`, `internal/textmodel/` |
-| Durable daily usage totals and Statistics page | `internal/gateway/statistics*.go`, `internal/gateway/assets/` |
-| In-container GPU/profile validation | `containers/common/profile.py` |
-| Resumable pinned HTTPS downloads | `containers/content_tools/download.py` |
-| Remote URL resolution and generated local packs | `internal/remoteimport/` |
-| Read-only provider/archive/workflow research tools | `internal/probe/`, `tools/` |
-| Opt-in Gufo source-build preparation and regression gate, not an application | `tools/gufo-recheck/` |
-| Application build and runtime policy | `applications/<application>/` |
-| Content metadata and relationships | `catalog/catalog.json` |
-| Immutable workflow resources and transformation | `catalog/workflows/`, `internal/cli/commands_content.go` |
-| ComfyUI benchmark preparation and results | `internal/benchmark/` |
-| PATH launcher | `bin/paracetamol` |
-| Native Maki configuration export | `internal/clientconfig/`, `internal/gateway/clientconfig.go` |
-| Shared model capabilities | `internal/textmodel/` |
-| Native llama.cpp benchmark results | `internal/benchmark/` |
-| Server-side llama.cpp speculative-depth screens | `internal/benchmark/` |
-| Archived coding-agent tasks and hidden fixtures | `evaluations/coding/` |
-| Checkpointed target-hardware smoke acceptance | `internal/cli/commands_acceptance.go` |
-| Durable atomic file publication | `internal/atomicfile/` |
-| Third-party provenance summary | `THIRD_PARTY_NOTICES.md` |
-| Enforced host behavior | package-local `internal/**/*_test.go` files |
+| Base images, ROCm/PyTorch, application commits and patch order | `Containerfile`, `applications/<application>/` |
+| Complete content-tools dependency pins | `containers/content_tools/requirements.txt` |
+| Product identity and build namespace | `internal/identity/`, `Makefile` |
+| Application registry, image tags, capabilities, ports and build DAG | `internal/application/`, `internal/buildplan/` |
+| Host configuration and precedence | `internal/config/` |
+| Canonical hardware identities and read-only host diagnostics | `internal/platform/`, `internal/hostdoctor/` |
+| Public commands, parsing, orchestration and terminal UX | `internal/cli/`, `internal/ui/` |
+| Repository resources and PATH delegation | `internal/project/`, `paracetamol`, `bin/paracetamol` |
+| Subprocess and constrained Podman runtime | `internal/process/`, `internal/podman/`, `internal/runtime/` |
+| Host storage partitions and atomic publication | `internal/storage/`, `internal/atomicfile/` |
+| Receipt-aware text inventory and verification | `internal/modelinventory/`, `internal/verification/` |
+| Frozen gateway inventory, scheduler, proxy, reports and statistics | `internal/gateway/`, `internal/textmodel/` |
+| Portable native Maki examples, without client execution or state ownership | `internal/clientconfig/` |
+| Content schema, immutable pins and relationships | `internal/catalog/`, `catalog/` |
+| Runnable application-first recipes | `internal/recipes/` |
+| Download, verification and installation | `internal/content/` |
+| Allowlisted remote metadata and local-pack generation | `internal/remoteimport/`, `internal/contentpack/` |
+| Immutable curated workflow installation | `catalog/workflows/`, `internal/cli/commands_content.go` |
+| Benchmarks, typed results, resume and cleanup | `internal/benchmark/` |
+| Offline managed-image transfer | `internal/imagearchive/` |
+| Bounded target-hardware acceptance | `internal/cli/commands_acceptance.go` |
+| Container-side profile/application enforcement | `containers/common/profile.py`, application entrypoints |
+| Read-only metadata/archive/workflow probes | `internal/probe/`, `tools/` |
+| Opt-in Gufo source build and regression gate | `tools/gufo-recheck/` |
+| Archived tasks and hidden grading fixtures, not an active Pi runner | `evaluations/coding/` |
+| Third-party provenance | `THIRD_PARTY_NOTICES.md` |
 
-The files above are authoritative. When their counts, versions, commands, or
-behavior change, update the corresponding prose in the same change rather than
-leaving a known-stale snapshot behind.
-
-Commands in these guides use obvious uppercase placeholders such as
-`CURRENT_IMAGE`, `WORKFLOW_ID`, and `REVISION`. Replace them with values from
-the current source tree; they are not shell variables.
-
-### Non-negotiable project properties
-
-Preserve these unless deliberately redesigning the project:
-
-- Images are built locally from immutable base and source pins.
-- Applications have separate final images. A minimal ROCm runtime is shared
-  by the ROCm/PyTorch base and native applications. PyTorch applications share
-  the higher ROCm/PyTorch base; native applications do not inherit PyTorch.
-- Every GPU application uses the same project ROCm release. A native build
-  changes the development toolchain, not the runtime version policy.
-- Runtime is rootless, read-only, and capability-free. Each application gets
-  only its writable `/data`; managed content is mounted read-only below
-  `/content`; temporary writes go to explicit `tmpfs` mounts.
-- Only the exact selected render-node set and `/dev/kfd` are exposed to GPU
-  runs. CPU mode exposes neither.
-- Multiple render nodes are never guessed. An application must explicitly
-  declare support before one workload may receive more than one.
-- Forced hardware profiles are checked against the architecture PyTorch sees.
-- Model downloads use full Hugging Face revisions or exact Civitai
-  model-version IDs, plus exact byte sizes and SHA-256 hashes.
-- Managed workflows and native application paths do not silently fetch
-  unpinned models.
-- License uncertainty is represented as `NOASSERTION`, not upgraded by
-  assumption from an upstream base model.
-- Curated workflows derive from pinned licensed sources, contain provenance,
-  and have deterministic rendered hashes.
-- Build-time source patches fail closed when their expected upstream text
-  changes.
-- No GPU inference is part of ordinary development checks on a weak host.
-
-Changing one of these is an architectural decision, not routine maintenance.
-
-### The meaning of “mode”
-
-Use precise language in changes and commit messages:
-
-- A **profile** selects hardware behavior: `auto`, `cpu`, `rdna4`,
-  `strix-halo`, or `strix-point`.
-- An **application** is an independently built image or service, such as
-  ComfyUI or llama.cpp.
-- An application **command mode** is an operation such as llama.cpp `server`
-  or `cli`.
-- A **bundle variant** selects model precision or behavior, such as FP8,
-  BF16, base, or Lightning.
-- A workflow **renderer** deterministically adapts an official workflow
-  template for one bundle variant.
-
-This distinction prevents an application feature from accidentally becoming a
-hardware profile or a proliferation of top-level commands.
+Uppercase names such as `CURRENT_IMAGE`, `REVISION` and `WORKFLOW_ID` in
+commands are placeholders. Replace them with reviewed values from the current
+checkout.

@@ -32,7 +32,7 @@ The accepted production control is upstream
 `llama-cpp-ubuntu26.04-rocm10.1-ded522f-r77`, image ID
 `0de2f71f6181e4fe61f1b03c3d2dc69adc532b860394d972d10e5065b78ffdaa`.
 Its earlier acceptance and limitations remain in the
-[prefill recovery record](hardware-acceptance.md#strix-halo-flash-next-prefill-recovery-2026-11-14).
+[prefill recovery record](hardware-acceptance-history.md#strix-halo-flash-next-prefill-recovery-2026-11-14).
 
 The exploratory full-fork source is
 [`c495f90f55e647f9a5b6820b503be6d39c74baa7`](https://github.com/halo-box/strix-llama.cpp/commit/c495f90f55e647f9a5b6820b503be6d39c74baa7),
@@ -121,7 +121,7 @@ The earlier matched investigation associated a replay transition with upstream
 `8fc0376` on its own frozen stack. This experiment does not show that the same
 introduction or mechanism explains the fork failure, nor that reverting that
 commit is an appropriate fork fix. The
-[earlier numerical investigation](hardware-acceptance.md#internal-numerical-mechanism)
+[earlier numerical investigation](hardware-acceptance-history.md#internal-numerical-mechanism)
 already separates output-trajectory sensitivity from demonstrated incorrect
 arithmetic. Its unchanged compatibility-patch removal gates remain in force.
 
@@ -225,8 +225,8 @@ those later requirements.
 
 ## Reverse-ablation and extraction method
 
-The [maintenance procedure](llama-cpp-maintenance.md#investigate-a-regression)
-and [patchset rationale](architecture.md#upstream-base-and-broken-out-patches)
+The [maintenance procedure](../llama-cpp-maintenance.md#investigate-a-regression)
+and [patchset rationale](../architecture.md#upstream-base-and-broken-out-patches)
 remain the reusable workflow. This screen adds two practical lessons.
 
 Remove dependency-valid groups, including their producers, consumers, dtype
@@ -268,5 +268,5 @@ is unavailable, state that limitation and create a new versioned fixture. Do
 not claim an exact replay from this prose alone. The retained kits are not a
 supported engine or new public command surface. This screen left the
 then-current `ded522f-r77` production image unchanged. The later
-[pool/reset follow-up](hardware-acceptance.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
+[pool/reset follow-up](hardware-acceptance-history.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
 has separate source changes and acceptance evidence.

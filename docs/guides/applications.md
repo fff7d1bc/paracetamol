@@ -31,6 +31,7 @@ Prepare and run the default image-generation recipe:
 
 ```bash
 ./paracetamol build comfyui
+./paracetamol build content-tools
 ./paracetamol content install comfyui image
 ./paracetamol run comfyui
 ```
@@ -131,6 +132,7 @@ For the dense model on smaller hosts:
 
 ```bash
 ./paracetamol build llama-cpp
+./paracetamol build content-tools
 ./paracetamol content install llama-cpp qwen3.8
 ./paracetamol run llama-cpp server \
   --preset unsloth-qwen3.8-27b-ud-q8-k-xl
@@ -189,9 +191,11 @@ named by the next request. That is reasonable for a router containing only
 256K agent presets. Omit it for a mixed router so smaller-context presets
 retain their catalog-owned limits.
 
-The generated agent-client model maps describe the 256K catalog default. Keep
-the server at that default when using a launcher; a manual server override
-does not silently rewrite client context metadata.
+The native Maki export describes each model's catalog context, including the
+dense Q4 preset's 128K limit. A direct server's manual `--context` override does
+not rewrite client metadata. Keep a manually configured client within the
+server's actual limit. Gateway exports describe the running gateway's frozen
+inventory, not a separate direct server.
 
 ### Models, presets, and request settings
 
@@ -220,15 +224,10 @@ artifacts and verification receipts keep their original paths and IDs.
 
 Regular Unsloth Flash-Next DFlash2 at `xhigh` is the exported Maki default
 when advertised by the gateway. Plain Flash-Next is the next preference,
-then plain dense Qwen3.8 Q8. Plain regular Flash-Next keeps adaptive xhigh,
-while dense Q8 remains medium. Dense Qwen MTP presets, Qwen3.6 and Muse Glimmer are retired.
-Existing GGUF files are not deleted automatically.
-
-Dense DFlash2 candidates were retested against all three maintained dense
-targets. They passed the short correctness gates but did not demonstrate
-useful acceleration on ROCm Strix Halo, so no dense `-dflash2` IDs are exposed.
-See the [dense retest](../qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23).
-Flash-Next uses a different draft and keeps its accepted speculative choices.
+then plain dense Qwen3.8 Q8. Adaptive reasoning maps regular Flash-Next to xhigh
+and dense Qwen to medium. The [native-client section](#native-clients) explains
+the distinction from the explicit xhigh startup preference.
+For retired models, see the [upgrade notes](upgrade-notes.md).
 
 | Preset | What changes | Good use |
 | --- | --- | --- |
@@ -244,10 +243,23 @@ Flash-Next uses a different draft and keeps its accepted speculative choices.
 Keep whichever model succeeds on representative tasks rather than choosing
 from the parameter count or quantization name alone.
 
-The guided `qwen3.8` recipe intentionally installs only Dynamic Q8_K_XL. Use
+#### Dense variants
+
+The guided `qwen3.8` recipe installs one 29.30 GiB Dynamic Q8_K_XL GGUF. Use
 `./paracetamol content install llama-unsloth-qwen3.8-27b-ud-q4-k-xl` when the 16.35 GiB
 Dynamic v3 Q4_K_XL capacity and throughput tradeoff is useful. The Q4 presets
 do not change the recommended model or any client default.
+Dense DFlash2 candidates did not show useful acceleration in the
+[Strix Halo retest](../research/qwen3.8-dflash2-strix-halo-feasibility.md#dense-27b-retest-2026-10-23),
+so there are no managed dense `-dflash2` presets.
+
+For historical quality tradeoffs, see the [Qwen3.8 Dynamic Q4-preview/MTP
+versus Q8 coding-agent comparison](../research/qwen3.8-dynamic-quant-comparison.md).
+It tested retired MTP presets and an older Q4 preview, not today's plain
+presets or every Q4 and Q8 model. Dedicated 32 GiB GPU capacity still
+needs hardware acceptance. The dated measurements in the
+[hardware record](../hardware-acceptance.md) do not establish performance of
+the current plain presets.
 
 Huihui's dense 27B variant is a separate 29.30 GiB download, not a patch to
 the installed Unsloth model:
@@ -264,19 +276,19 @@ MTP. The [pinned model card](https://huggingface.co/huihui-ai/Huihui-Qwen3.8-27B
 identifies its Unsloth UD lineage and declares Apache-2.0. It is not the
 Swift-derived variant. Modified weights can change task quality even when
 the serving policy is identical. Regular Flash-Next remains the default.
-The [acceptance record](../hardware-acceptance.md#huihui-dense-qwen-and-catalog-retirement-2026-10-22)
+The [acceptance record](../research/hardware-acceptance-history.md#huihui-dense-qwen-and-catalog-retirement-2026-10-22)
 includes a native Maki xhigh task that produced the correct file but the wrong
 final answer. API compatibility is not a claim of equal coding reliability.
 
-The previously curated Swift adaptations were retired after a long Pi coding
-session failed to finish while the Unsloth Flash-Next completed the same
-request. See the [retirement record](../swift-retirement.md) for the observed
-behavior and limits of that comparison. Installed Swift files are not removed
-automatically.
+#### Flash-Next
 
 The Flash-Next family has its own guided recipe because it has a different
 architecture and operating envelope. The recipe installs the accepted
-103.7 GiB, four-shard Dynamic Q4_K_XL target and shared 652 MB DFlash2 draft:
+103.7 GiB, four-shard Dynamic Q4_K_XL target, a shared 652 MB DFlash2 draft and
+a matching 908 MB BF16 vision projector. It needs a high-memory Strix Halo host
+with fast local SSD storage and explicit license-risk review. The repack's
+referenced license text is absent, so it remains `NOASSERTION`. Its projector
+has its own license-risk gate.
 
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
@@ -299,23 +311,9 @@ single-request, non-unified-cache policy. Reuse of the current live prefix
 still works. F16 K/V precision and Flash Attention are retained. See
 [gateway concurrency](../gateway.md) for the distinction from `--models-max`.
 Use a smaller `--slots` value to reduce per-sequence memory overhead further.
-On `gfx1151` ROCm, the patched llama.cpp also uses selected-key HIP attention
-for Flash-Next's F16 QSA shape. A compact single-sequence graph intersects
-selected IDs with upstream's causal and sequence visibility mask without
-building a dense selection mask for every layer. Scoped matrix kernels
-also accelerate this model without changing K/V precision, quantization or
-sampling. Unsupported cache layouts keep the ordinary attention graph.
-Vulkan and older Qwen families retain their existing paths.
-Upstream llama.cpp owns the pooled indexer-key cache and its state lifecycle.
-There is no additional private derived-key cache.
-The scoped pipeline also avoids full convolution-history copies during
-prefill, combines normalization and injection work, and groups compatible
-decode projections. Single-token decode also combines convolution, recurrent
-state updates and normalization, and folds HC gates into the existing
-normalization path. These changes retain F32 residuals and accumulation.
-The fork's reduced-precision matrix and residual paths are not enabled.
-The [hardware record](../hardware-acceptance.md)
-contains the paired prefill measurements and correctness limits.
+Scoped ROCm optimizations apply automatically on Strix Halo while retaining
+F32 residuals and F16 K/V. The [hardware record](../hardware-acceptance.md)
+contains the implementation-specific measurements and correctness limits.
 
 Direct startup selects ROCm on Strix Halo, and a ROCm router or gateway
 includes the verified preset. Keep `--models-max 1` on a 128 GB host so the
@@ -331,32 +329,24 @@ not enable it. Ordinary ROCm allocation still corrupts meaningful output for
 this model, so do not transfer these results to a different allocation recipe.
 Native `benchmark llama-cpp throughput` refuses this ROCm preset because llama-bench
 does not apply the accepted server/CLI allocation policy. The [acceptance
-record](../qwen3.8-flash-next-direct-reader-feasibility.md) explains the
+record](../research/qwen3.8-flash-next-direct-reader-feasibility.md) explains the
 memory saving and modest high-context prefill gain, without claiming faster
 decode or general coding quality.
 
 The preset starts at the model's native 262144-token context and exposes off,
-low, medium, and xhigh reasoning. The Maki example starts regular Flash-Next
-DFlash2 at `xhigh`. Plain regular Flash-Next also keeps adaptive xhigh. The shared
-template and gateway fallback remain `medium` for HTTP
-callers that omit reasoning. Thinking uses
-temperature 1.0, top-p 0.95, top-k 20, and min-p 0.05. Off uses temperature
-0.7, top-p 0.8, top-k 20, min-p 0, and presence penalty 1.5. Current pinned
-upstream llama.cpp supports the target architecture but Paracetamol provides
-no MTP variant. Greedy DFlash2 presets use a separate draft instead.
-Q4_K_XL is preferred on the
-accepted 128 GB Strix Halo host because it improves Unsloth's quant-fidelity
-measurements over IQ4_XS while retaining 34 GiB of available memory after a
-199872-token retrieval run. The Q5_K_XL payload exceeds the measured remaining
-capacity margin. The 87.2 GiB IQ4_XS conversion was retired because it still
-exceeds practical 32 and 64 GB device classes while Q4_K_XL fits the accepted
-128 GB system and provides the stronger quantization.
+low, medium and xhigh reasoning. There is no managed Flash-Next MTP variant.
+Q4_K_XL fits the accepted 128 GB Strix Halo system, not practical 32 or 64 GB
+hosts. The [hardware record](../hardware-acceptance.md) preserves the
+quantization comparison and measured memory margins. See
+[native clients](#native-clients) for reasoning and sampling defaults.
 
 Huihui's abliterated v2 is a separate weight option based on Unsloth's
 UD-Q4_K_XL conversion, not the Swift-derived series in the same repository.
 It uses the same `qwen3.8.jinja`, native reasoning choices, preserved history,
 gateway sampling policy, 256K context and F16 KV. The ROCm reader and all
 Flash-Next optimizations are shared. There is no Huihui-specific engine patch.
+Its four shards are another 103.7 GiB download, not a patch to the regular
+weights. Its matching 908 MB projector is separate from the regular target's.
 
 ```bash
 ./paracetamol content install llama-huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl \
@@ -403,79 +393,26 @@ This is not a universal speed upgrade. In the regular target's bounded
 tests, cached single-request generation takes about 20 to 25% less wall time,
 but prefill does not improve. Four-client xhigh throughput falls about 35%
 with greedy drafting, and available memory falls by about 5 GiB. The
-[DFlash2 research record](../qwen3.8-dflash2-strix-halo-feasibility.md)
+[DFlash2 research record](../research/qwen3.8-dflash2-strix-halo-feasibility.md)
 keeps the measurements, independent Huihui checks and limitations. Prefer
 the ordinary preset when parallel throughput or memory headroom matters.
 
-Start the smaller plain dense model with the normal ROCm backend unless the
-local workload favors Vulkan:
-
-```bash
-./paracetamol run llama-cpp server \
-  --preset unsloth-qwen3.8-27b-ud-q4-k-xl
-```
-
-Earlier acceptance included embedded MTP and an older Q4 preview. Those
-measurements remain in the [hardware record](../hardware-acceptance.md),
-not a performance promise for the current plain presets. Dedicated
-32 GiB GPU capacity still needs acceptance on that hardware.
-
-For the quality side of that choice, see the dedicated
-[Qwen3.8 Dynamic Q4 versus Q8 coding-agent
-comparison](qwen3.8-dynamic-quant-comparison.md). It reports hidden-graded
-medium and `xhigh` results task by task, separates strict completion from a
-correct patch that timed out, and explains why the findings apply to these
-exact Unsloth Dynamic files rather than every model carrying a Q4 or Q8 label.
+#### Shared template and request policy
 
 Qwen3.8 uses Paracetamol's reviewed copy of the pinned official base-model Jinja
-template instead of the template embedded in the Unsloth GGUF. It keeps Qwen's
-official message and tool format, but the Unsloth copy silently aliases generic
-`high` to native `xhigh`. Qwen3.8's real effort levels are low, medium, and
-xhigh, plus a separate off toggle. The managed template changes the
-omitted-effort fallback from upstream xhigh to medium; it does not invent a
-high level. Upstream `xhigh` adds a short system steering instruction asking
-for careful validation and alternatives, while `medium` adds no reasoning
-instruction. The prompt addition itself is small; the practical risk is the
-much longer reasoning it can trigger.
-`reasoning_effort: none` disables thinking. The gateway resolves that
-mode before applying sampling defaults. Low, medium, and xhigh use the official
-thinking policy: temperature 1.0, top-p 0.95, top-k 20, min-p 0, presence
-penalty 0, and repeat penalty 1. Off uses Qwen's non-thinking policy:
-temperature 0.7, top-p 0.8, top-k 20, min-p 0, presence penalty 1.5, and repeat
-penalty 1. Explicit request sampling fields override the corresponding gateway
-defaults. Direct llama.cpp endpoints bypass this policy and use native engine
-defaults unless the request supplies values.
-
-The pinned
-[official Qwen3.8 model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md)
-reports large improvements over Qwen3.6-27B on its coding and agent harnesses.
-Treat those numbers as candidate-selection evidence, not acceptance of this
-quantization or local client behavior.
-The reviewed template and neutral omitted-effort behavior also apply to the
-plain dense alternative. These dense presets remain text-only; Flash-Next's
-projector and image capability do not apply to the dense family.
-
-Early community experience remains unusually sensitive to the exact template
-and reasoning defaults. The release-day
-[Qwen3.8 megathread](https://www.reddit.com/r/LocalLLaMA/comments/1voojjz/megathread_qwen_38_27b_release_day/)
-collects configurations, template alternatives, and linked experience reports;
-the rapidly evolving
-[Qwen3.8 27B release discussion](https://www.reddit.com/r/LocalLLaMA/comments/1voa3ch/qwen_38_27b_released_please_share_your_experience/)
-is useful for finding failure modes, but its different quantizations, engines,
-templates, and settings are not comparable benchmark evidence. One prominent
-[community template](https://huggingface.co/froggeric/Qwen-Fixed-Chat-Templates/tree/9f14778c92c3b5ed3e0738085694c0d3452802dd)
-claims fixes for empty historical thinking, stringified tool arguments,
-mid-conversation instructions, and agent-loop recovery. It also changes prompt
-policy well beyond Paracetamol's medium-default adaptation; even its `high`
-choice aliases to Qwen3.8 `xhigh`. Paracetamol therefore measures the pinned
-official-template adaptation first. A community-template run belongs in a
-later, explicitly labelled A/B with the same model bytes and runtime inputs.
+template, with medium as the omitted-effort fallback rather than upstream
+xhigh. It retains the official message and tool protocol. Dense presets remain
+text-only. Flash-Next's projector and image capability do not apply to them.
+The [pinned dense model card](https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/README.md)
+provides upstream provenance, not acceptance of a local quantization or client.
+Template comparisons and their limitations remain in the
+[upgrade ledger](../upgrading.md) and [hardware record](../hardware-acceptance.md).
 
 MTP is a decoding optimization, not a reasoning mode or a more capable model.
 Its prediction heads propose several future tokens and the main model verifies
 them. Accepted drafts can reduce generation time; poor acceptance can erase
 the gain. MTP does not accelerate prompt ingestion, and the client's
-`--thinking` switch is independent of it.
+reasoning selection is independent of it.
 
 For an MTP comparison, use the server API and measure complete response wall
 time, output validity, and draft acceptance on the same prompts. The native
@@ -564,7 +501,7 @@ Use `--context 131072` or `--context 65536` when the full KV cache leaves too
 little memory for the model, runtime buffers, or other workloads. Its
 official embedded template handles developer instructions, structured tool
 calls, tool results, and reasoning turns through llama.cpp's chat-template
-path. It appears in both generated client model maps and supports the same
+path. It appears in the native Maki export and supports the same
 function-tool protocol. Paracetamol does not advertise a model-native reasoning
 selector for Gemma 4.
 
@@ -772,7 +709,7 @@ name.
 
 Muse Glimmer is no longer in the catalog, image templates, recipes or client
 exports. Existing files are left untouched. Its historical measurements remain
-in the [archived feasibility record](../muse-glimmer-llama-cpp-agent-feasibility.md),
+in the [archived feasibility record](../research/muse-glimmer-llama-cpp-agent-feasibility.md),
 not current setup instructions.
 
 ### Router mode and local GGUF files

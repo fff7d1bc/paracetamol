@@ -44,17 +44,17 @@ The accepted 2026-11-14 state consists of three separate changes:
 
 - `6253784` refreshes upstream to `ded522f` with a temporary HIP MMQ
   activation-sum compatibility patch. The
-  [refresh record](hardware-acceptance.md#strix-halo-hip-mmq-compatibility-refresh-2026-11-13)
+  [refresh record](research/hardware-acceptance-history.md#strix-halo-hip-mmq-compatibility-refresh-2026-11-13)
   includes the original replay regression and the coding screen.
 - `4d68612` delivers `ded522f-r77`, restoring the convolution fast path and
   improving small-MoE scheduling without reduced precision. The
-  [prefill recovery record](hardware-acceptance.md#strix-halo-flash-next-prefill-recovery-2026-11-14)
+  [prefill recovery record](research/hardware-acceptance-history.md#strix-halo-flash-next-prefill-recovery-2026-11-14)
   identifies the final source tree, image, paired measurements and limits.
 - The host-pool follow-up delivers `ded522f-r78` with eighteen patches and
   source tree `20d5c279af454b8bb9ba78fb7a8f4a0e93ded53c`. It adds prefix
   retention, active-sequence pool scoring and explicit recurrent-state
   clearing without lowering precision. The
-  [pool/reset record](hardware-acceptance.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
+  [pool/reset record](research/hardware-acceptance-history.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
   reports 5.94% less decode time and 2.78% less HTTP wall time in its matched
   100K comparison, along with the unchanged policy and coding limitations.
 
@@ -75,7 +75,7 @@ The following distinctions matter for the next investigation:
 | --- | --- | --- |
 | HIP MMQ sums | Corrected upstream sums change the numerical trajectory on the local optimized path. The temporary compatibility patch restores the frozen replay. | No incorrect upstream arithmetic was demonstrated. Removing the workaround requires its unchanged removal gates, not a cleaner-looking source diff. |
 | Convolution fallback | Upstream's overlapping rollback windows and `SET_ROWS` stopped matching the carried optimization. The adapted matcher restores the fast path and preserves stored state. | Future graph changes need matcher, lifetime and observed kernel-activation checks, even if the patch still applies. |
-| MoE scheduling | Folded traversal of upstream descriptors improves the measured prefill workload, including its Q5_1 tensors. | Packing and an extra outer kernel did not justify adoption. The later [J48/activation-prefetch screen](strix-llama-reverse-ablation.md) passes bounded numerical and replay checks but does not establish a repeatable speed gain. The full-fork performance comparison is held on its replay failure. |
+| MoE scheduling | Folded traversal of upstream descriptors improves the measured prefill workload, including its Q5_1 tensors. | Packing and an extra outer kernel did not justify adoption. The later [J48/activation-prefetch screen](research/strix-llama-reverse-ablation.md) passes bounded numerical and replay checks but does not establish a repeatable speed gain. The full-fork performance comparison is held on its replay failure. |
 | Pool bookkeeping and reset | r78 preserves matched full responses and work counts while reducing measured decode time. Explicit zero fill clears poisoned reset state in actual-helper CPU/ROCm/Vulkan checks. | Neither result diagnoses the first source of NaN/Inf. The separate component gains are not additive, and the idle-slot workload is not four-client throughput. |
 | Vision warnings | The bounded image/history cases pass. Known recurrent position warnings match the accepted baseline. | The original r77 and r78 wrappers fail their image-ID classifiers. Separate reviewed classifications accept only those exact images and warning patterns. This is not a general warning exemption. |
 | Coding screen | Python passes identically in r77 and r78. The single Go attempt fails in both, by a completion ceiling in r78 and incorrect generated code in r77. | This is an inconclusive one-shot comparison, not a Go coding pass, a systematic engine-fault diagnosis or proof of universal quality equivalence. Preserve both failures. |
@@ -83,7 +83,7 @@ The following distinctions matter for the next investigation:
 Mixed BF16/F16 internal matrix paths, alternative quantizers and wholesale
 fork adoption are outside this precision-preserving baseline. A successful
 compatibility workaround is not automatically a numerical accuracy fix.
-The [numerical investigation](hardware-acceptance.md#internal-numerical-mechanism)
+The [numerical investigation](research/hardware-acceptance-history.md#internal-numerical-mechanism)
 records the controls behind that distinction.
 
 ## Freeze a comparison before running it

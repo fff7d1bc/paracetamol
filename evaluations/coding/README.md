@@ -10,5 +10,5 @@ or suite identifiers to make old measurements appear current.
 
 Installed runtimes, sessions and raw results under `apps/agent-evaluation/`
 are not deleted or migrated by this retirement. See the
-[archived evaluation record](../../docs/coding-agent-evaluation.md) for the
+[archived evaluation record](../../docs/research/coding-agent-evaluation.md) for the
 historical protocol and limitations.

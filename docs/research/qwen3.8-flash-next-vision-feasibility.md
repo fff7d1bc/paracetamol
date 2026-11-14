@@ -10,8 +10,8 @@ No extra model IDs or opt-in switch are added.
 
 Existing installations must rerun their bundle's installer, restart the
 gateway and refresh Maki's provider export. Verified target shards are reused.
-Dense Qwen remains text-only. See the [application guide](guides/applications.md#llamacpp)
-for setup and the [gateway contract](gateway.md) for inline-image admission.
+Dense Qwen remains text-only. See the [application guide](../guides/applications.md#llamacpp)
+for setup and the [gateway contract](../gateway.md) for inline-image admission.
 
 ## What was measured
 
@@ -146,9 +146,9 @@ host pressure reaches about 3.40 GB above the populated text-only controls.
 
 ## Provenance and evidence
 
-Production uses `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.1-740251a-r71`,
+The accepted image at the time was `localhost/paracetamol:llama-cpp-ubuntu26.04-rocm10.1-740251a-r71`,
 image ID `9ea0d1277fb74bad75f5c22b093209dcf715abd24d759c090934ac760e7344d7`.
-The [patch ledger](upgrading.md#llamacpp-downstream-patch-ledger) records the
+The [patch ledger](../upgrading.md#llamacpp-downstream-patch-ledger) records the
 comment-qualified source hash, immutable upstream PR commit and removal gate.
 The managed catalog pins both projectors' complete revisions, sizes, hashes
 and unresolved license warnings.

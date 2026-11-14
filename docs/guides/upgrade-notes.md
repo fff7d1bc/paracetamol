@@ -10,10 +10,40 @@ models, application state, client sessions or evaluation results.
 ## Update an existing checkout
 
 Preserve local work and back up irreplaceable application data before updating.
-If the checkout still runs DwarfStar, stop it using that old checkout first.
+Record the working source revision and whether it has local changes:
+
+```bash
+git rev-parse HEAD
+git status --short
+./paracetamol --version
+```
+
+Do not discard local changes to make an update succeed. Stop running services
+with the old checkout before switching source, especially a retired application
+that the new checkout no longer manages. Keep the image identities from a live
+runtime report and, if needed, an [image backup](operations.md#image-backups-and-transfer).
+
+To follow `master` from a clean checkout on that branch:
 
 ```bash
 git pull --ff-only
+```
+
+Alternatively, choose an inspected full commit rather than a moving branch.
+Fetch it from the project's configured remote if it is not already local,
+then substitute its complete commit hash for `REVISION`:
+
+```bash
+git fetch origin
+git switch --detach REVISION
+```
+
+A full commit selects the controller, application source/dependency pins and
+catalog together. It does not promise byte-identical rebuilt images, continued
+availability of upstream bytes, or GPU acceptance on your host. After either
+source-selection path, build from that checkout:
+
+```bash
 ./paracetamol doctor
 ./paracetamol build all
 ```
@@ -25,6 +55,15 @@ See [content verification](content.md) and [native Maki setup](remote-maki.md).
 On suitable target hardware, follow the
 [smoke acceptance walkthrough](operations.md#target-hardware-smoke-acceptance).
 A build or CPU startup alone is not GPU inference acceptance.
+
+To return to a known working source revision, stop the current services,
+preserve local changes, select its full commit and rebuild or import matching
+managed images. Read the instructions in that revision. A source rollback does
+not revert application state, content destinations, client configuration or
+checkpoint formats. Restore those only from an appropriate backup, never by
+assuming that an older checkout migrates them backward. See
+[source and image identity](operations.md#source-and-image-identity) when
+recording a reproducible report.
 
 ## Model IDs and required companions
 
@@ -48,11 +87,14 @@ projector retains an explicit `NOASSERTION` license gate. There is no separate
 vision switch or new model ID. The [application guide](applications.md#llamacpp)
 covers image input limits and setup.
 
-Qwen3.6, Muse Glimmer, the Swift adaptations and dense Qwen MTP presets are
-retired from the managed catalog and client exports. Existing downloads remain
-untouched. Choose a current model from the
+Qwen3.6, Muse Glimmer, the Swift adaptations, dense Qwen MTP presets,
+KAT-Coder, Shisa V2.1, TranslateGemma and HY-MT1.5 are retired from the managed
+catalog and client exports. Existing downloads remain untouched. Choose a
+current model from the
 [managed preset guide](applications.md#choosing-a-managed-qwen-preset), update
 literal IDs and refresh generated client configuration.
+The [Swift retirement record](../research/swift-retirement.md) preserves the observed
+coding failure and the limits of that comparison.
 
 ## Native clients replace managed launchers
 
@@ -65,7 +107,7 @@ project configuration and client permissions accordingly.
 Existing runtime, session, credential and evaluation trees are left in place.
 They are not automatically imported into native Maki. Back them up before
 manual cleanup. See [archived client data](operations.md#coding-agent-evaluation)
-and the [historical evaluation protocol](../coding-agent-evaluation.md).
+and the [historical evaluation protocol](../research/coding-agent-evaluation.md).
 
 The exported `init.lua` now starts new sessions at explicit `xhigh`, including
 Huihui. Merge `always_thinking = "xhigh"` into an existing configuration to

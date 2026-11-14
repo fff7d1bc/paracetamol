@@ -10,7 +10,7 @@
 > quality result on this page remains evidence for the exact older SHA-256
 > recorded below; it has not been relabeled as a result for the current
 > artifact. The current pin's focused update acceptance is recorded in the
-> [hardware acceptance log](../hardware-acceptance.md).
+> [dated hardware acceptance record](hardware-acceptance-history.md#qwen38-dynamic-v3-q4_k_xl-update-2026-08-19).
 
 The preset IDs shown below use the current `unsloth-` prefix for convenience.
 The original runs used the same GGUF publisher before IDs exposed provenance.
@@ -20,7 +20,7 @@ The MTP preset IDs used in these runs are now retired. Maki prefers regular
 Flash-Next DFlash2 at xhigh when available. These later policy changes do not
 change the original inputs, task outcomes or measurements below.
 
-This page compares Paracetamol's two managed Qwen3.8 27B MTP presets on real
+This page compared two then-managed Qwen3.8 27B MTP presets on real
 coding-agent work. It is intended to answer the practical questions behind
 the quantization names: is the smaller Q4 useful, is Q8 clearly smarter, and
 is `xhigh` reasoning worth its cost?
@@ -53,19 +53,19 @@ is `xhigh` reasoning worth its cost?
   the first attempt: four strict solves out of five, versus two for Q4. Q4
   solved all three misses when each was retried once, so this was not a clean
   inability to do the work.
-- **Medium remains the sensible default.** Compared with the medium pass,
+- **Medium was the sensible starting point in this comparison.** Compared with the medium pass,
   `xhigh` produced 33.6% more output and took 30.8% more wall time on Q4; on
   Q8 it produced 50.5% more output and took 41.3% more wall time. Those are
   directional comparisons rather than a controlled effort-only A/B because
   the context ceilings also differed.
-- **Use Q4 at 128K when model size, working memory, and decoding speed matter.**
+- **Q4 at 128K offered a useful size and speed tradeoff in this test.**
   Its GGUF is 16.69 GiB instead of Q8's 29.30 GiB. The 128K Q4 server occupied
   30.83 GB while idle and 31.73-31.82 GB during the controlled agent runs on
   Strix Halo. A dedicated 32 GiB RDNA 4 card still needs hardware acceptance;
   these unified-memory measurements do not guarantee that fit.
-- **Use Q8 at medium when its larger footprint is comfortable and first-pass
-  conservatism matters more than speed.** Select `xhigh` for a particularly
-  difficult task or a targeted retry, not as an automatic default.
+- **Q8 at medium was the conservative choice in this test.** The original
+  recommendation reserved `xhigh` for difficult tasks or a targeted retry.
+  It is not the current managed-model recommendation.
 
 The practical conclusion is not that Q4 equals Q8. Five tasks and a few
 targeted retries cannot establish equivalence. The useful conclusion is that
@@ -74,19 +74,21 @@ the same medium first-pass score, was substantially faster, and eventually
 solved every task in the suite. Q8's clearest advantage appeared in `xhigh`
 first-pass reliability.
 
-## Which preset should I choose?
+## Recommendations made from this comparison
+
+The presets in this table are retired. For current model selection, use
+[Applications](../guides/applications.md#llamacpp).
 
 | Need | Suggested starting point | Why |
 | --- | --- | --- |
-| Normal coding-agent work on a high-memory host | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, medium | Paracetamol's conservative managed default and the stronger `xhigh` first-pass result |
+| Normal coding-agent work on a high-memory host | `unsloth-qwen3.8-27b-mtp-ud-q8-k-xl`, medium | The then-managed default and the stronger `xhigh` first-pass result |
 | Faster responses or a smaller memory budget | `unsloth-qwen3.8-27b-mtp-ud-q4-k-xl`, medium | Strong medium result, 16.69 GiB model, and 27.5% higher generation rate in this agent pass |
 | A difficult task that medium missed | Retry the chosen quant at `xhigh` | `xhigh` helped some hard cases, but greatly increased token use and latency |
 | A 32 GiB discrete GPU | Q4 at its 128K default, pending local acceptance | The Strix Halo working set was below 32 GB in decimal units, but a discrete `gfx1201` result is still required |
 | A definitive choice for your own work | Run both against representative repositories | This suite was small, stochastic, Go-only, and specific to the pinned Paracetamol stack |
 
-Paracetamol keeps Q8 as the managed-client default. The evidence here makes Q4
-a credible alternative rather than proving it should replace Q8 for every
-user.
+At the time, Paracetamol kept dense Q8 as the managed-client default. The
+evidence made that Q4 a credible alternative, not a universal replacement.
 
 ## Primary first-pass results
 
@@ -254,7 +256,8 @@ the outcome, but it does not make the task sample broad or universal.
 - It does not generalize beyond the five Go repair tasks. Users should test
   their own task distribution before making an expensive deployment choice.
 
-Within those limits, the evidence is actionable: start at medium, choose the
-Unsloth Dynamic Q4 when its speed and footprint matter, retain Q8 when its
-larger working set is acceptable and first-pass robustness is the priority,
-and reserve `xhigh` for work that justifies its much longer trajectories.
+Within those limits, the original recommendation was to start at medium,
+choose this Dynamic Q4 for speed and footprint, retain Q8 for first-pass
+robustness, and reserve `xhigh` for work that justified its longer trajectories.
+Changed artifacts, plain presets and newer runtime policies need their own
+comparison rather than inheriting that recommendation.

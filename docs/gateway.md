@@ -448,7 +448,7 @@ eight need 2097152. These are native engine semantics, not additional managed
 Paracetamol flags. The current launcher still supplies the preset's context
 as the total pool, as described above.
 
-The [November 7 capacity screen](hardware-acceptance.md#strix-halo-shared-context-capacity-screen-2026-11-07)
+The [November 7 capacity screen](research/hardware-acceptance-history.md#strix-halo-shared-context-capacity-screen-2026-11-07)
 kept the regular Unsloth Flash-Next target, F16 cache and greedy DFlash2
 unchanged. A 524288-token pool with an explicit 262144-token session limit
 passed a single 32K retrieval and history check, but both larger concurrent
@@ -849,8 +849,9 @@ Session analytics and durable request-level history are deliberately absent.
 - It adds no manual unload operation or gateway idle timer. Foreground shutdown
   stops the private backend, while llama.cpp's count-limited router retains its
   own idle-child LRU policy.
-- It does not add TLS, retries, request rewriting, or an
-  arbitrary upstream registry.
+- It does not add TLS, automatic retries or an arbitrary upstream registry.
+  Its one request-rewriting policy fills omitted or null model-aware sampling
+  defaults. Explicit client values are preserved, as described above.
 - The in-memory request ledger is not a persistent request archive, full
   traffic capture or Prometheus endpoint.
 - Durable statistics contain aggregates only, not a queryable request history
