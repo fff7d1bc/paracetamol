@@ -282,8 +282,11 @@ refused instead of overwritten.
 
 Move mode removes only catalog-hash matches, but may leave the old tree's
 managed symlinks broken. Keep the active data directory outside the mirror,
-verify the new installation, then remove the old directory. Dry-run validates
-paths but does not hash hundreds of GiB, so its download total is worst-case.
+verify the new installation, then remove the old directory. Planning and dry
+runs require an existing mirror directory and reject overlap with the active
+data directory after resolving symlinks. They do not index or hash mirror
+candidates, so the download total is worst-case. Installation rechecks the
+mirror root before indexing and verifying candidates.
 
 For an in-place catalog destination rename, move only the exact managed GGUFs
 to a separate mirror. Leave application state, staging, and local experiments

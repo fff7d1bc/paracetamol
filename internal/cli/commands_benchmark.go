@@ -157,7 +157,7 @@ func (app *App) benchmarkLlama(args []string) error {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
 	}

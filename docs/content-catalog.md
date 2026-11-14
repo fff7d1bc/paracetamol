@@ -643,9 +643,13 @@ Agreement and license-risk gates still apply.
 
 Move mode is explicitly destructive to the old library: a validated source
 moves into resumable staging and is not restored on interruption. Failed or
-interrupted staging must remain retryable. Dry runs report worst-case network
-size, not promised reuse. They do not index or hash mirror candidates, and
-mirror accessibility/overlap validation remains an actual-install check.
+interrupted staging must remain retryable. Before approval or mutation,
+planning and dry runs require an existing mirror directory and reject canonical
+overlap with the data root, including through existing symlink ancestors of a
+not-yet-created data root. Dry runs report worst-case network size, not promised
+reuse. They do not index or hash mirror candidates. Actual installation
+revalidates the mirror root before indexing candidates. Root validation does
+not guarantee that every descendant is readable.
 
 ## Add a content recipe
 

@@ -211,6 +211,7 @@ func (app *App) commandGuide(args []string) error {
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintf(app.Stdout, "%s\n%s\n\n%s %s\n%s %d\n%s %s\n\n", terminal.Heading(spec.DisplayName), spec.Summary, terminal.Label("Managed image:"), spec.Image, terminal.Label("Default port:"), spec.Port, terminal.Label("Modes:"), strings.Join(spec.Modes, ", "))
 	fmt.Fprintf(app.Stdout, "%s\n  %s   %s\n", terminal.Heading("Walkthrough"), terminal.Label("Build:"), terminal.Command(identity.Command("build", spec.ID)))
+	fmt.Fprintf(app.Stdout, "  %s   %s\n", terminal.Label("Build:"), terminal.Command(identity.Command("build", "content-tools")))
 	for _, action := range spec.AfterBuild {
 		fmt.Fprintf(app.Stdout, "  %s %s\n           %s\n", terminal.Label("Content:"), terminal.Command(action.Command()), terminal.Muted(action.Description))
 	}
@@ -512,14 +513,9 @@ func (app *App) runComfyUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
-	}
-	if !*dryRun {
-		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("comfyui"); err != nil {
-			return err
-		}
 	}
 	for _, argument := range upstreamArgs {
 		for _, managed := range []string{"--listen", "--port", "--base-directory", "--models-directory", "--input-directory", "--output-directory", "--temp-directory", "--user-directory", "--database-url", "--cpu"} {
@@ -538,6 +534,9 @@ func (app *App) runComfyUI(args []string) error {
 	if *dryRun {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
+	}
+	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("comfyui"); err != nil {
+		return err
 	}
 	return app.startManaged(application, imageValue, command, *detach)
 }
@@ -628,14 +627,9 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
-	}
-	if !*dryRun {
-		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
-			return err
-		}
 	}
 	managed, err := app.managedCatalog()
 	if err != nil {
@@ -713,19 +707,16 @@ func (app *App) runLlama(mode string, args []string) error {
 		}
 		displayModel = fmt.Sprintf("%s (%s)", *presetID, content.ArtifactPath(dataRoot, artifact))
 	}
+	var routerContents string
 	if routerMode {
 		contents, installed, renderErr := runtime.RenderRouter(managed, dataRoot, *backend, platform.ModelProfile(profileValue, selectedNodes))
 		if renderErr != nil {
 			return renderErr
 		}
-		if *dryRun {
-			options.RouterPreset = filepath.Join((storage.Layout{Root: dataRoot}).Application("llama-cpp"), "models.ini")
-		} else {
-			options.RouterPreset, err = runtime.WriteRouter(dataRoot, contents)
-			if err != nil {
-				return err
-			}
-		}
+		// Plan the router mount now; publish its bytes only after API-key and
+		// complete runtime-command validation have succeeded.
+		routerContents = contents
+		options.RouterPreset = filepath.Join((storage.Layout{Root: dataRoot}).Application("llama-cpp"), "models.ini")
 		displayModel = "router: " + strings.Join(installed, ", ")
 	}
 	if apiKey != "" {
@@ -764,6 +755,14 @@ func (app *App) runLlama(mode string, args []string) error {
 	if *dryRun {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
+	}
+	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
+		return err
+	}
+	if routerMode {
+		if _, err := runtime.WriteRouter(dataRoot, routerContents); err != nil {
+			return err
+		}
 	}
 	return app.startManaged(application, options.Image, command, detach)
 }
@@ -971,6 +970,14 @@ func (app *App) resolveDevices(profile string, requested []string, explicit bool
 		return nil, err
 	}
 	return selected, nil
+}
+
+func (app *App) resolveDataDirForMutation(value string) (string, error) {
+	root, err := app.resolveDataDir(value, false)
+	if err != nil {
+		return "", err
+	}
+	return storage.ResolveDataRoot(root)
 }
 
 func (app *App) resolveDataDir(value string, prepare bool) (string, error) {

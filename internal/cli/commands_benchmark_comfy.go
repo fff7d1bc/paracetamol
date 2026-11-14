@@ -25,6 +25,7 @@ import (
 
 type comfyBenchmarkOptions struct {
 	profile, dataRoot, image, imageID, renderNode string
+	requestedNodes                                stringList
 	port, runs, seed                              int
 	unconfined, dryRun, nonInteractive            bool
 	memoryPolicy, kernelPolicy                    string
@@ -86,19 +87,12 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 	if err := platform.ValidateProfile(profile); err != nil {
 		return nil, nil, controlerr.Usage("%v", err)
 	}
-	selected, err := app.resolveDevices(profile, nodes, nodes != nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(selected) != 1 {
-		return nil, nil, controlerr.Usage("ComfyUI benchmark requires exactly one render node")
-	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return nil, nil, err
 	}
 	application, _ := config.ApplicationByID("comfyui")
-	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selected[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, positionals, nil
+	return &comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), requestedNodes: nodes, port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}, positionals, nil
 }
 
 func (app *App) benchmarkComfyUI(args []string) error {
@@ -117,6 +111,9 @@ func (app *App) benchmarkComfyUI(args []string) error {
 	}
 	if _, ok := managed.Benchmarks[bundleID]; !ok {
 		return controlerr.Usage("bundle %q has no managed benchmark", bundleID)
+	}
+	if err := app.resolveComfyBenchmarkDevice(options); err != nil {
+		return err
 	}
 	if err := app.requireBenchmarkAgreements(managed, []catalog.Bundle{bundle}, options.acceptLicense, options.dryRun, options.nonInteractive); err != nil {
 		return err
@@ -195,19 +192,12 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	if err := platform.ValidateProfile(profile); err != nil {
 		return err
 	}
-	selectedNodes, err := app.resolveDevices(profile, nodes, nodes != nil)
-	if err != nil {
-		return err
-	}
-	if len(selectedNodes) != 1 {
-		return controlerr.Usage("ComfyUI benchmark requires exactly one render node")
-	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
 	}
 	application, _ := config.ApplicationByID("comfyui")
-	options := comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), renderNode: selectedNodes[0], port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}
+	options := comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: firstNonEmpty(*imageFlag, application.Image), requestedNodes: nodes, port: port, runs: *runs, seed: *seed, unconfined: *unconfined, dryRun: *dryRun, nonInteractive: *nonInteractive, memoryPolicy: *memory, kernelPolicy: *kernel, cacheMode: *cache, acceptLicense: *acceptLicense}
 	managed, err := app.managedCatalog()
 	if err != nil {
 		return err
@@ -235,6 +225,9 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	}
 	if len(bundles) == 0 {
 		return controlerr.Usage("benchmark suite selection is empty")
+	}
+	if err := app.resolveComfyBenchmarkDevice(&options); err != nil {
+		return err
 	}
 	if err := app.requireBenchmarkAgreements(managed, bundles, options.acceptLicense, options.dryRun, options.nonInteractive); err != nil {
 		return err
@@ -396,6 +389,18 @@ func upsertComfySuiteEntry(entries []benchmark.ComfySuiteEntry, replacement benc
 }
 
 type comfySummary struct{ cold, warmMean float64 }
+
+func (app *App) resolveComfyBenchmarkDevice(options *comfyBenchmarkOptions) error {
+	selected, err := app.resolveDevices(options.profile, options.requestedNodes, options.requestedNodes != nil)
+	if err != nil {
+		return err
+	}
+	if len(selected) != 1 {
+		return controlerr.Usage("ComfyUI benchmark requires exactly one render node")
+	}
+	options.renderNode = selected[0]
+	return nil
+}
 
 func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bundle, options comfyBenchmarkOptions, runID string) (path string, summary comfySummary, returned error) {
 	if _, err := content.RequireBundle(managed, bundle, options.dataRoot); err != nil {

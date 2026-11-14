@@ -335,39 +335,6 @@ func (app *App) inspectContentBundle(store *verification.Store, managed catalog.
 	return statuses, nil
 }
 
-func (app *App) contentInstallDataDir(value string) (string, error) {
-	root, err := app.resolveDataDir(value, false)
-	if err != nil {
-		return "", err
-	}
-	// Resolve existing aliases even above a missing suffix, without creating
-	// it before approval. Mirror overlap checks require the canonical path.
-	ancestor := root
-	for {
-		if _, err := os.Lstat(ancestor); err == nil {
-			resolved, err := filepath.EvalSymlinks(ancestor)
-			if err != nil {
-				return "", err
-			}
-			info, err := os.Stat(resolved)
-			if err != nil {
-				return "", err
-			}
-			if !info.IsDir() {
-				return "", controlerr.New("data directory ancestor is not a directory: %s", ancestor)
-			}
-			suffix, err := filepath.Rel(ancestor, root)
-			if err != nil {
-				return "", err
-			}
-			return filepath.Join(resolved, suffix), nil
-		} else if !os.IsNotExist(err) || filepath.Dir(ancestor) == ancestor {
-			return "", err
-		}
-		ancestor = filepath.Dir(ancestor)
-	}
-}
-
 func (app *App) contentInstall(args []string) error {
 	set := app.flagsWithExamples("content install", usage("content", "install", "[TARGET [SELECTION]]", "[OPTIONS]"), []string{
 		identity.Command("content", "install"),
@@ -419,9 +386,6 @@ func (app *App) contentInstall(args []string) error {
 	if len(packFiles) > 0 && (target != "" || selection != "") {
 		return controlerr.Usage("--from-file cannot be combined with an explicit target")
 	}
-	if *localMirrorMove && *localMirror == "" {
-		return controlerr.Usage("--local-mirror-move requires --local-mirror")
-	}
 	var bundles []catalog.Bundle
 	if len(packFiles) > 0 {
 		var ids []string
@@ -440,8 +404,11 @@ func (app *App) contentInstall(args []string) error {
 		}
 	}
 	agreements := uniqueAgreements(managed, bundles)
-	dataRoot, err := app.contentInstallDataDir(*dataFlag)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
+		return err
+	}
+	if err := content.ValidateLocalMirror(*localMirror, dataRoot, *localMirrorMove); err != nil {
 		return err
 	}
 	artifacts := content.UniqueArtifacts(managed, bundles)
@@ -1271,7 +1238,7 @@ func (app *App) contentImport(args []string) error {
 	if strings.ToLower(filepath.Ext(packPath)) != ".json" {
 		return controlerr.Usage("import pack path must end in .json")
 	}
-	dataRoot, err := app.contentInstallDataDir(*dataFlag)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
 	}

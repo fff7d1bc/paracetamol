@@ -128,6 +128,9 @@ func Install(options InstallOptions) error {
 	if options.Image == "" {
 		options.Image = config.ContentToolsImage
 	}
+	if err := ValidateLocalMirror(options.LocalMirror, options.DataRoot, options.MoveFromMirror); err != nil {
+		return err
+	}
 	plan, err := Plan(options.DataRoot, options.Artifacts)
 	if err != nil {
 		return err
@@ -750,21 +753,54 @@ type localMirror struct {
 	reserved map[string]bool
 }
 
-func openMirror(root, dataRoot string, move bool) (localMirror, error) {
+// ValidateLocalMirror checks only the roots, without indexing or hashing mirror
+// content. Callers may use it before approval and during a non-mutating preview.
+func ValidateLocalMirror(root, dataRoot string, move bool) error {
+	_, err := resolveLocalMirror(root, dataRoot, move)
+	return err
+}
+
+func resolveLocalMirror(root, dataRoot string, move bool) (string, error) {
 	if root == "" {
-		return localMirror{}, nil
+		if move {
+			return "", controlerr.Usage("--local-mirror-move requires --local-mirror")
+		}
+		return "", nil
 	}
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		return localMirror{}, controlerr.New("cannot access local mirror %s: %v", root, err)
+		return "", controlerr.New("cannot access local mirror %s: %v", root, err)
 	}
 	resolved, err = filepath.Abs(resolved)
 	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", controlerr.New("cannot access local mirror %s: %v", root, err)
+	}
+	if !info.IsDir() {
+		return "", controlerr.New("local mirror is not a directory: %s", root)
+	}
+	data, err := storage.ResolveDataRoot(dataRoot)
+	if err != nil {
+		return "", err
+	}
+	if withinPath(data, resolved) || withinPath(resolved, data) {
+		return "", controlerr.New("local mirror and active data directory must not overlap")
+	}
+	return resolved, nil
+}
+
+func openMirror(root, dataRoot string, move bool) (localMirror, error) {
+	// Revalidate after approval and the downloader interlock; preview validation
+	// does not freeze either root or replace materialization's parent checks.
+	resolved, err := resolveLocalMirror(root, dataRoot, move)
+	if err != nil {
 		return localMirror{}, err
 	}
-	data, _ := filepath.Abs(dataRoot)
-	if withinPath(data, resolved) || withinPath(resolved, data) {
-		return localMirror{}, controlerr.New("local mirror and active data directory must not overlap")
+	if resolved == "" {
+		return localMirror{}, nil
 	}
 	index := make(map[string][]string)
 	err = filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, walkErr error) error {

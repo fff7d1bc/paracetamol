@@ -312,7 +312,7 @@ func TestInstallInterlocksBeforeEveryStagingPath(t *testing.T) {
 			options := InstallOptions{Runner: runner, DataRoot: root, Artifacts: []catalog.Artifact{artifact}, Environment: map[string]string{"XDG_RUNTIME_DIR": filepath.Join(t.TempDir(), "runtime")}}
 			if reuse == "mirror" {
 				// The interlock must run before even indexing the mirror.
-				options.LocalMirror = filepath.Join(t.TempDir(), "absent-mirror")
+				options.LocalMirror = t.TempDir()
 			}
 			err := Install(options)
 			if err == nil || !strings.Contains(err.Error(), "podman rm --force paracetamol-download-stale") {

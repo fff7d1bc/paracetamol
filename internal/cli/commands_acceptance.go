@@ -184,7 +184,7 @@ func (app *App) commandAcceptance(args []string) error {
 			return controlerr.New("acceptance checkpoint does not match the requested profile")
 		}
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, !*dryRun)
+	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 	if err != nil {
 		return err
 	}

@@ -150,6 +150,103 @@ func TestContentInstallDryRunStatesThatItDidNotMutateStorage(t *testing.T) {
 	}
 }
 
+func TestContentInstallValidatesMirrorBeforeApprovalAndDryRun(t *testing.T) {
+	for _, name := range []string{"missing", "regular-file", "dangling", "move-without-mirror", "overlap"} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(name+"/dry="+strconv.FormatBool(dryRun), func(t *testing.T) {
+				base := t.TempDir()
+				data, mirror := filepath.Join(base, "data"), filepath.Join(base, "mirror")
+				want := "cannot access local mirror"
+				switch name {
+				case "regular-file":
+					want = "not a directory"
+					if err := os.WriteFile(mirror, []byte("fixture"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				case "dangling":
+					if err := os.Symlink(filepath.Join(base, "absent"), mirror); err != nil {
+						t.Fatal(err)
+					}
+				case "move-without-mirror":
+					mirror, want = "", "requires --local-mirror"
+				case "overlap":
+					want = "must not overlap"
+					if err := os.Mkdir(mirror, 0o700); err != nil {
+						t.Fatal(err)
+					}
+					data = filepath.Join(mirror, "new", "data")
+				}
+				artifact := catalog.Artifact{ID: "model", Destination: "model.gguf", Target: "llama-models", Size: 1, SHA256: "0", License: catalog.License{Status: "unverified"}, Agreements: []string{"terms"}}
+				managed := catalog.Catalog{
+					Artifacts:  map[string]catalog.Artifact{"model": artifact},
+					Bundles:    map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{"model"}}},
+					Agreements: map[string]catalog.Agreement{"terms": {Name: "Example terms"}},
+				}
+				runner := &commandRunner{}
+				app, stdout, _ := testApp(t, runner)
+				app.catalog = &managed
+				app.Stdin = terminalPromptReader{Reader: strings.NewReader("yes\nyes\n")}
+				app.Environment["XDG_RUNTIME_DIR"] = filepath.Join(base, "runtime")
+				args := []string{"bundle", "--data-dir", data}
+				if mirror != "" {
+					args = append(args, "--local-mirror", mirror)
+				} else {
+					args = append(args, "--local-mirror-move")
+				}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				if err := app.contentInstall(args); err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("invalid mirror install = %v; want %q", err, want)
+				}
+				if stdout.Len() != 0 || len(runner.commands) != 0 {
+					t.Fatalf("invalid mirror crossed plan/approval/process boundary: %q, %v", stdout.String(), runner.commands)
+				}
+				for _, root := range []string{data, filepath.Join(base, "runtime")} {
+					if _, err := os.Lstat(root); !os.IsNotExist(err) {
+						t.Fatalf("invalid mirror created %s: %v", root, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestContentInstallMirrorDryRunKeepsWorstCaseDownloadPlan(t *testing.T) {
+	base := t.TempDir()
+	mirror, data := filepath.Join(base, "mirror"), filepath.Join(base, "data")
+	if err := os.Mkdir(mirror, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := []byte("fixture")
+	if err := os.WriteFile(filepath.Join(mirror, "model.gguf"), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	artifact := catalog.Artifact{ID: "model", Destination: "model.gguf", Target: "llama-models", Size: int64(len(contents)), SHA256: fmt.Sprintf("%x", sha256.Sum256(contents)), License: catalog.License{Status: "unverified"}}
+	managed := catalog.Catalog{
+		Artifacts: map[string]catalog.Artifact{"model": artifact},
+		Bundles:   map[string]catalog.Bundle{"bundle": {ID: "bundle", Application: "llama-cpp", Artifacts: []string{"model"}}},
+	}
+	runner := &commandRunner{}
+	app, stdout, _ := testApp(t, runner)
+	app.catalog = &managed
+	if err := app.contentInstall([]string{"bundle", "--data-dir", data, "--local-mirror", mirror, "--local-mirror-move", "--dry-run"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "Download: "+humanSize(artifact.Size)) || strings.Contains(stdout.String(), "Checking local mirror") {
+		t.Fatalf("mirror preview did not retain the unverified worst-case download size:\n%s", stdout.String())
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("mirror preview ran subprocesses: %v", runner.commands)
+	}
+	if got, err := os.ReadFile(filepath.Join(mirror, "model.gguf")); err != nil || !bytes.Equal(got, contents) {
+		t.Fatalf("mirror preview modified source: %q, %v", got, err)
+	}
+	if _, err := os.Lstat(data); !os.IsNotExist(err) {
+		t.Fatalf("mirror preview created data root: %v", err)
+	}
+}
+
 func TestContentInstallApprovalFailureLeavesDataRootAbsent(t *testing.T) {
 	for _, name := range []string{"terms", "risk", "declined", "cancelled"} {
 		t.Run(name, func(t *testing.T) {
@@ -174,7 +271,8 @@ func TestContentInstallApprovalFailureLeavesDataRootAbsent(t *testing.T) {
 				cancel()
 			}
 			root := filepath.Join(t.TempDir(), "data")
-			if err := app.contentInstall([]string{"bundle", "--data-dir", root}); err == nil {
+			mirror := t.TempDir()
+			if err := app.contentInstall([]string{"bundle", "--data-dir", root, "--local-mirror", mirror}); err == nil {
 				t.Fatal("unapproved install succeeded")
 			}
 			if _, err := os.Lstat(root); !os.IsNotExist(err) {
@@ -235,19 +333,19 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
 	}
-	if root, err := app.contentInstallDataDir(alias); err != nil || root != target {
+	if root, err := app.resolveDataDirForMutation(alias); err != nil || root != target {
 		t.Fatalf("existing alias = %q, %v", root, err)
 	}
 	underAlias := filepath.Join(alias, "nested", "data")
 	want := filepath.Join(target, "nested", "data")
-	if root, err := app.contentInstallDataDir(underAlias); err != nil || root != want {
+	if root, err := app.resolveDataDirForMutation(underAlias); err != nil || root != want {
 		t.Fatalf("missing root under alias = %q, %v; want %q", root, err, want)
 	}
 	if _, err := os.Lstat(filepath.Join(target, "nested")); !os.IsNotExist(err) {
 		t.Fatalf("resolution created missing suffix under alias: %v", err)
 	}
 	missing := filepath.Join(base, "absent")
-	if root, err := app.contentInstallDataDir(missing); err != nil || root != missing {
+	if root, err := app.resolveDataDirForMutation(missing); err != nil || root != missing {
 		t.Fatalf("missing root = %q, %v", root, err)
 	}
 	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
@@ -257,7 +355,7 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 	if err := os.Symlink(missing, dangling); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.contentInstallDataDir(dangling); err == nil {
+	if _, err := app.resolveDataDirForMutation(dangling); err == nil {
 		t.Fatal("dangling existing alias was accepted")
 	}
 	regular := filepath.Join(base, "file")
@@ -269,7 +367,7 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{filepath.Join(dangling, "child"), regular, filepath.Join(regular, "child"), loop, filepath.Join(loop, "child")} {
-		if root, err := app.contentInstallDataDir(invalid); err == nil {
+		if root, err := app.resolveDataDirForMutation(invalid); err == nil {
 			t.Fatalf("invalid data root %q resolved to %q", invalid, root)
 		}
 	}
