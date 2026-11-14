@@ -29,6 +29,16 @@
 !applications/llama-cpp/server-stream-keepalive.patch
 !applications/llama-cpp/server-speculative-metrics.patch
 !applications/llama-cpp/dflash-mtmd-position-gap.patch
+!applications/llama-cpp/kpool-prefix-retention.patch
+!applications/llama-cpp/test-kpool-prefix-layout.cpp
+!applications/llama-cpp/extract-kpool-prefix-test.sh
+!applications/llama-cpp/build-kpool-prefix-test.sh
+!applications/llama-cpp/recurrent-state-clear.patch
+!applications/llama-cpp/test-recurrent-state-clear.cpp
+!applications/llama-cpp/build-recurrent-state-clear-test.sh
+!applications/llama-cpp/qwen4exp-active-pools.patch
+!applications/llama-cpp/test-qwen4exp-active-pool.cpp
+!applications/llama-cpp/build-active-pool-test.sh
 !applications/llama-cpp/test-server-speculative-metrics.cpp
 !applications/llama-cpp/topk-moe-boundaries.patch
 !applications/llama-cpp/hip-qwen4exp-decode.patch

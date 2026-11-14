@@ -430,6 +430,142 @@ RUN printf '%s\n' \
     LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy && \
     LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-server-speculative-metrics
 
+# PR 32137, frozen at 54253df818eb8941ede14647bf412988e02c8027.
+# These are host-only layout changes. Apply them after the reviewed GPU build
+# and require unchanged backend bytes, not a second set of kernel settings.
+# Use a private index so source validation cannot refresh build-info's ordinary
+# index dependency. A changed base or patch stack requires deliberate review.
+# The shared reset hunk of PR 31913 is pinned at
+# 927a48d7d17a2facbfbf20e09e969631cf814f6d. SCALE(0) cannot clear NaN/Inf.
+# Characterize that actual old helper before applying the correction. The
+# unrelated DeepSeek hunk and hybrid-excluding upstream test are not imported.
+# Only commit 4161abc7209db6012fe2ab4badcaa49fa3e481ab of PR 32247 is used:
+# score active sequences' pools while preserving every sequence's new-pool
+# writes. New attention operations and NVIDIA row-list kernels are excluded.
+COPY applications/llama-cpp/kpool-prefix-retention.patch \
+    /opt/paracetamol/llama-kpool-prefix-retention.patch
+COPY applications/llama-cpp/test-kpool-prefix-layout.cpp \
+    applications/llama-cpp/extract-kpool-prefix-test.sh \
+    applications/llama-cpp/build-kpool-prefix-test.sh /opt/paracetamol/
+COPY applications/llama-cpp/recurrent-state-clear.patch \
+    /opt/paracetamol/llama-recurrent-state-clear.patch
+COPY applications/llama-cpp/test-recurrent-state-clear.cpp \
+    applications/llama-cpp/build-recurrent-state-clear-test.sh /opt/paracetamol/
+COPY applications/llama-cpp/qwen4exp-active-pools.patch \
+    /opt/paracetamol/llama-qwen4exp-active-pools.patch
+COPY applications/llama-cpp/test-qwen4exp-active-pool.cpp \
+    applications/llama-cpp/build-active-pool-test.sh /opt/paracetamol/
+RUN export GIT_OPTIONAL_LOCKS=0 \
+        GIT_INDEX_FILE=/tmp/paracetamol-host-pool.index && \
+    test ! -e "$GIT_INDEX_FILE" && \
+    git read-tree HEAD && \
+    git add --update -- . && \
+    git add -- common include src ggml tools tests && \
+    test "$(git write-tree)" = aeeb3f45e00deae964a7949da69f1389fa98176a && \
+    printf '%s\n' \
+        'dcd11fd53a7d608a628a6958aa7e89f0245826eec15fe557373953842fae0492  /opt/paracetamol/llama-kpool-prefix-retention.patch' \
+        '0230801b15720da628329b02693715d658a69be45fc4d03df398bed405283a61  /opt/paracetamol/llama-recurrent-state-clear.patch' \
+        '0e0819b2cfc8e65159b9a256342a3bb3df8057001aeeb845aeaaa2277ab39b56  /opt/paracetamol/llama-qwen4exp-active-pools.patch' \
+        | sha256sum -c - && \
+    ulimit -c 0 && \
+    sha256sum build/bin/libggml.so build/bin/libggml-base.so \
+        build/bin/libggml-cpu.so build/bin/libggml-hip.so build/bin/libggml-vulkan.so \
+        > /tmp/host-pool-backends.sha256 && \
+    sha256sum /opt/llama-install/lib/libggml.so /opt/llama-install/lib/libggml-base.so \
+        /opt/llama-install/lib/libggml-cpu.so /opt/llama-install/lib/libggml-hip.so \
+        /opt/llama-install/lib/libggml-vulkan.so \
+        > /tmp/host-pool-installed-backends.sha256 && \
+    bash /opt/paracetamol/build-recurrent-state-clear-test.sh \
+        baseline /opt/llama.cpp /opt/llama-install/lib /tmp/recurrent-clear-baseline && \
+    if ! LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/recurrent-clear-baseline/test-recurrent-state-clear --baseline-characterization \
+        > /tmp/recurrent-clear-baseline/characterization.log 2>&1; then \
+        cat /tmp/recurrent-clear-baseline/characterization.log >&2; exit 1; \
+    fi && \
+    grep -Fx 'PASS recurrent-state-clear graphs=6 poisoned-clears=2 empty-clears=2 extra-copy-rows=2 attention=unchanged mode=baseline-characterization' \
+        /tmp/recurrent-clear-baseline/characterization.log && \
+    if LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/recurrent-clear-baseline/test-recurrent-state-clear \
+        > /tmp/recurrent-clear-baseline/rejected.log 2>&1; then \
+        echo 'Unchanged reset incorrectly passed the candidate contract' >&2; exit 1; \
+    fi && \
+    if ! grep -Fx 'FAIL actual production build_rs clear operation' \
+        /tmp/recurrent-clear-baseline/rejected.log; then \
+        cat /tmp/recurrent-clear-baseline/rejected.log >&2; exit 1; \
+    fi && \
+    bash /opt/paracetamol/build-active-pool-test.sh \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/active-pool-baseline && \
+    if ! LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/active-pool-baseline/test-qwen4exp-active-pool --baseline \
+        > /tmp/active-pool-baseline/oracle.log 2>&1; then \
+        cat /tmp/active-pool-baseline/oracle.log >&2; exit 1; \
+    fi && \
+    grep -Fx 'PASS actual production active-kpool API oracle cases=56 mode=baseline' \
+        /tmp/active-pool-baseline/oracle.log && \
+    if LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/active-pool-baseline/test-qwen4exp-active-pool \
+        > /tmp/active-pool-baseline/rejected.log 2>&1; then \
+        echo 'Unchanged pool scoring incorrectly passed the candidate contract' >&2; exit 1; \
+    fi && \
+    if ! grep -Fx 'FAIL active pool graph shape idle-second' \
+        /tmp/active-pool-baseline/rejected.log; then \
+        cat /tmp/active-pool-baseline/rejected.log >&2; exit 1; \
+    fi && \
+    git apply --check /opt/paracetamol/llama-kpool-prefix-retention.patch && \
+    git apply /opt/paracetamol/llama-kpool-prefix-retention.patch && \
+    git add -- common include src ggml tools tests && \
+    test "$(git write-tree)" = 0e4534d7f989c402dafad53e09d816f32a9264af && \
+    git apply --check /opt/paracetamol/llama-qwen4exp-active-pools.patch && \
+    git apply /opt/paracetamol/llama-qwen4exp-active-pools.patch && \
+    git add -- common include src ggml tools tests && \
+    test "$(git write-tree)" = c2acb69ac63536cb67d14d3e14e1ca99bbb69adc && \
+    git apply --check /opt/paracetamol/llama-recurrent-state-clear.patch && \
+    git apply /opt/paracetamol/llama-recurrent-state-clear.patch && \
+    git add -- common include src ggml tools tests && \
+    test "$(git write-tree)" = 20d5c279af454b8bb9ba78fb7a8f4a0e93ded53c && \
+    bash /opt/paracetamol/build-kpool-prefix-test.sh \
+        /opt/llama.cpp /tmp/kpool-prefix-test && \
+    cmake --build build --config Release \
+        --target llama-common llama-server llama-cli llama-bench && \
+    sha256sum --check /tmp/host-pool-backends.sha256 && \
+    cmake --install build --config Release && \
+    sha256sum --check /tmp/host-pool-installed-backends.sha256 && \
+    find /opt/llama-install/bin -type f \
+        ! -name llama-cli ! -name llama-server ! -name llama-bench -delete && \
+    rm -rf /opt/llama-install/include /opt/llama-install/lib/cmake \
+        /opt/llama-install/lib/pkgconfig && \
+    bash /opt/paracetamol/build-recurrent-state-clear-test.sh \
+        candidate /opt/llama.cpp /opt/llama-install/lib /tmp/recurrent-clear-candidate && \
+    if ! LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/recurrent-clear-candidate/test-recurrent-state-clear \
+        > /tmp/recurrent-clear-candidate/oracle.log 2>&1; then \
+        cat /tmp/recurrent-clear-candidate/oracle.log >&2; exit 1; \
+    fi && \
+    grep -Fx 'PASS recurrent-state-clear graphs=6 poisoned-clears=2 empty-clears=2 extra-copy-rows=2 attention=unchanged mode=candidate' \
+        /tmp/recurrent-clear-candidate/oracle.log && \
+    bash /opt/paracetamol/build-active-pool-test.sh \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/active-pool-candidate && \
+    if ! LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/active-pool-candidate/test-qwen4exp-active-pool \
+        > /tmp/active-pool-candidate/oracle.log 2>&1; then \
+        cat /tmp/active-pool-candidate/oracle.log >&2; exit 1; \
+    fi && \
+    grep -Fx 'PASS actual production active-kpool API oracle cases=56 mode=candidate' \
+        /tmp/active-pool-candidate/oracle.log && \
+    if ! GGML_NO_BACKTRACE=1 LD_LIBRARY_PATH=/opt/llama-install/lib \
+        /tmp/active-pool-candidate/test-qwen4exp-active-pool --guards \
+        > /tmp/active-pool-candidate/guards.log 2>&1; then \
+        cat /tmp/active-pool-candidate/guards.log >&2; exit 1; \
+    fi && \
+    for guard_case in 1 2 3 4; do \
+        grep -Fx "PASS production assertion guard=$guard_case" /tmp/active-pool-candidate/guards.log \
+            || { cat /tmp/active-pool-candidate/guards.log >&2; exit 1; }; \
+    done && \
+    test "$(grep -c '^PASS production assertion guard=' /tmp/active-pool-candidate/guards.log)" = 4 && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-llama-native-policy && \
+    LD_LIBRARY_PATH=/opt/llama-install/lib /tmp/test-server-speculative-metrics && \
+    python -m pip check
+
 FROM ${ROCM_RUNTIME_IMAGE} AS llama-cpp
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -475,7 +611,8 @@ LABEL org.opencontainers.image.title="Paracetamol llama.cpp" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.revision="${LLAMA_CPP_COMMIT}" \
       io.github.fff7d1bc.paracetamol.rocm.version="${ROCM_VERSION}" \
-      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,hip-mmq-activation-sum-compat,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics,dflash-mtmd-position-gap" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.source-tree="20d5c279af454b8bb9ba78fb7a8f4a0e93ded53c" \
+      io.github.fff7d1bc.paracetamol.llama-cpp.patches="hip-apu-host-buffer,quantized-kv-flash-attention,qwen4exp-direct-reader,process-allocation-policy,hip-strix-halo-graph-recapture,hip-strix-halo-tiled-gdn,hip-qwen4exp-qsa-kernels,hip-qwen4exp-pipeline,hip-qwen4exp-graph-optimizations,hip-mmq-activation-sum-compat,server-stream-keepalive,topk-moe-boundaries,hip-qwen4exp-decode,server-speculative-metrics,dflash-mtmd-position-gap,kpool-prefix-retention,qwen4exp-active-pools,recurrent-state-clear" \
       io.github.fff7d1bc.paracetamol.gpu.targets="gfx1150,gfx1151,gfx1200,gfx1201"
 
 WORKDIR /data

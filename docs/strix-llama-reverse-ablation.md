@@ -265,6 +265,8 @@ unmeasured here, not explained away by the negative J48 result.
 Before resuming, inspect the retained manifests and ownership state rather
 than inferring the newest image or process from a tag or an old PID. If evidence
 is unavailable, state that limitation and create a new versioned fixture. Do
-not claim an exact replay from this prose alone. The retained kits are not a supported engine or
-new public command surface. Production remains `ded522f-r77` with its existing
-patches and defaults.
+not claim an exact replay from this prose alone. The retained kits are not a
+supported engine or new public command surface. This screen left the
+then-current `ded522f-r77` production image unchanged. The later
+[pool/reset follow-up](hardware-acceptance.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
+has separate source changes and acceptance evidence.

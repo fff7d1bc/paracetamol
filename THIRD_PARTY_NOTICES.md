@@ -82,6 +82,22 @@ application. The kit distributes neither an image nor model weights.
   removal gate are recorded in `docs/upgrading.md`. Only two comment lines are
   qualified locally to avoid an unbounded output-correctness guarantee; its
   executable code and the global cache-consecutivity guards are unchanged.
+  The k-pool prefix-retention change and its upstream rollback test come from
+  PR 32137 at `54253df818eb8941ede14647bf412988e02c8027`, under MIT.
+  It preserves the unaffected layout before a sequence edit and rescans the
+  tail. Its optional full-rebuild verifier is disabled in normal operation.
+  Paracetamol adds an independent integer-layout oracle, deliberate broken
+  controls and sanitizer checks without changing the upstream patch bytes.
+  The active-sequence pool-scoring change is only commit
+  `4161abc7209db6012fe2ab4badcaa49fa3e481ab` from PR 32247, under MIT.
+  Global new-pool writes and idle representatives remain protected. The PR's
+  subsequent attention operations and NVIDIA row-list kernels are excluded.
+  The shared recurrent-state reset correction is the `src/llama-graph.cpp`
+  hunk of PR 31913 at `927a48d7d17a2facbfbf20e09e969631cf814f6d`, under MIT.
+  It writes zero instead of multiplying previous state by zero. The unrelated
+  DeepSeek-specific change and upstream test that excludes hybrid models are
+  not imported. A local actual-helper regression covers finite and nonfinite
+  reset rows without poisoning or clearing attention/indexer state.
   The top-k MoE allocation-lifetime endpoint correction derives from the
   MIT-licensed Strix fork commit `f6ade7dc76c400067c2918b4132fede4198615cf`.
   Local bounds checks also protect terminal and partial normalization groups.

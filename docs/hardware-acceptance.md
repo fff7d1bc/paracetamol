@@ -31,6 +31,136 @@ this document.
 | Ubuntu 26.04, Ryzen AI Max+ 395, 128 GB LPDDR5X-8000 | Strix Halo, `gfx1151` | DwarfStar DeepSeek V4 Flash and the managed Qwen3.6 llama.cpp presets |
 | SteamOS 3.8, Radeon RX 9070 XT 16 GB | RDNA 4, `gfx1201` | ComfyUI and the Qwen3 0.6B llama.cpp smoke |
 
+### Strix Halo Flash-Next pool and reset corrections (2026-11-14)
+
+Accepted on 2026-11-14 within the scope below, including the inconclusive
+one-shot Go comparison. The delivery revision is the commit adding this
+record. This is not a universal quality or performance guarantee.
+
+The follow-up keeps upstream `ded522f8304554317e7ff8f88698dbbbca5425aa`
+with eighteen patches and combined source tree
+`20d5c279af454b8bb9ba78fb7a8f4a0e93ded53c`. The normal locally built image
+is `llama-cpp-ubuntu26.04-rocm10.1-ded522f-r78`, immutable ID
+`23e611e2bb46213fc7743f04ed2aff0a2c0d3ce97b745c22ee4f499d75f20766`.
+Its comparator is accepted r77 below, not pristine upstream.
+
+Three narrow source additions retain unaffected k-pool prefixes after edits
+(PR 32137 at `54253df818eb8941ede14647bf412988e02c8027`), score only active
+sequences while protecting global new-pool writes and idle representatives
+(only `4161abc7209db6012fe2ab4badcaa49fa3e481ab` from PR 32247), and explicitly
+zero shared recurrent state (the shared `build_rs` hunk of PR 31913 at
+`927a48d7d17a2facbfbf20e09e969631cf814f6d`). Later row-list attention/NVIDIA
+kernels and the DeepSeek-specific reset change are excluded. These are graph,
+layout and reset changes: FILL replaces SCALE as a shared device operation,
+even though the existing kernel-library bytes remain unchanged. Clearing
+NaN/Inf does not diagnose what produced the first nonfinite value.
+
+Separate component ABBA comparisons against r77 give these bounded results:
+
+| Isolated component/workload | Native decode time | HTTP wall time |
+| --- | ---: | ---: |
+| Prefix retention | 5.61% lower | 3.29% lower |
+| Active leaf beside a resident idle 100K sequence, four-slot pool | 6.05% lower | 6.09% lower |
+
+Full canonical assistant messages, including reasoning, and recorded counts
+match within each component comparison. The active-pool result is not four
+concurrent clients' throughput. Setup and idle-slot reactivation checks are
+untimed, and the layout verifier is disabled in normal timed images. These
+separate workload/image gains are not additive or a combined-r78 speedup.
+
+The final comparison runs r77, r78, r78, r77. Each arm makes the same four
+requests: a cold 100K prompt, its exact repeat, a late edit and a true append.
+Cold means uncached KV state, not a cold filesystem cache. All four requests
+count toward the timings; initial model loading does not.
+HTTP wall time is summed per request, not whole campaign elapsed time.
+Controller startup, fixture preparation, inter-request probes and cleanup are
+outside that metric.
+
+| Final combined normal-image ABBA, totals of two arms per image | r77 | r78 |
+| --- | ---: | ---: |
+| Generated tokens | 20,584 | 20,584 |
+| Native decode time | 494.202 s | 464.831 s |
+| Aggregate native decode throughput | 41.651 tokens/s | 44.283 tokens/s |
+| Native prefill time | 545.947 s | 546.407 s |
+| HTTP wall time, excluding model loading | 1,040.538 s | 1,011.649 s |
+
+Native decode time is **5.94% lower**, with both AB/BA directions improving.
+Summed output tokens divided by summed decode time give **6.32% more native
+decode throughput**. HTTP wall time is **2.78% lower**. Prefill is effectively
+unchanged in this screen. Complete canonical assistant objects, including
+reasoning and all other fields, request hashes and input/cache/output/draft
+counts match across all four arms. The frozen five-percent pooled decode
+benefit gate passes. Two observations per image are a bounded comparison,
+not a performance distribution or a general application-speed guarantee.
+
+The normal build passes the prefix integer oracle's 28,032 updates, four
+broken-layout controls and sanitizers, the 56-case actual-API pool oracle and
+four production assertion guards, and the six-graph shared-reset CPU gate.
+Baseline controls must pass their old-policy characterization and fail the
+candidate contract. Isolated actual-helper reset controls pass sixty graphs
+per backend per arm on CPU, ROCm and Vulkan: finite/NaN/Inf reset rows,
+zero-sized clears, extra copies, unowned recurrent words and finite unchanged
+attention/indexer state. Device runs require selected-device storage/compute
+and reject CPU fallback. These operator checks do not prove full-model quality.
+
+Four populated native state comparisons on the combined source have NMSE 0
+and matching top-1. This is an 8K state smoke, not a four-slot near-limit proof.
+The normal-image nine-arm bounded gateway campaign has 65 requests including
+nine warmups: sixty successes and five intentional cancellations. Both
+disconnect modes return all four native slots to idle, then recovery succeeds.
+Four-worker output/history isolation passes with intentional length limits;
+it is not completed-task coding quality. A separate initial replay also passes.
+Dense Qwen3.8 27B ROCm and plain Flash-Next Vulkan controls remain bounded
+reply/tool checks, not full-model matrices.
+
+Near-pool retrieval processes 247,210 cold tokens and reuses 247,206 on exact
+repeat, evaluating four new tokens. The edited-value turn changes reasoning
+effort from `xhigh` to `medium` and fully reprocesses 247,168 tokens. It is not
+warm-cache or isolated rewind evidence. Two true appends reach 251,850 and
+256,232 input tokens, reusing 247,705 and 252,088 and evaluating 4,145 and
+4,144 new tokens. Complete requests, assistant messages including reasoning,
+and native input/cache/output/draft counts match accepted r77 in all these
+corresponding cases. No long-context timing gain is inferred.
+
+Four image/unchanged-history/changed-media/text-recovery cases match r77 in
+complete assistant objects and native bodies/counters, excluding only response
+IDs/creation times and timing durations/rates. All eight recurrent warning
+bodies and twelve other warnings match after removing only PID/timestamps.
+The original wrapper retains exit 1 because its exact-image classifier does
+not recognize r78. A separately reviewed extension adds only this immutable
+image ID. All thirty fixtures pass, including unknown-image rejection.
+Offline reclassification finds eight reviewed recurrent warnings, twelve other
+retained warnings and zero unexpected errors. The reviewed lines exactly equal
+the original eight rejected lines. Warning and error patterns are unchanged,
+and the original failure remains retained. This is bounded vision, not
+near-limit vision.
+
+One-shot Python coding passes all three hidden tests in both images, with
+identical full assistant messages and 2,724 output tokens. Go is inconclusive.
+r78 exhausts the unchanged 16,384-token ceiling without final code. r77 stops
+at 14,374 tokens but returns code with a heap-pop bug that loops in hidden
+tests. Inputs, gateway sampling and private toolchain identities match. Both
+failures remain recorded. This is neither a coding pass nor evidence of a
+systematic engine fault or successful-baseline-to-candidate quality regression.
+
+CPU metadata confirms exact source identities and byte-identical installed
+old/new `libggml`, base, CPU, HIP and Vulkan libraries. Compiler hashes/versions,
+CMake configuration and collected apt/pip manifests match. Inspected native
+runtime dependency hashes match except for the intended `libllama.so` change
+and its versioned alias. Entrypoint, load policy and templates match. Build and
+installed identities remain separate. This is not a complete SDK filesystem
+identity or general numerical-equivalence claim.
+
+The policy is unchanged: regular Unsloth Flash-Next UD-Q4_K_XL through the
+ordinary gateway, ROCm 10.1, F16 K/V, vision, four slots sharing 262144 tokens,
+batch/microbatch 2048 and greedy DFlash2 depth three. Model bytes, samplers,
+precision, host power and swap policy are unchanged. Completed runs remain
+above the 8 GiB memory guard. The minimum is 13.839 GiB during append. No new
+kernel fault or safety-guard stop is recorded, and owned cleanup is retained.
+Physical evidence is `gfx1151`-only. The other compiled targets remain deferred.
+Private receipts, original failures and review copies remain under ignored
+`build/qwen4exp-kpool-screen-20261114/`.
+
 ### Strix Halo Flash-Next prefill recovery (2026-11-14)
 
 Accepted on 2026-11-14. The delivery revision is the commit adding this
@@ -7156,8 +7286,8 @@ local source image.
 | Hunyuan T2V | `hunyuan-video-1.5-t2v-480p-cfg-distilled` | pending | pending | pending | pending |
 | Hunyuan I2V | `hunyuan-video-1.5-i2v-480p-step-distilled` | pending | pending | pending | pending |
 | llama.cpp offload smoke | `llama-qwen-qwen3-0.6b-q8-0` | pending | pending | pending | pending |
-| llama.cpp regular Flash-Next DFlash2 | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2`, greedy depth three; populated retrieval, history, tools, reasoning, cancellation and vision | N/P by backend/profile policy | N/P by backend/profile policy | accepted 2026-11-14 within the [r77 record's scope](#strix-halo-flash-next-prefill-recovery-2026-11-14) | N/P by backend/profile policy |
-| llama.cpp regular Flash-Next plain control | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, same target without speculation; ROCm protocol/cancellation control and short Vulkan reply/tool smoke | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-11-14 for the bounded [r77 controls](#strix-halo-flash-next-prefill-recovery-2026-11-14), not a full Vulkan matrix | ROCm N/P by model policy, Vulkan pending |
+| llama.cpp regular Flash-Next DFlash2 | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2`, greedy depth three; populated retrieval, history, tools, reasoning, cancellation and vision | N/P by backend/profile policy | N/P by backend/profile policy | accepted 2026-11-14 within the [r78 record's scope](#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14) | N/P by backend/profile policy |
+| llama.cpp regular Flash-Next plain control | `unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl`, same target without speculation; ROCm protocol/cancellation control and short Vulkan reply/tool smoke | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-11-14 for the bounded [r78 controls](#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14), not a full Vulkan matrix | ROCm N/P by model policy, Vulkan pending |
 | llama.cpp regular dense Qwen3.8 | `unsloth-qwen3.8-27b-ud-q8-k-xl`, short completion and nested tool round trip without speculation | pending, subject to model/context capacity | pending, subject to model/context capacity | short ROCm reply/tool control accepted 2026-11-14; not full dense-model acceptance | pending |
 | llama.cpp Huihui dense Qwen3.8 | `huihui-ai-qwen3.8-27b-abliterated-ud-q8-k-xl`, ordinary dense policy without MTP | pending | pending | accepted 2026-10-22 for ROCm 32K retrieval and short Vulkan/API compatibility at 256K allocation; native Maki off passes, xhigh final-answer miss recorded | pending |
 | llama.cpp Huihui Flash-Next | `huihui-ai-qwen3.8-flash-next-125b-a6b-abliterated-v2-ud-q4-k-xl`, shared regular Flash-Next policy with off, low, medium and xhigh | ROCm N/P by model policy, Vulkan requires high-memory host offload | ROCm N/P by model policy, Vulkan requires high-memory host offload | accepted 2026-10-16 on ROCm at 256K capacity and Vulkan at 32K input | ROCm N/P by model policy, Vulkan pending |

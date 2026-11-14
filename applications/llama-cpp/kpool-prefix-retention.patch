@@ -1,0 +1,264 @@
+diff --git a/src/llama-memory-hybrid-idx.cpp b/src/llama-memory-hybrid-idx.cpp
+index da17476494e..e49400684f3 100644
+--- a/src/llama-memory-hybrid-idx.cpp
++++ b/src/llama-memory-hybrid-idx.cpp
+@@ -68,7 +68,10 @@ llama_memory_hybrid_idx::llama_memory_hybrid_idx(
+             model, no_alloc, hparams_idx, type_k, type_v, v_trans, offload, unified,
+             kv_size, n_seq_max, n_swa, swa_type,
+             nullptr, filter_idx, nullptr, nullptr, "idx_");
+-    }()) {}
++    }()) {
++    const char * LLAMA_KPOOL_VERIFY = getenv("LLAMA_KPOOL_VERIFY");
++    kpool_verify = LLAMA_KPOOL_VERIFY ? atoi(LLAMA_KPOOL_VERIFY) != 0 : false;
++}
+ 
+ llama_memory_context_ptr llama_memory_hybrid_idx::init_batch(llama_batch_allocr & balloc, uint32_t n_ubatch, bool embd_all) {
+     // note: repeats llama_memory_hybrid::init_batch, as the indexer needs the attention slot infos that the base context hides
+@@ -371,6 +374,40 @@ int64_t kpool_rank(const std::vector<std::pair<llama_pos, uint32_t>> & cells, ll
+     return it != cells.end() && it->second == cell && it->first == pos ? it - cells.begin() : -1;
+ }
+ 
++// adds the pools that start at or after sq.j_next
++void kpool_scan(llama_memory_hybrid_idx::kpool_layout::seq & sq, uint32_t kpool, bool by_order) {
++    // Pools start at the first valid token
++    size_t j = sq.j_next;
++    if (by_order) {
++        // consecutive cells in sequence order, whatever their positions
++        for (; j + kpool <= sq.cells.size(); j += kpool) {
++            sq.pools.push_back((uint32_t) j);
++        }
++    } else {
++        while (j + kpool <= sq.cells.size()) {
++            const llama_pos p0 = sq.cells[j].first;
++            if ((p0 - sq.pos_min) % (llama_pos) kpool != 0) {
++                ++j;
++                continue;
++            }
++            bool ok = true;
++            for (uint32_t k = 1; k < kpool; ++k) {
++                if (sq.cells[j + k].first != p0 + (llama_pos) k) {
++                    ok = false;
++                    break;
++                }
++            }
++            if (ok) {
++                sq.pools.push_back((uint32_t) j);
++                j += kpool;
++            } else {
++                ++j;
++            }
++        }
++    }
++    sq.j_next = j;
++}
++
+ }
+ 
+ llama_memory_hybrid_idx::~llama_memory_hybrid_idx() = default;
+@@ -412,52 +449,48 @@ const llama_memory_hybrid_idx::kpool_layout & llama_memory_hybrid_idx::kpool_lay
+ 
+         sq.strm = unified ? 0 : mem_idx->get_stream(s);
+ 
+-        if (mem_idx_stale[s] == POS_CLEAN && !sq.cells.empty() && !sp.empty() &&
+-                sq.pos_min == sp.begin()->first) {
+-            for (auto it = sp.upper_bound(sq.cells.back()); it != sp.end(); ++it) {
++        // an append (POS_CLEAN) or an edit after pos_min keeps every cell and pool before the stale position
++        // speculative decoding edits the end of the sequence on each rejected draft, a full rebuild there costs O(n_ctx) per step
++        const llama_pos stale = mem_idx_stale[s];
++        bool keep = !sq.cells.empty() && !sp.empty() && sq.pos_min == sp.begin()->first && stale > sq.pos_min;
++        if (keep) {
++            auto it = sp.upper_bound(sq.cells.back());
++            if (stale != POS_CLEAN) {
++                const auto cut = std::lower_bound(sq.cells.begin(), sq.cells.end(), std::make_pair(stale, uint32_t(0)));
++                sq.cells.erase(cut, sq.cells.end());
++                while (!sq.pools.empty() && sq.pools.back() + kpool > sq.cells.size()) {
++                    sq.pools.pop_back();
++                }
++                sq.j_next = sq.pools.empty() ? 0 : sq.pools.back() + kpool;
++                it = sp.lower_bound(std::make_pair(stale, uint32_t(0)));
++            }
++            for (; it != sp.end(); ++it) {
+                 sq.cells.push_back(*it);
+             }
++            keep = sq.cells.size() == sp.size();
+         }
+ 
+-        // the appended tail accounts for every cell only if nothing before it was dropped, but an edit can
+-        // regroup a sequence without changing its cell count, so a stale sequence must rebuild regardless
+-        if (sq.cells.size() != sp.size() || mem_idx_stale[s] != POS_CLEAN) {
++        // a new sequence, an edit at or before pos_min, or cells that do not match: group the whole sequence again
++        if (!keep) {
+             sq.cells.assign(sp.begin(), sp.end());
+             sq.pools.clear();
+             sq.j_next  = 0;
+             sq.pos_min = sp.empty() ? 0 : sp.begin()->first;
+         }
+ 
+-        // Pools start at the first valid token
+-        size_t j = sq.j_next;
+-        if (hparams_idx.indexer_kpool_by_order) {
+-            // consecutive cells in sequence order, whatever their positions
+-            for (; j + kpool <= sq.cells.size(); j += kpool) {
+-                sq.pools.push_back((uint32_t) j);
+-            }
+-        } else {
+-            while (j + kpool <= sq.cells.size()) {
+-                const llama_pos p0 = sq.cells[j].first;
+-                if ((p0 - sq.pos_min) % (llama_pos) kpool != 0) {
+-                    ++j;
+-                    continue;
+-                }
+-                bool ok = true;
+-                for (uint32_t k = 1; k < kpool; ++k) {
+-                    if (sq.cells[j + k].first != p0 + (llama_pos) k) {
+-                        ok = false;
+-                        break;
+-                    }
+-                }
+-                if (ok) {
+-                    sq.pools.push_back((uint32_t) j);
+-                    j += kpool;
+-                } else {
+-                    ++j;
+-                }
++        kpool_scan(sq, kpool, hparams_idx.indexer_kpool_by_order);
++
++        if (kpool_verify) {
++            kpool_layout::seq ref;
++            ref.cells.assign(sp.begin(), sp.end());
++            ref.pos_min = sp.empty() ? 0 : sp.begin()->first;
++            kpool_scan(ref, kpool, hparams_idx.indexer_kpool_by_order);
++            if (ref.cells != sq.cells || ref.pools != sq.pools || ref.j_next != sq.j_next || ref.pos_min != sq.pos_min) {
++                LLAMA_LOG_ERROR("%s: seq %d: k-pool layout differs from a full rebuild (stale %d, cells %zu/%zu, pools %zu/%zu)\n",
++                        __func__, s, (int) stale, sq.cells.size(), ref.cells.size(), sq.pools.size(), ref.pools.size());
++                GGML_ABORT("k-pool layout verification failed");
+             }
+         }
+-        sq.j_next = j;
+ 
+         lay.n_pool_real += (uint32_t) sq.pools.size();
+     }
+diff --git a/src/llama-memory-hybrid-idx.h b/src/llama-memory-hybrid-idx.h
+index 59940dbb841..7f34bc1663f 100644
+--- a/src/llama-memory-hybrid-idx.h
++++ b/src/llama-memory-hybrid-idx.h
+@@ -86,7 +86,8 @@ class llama_memory_hybrid_idx : public llama_memory_hybrid {
+ 
+     // Which cells of a sequence make up which pool of kpool consecutive positions (or cells, in order mode).
+     // It is kept here because it outlives the batch: pools are fixed by the positions relative to the
+-    // sequence's first one, so a ubatch only ever appends to it. Sequence edits drop it, see mem_idx_stale.
++    // sequence's first one, so a ubatch only ever appends to it. A sequence edit drops it from the stale
++    // position on, or all of it for an edit at or before the first position, see mem_idx_stale.
+     struct kpool_layout;
+ 
+     const kpool_layout & kpool_layout_update();
+@@ -121,6 +122,9 @@ class llama_memory_hybrid_idx : public llama_memory_hybrid {
+     // unique_ptr because kpool_layout is incomplete here
+     std::unique_ptr<kpool_layout> kpool_lay;
+ 
++    // LLAMA_KPOOL_VERIFY=1 checks every layout update against a full rebuild
++    bool kpool_verify = false;
++
+     // seq_id < 0 stales every sequence, p0 < 0 stales the sequence from its first position
+     void mem_idx_stale_set(llama_seq_id seq_id, llama_pos p0);
+ 
+diff --git a/tests/test-llama-archs.cpp b/tests/test-llama-archs.cpp
+index 1f4c8a46b2b..52d1575234b 100644
+--- a/tests/test-llama-archs.cpp
++++ b/tests/test-llama-archs.cpp
+@@ -13,6 +13,7 @@
+ #include <cmath>
+ #include <cstddef>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <cstdint>
+ #include <filesystem>
+@@ -984,6 +985,68 @@ static bool check_causal_attn_toggle(
+     return ok;
+ }
+ 
++static void set_env(const char * name, const char * value) {
++#ifdef _WIN32
++    _putenv_s(name, value);
++#else
++    setenv(name, value, 1);
++#endif
++}
++
++// speculative decoding: each step decodes a token and 0 to n_draft_max drafts, then rejects the drafts
++// the logits of the token must match a decode without drafts, and LLAMA_KPOOL_VERIFY checks each k-pool layout update
++static double check_draft_rollback(llama_model * model, const std::vector<llama_token> & tokens, const std::vector<float> & logits_ref) {
++    const uint32_t n_vocab     = llama_vocab_n_tokens(llama_model_get_vocab(model));
++    const uint32_t n_tokens    = tokens.size();
++    const uint32_t n_draft_max = 2;
++
++    llama_context_params ctx_params = llama_context_default_params();
++    ctx_params.n_ctx           = 0;
++    ctx_params.n_threads       = 4;
++    ctx_params.n_threads_batch = 4;
++    ctx_params.n_ubatch        = 64;
++    ctx_params.n_rs_seq        = n_draft_max;
++
++    set_env("LLAMA_KPOOL_VERIFY", "1");
++    llama_context_ptr lctx(llama_init_from_model(model, ctx_params));
++    set_env("LLAMA_KPOOL_VERIFY", "0");
++    if (!lctx) {
++        throw std::runtime_error("failed to create llama context");
++    }
++
++    common_batch batch(lctx.get());
++    for (uint32_t pos = 0; pos < n_tokens/2; pos++) {
++        batch.add(tokens[pos], pos, 0, false);
++    }
++    if (llama_process(lctx.get(), LLAMA_PROCESS_TYPE_DECODE, batch.get())) {
++        throw std::runtime_error("failed to decode batch");
++    }
++
++    std::vector<float> logits;
++    std::vector<float> ref;
++    for (uint32_t pos = n_tokens/2; pos < n_tokens; pos++) {
++        batch.clear();
++        batch.add(tokens[pos], pos, 0, true);
++        const uint32_t n_draft = pos % (n_draft_max + 1);
++        for (uint32_t i = 1; i <= n_draft; i++) {
++            batch.add((tokens[pos] + i) % n_vocab, pos + i, 0, true);
++        }
++        if (llama_process(lctx.get(), LLAMA_PROCESS_TYPE_DECODE, batch.get())) {
++            throw std::runtime_error("failed to decode batch");
++        }
++
++        const float * logits_ith = llama_get_logits_ith(lctx.get(), 0);
++        logits.insert(logits.end(), logits_ith, logits_ith + n_vocab);
++        ref.insert(ref.end(), logits_ref.begin() + (size_t) pos*n_vocab, logits_ref.begin() + (size_t) (pos + 1)*n_vocab);
++
++        if (!llama_memory_seq_rm(llama_get_memory(lctx.get()), 0, pos + 1, -1)) {
++            throw std::runtime_error("failed to reject the drafts");
++        }
++    }
++
++    return nmse(ref, logits);
++}
++
+ static bool moe_mandatory(const llm_arch arch) {
+     switch (arch) {
+         case LLM_ARCH_FLINT:
+@@ -1409,6 +1472,18 @@ static int test_backends(const std::string & arch_filter, const size_t seed, con
+                             }
+                             test_ok = false;
+                         }
++
++                        // the k-pool layout is updated in place when drafts are rejected
++                        // TODO: the meta backend aborts with n_rs_seq > 0 (view of permuted tensor not implemented)
++                        if ((arch == LLM_ARCH_QWEN4EXP || arch == LLM_ARCH_GLM5_NEXT) && dc.split_mode != LLAMA_SPLIT_MODE_TENSOR) {
++                            const double nmse_rollback = check_draft_rollback(model_and_ctx_dev.first.get(), tokens, logits_dev);
++                            if (!(nmse_rollback <= 1e-4)) {
++                                if (test_ok) {
++                                    status_nmse = "\033[1;31mFAIL\033[0m (rollback)";
++                                }
++                                test_ok = false;
++                            }
++                        }
+                     }
+ 
+                     if (llama_arch_supports_save(arch) && dc.split_mode != LLAMA_SPLIT_MODE_TENSOR) {

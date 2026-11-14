@@ -35,6 +35,16 @@ establish a foundation-caused inference speed change. See the
 [bounded acceptance record](hardware-acceptance.md#strix-halo-ubuntu-foundation-refresh-2026-11-13)
 for scope and deferred hardware checks.
 
+## Flash-Next pool and reset corrections (2026-11-14)
+
+The `ded522f-r78` follow-up adds three reviewed graph/layout patches without
+changing the upstream pin, model bytes, precision or runtime defaults. The
+[acceptance record](hardware-acceptance.md#strix-halo-flash-next-pool-and-reset-corrections-2026-11-14)
+separates component results from the combined 100K comparison, native reset
+controls, populated histories and the inconclusive one-shot Go screen. The
+current stack has eighteen patches. Their exact scopes and removal conditions
+are listed below.
+
 ## Flash-Next prefill recovery (2026-11-14)
 
 The `ded522f-r77` follow-up keeps the upstream pin, fifteen-patch stack,
@@ -701,6 +711,24 @@ protected behavior is fixed.
 | `hip-qwen4exp-decode.patch` | Fuses the single-token Qwen4exp convolution, q/k normalization, gates, recurrent update and weighted norm on exact `gfx1151`. Folds HC gates into the existing norm/injection fusion. Matches upstream's F32 normalization order and retains F16 KV and the existing QSA policy, with explicit shape, consumer, lifetime and alias guards. | An upstream equivalent passes the positive and fallback operator cases, actual model activation, populated state restore, near-256K requests and older-model controls while retaining the measured decode benefit. Do not substitute a post-only HC fusion that displaces the larger prefill fusion. |
 | `server-speculative-metrics.patch` | Local reporting-only change exposing the existing `n_draft_verif_steps` as `timings.draft_verif_steps`. The gateway records it as optional request metadata. This counts accounted rounds, not every verification attempt or replay. | Upstream exposes the equivalent explicit counter and the matching-source CPU serialization fixture passes. Do not estimate it from draft-token counts. |
 | `dflash-mtmd-position-gap.patch` | Carries [PR 30220](https://github.com/ggml-org/llama.cpp/pull/30220) at `73647e8ade6fb4293d221c4b92aafb7e82976418`. Seeds missing DFlash draft-cache logical positions with zero target-feature rows after M-RoPE media bypasses draft injection. Target image encoding, target verification, model bytes, samplers and precision remain unchanged. | The selected upstream pin fills the equivalent draft-cache gaps and passes image decoding, unchanged/changed-media history, actual prefix reuse, natural text recovery, populated near-256K and relevant slot/rewind checks without draft-process errors. Requalify remaining cross-request/slot limitations; do not remove it merely because the earlier pinned-image skip or `pos_next()` change is present. |
+| `kpool-prefix-retention.patch` | Carries [PR 32137](https://github.com/ggml-org/llama.cpp/pull/32137) at `54253df818eb8941ede14647bf412988e02c8027`, including its rollback test. Retains unaffected layout cells and complete pools before a sequence edit, then rescans the tail. `LLAMA_KPOOL_VERIFY=1` checks against a full rebuild and must remain disabled for normal timing. No precision or kernel implementation changes. | Equivalent upstream prefix retention passes the independent integer oracle, broken-layout controls, sanitizers, actual stale/rollback and restore paths, populated gateway histories and applicable device checks. The verifier shares the scanner and does not replace the independent oracle. |
+| `qwen4exp-active-pools.patch` | Only commit `4161abc7209db6012fe2ab4badcaa49fa3e481ab` of [PR 32247](https://github.com/ggml-org/llama.cpp/pull/32247). Scores ubatch sequences' pools while retaining global new-pool writes and protecting every sequence's representatives from padded writes. Excludes the later attention operations and NVIDIA row-list kernels. | Equivalent upstream bookkeeping passes the actual-API pool/mask/padding oracle, idle and shared-owner cases, long idle-slot reactivation, concurrent generation and applicable device checks. Fewer scored pools must not mean discarding idle state or narrowing graph reservation incorrectly. |
+| `recurrent-state-clear.patch` | Only the shared `build_rs` hunk of [PR 31913](https://github.com/ggml-org/llama.cpp/pull/31913) at `927a48d7d17a2facbfbf20e09e969631cf814f6d`. Uses an explicit zero fill instead of multiplying previous state by zero, which cannot clear NaN/Inf. Excludes the DeepSeek-specific change and upstream test that excludes hybrids. | An equivalent shared reset passes actual-helper finite/poison/empty-clear/copy/ownership oracles and applicable device/model gates. Clearing poisoned state is not a fix for whatever produced the first nonfinite value or evidence that a particular production symptom had this cause. |
+
+The three corrections form one late host-source build group, after the reviewed
+GPU and DFlash builds. It checks the exact incoming, intermediate and outgoing
+source trees using a private index, then rebuilds and installs once. Every
+configured ggml library is named explicitly and hashed before and after in both
+the build and installed directories. Missing files fail rather than producing
+an empty discovery manifest. Build-tree and installed hashes are separate
+identities because installation changes RPATHs.
+
+The old reset and pool-scoring controls run before the prefix patch changes a
+private class layout. Candidate fixtures are compiled against the final headers
+and installed libraries after the joint rebuild. Do not reuse an old fixture
+binary against the new private ABI, or move these patches ahead of GPU
+compilation without reviewing the cache and identity consequences. Their native
+checks are described in [testing](testing-and-release.md#host-pool-and-reset-regressions).
 
 #### Earlier source refresh records
 

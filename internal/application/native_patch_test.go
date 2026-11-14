@@ -53,11 +53,11 @@ func TestDFlashMultimodalPositionPatchPackaging(t *testing.T) {
 	if strings.Index(late, "GIT_INDEX_FILE=") > strings.Index(late, "git ") {
 		t.Fatal("private index must be active before the first Git command")
 	}
-	if !strings.Contains(containerfile, ",server-speculative-metrics,dflash-mtmd-position-gap\"") {
+	if !strings.Contains(containerfile, ",server-speculative-metrics,dflash-mtmd-position-gap,") {
 		t.Fatal("native patch provenance label omits or reorders the late correction")
 	}
 	spec, ok := ByID(string(LlamaCPP))
-	if !ok || !strings.HasSuffix(spec.Image, "-ded522f-r77") {
+	if !ok || !strings.HasSuffix(spec.Image, "-ded522f-r78") {
 		t.Fatalf("native patch packaging must use its current image identity: %q", spec.Image)
 	}
 }

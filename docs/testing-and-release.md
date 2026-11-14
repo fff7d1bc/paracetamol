@@ -719,6 +719,56 @@ and checks allocation-lifetime callbacks for eight terminal or partial-suffix
 graphs. Zero callbacks is a failure, not a passing skipped fusion. Follow it
 with upstream's `test-backend-ops -b ROCm0 -o TOPK_MOE` numerical cases.
 
+#### Host pool and reset regressions
+
+The late llama.cpp host-patch group runs three CPU-only build gates without
+loading model weights or discovering GPU backends:
+
+- `build-kpool-prefix-test.sh` mechanically extracts the exact production
+  layout struct, scanner and complete update. Its separate integer oracle
+  checks 28,032 updates, four deliberately broken variants, the production
+  full-rebuild verifier and ASan/UBSan. Source boundaries and full region
+  hashes fail closed. The small mock cache does not prove actual invalidation
+  propagation, serialization, GPU writes or model quality.
+- `build-active-pool-test.sh` compiles the actual-API fixture against matching
+  installed libraries. Fifty-six cases cover idle/active/shared sequences,
+  masks, tails, image positions and padded writes. Four child processes must
+  hit their exact production assertion guards. The unchanged baseline must
+  pass its old-policy oracle and fail the candidate contract. This is
+  metadata/input coverage, not GPU attention arithmetic.
+- `build-recurrent-state-clear-test.sh` compiles a six-graph actual-helper
+  regression. It checks finite and poisoned reset rows, empty clears, real
+  extra-state copies, unowned recurrent words and nonzero attention/indexer
+  payload. The old helper must reproduce persistent nonfinite values and be
+  rejected as the candidate. The corrected helper must clear them. This does
+  not diagnose the first source of NaN or prove full-model inference.
+
+The baseline binaries run before mutation of the private hybrid class layout.
+Recompile candidate fixtures after the joint source rebuild and installation.
+Use the exact matching installed libraries, not normalized build-tree hashes.
+Native fixtures stay in the builder and are not part of the runtime payload.
+For a reviewed matching checkout and installed closure, the compile commands
+are:
+
+```bash
+bash applications/llama-cpp/build-kpool-prefix-test.sh SOURCE build/prefix-check
+bash applications/llama-cpp/build-active-pool-test.sh SOURCE INSTALLED_LIBDIR build/active-check
+bash applications/llama-cpp/build-recurrent-state-clear-test.sh candidate SOURCE INSTALLED_LIBDIR build/reset-check
+```
+
+The prefix command executes its integer tests. The other helpers compile only;
+their callers must run the binaries explicitly with the matching library path.
+The container build performs both the old and new CPU checks. Exact pin,
+owning-file and source-tree guards require deliberate review on refresh, not
+automatic hash regeneration. Host packaging tests only assert this wiring.
+
+Keep independent device and model gates. In particular, a long resident idle
+slot must remain reusable after work in another slot. Actual GPU-backed reset
+tests must preserve finite attention/indexer state and reject CPU fallback.
+Populated context, prefix reuse, edits, speculation, concurrency, cancellation
+and changed-media histories remain necessary where applicable. Never time a
+layout-verifier image as if it were the normal candidate.
+
 #### Fast Flash-Next state screen
 
 Before a large llama.cpp refresh matrix, run
