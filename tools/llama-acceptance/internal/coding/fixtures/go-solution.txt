@@ -1,0 +1,23 @@
+package main
+
+import "container/heap"
+
+type cursor struct { value int64; row, col int }
+type cursors []cursor
+func (h cursors) Len() int { return len(h) }
+func (h cursors) Less(i,j int) bool { return h[i].value < h[j].value }
+func (h cursors) Swap(i,j int) { h[i],h[j]=h[j],h[i] }
+func (h *cursors) Push(v any) { *h=append(*h,v.(cursor)) }
+func (h *cursors) Pop() any { a:=*h; v:=a[len(a)-1]; *h=a[:len(a)-1]; return v }
+func MergeSortedUnique(inputs [][]int64) []int64 {
+    h:=cursors{}
+    for i,a:=range inputs { if len(a)>0 { heap.Push(&h,cursor{a[0],i,0}) } }
+    result:=[]int64{}
+    for h.Len()>0 {
+        c:=heap.Pop(&h).(cursor)
+        if len(result)==0 || result[len(result)-1]!=c.value { result=append(result,c.value) }
+        c.col++
+        if c.col<len(inputs[c.row]) { c.value=inputs[c.row][c.col]; heap.Push(&h,c) }
+    }
+    return result
+}

@@ -1,0 +1,15 @@
+{
+  "cache_prompt": false,
+  "max_tokens": 4096,
+  "messages": [
+    {"content":"Call lookup_record exactly once with query.key ALDER. After its result reply exactly the value returned, with no explanation.","role":"user"},
+    {"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"query\":{\"key\": \"ALDER\"}}","name":"lookup_record"},"id":"gUgTtsyLoB3PXMXTfj699BYLQdWBtKyd","type":"function"}]},
+    {"content":"ALDER_937261","role":"tool","tool_call_id":"gUgTtsyLoB3PXMXTfj699BYLQdWBtKyd"}
+  ],
+  "reasoning_effort":"none",
+  "seed":42,
+  "stream":false,
+  "tool_choice":"none",
+  "tools":[{"function":{"description":"Read the exact stored value for a record key.","name":"lookup_record","parameters":{"additionalProperties":false,"properties":{"query":{"additionalProperties":false,"properties":{"key":{"type":"string"}},"required":["key"],"type":"object"}},"required":["query"],"type":"object"}},"type":"function"}],
+  "verbose":true
+}

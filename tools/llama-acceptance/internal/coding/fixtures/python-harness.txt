@@ -1,0 +1,24 @@
+import importlib.util
+import json
+import sys
+
+spec = importlib.util.spec_from_file_location("candidate", "/input/candidate.py")
+candidate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(candidate)
+results = []
+for intervals in json.load(sys.stdin):
+    before = [list(item) for item in intervals]
+    answer = candidate.coalesce(intervals)
+    valid = (isinstance(answer, list) and all(
+        isinstance(item, list) and len(item) == 2 and
+        all(type(value) is int for value in item) for item in answer))
+    owned = intervals == before
+    values = [list(item) for item in answer] if valid else []
+    if valid:
+        owned = owned and len({id(item) for item in answer}) == len(answer)
+        owned = owned and not any(item is old for item in answer for old in intervals)
+        if answer:
+            answer[0][0] += 1
+            owned = owned and intervals == before
+    results.append({"values": values, "owned": owned and valid})
+json.dump(results, sys.stdout, separators=(",", ":"))

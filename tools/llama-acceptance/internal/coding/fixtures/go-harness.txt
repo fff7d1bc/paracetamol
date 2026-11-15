@@ -1,0 +1,28 @@
+package main
+
+import (
+    "encoding/json"
+    "os"
+    "reflect"
+)
+
+func main() {
+    var cases [][][]int64
+    if json.NewDecoder(os.Stdin).Decode(&cases)!=nil { os.Exit(70) }
+    type result struct { Values []int64 `json:"values"`; Owned bool `json:"owned"` }
+    results:=make([]result,0,len(cases))
+    for _,input:=range cases {
+        before,_:=json.Marshal(input)
+        got:=MergeSortedUnique(input)
+        after,_:=json.Marshal(input)
+        owned:=reflect.DeepEqual(before,after)
+        values:=append([]int64{},got...)
+        if len(got)>0 {
+            got[0] = ^got[0]
+            mutated,_:=json.Marshal(input)
+            owned=owned && reflect.DeepEqual(before,mutated)
+        }
+        results=append(results,result{values,owned})
+    }
+    if json.NewEncoder(os.Stdout).Encode(results)!=nil { os.Exit(71) }
+}

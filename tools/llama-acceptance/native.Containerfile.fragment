@@ -1,0 +1,64 @@
+# Diagnostic compilation only. The exact current production builder has already
+# compiled and installed the kernels; this stage never reconfigures that build.
+FROM llama-builder AS llama-acceptance-native-builder
+WORKDIR /opt/llama.cpp
+COPY applications/llama-cpp/test-qwen4exp-state.cpp \
+    applications/llama-cpp/test-topk-moe-lifetime.cpp /opt/paracetamol/
+RUN test ! -e /dev/kfd && test ! -e /dev/dri && \
+    mkdir -p /opt/native-probes && \
+    printf '%s\n' @INPUT_HASHES@ | sha256sum --check --strict - && \
+    export GIT_OPTIONAL_LOCKS=0 GIT_INDEX_FILE="$(mktemp /tmp/llama-acceptance-index.XXXXXX)" && \
+    test "$(git rev-parse HEAD)" = '@SOURCE_COMMIT@' && \
+    git read-tree HEAD && git add --update -- . && \
+    git add -- common include src ggml tools tests && \
+    test "$(git write-tree)" = '@SOURCE_TREE@' && \
+    printf '%s\n' 'upstream_commit=@SOURCE_COMMIT@' 'patched_tree=@SOURCE_TREE@' \
+        > /opt/native-probes/source-identity.txt && \
+    sha256sum /opt/llama.cpp/build/CMakeCache.txt \
+        > /opt/native-probes/cmake-cache.sha256 && \
+    c++ --version > /opt/native-probes/compiler.txt && \
+    (cd /opt/llama-install/lib && sha256sum libllama-common.so libllama.so \
+        libggml.so libggml-base.so libggml-cpu.so libggml-hip.so libggml-vulkan.so) \
+        > /opt/native-probes/installed-libraries.sha256 && \
+    c++ -O2 -std=c++17 -DGGML_SHARED -DGGML_BACKEND_SHARED \
+        -Icommon -Isrc -Iinclude -Iggml/include -Ivendor \
+        /opt/paracetamol/test-qwen4exp-state.cpp \
+        -L/opt/llama-install/lib -Wl,-rpath-link,/opt/llama-install/lib \
+        -Wl,-rpath,/usr/local/lib -lllama-common -lllama -lggml -lggml-base -pthread -ldl \
+        -o /opt/native-probes/test-qwen4exp-state && \
+    c++ -O2 -std=c++17 -DGGML_SHARED -DGGML_BACKEND_SHARED \
+        -Iggml/include -Iggml/src /opt/paracetamol/test-topk-moe-lifetime.cpp \
+        -L/opt/llama-install/lib -Wl,-rpath-link,/opt/llama-install/lib \
+        -Wl,-rpath,/usr/local/lib -lggml -lggml-base -pthread -ldl \
+        -o /opt/native-probes/test-topk-moe-lifetime && \
+    bash /opt/paracetamol/build-conv-rollback-test.sh \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/acceptance-conv && \
+    bash /opt/paracetamol/build-active-pool-test.sh \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/acceptance-active && \
+    bash /opt/paracetamol/build-recurrent-state-clear-test.sh candidate \
+        /opt/llama.cpp /opt/llama-install/lib /tmp/acceptance-reset && \
+    cp /tmp/acceptance-conv/test-qwen4exp-conv-rollback \
+        /tmp/acceptance-active/test-qwen4exp-active-pool \
+        /tmp/acceptance-reset/test-recurrent-state-clear /opt/native-probes/ && \
+    printf '%s\n' @INPUT_HASHES@ > /opt/native-probes/fixture-inputs.sha256 && \
+    (cd /opt/llama-install/lib && sha256sum --check /opt/native-probes/installed-libraries.sha256)
+@UPSTREAM_TESTS@
+RUN cd /opt/native-probes && \
+    sha256sum test-qwen4exp-state test-topk-moe-lifetime \
+        test-qwen4exp-conv-rollback test-qwen4exp-active-pool test-recurrent-state-clear \
+        @UPSTREAM_BINARIES@ > binaries.sha256 && \
+    chmod 0644 *.txt *.sha256 && chmod 0755 test-*
+
+# Inherit the exact production runtime, not the compiler or diagnostic builder.
+FROM llama-cpp AS llama-acceptance-native
+COPY --from=llama-acceptance-native-builder /opt/native-probes/ /opt/probe/
+RUN cd /usr/local/lib && sha256sum --check /opt/probe/installed-libraries.sha256 && \
+    cd /opt/probe && sha256sum --check binaries.sha256 && \
+    for probe in test-qwen4exp-state test-topk-moe-lifetime \
+        test-qwen4exp-conv-rollback test-qwen4exp-active-pool test-recurrent-state-clear \
+        @UPSTREAM_BINARIES@; do \
+        ldd "/opt/probe/$probe" >> /opt/probe/runtime-ldd.txt || exit 1; \
+    done && ! grep -F 'not found' /opt/probe/runtime-ldd.txt && \
+    chmod 0644 /opt/probe/runtime-ldd.txt
+ENTRYPOINT ["/bin/false"]
+CMD []

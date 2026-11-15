@@ -37,6 +37,9 @@ experiment as a version list.
   application and model refresh without changing everything at once.
 - [llama.cpp maintenance](llama-cpp-maintenance.md) records the accepted
   baseline, open regressions and how to resume an investigation.
+- [llama.cpp acceptance kit](../tools/llama-acceptance/README.md) preserves
+  runnable production-path regression cases, coding oracles and sandbox setup
+  independently of ignored experiment results.
 - [Upgrading](upgrading.md) describes coupled pins, patch contracts, removal
   gates and application-specific procedures.
 - [Content catalog maintenance](content-catalog.md) covers exact artifacts,
@@ -98,6 +101,7 @@ same change when behavior, commands, counts or defaults change.
 | Container-side profile/application enforcement | `containers/common/profile.py`, application entrypoints |
 | Read-only metadata/archive/workflow probes | `internal/probe/`, `tools/` |
 | Opt-in Gufo source build and regression gate | `tools/gufo-recheck/` |
+| Opt-in llama.cpp production-path acceptance and CPU generated-code grading | `tools/llama-acceptance/` |
 | Archived tasks and hidden grading fixtures, not an active Pi runner | `evaluations/coding/` |
 | Third-party provenance | `THIRD_PARTY_NOTICES.md` |
 

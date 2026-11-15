@@ -1,0 +1,15 @@
+Write original Python standard-library-only code implementing:
+
+def coalesce(intervals):
+
+Input is a list of two-element lists [start, end], with integer start <= end.
+Intervals are closed, so intervals sharing an endpoint merge. Return their
+union as a start-sorted list of fresh two-element lists. Merge overlapping or
+touching intervals, but not intervals separated by a positive gap. Duplicates,
+zero-width intervals, unsorted inputs and empty input are allowed. Integers may
+be arbitrarily large. Do not mutate input or its nested lists. Returned nested
+lists must not alias any input list or each other. Use O(n log(n+1)) time.
+
+Include helpers/imports if necessary, but no invocation, tests, I/O, networking
+or third-party packages. Return exactly one JSON object with a single string
+field named code containing the complete source file. No markdown.

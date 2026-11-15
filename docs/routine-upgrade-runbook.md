@@ -26,6 +26,8 @@ the current deployment state.
 For llama.cpp, follow [the maintenance guide](llama-cpp-maintenance.md),
 including its accepted baseline, regression procedure and evidence contract.
 It also distinguishes the bounded coding screen from retired agent benchmarks.
+Its [tracked acceptance kit](../tools/llama-acceptance/README.md) rebuilds from
+a clone without earlier `build/` artifacts; private results are not test source.
 If original fixtures are missing, report that limitation before reconstructing
 them. Do not present a new fixture as an exact replay of a lost one.
 
@@ -152,6 +154,14 @@ Test each affected application, inspect installed versions and `pip check`,
 and perform representative hardware acceptance when the change touches GPU
 behavior. Update [hardware-acceptance.md](hardware-acceptance.md) only with
 results actually observed on the named hardware.
+
+For llama.cpp or shared ROCm changes, use the maintainer kit's complete
+required plain/DFlash2 campaign and repeated baseline/candidate comparisons,
+in addition to matching-source native and applicable cross-hardware gates.
+Predeclare performance tolerance, preserve coding misses and first attempts,
+and stop on deterministic failures. A targeted short-suite PASS does not
+replace absent long-history/cache, prefill, coding or native evidence; mark
+missing required coverage BLOCKED/deferred.
 
 If required hardware is unavailable, finish all safe checks and report the
 specific deferred acceptance; do not describe the update as GPU-validated.

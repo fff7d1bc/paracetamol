@@ -28,6 +28,9 @@ making every document mandatory startup reading.
 - For llama.cpp refreshes or inference regressions, start with
   [llama.cpp maintenance](docs/llama-cpp-maintenance.md) for the accepted
   baseline, open issues, test sequence and evidence needed to resume work.
+  Use the tracked [maintainer acceptance kit](tools/llama-acceptance/README.md)
+  for production-path regression cases; a short suite alone is not source-update
+  acceptance, and missing required gates remain BLOCKED/deferred.
 - Read [content catalog maintenance](docs/content-catalog.md) before changing
   models, bundles, recipes, workflows, licenses, or benchmark resources.
 - Read [extension points](docs/extending.md) before adding or changing an
@@ -54,9 +57,14 @@ into a current source of truth.
 
 `tools/gufo-recheck/` remains an explicitly opted-in developer experiment,
 not a managed application or gateway backend. Its lifecycle is manual and
-artifacts stay below `build/`. `evaluations/coding/` remains archived evidence,
-not an active Pi runner. Native Maki configuration export does not own client
-execution, installation, sandboxing, credentials or user state.
+artifacts stay below `build/`. `tools/llama-acceptance/` is a separate opt-in
+maintainer gate using the ordinary gateway, with tracked fixtures and private
+results below `build/`. It owns no backend lifecycle; generated-code execution
+requires its explicit CPU-only grading sandbox. Preserve first attempts,
+predeclared repairs/fresh seeds and independent oracles. A public oracle is
+withheld from model requests, not secret. `evaluations/coding/` remains
+archived evidence, not an active Pi runner. Native Maki configuration export
+does not own client execution, installation, sandboxing, credentials or user state.
 
 ## Behavior to preserve
 

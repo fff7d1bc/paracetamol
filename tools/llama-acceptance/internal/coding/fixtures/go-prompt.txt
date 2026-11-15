@@ -1,0 +1,15 @@
+Write original Go standard-library-only code in package main implementing:
+
+func MergeSortedUnique(inputs [][]int64) []int64
+
+Every input slice is sorted in nondecreasing order. Return every distinct value
+in ascending order, with no duplicates. Inputs may be nil or empty and may
+contain repeated values, including the minimum and maximum int64. Do not mutate
+the outer slice or any input slice. Nonempty returned storage must not alias an
+input slice. Empty output may be nil or empty. Aim for O(N log(k+1)) time and
+O(k) auxiliary space, excluding output, where N is total input length and k is
+the number of slices. Do not use arithmetic subtraction as an ordering test.
+
+Include any necessary imports and helpers, but no main function, tests, I/O,
+networking or third-party packages. Return exactly one JSON object with a single
+string field named code containing the complete source file. No markdown.

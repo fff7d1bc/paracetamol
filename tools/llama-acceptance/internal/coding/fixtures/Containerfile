@@ -1,0 +1,23 @@
+# Standalone developer grader; not part of the managed application build DAG.
+FROM docker.io/library/ubuntu@sha256:66b8084a0d45bd4877992bd38e04b51bfa99bd57293364cb6391fb674771846e
+RUN test "$(uname -m)" = x86_64 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl \
+      python3.14=3.14.4-1ubuntu0.2 \
+      python3.14-minimal=3.14.4-1ubuntu0.2 \
+      libpython3.14-stdlib=3.14.4-1ubuntu0.2 \
+      libpython3.14-minimal=3.14.4-1ubuntu0.2 && \
+    curl --fail --location --proto '=https' --tlsv1.2 \
+      https://go.dev/dl/go1.26.8.linux-amd64.tar.gz -o /tmp/go.tar.gz && \
+    echo 'd0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b  /tmp/go.tar.gz' | sha256sum --check --strict && \
+    tar -xzf /tmp/go.tar.gz -C /opt && \
+    mkdir -p /opt/grader && dpkg-query -W > /opt/grader/packages.txt && \
+    /opt/go/bin/go version && python3.14 --version && \
+    rm /tmp/go.tar.gz && rm -r /var/lib/apt/lists
+ENV PATH=/opt/go/bin:/usr/bin:/bin \
+    GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOTELEMETRY=off \
+    CGO_ENABLED=0 GOENV=off HOME=/tmp/home GOCACHE=/tmp/gocache \
+    GOPATH=/tmp/gopath GOTMPDIR=/tmp PYTHONDONTWRITEBYTECODE=1
+LABEL io.github.fff7d1bc.paracetamol.llama-acceptance.grader="paracetamol.toy-coding.v1"
+WORKDIR /tmp
+USER 65532:65532

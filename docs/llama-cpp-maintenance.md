@@ -137,10 +137,15 @@ must save its own synthetic inputs, outputs and reports before shutdown or
 retention eviction. Never turn production traffic logging on to compensate.
 
 Run the [source-update checks](testing-and-release.md#llamacpp-source-update-acceptance)
-in increasing cost order. Start with exact-source native checks and a short
-replay before filling a near-limit context. Include reasoning, nested tools,
-streaming and both cancellation paths. Cancellation must make the actual
-child slot idle, not merely allow another request to succeed.
+in increasing cost order. The tracked
+[maintainer kit](../tools/llama-acceptance/README.md) owns executable synthetic
+cases, grading setup, evidence and comparison commands independently of old
+`build/` experiments. Start with exact-source native checks and a short replay
+before its full plain/DFlash2 suites and near-limit context. Include reasoning,
+nested tools, streaming and both cancellation paths. Cancellation must make
+the actual child slot idle, not merely allow another request to succeed.
+Selected suites are diagnostic subsets; missing required native, history,
+coding, performance or hardware evidence remains BLOCKED/deferred.
 
 Long-context acceptance must populate the cache, then test an exact repeat,
 an edited value and true append turns that preserve the complete assistant
@@ -152,8 +157,10 @@ reprocessing an isolated cache-rewind regression.
 For generated-code checks, use the
 [bounded coding-quality protocol](testing-and-release.md#bounded-coding-quality-screen).
 It separates first attempts, repairs and fresh repetitions. Host unit tests
-and archived Pi evaluations do not replace that check. The `r77` recovery
-did not rerun the earlier `r76` coding screen.
+and archived Pi evaluations do not replace that check. A miss remains REVIEW
+with all earlier attempts preserved; it does not prove an engine defect. The
+kit's new public coding identity does not reproduce the historical private
+screen. The `r77` recovery did not rerun the earlier `r76` coding screen.
 
 ## Investigate a regression
 
@@ -209,8 +216,10 @@ sweep without a remaining hypothesis.
 
 Keep the public record and private evidence separate:
 
-- Commit source changes, maintenance rationale, host-neutral acceptance
-  summaries, unresolved questions and links to earlier findings.
+- Commit source changes, versioned synthetic fixtures/oracles, maintenance
+  rationale, host-neutral acceptance summaries, unresolved questions and links
+  to earlier findings. Never make an ignored experiment runner the only copy
+  of a required acceptance gate.
 - Keep raw requests, responses, reports, logs, compiler output and generated
   runners under an ignored `build/` experiment directory. Record hashes and
   commands relative to that directory. Never copy private hostnames, home
@@ -224,11 +233,12 @@ causes. Mark completed experiments closed so a new session does not restart
 them from an obsolete plan.
 
 Session loss does not normally delete these files, but `build/` is not a
-backup and `make clean` removes it. A fresh clone has no private runners or
-results. Preserve important evidence in an operator-managed backup before
-cleanup. If it is missing, document that limitation and reconstruct a new,
-versioned fixture from the test contract. Do not claim an exact replay of a
-lost experiment or treat a Markdown summary as its raw evidence.
+backup and `make clean` removes it. A fresh clone has the tracked maintainer
+kit, but no historical private runners or results. Preserve important evidence
+in an operator-managed backup before cleanup. If it is missing, document that
+limitation and reconstruct a new, versioned fixture from the test contract.
+Do not claim an exact replay of a lost experiment or treat a Markdown summary
+as its raw evidence.
 
 Finish with a focused commit and explicit deployment status. Record whether
 the selected image was merely built or actually installed, verify its ID and

@@ -1,0 +1,87 @@
+# Two fixed diagnostic mutations, never production options or normal image tags.
+FROM llama-builder AS llama-acceptance-control-builder
+WORKDIR /opt/llama.cpp
+RUN set -eu; \
+    test ! -e /dev/kfd; test ! -e /dev/dri; \
+    mkdir -p /opt/control/evidence /opt/control/override; \
+    export GIT_OPTIONAL_LOCKS=0 GIT_INDEX_FILE="$(mktemp /tmp/acceptance-control-index.XXXXXX)"; \
+    test "$(git rev-parse HEAD)" = '@SOURCE_COMMIT@'; \
+    git read-tree HEAD; git add --update -- .; git add -- common include src ggml tools tests; \
+    test "$(git write-tree)" = '@BASE_TREE@'; \
+    printf '%s\n' '@OWNING_HASH@  @OWNING_FILE@' @INPUT_HASHES@ | sha256sum --check --strict -; \
+    library_file="$(readlink -f /opt/llama-install/lib/@LIBRARY@)"; \
+    case "$library_file" in /opt/llama-install/lib/@LIBRARY@.*) ;; *) echo 'Unexpected installed library layout' >&2; exit 1;; esac; \
+    payload="$(basename "$library_file")"; \
+    printf '%s\n' "$payload" > /opt/control/evidence/payload.txt; \
+    sha256sum "$library_file" > /opt/control/evidence/selected-before.sha256; \
+    snapshot() { (cd /opt/llama-install && \
+        find . -type f ! -path "./lib/$payload" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum); }; \
+    layout() { (cd /opt/llama-install && find . -printf '%p %y %m %l\n' | LC_ALL=C sort); }; \
+    snapshot > /opt/control/evidence/unaffected-installed.sha256; \
+    test -s /opt/control/evidence/unaffected-installed.sha256; \
+    layout > /opt/control/evidence/installed-layout.txt; \
+    sha256sum build/CMakeCache.txt > /opt/control/evidence/cmake-cache.sha256; \
+    cmake --version > /opt/control/evidence/compiler.txt; \
+    for language in C CXX HIP; do \
+        compiler="$(sed -n "s/^CMAKE_${language}_COMPILER:[^=]*=//p" build/CMakeCache.txt)"; \
+        case "$compiler" in /*) test -x "$compiler";; *) echo 'Missing configured compiler' >&2; exit 1;; esac; \
+        sha256sum "$compiler" >> /opt/control/evidence/compilers.sha256; \
+        "$compiler" --version >> /opt/control/evidence/compiler.txt; \
+    done; \
+    (cd /opt/llama-install && sha256sum lib/libllama-common.so lib/libllama.so \
+        lib/libggml.so lib/libggml-base.so lib/libggml-cpu.so lib/libggml-hip.so lib/libggml-vulkan.so) \
+        > /opt/control/evidence/installed-before.sha256; \
+    @MUTATION@ \
+    test "$(git diff --no-ext-diff --name-only)" = '@OWNING_FILE@'; \
+    test "$(git diff --no-ext-diff --numstat)" = "$(printf '@NUMSTAT@')"; \
+    git diff --no-ext-diff --no-textconv --no-color --unified=3 > /opt/control/evidence/mutation.diff; \
+    test "$(grep -c '^@@ ' /opt/control/evidence/mutation.diff)" = '@HUNKS@'; \
+    git diff --check; \
+    git add -- '@OWNING_FILE@'; \
+    git write-tree > /opt/control/source-tree.txt; \
+    cp /opt/control/source-tree.txt /opt/control/evidence/source-tree.txt; \
+    printf '%s\n' 'control=@CONTROL@' 'upstream_commit=@SOURCE_COMMIT@' \
+        'base_tree=@BASE_TREE@' 'owning_file=@OWNING_FILE@' 'target=@TARGET@' \
+        > /opt/control/evidence/mutation.txt; \
+    sha256sum '@OWNING_FILE@' /opt/control/evidence/mutation.diff \
+        > /opt/control/evidence/mutation.sha256; \
+    cmake --build build --config Release --target @TARGET@ --verbose \
+        > /opt/control/evidence/build.log 2>&1; \
+    cmake --install build --config Release > /opt/control/evidence/install.log 2>&1; \
+    find /opt/llama-install/bin -type f ! -name llama-cli ! -name llama-server ! -name llama-bench -delete; \
+    rm -rf /opt/llama-install/include /opt/llama-install/lib/cmake /opt/llama-install/lib/pkgconfig; \
+    sha256sum --check /opt/control/evidence/cmake-cache.sha256; \
+    sha256sum --check /opt/control/evidence/compilers.sha256; \
+    snapshot > /opt/control/evidence/unaffected-after.sha256; \
+    cmp /opt/control/evidence/unaffected-installed.sha256 /opt/control/evidence/unaffected-after.sha256; \
+    layout > /opt/control/evidence/installed-layout-after.txt; \
+    cmp /opt/control/evidence/installed-layout.txt /opt/control/evidence/installed-layout-after.txt; \
+    (cd /opt/llama-install && sha256sum lib/libllama-common.so lib/libllama.so \
+        lib/libggml.so lib/libggml-base.so lib/libggml-cpu.so lib/libggml-hip.so lib/libggml-vulkan.so) \
+        > /opt/control/evidence/installed-after.sha256; \
+    test "$(readlink -f /opt/llama-install/lib/@LIBRARY@)" = "$library_file"; \
+    sha256sum "$library_file" > /opt/control/evidence/selected-after.sha256; \
+    if cmp -s /opt/control/evidence/selected-before.sha256 /opt/control/evidence/selected-after.sha256; then \
+        echo 'Negative control did not change its selected payload' >&2; exit 1; \
+    fi; \
+    cp "$library_file" "/opt/control/override/$payload"; \
+    (cd /opt/control/override && sha256sum "$payload") > /opt/control/evidence/override.sha256; \
+    chmod 0644 /opt/control/source-tree.txt /opt/control/evidence/*
+
+# The operator must extract the builder's actual tree before building this stage.
+# This makes its source label truthful without pretending the normal tag changed.
+FROM llama-cpp AS llama-acceptance-control
+ARG ACCEPTANCE_CONTROL_TREE
+COPY --from=llama-acceptance-control-builder /opt/control/source-tree.txt /opt/control/source-tree.txt
+COPY --from=llama-acceptance-control-builder /opt/control/evidence/ /opt/control/evidence/
+COPY --from=llama-acceptance-control-builder /opt/control/override/ /usr/local/lib/
+RUN test "${#ACCEPTANCE_CONTROL_TREE}" = 40 && \
+    printf '%s' "$ACCEPTANCE_CONTROL_TREE" | grep -Eq '^[0-9a-f]{40}$' && \
+    test "$ACCEPTANCE_CONTROL_TREE" = "$(cat /opt/control/source-tree.txt)" && \
+    cd /usr/local && sha256sum --check /opt/control/evidence/unaffected-installed.sha256 && \
+    cd /usr/local/lib && sha256sum --check /opt/control/evidence/override.sha256 && \
+    ldd /usr/local/bin/llama-server > /opt/control/evidence/runtime-ldd.txt && \
+    ! grep -F 'not found' /opt/control/evidence/runtime-ldd.txt
+LABEL @LABEL_NAMESPACE@.llama-cpp.source-tree="${ACCEPTANCE_CONTROL_TREE}" \
+      @LABEL_NAMESPACE@.llama-cpp.patches="@PATCHES@,diagnostic/@CONTROL@" \
+      @LABEL_NAMESPACE@.llama-acceptance.control="@CONTROL@"

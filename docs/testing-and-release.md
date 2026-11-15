@@ -670,12 +670,19 @@ gate without assuming that one contributor owns every hardware class.
    `llama-cpp` build, inspect image labels and history, check the native
    runtime closure with `ldd`, and exercise CPU CLI and router startup. Confirm
    that all four GPU targets remain in the image and that no source, model, or
-   web asset was fetched at runtime.
+   web asset was fetched at runtime. Build the tracked
+   [maintainer acceptance kit](../tools/llama-acceptance/README.md) and run its
+   `self-test --source-only`; neither requires Podman or inference. Its
+   `prepare-native` operation materializes the matching-source diagnostic
+   recipe; building the recipe and executing native gates remain explicit.
 2. **Primary target acceptance:** on one capable machine, run `doctor`, the
    bounded acceptance smoke, real CLI and router generation, both API
    endpoints, reasoning controls, speculative and non-speculative generation,
-   and interruption cleanup. Then run the benchmark matrix below for every
-   backend or patch path affected by the update.
+   and interruption cleanup. Run the kit's complete required production-path
+   cases for regular Flash-Next plain and greedy DFlash2, its real CPU grader
+   self-test, and matched baseline/candidate comparisons with a predeclared
+   prefill tolerance. Keep matching-source numerical/state/operator fixtures
+   and the benchmark matrix below for every affected backend or patch path.
 3. **Cross-architecture spot checks:** on each remaining applicable hardware
    class, run `doctor`, a tiny-model GPU smoke, and the smallest representative
    benchmark that exercises the changed backend path. A profile-specific
@@ -711,9 +718,13 @@ Retained dense Qwen3.8 27B needs a short completion and tool round trip, not
 a duplicate long-context matrix, unless a changed dense-specific path or a
 failed smoke requires deeper investigation. This does not replace numerical
 backend tests or the hardware-specific patch removal gates.
-Use the [bounded coding-quality screen](#bounded-coding-quality-screen) when
-checking practical code generation; it is separate from protocol and numerical
-acceptance and is not a supported `benchmark agent` command.
+The kit's `short`, `coding`, `history` and `prefill` suites permit targeted
+investigation, not a reduced full source-update gate. Missing required native,
+production-path, performance or hardware evidence remains BLOCKED/deferred;
+neither an image build nor a short PASS supplies it. Use the
+[bounded coding-quality screen](#bounded-coding-quality-screen) to interpret
+practical code generation separately from protocol/numerical acceptance. This
+does not introduce a supported `benchmark agent` command.
 
 Do not treat one successful tiny workflow as acceptance of every model family.
 
@@ -876,16 +887,23 @@ passing retrieval answer alone is not a numerical-equivalence test.
 #### Bounded coding-quality screen
 
 Protocol/operator checks and coding quality answer different questions.
-The retired Pi runner is archival, and `tools/gufo-recheck/` is a small
-literal/tool regression gate, not a coding benchmark. Neither supplies a
-maintained general coding-quality runner.
+Use the tracked [llama.cpp maintainer kit](../tools/llama-acceptance/README.md)
+for original public Go/Python toy tasks, independent value/ownership oracles,
+explicit CPU sandbox preparation and trusted/known-bad self-tests. Its
+predeclared first attempt, one repair when available and fresh seeds 1234/2026
+after a miss retain separate results. Coding misses and output ceilings remain
+REVIEW, not a deterministic engine defect or an erased first attempt. Sandbox
+or prerequisite failures are BLOCKED. Public tests are withheld from model
+requests, not secret. The kit is not a general coding benchmark, Pi runner or
+Maki client; `tools/gufo-recheck/` remains its separate small literal/tool gate.
 
 The [historical bounded screen](research/coding-quality-screen.md) preserves
 its full task, attempt, oracle, toolchain and sandbox protocol. Its ignored
 private kit is not available in a fresh clone. Exact reproduction requires the
 complete hash-verified fixtures and toolchain manifests; otherwise declare a
 new fixture identity rather than reconstructing historical bytes from prose.
-Never weaken hidden tests, leak answers into prompts, retry after observing a
+The new public kit is not a recovery of that lost/private fixture identity.
+Never weaken oracles, leak answers into prompts, retry after observing a
 miss without a predeclared protocol, or replace an earlier miss with a later
 pass. Generated-code execution needs the recorded CPU-only no-network
 sandbox and exact-owned cleanup. Infrastructure failures are not model-quality

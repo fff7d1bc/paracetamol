@@ -23,6 +23,8 @@ BIN := $(BIN_DIR)/$(PRODUCT_ID)
 STATIC_BIN := $(BIN_DIR)/$(PRODUCT_ID)-static
 GUFO_RECHECK_BIN := $(BIN_DIR)/gufo-recheck
 GUFO_RECHECK_ASSETS := tools/gufo-recheck/Containerfile.fragment $(wildcard tools/gufo-recheck/testdata/*.json)
+LLAMA_ACCEPTANCE_BIN := $(BIN_DIR)/llama-acceptance
+LLAMA_ACCEPTANCE_ASSETS := $(shell find tools/llama-acceptance -type f ! -name '*.go' -print)
 # Keep host packages explicit: frozen evaluation modules and ignored local
 # content are repository inputs, not control-plane packages.
 GO_SOURCE_ROOTS := main.go internal tools $(wildcard cmd)
@@ -57,7 +59,7 @@ export GOFLAGS
 export GOTOOLCHAIN
 export GOTELEMETRY=off
 
-.PHONY: all build static gufo-recheck test race check clean print-bin launcher-binary
+.PHONY: all build static gufo-recheck llama-acceptance test race check clean print-bin launcher-binary
 
 all: build
 
@@ -67,6 +69,19 @@ static: $(STATIC_BIN)
 
 # Developer-only research tool. Never part of all, build, or managed images.
 gufo-recheck: $(GUFO_RECHECK_BIN)
+
+# Explicit maintainer helper. Building it never starts an acceptance request.
+llama-acceptance: $(LLAMA_ACCEPTANCE_BIN)
+
+$(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_DIR) $(GOTMPDIR)
+	@set -eu; \
+	temporary="$$(mktemp "$(BIN_DIR)/.llama-acceptance.XXXXXX")"; \
+	trap 'rm -f "$$temporary"' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
+	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" ./tools/llama-acceptance; \
+	chmod 0755 "$$temporary"; \
+	mv -f "$$temporary" "$(LLAMA_ACCEPTANCE_BIN)"; \
+	trap - EXIT INT TERM HUP
 
 test: | $(GOTMPDIR)
 	go test $(GO_PACKAGES)
