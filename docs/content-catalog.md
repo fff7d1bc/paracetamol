@@ -64,12 +64,12 @@ anchored below the ignored `build/` tree:
 
 ```bash
 probe_go() (
-  export GOENV=off GOTOOLCHAIN=local GOTELEMETRY=off
+  export GOENV=off GOTOOLCHAIN=local
+  export XDG_CONFIG_HOME="$PWD/build/probes/go-config"
   export GOCACHE="$PWD/build/probes/gocache"
   export GOMODCACHE="$PWD/build/probes/gomodcache"
   export GOPATH="$PWD/build/probes/gopath"
   export GOTMPDIR="$PWD/build/probes/tmp"
-  export GOTELEMETRYDIR="$PWD/build/probes/telemetry"
   mkdir -p "$GOTMPDIR"
   go run "$@"
 )

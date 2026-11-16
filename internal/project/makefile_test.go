@@ -178,6 +178,14 @@ func testMakePublication(t *testing.T, makePath string, makefile []byte, target,
 		}
 	}
 	write("Makefile", makefile, 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	helper, err := os.ReadFile("../../tools/go-test-exec.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write("tools/go-test-exec.sh", helper, 0o644)
 	write("go.mod", []byte("module fixture\n\ngo 1.26.0\n"), 0o644)
 	write("main.go", []byte("package main\nfunc main() {}\n"), 0o644)
 	if err := os.MkdirAll(filepath.Join(root, "tools", "gufo-recheck", "testdata"), 0o755); err != nil {

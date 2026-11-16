@@ -24,6 +24,15 @@ Normal commands use `GOTOOLCHAIN=local`, so the installed Go toolchain must
 satisfy `go.mod`. Use `make GOTOOLCHAIN=auto -B build` only when automatic
 toolchain selection is intentional. Its Go state stays below `build/`.
 
+Go commands and `gofmt` use `build/go-config` as their configuration directory,
+including the launcher's platform probes. This confines Go telemetry using its
+default local-only mode rather than relying on ineffective `GOTELEMETRY`
+environment overrides. It does not change the user's global Go configuration.
+The application and test binaries retain the caller's original
+`XDG_CONFIG_HOME`. Tests run fresh while reusing compiler caches, because the
+Go driver's isolated environment is not the test process's config environment.
+A clean-only invocation skips Go probes and does not recreate build state.
+
 ### Transfer a source checkout
 
 For ordinary image builds and application execution, a Git-free source copy

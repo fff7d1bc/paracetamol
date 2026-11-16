@@ -9,11 +9,19 @@ ENV_PREFIX ?=
 GO_PACKAGE := .
 BUILD_ROOT := $(CURDIR)/build
 GOTOOLCHAIN ?= local
-# Platform discovery must not select or download the project toolchain before
-# the repository-local module and telemetry state below is active.
-HOST_GO_ENV := GOENV=off GO111MODULE=off GOTOOLCHAIN=local GOTELEMETRY=off
-HOST_GOOS := $(shell $(HOST_GO_ENV) go env GOOS)
-HOST_GOARCH := $(shell $(HOST_GO_ENV) go env GOARCH)
+# GOTELEMETRY and GOTELEMETRYDIR are read-only go env queries, not overrides.
+# Scope the supported config-directory override to Go, never the launcher or
+# executed tests. Fresh checkout-local telemetry keeps Go's default local mode.
+GO_CONFIG_ENV := env XDG_CONFIG_HOME="$(BUILD_ROOT)/go-config"
+GO_COMMAND := $(GO_CONFIG_ENV) go
+# Platform discovery uses the installed toolchain, with module selection off.
+# A clean-only invocation must neither execute Go nor create state (including
+# through a refused build symlink).
+ifneq ($(filter-out clean,$(or $(MAKECMDGOALS),all)),)
+HOST_GO_ENV := GOENV=off GO111MODULE=off GOTOOLCHAIN=local
+HOST_GOOS := $(shell $(HOST_GO_ENV) $(GO_COMMAND) env GOOS)
+HOST_GOARCH := $(shell $(HOST_GO_ENV) $(GO_COMMAND) env GOARCH)
+endif
 GOOS ?= $(HOST_GOOS)
 GOARCH ?= $(HOST_GOARCH)
 PLATFORM := $(GOOS)-$(GOARCH)
@@ -32,12 +40,11 @@ GO_SOURCES := $(shell find $(GO_SOURCE_ROOTS) -type f -name '*.go' -print)
 GO_PACKAGES := . ./internal/... ./tools/... $(if $(wildcard cmd),./cmd/...)
 GO_MODULE_FILES := go.mod $(wildcard go.sum)
 WEB_ASSETS := $(shell find internal/gateway/assets -type f -print)
-GO_BUILD_INPUTS := Makefile $(GO_MODULE_FILES) $(GO_SOURCES) $(WEB_ASSETS)
+GO_BUILD_INPUTS := Makefile tools/go-test-exec.sh $(GO_MODULE_FILES) $(GO_SOURCES) $(WEB_ASSETS)
 GOCACHE := $(PLATFORM_BUILD_DIR)/gocache
 GOMODCACHE := $(PLATFORM_BUILD_DIR)/gomodcache
 GOPATH := $(PLATFORM_BUILD_DIR)/gopath
 GOTMPDIR := $(PLATFORM_BUILD_DIR)/tmp
-GOTELEMETRYDIR := $(PLATFORM_BUILD_DIR)/telemetry
 GOENV := off
 GOFLAGS := -modcacherw -buildvcs=false
 IDENTITY_LDFLAGS := -X 'paracetamol/internal/identity.CommandName=$(PRODUCT_ID)' \
@@ -53,11 +60,9 @@ export GOCACHE
 export GOMODCACHE
 export GOPATH
 export GOTMPDIR
-export GOTELEMETRYDIR
 export GOENV
 export GOFLAGS
 export GOTOOLCHAIN
-export GOTELEMETRY=off
 
 .PHONY: all build static gufo-recheck llama-acceptance test race check clean print-bin launcher-binary
 
@@ -78,13 +83,17 @@ $(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_D
 	temporary="$$(mktemp "$(BIN_DIR)/.llama-acceptance.XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
-	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" ./tools/llama-acceptance; \
+	$(GO_COMMAND) build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" ./tools/llama-acceptance; \
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(LLAMA_ACCEPTANCE_BIN)"; \
 	trap - EXIT INT TERM HUP
 
+# Restoring XDG at execution differs from the Go driver's environment; do not
+# reuse test results hashed against the driver's isolated config path.
 test: | $(GOTMPDIR)
-	go test $(GO_PACKAGES)
+	PARACETAMOL_TEST_XDG_CONFIG_HOME_SET="$${XDG_CONFIG_HOME+x}" \
+	PARACETAMOL_TEST_XDG_CONFIG_HOME="$${XDG_CONFIG_HOME-}" \
+	$(GO_COMMAND) test -count=1 -exec 'sh "$(CURDIR)/tools/go-test-exec.sh"' $(GO_PACKAGES)
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
 
 race:
@@ -93,16 +102,18 @@ race:
 		exit 2; \
 	}
 	mkdir -p "$(GOCACHE)" "$(GOMODCACHE)" "$(GOPATH)" \
-		"$(GOTMPDIR)" "$(GOTELEMETRYDIR)"
-	CGO_ENABLED=1 go test -race $(GO_PACKAGES)
+		"$(GOTMPDIR)"
+	PARACETAMOL_TEST_XDG_CONFIG_HOME_SET="$${XDG_CONFIG_HOME+x}" \
+	PARACETAMOL_TEST_XDG_CONFIG_HOME="$${XDG_CONFIG_HOME-}" \
+	CGO_ENABLED=1 $(GO_COMMAND) test -race -count=1 -exec 'sh "$(CURDIR)/tools/go-test-exec.sh"' $(GO_PACKAGES)
 
 check: | $(GOTMPDIR)
-	@test -z "$$(gofmt -l $(GO_SOURCES))" || { \
+	@test -z "$$($(GO_CONFIG_ENV) gofmt -l $(GO_SOURCES))" || { \
 		printf '%s\n' 'Go source needs formatting:'; \
-		gofmt -l $(GO_SOURCES); \
+		$(GO_CONFIG_ENV) gofmt -l $(GO_SOURCES); \
 		exit 1; \
 	}
-	go vet $(GO_PACKAGES)
+	$(GO_COMMAND) vet $(GO_PACKAGES)
 
 print-bin:
 	@printf '%s\n' "$(BIN)"
@@ -111,7 +122,7 @@ launcher-binary: build
 	@printf '%s\n' "$(BIN)"
 
 $(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
-	@test "$$(go env CGO_ENABLED)" = 1 || { \
+	@test "$$($(GO_COMMAND) env CGO_ENABLED)" = 1 || { \
 		printf '%s\n' 'normal builds require CGO; use make static for the pure-Go binary'; \
 		exit 2; \
 	}
@@ -119,7 +130,7 @@ $(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID).XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
-	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" "$(GO_PACKAGE)"; \
+	$(GO_COMMAND) build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" "$(GO_PACKAGE)"; \
 	test -s "$$temporary"; \
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(BIN)"; \
@@ -130,7 +141,7 @@ $(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID)-static.XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
-	CGO_ENABLED=0 go build -trimpath -tags 'netgo osusergo' \
+	CGO_ENABLED=0 $(GO_COMMAND) build -trimpath -tags 'netgo osusergo' \
 		-ldflags "-s -w -buildid= $(IDENTITY_LDFLAGS)" \
 		-o "$$temporary" "$(GO_PACKAGE)"; \
 	test -s "$$temporary"; \
@@ -140,7 +151,7 @@ $(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	@printf '%s\n' "static binary: $(STATIC_BIN)"
 
 $(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GOTMPDIR)
-	@test "$$(go env CGO_ENABLED)" = 1 || { \
+	@test "$$($(GO_COMMAND) env CGO_ENABLED)" = 1 || { \
 		printf '%s\n' 'normal developer-tool builds require CGO'; \
 		exit 2; \
 	}
@@ -148,7 +159,7 @@ $(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GO
 	temporary="$$(mktemp "$(BIN_DIR)/.gufo-recheck.XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
-	go build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" \
+	$(GO_COMMAND) build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" \
 		-o "$$temporary" ./tools/gufo-recheck; \
 	test -s "$$temporary"; \
 	chmod 0755 "$$temporary"; \
@@ -158,7 +169,7 @@ $(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GO
 
 $(BIN_DIR) $(GOTMPDIR):
 	mkdir -p "$(BIN_DIR)" "$(GOCACHE)" "$(GOMODCACHE)" \
-		"$(GOPATH)" "$(GOTMPDIR)" "$(GOTELEMETRYDIR)"
+		"$(GOPATH)" "$(GOTMPDIR)"
 
 # Keep validation and mutation in one shell, even under make --ignore-errors.
 # Recursive chmod follows a command-line symlink but is needed for Go caches.
