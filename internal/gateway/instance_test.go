@@ -69,7 +69,7 @@ func TestLifecycleBindsContainerAndProtectsAnotherInstance(t *testing.T) {
 	if command[0] != "podman" || command[1] != "run" || command[2] != "--label" || command[3] != GatewayInstanceLabel+"="+lifecycle.options.InstanceID {
 		t.Fatalf("gateway instance label is not a Podman argument: %v", command)
 	}
-	if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err == nil || !runner.running {
+	if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil || !runner.running {
 		t.Fatalf("stop must preserve a different gateway instance: running=%v err=%v", runner.running, err)
 	}
 	// A well-formed foreign nonce does not prove its gateway has stopped.

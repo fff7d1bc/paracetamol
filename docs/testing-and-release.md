@@ -217,6 +217,13 @@ publication, cleanup during an unloaded gateway, long HOME paths, graceful
 stop and crash release. Keep these checks at the shared ownership boundary
 when changing startup, cleanup or control transport.
 
+Gateway backend lifecycle fixtures must rename the original and reuse its name
+before port lookup, readiness and shutdown. Only the captured full ID may be
+used. Cover missing or malformed launch output, cancellation after creation,
+renamed failed launches and changed ownership after recovery discovery.
+Failed cleanup must retain its exact target or pending launch for retry, and
+an unstarted lifecycle must never adopt an incumbent container.
+
 `.github/workflows/checks.yml` runs the Go 1.26 checks, static build, the
 container-owned Python and shell checks, catalog validation, and representative
 CLI dry-runs without Podman.

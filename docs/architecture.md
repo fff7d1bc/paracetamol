@@ -398,6 +398,13 @@ their gateway-instance label; status and request reports expose the same
 process identity. Acceptance binds the inspected container to that identity
 before sending requests and rechecks it at completion. Matching model
 inventories or container names alone do not establish which image answered.
+
+Each backend start also has a fresh launch nonce. Its verified full container
+ID governs log following, port lookup, readiness and removal, so renaming the
+original or reusing its name cannot redirect lifecycle operations. If a failed
+Podman client returns no usable ID, recovery discovers full IDs filtered by
+that exact instance and launch, then revalidates complete ownership. Failed
+cleanup retains its target or pending launch identity for shutdown retry.
 Gateway lifecycle cleanup requires the current process's label. A canonical
 nonce does not establish that its owner has exited, so startup and allocation
 never reclaim another process's backend. Operators must verify orphan ownership

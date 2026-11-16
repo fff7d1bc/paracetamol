@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -56,6 +57,14 @@ type ContainerLifecycle struct {
 	client   *http.Client
 	logMu    sync.Mutex
 	follower *backendLogFollower
+	backends map[Allocation]*backendContainer
+}
+
+// The scheduler serializes lifecycle operations. Keep even an unconfirmed
+// launch until cleanup succeeds, so cancellation cannot lose its identity.
+type backendContainer struct {
+	launchID string
+	target   *podman.OwnedContainer
 }
 
 type backendLogFollower struct {
@@ -109,9 +118,10 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 		return nil, fmt.Errorf("gateway llama.cpp inventory requires a router preset")
 	}
 	return &ContainerLifecycle{
-		options: options,
-		podman:  podman.Client{Runner: options.Runner},
-		client:  &http.Client{Timeout: 2 * time.Second},
+		options:  options,
+		podman:   podman.Client{Runner: options.Runner},
+		client:   &http.Client{Timeout: 2 * time.Second},
+		backends: make(map[Allocation]*backendContainer),
 	}, nil
 }
 
@@ -149,6 +159,9 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 	if _, ok := gatewayContainerNames[allocation]; !ok {
 		return nil, fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
+	if lifecycle.backends[allocation] != nil {
+		return nil, fmt.Errorf("gateway %s backend still requires cleanup", allocation)
+	}
 	if err := lifecycle.requireAvailable(ctx, allocation); err != nil {
 		return nil, err
 	}
@@ -156,6 +169,12 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 	if err != nil {
 		return nil, err
 	}
+	command, launchID, err := podman.WithLaunchIdentity(command)
+	if err != nil {
+		return nil, err
+	}
+	backend := &backendContainer{launchID: launchID}
+	lifecycle.backends[allocation] = backend
 	logLine(lifecycle.options.Log, "gateway | starting %s backend", allocation)
 	// Podman can create the detached backend before its client is canceled or
 	// otherwise fails. Every failure after attempting run therefore needs the
@@ -180,18 +199,26 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 		}
 		return nil, fmt.Errorf("start gateway %s backend: %s", allocation, detail)
 	}
-	if err := lifecycle.followBackendLogs(allocation); err != nil {
+	id := strings.TrimSpace(string(result.Stdout))
+	target, err := lifecycle.captureBackend(ctx, allocation, id, launchID)
+	if err != nil {
 		return nil, err
 	}
-	name := gatewayContainerNames[allocation]
-	hostPort, err := lifecycle.podman.PublishedLoopbackPort(ctx, name, internalPort)
+	if target == nil {
+		return nil, fmt.Errorf("gateway %s backend exited before its identity was captured", allocation)
+	}
+	backend.target = target
+	if err := lifecycle.followBackendLogs(allocation, backend.target.ID); err != nil {
+		return nil, err
+	}
+	hostPort, err := lifecycle.podman.PublishedLoopbackPort(ctx, backend.target.ID, internalPort)
 	if err != nil {
 		return nil, err
 	}
 	upstream, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", hostPort))
 	readyContext, cancel := context.WithTimeout(ctx, lifecycle.options.StartupTimeout)
 	defer cancel()
-	if err := lifecycle.waitReady(readyContext, allocation, upstream.ResolveReference(&url.URL{Path: readinessPath})); err != nil {
+	if err := lifecycle.waitReady(readyContext, allocation, *backend.target, upstream.ResolveReference(&url.URL{Path: readinessPath})); err != nil {
 		return nil, err
 	}
 	logLine(lifecycle.options.Log, "gateway | %s backend ready on private port %d", allocation, hostPort)
@@ -207,7 +234,7 @@ func (lifecycle *ContainerLifecycle) Stop(ctx context.Context, allocation Alloca
 	return lifecycle.removeOwned(ctx, allocation)
 }
 
-func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation) error {
+func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation, id string) error {
 	lifecycle.logMu.Lock()
 	if lifecycle.follower != nil {
 		active := lifecycle.follower.allocation
@@ -224,7 +251,7 @@ func (lifecycle *ContainerLifecycle) followBackendLogs(allocation Allocation) er
 	go func() {
 		defer close(follower.done)
 		err := lifecycle.podman.Logs(ctx, podman.LogOptions{
-			Container: gatewayContainerNames[allocation], Follow: true, All: true,
+			Container: id, Follow: true, All: true,
 			Streams: podman.Streams{Stdout: output, Stderr: output},
 		})
 		output.finish()
@@ -272,25 +299,24 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 	}
 }
 
-func (lifecycle *ContainerLifecycle) waitReady(ctx context.Context, allocation Allocation, endpoint *url.URL) error {
+func (lifecycle *ContainerLifecycle) waitReady(ctx context.Context, allocation Allocation, target podman.OwnedContainer, endpoint *url.URL) error {
 	ticker := time.NewTicker(lifecycle.options.ReadinessInterval)
 	defer ticker.Stop()
 	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("gateway %s backend did not become ready: %w", allocation, err)
+		}
+		if err := lifecycle.podman.RequireOwnedContainerRunning(ctx, target); err != nil {
+			return err
+		}
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 		response, err := lifecycle.client.Do(request)
 		if err == nil {
 			_, _ = io.CopyN(io.Discard, response.Body, 4096)
 			response.Body.Close()
 			if response.StatusCode >= 200 && response.StatusCode < 300 {
-				return nil
+				return lifecycle.podman.RequireOwnedContainerRunning(ctx, target)
 			}
-		}
-		present, inspectErr := lifecycle.podman.Exists(ctx, "container", gatewayContainerNames[allocation])
-		if inspectErr != nil {
-			return inspectErr
-		}
-		if !present {
-			return fmt.Errorf("gateway %s backend exited before becoming ready", allocation)
 		}
 		select {
 		case <-ctx.Done():
@@ -335,20 +361,70 @@ func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, alloc
 }
 
 func (lifecycle *ContainerLifecycle) removeOwned(ctx context.Context, allocation Allocation) error {
-	name := gatewayContainerNames[allocation]
-	exists, err := lifecycle.podman.Exists(ctx, "container", name)
-	if err != nil || !exists {
-		return err
+	backend := lifecycle.backends[allocation]
+	if backend == nil {
+		return nil
 	}
-	labels, err := lifecycle.podman.ContainerLabels(ctx, name)
-	if err != nil {
-		return err
-	}
-	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != string(allocation) || labels[podman.ManagedRoleLabel] != GatewayBackendRole || labels[GatewayInstanceLabel] != lifecycle.options.InstanceID {
-		return fmt.Errorf("refusing to remove container with unexpected ownership labels: %s", name)
+	if backend.target == nil {
+		// A failed Podman client may provide no ID after creating a container.
+		// Discover full IDs, including renamed originals. Names cannot redirect
+		// recovery between discovery and inspection. Filters are only hints:
+		// inspect this launch's complete identity again before any removal.
+		raw, err := lifecycle.podman.Capture(ctx, []string{
+			"ps", "--all", "--no-trunc",
+			"--filter", "label=" + podman.ManagedContainerLabel + "=true",
+			"--filter", "label=" + podman.ManagedApplicationLabel + "=" + string(allocation),
+			"--filter", "label=" + podman.ManagedRoleLabel + "=" + GatewayBackendRole,
+			"--filter", "label=" + GatewayInstanceLabel + "=" + lifecycle.options.InstanceID,
+			"--filter", "label=" + podman.ManagedLaunchLabel + "=" + backend.launchID,
+			"--format", "{{.ID}}",
+		}, "cannot discover failed gateway backend launch")
+		if err != nil {
+			return err
+		}
+		var found *podman.OwnedContainer
+		for _, id := range strings.Split(raw, "\n") {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			target, err := lifecycle.captureBackend(ctx, allocation, id, backend.launchID)
+			if err != nil {
+				return err
+			}
+			if target == nil {
+				continue
+			}
+			if found != nil && found.ID != target.ID {
+				return fmt.Errorf("ambiguous gateway backend launch identity")
+			}
+			found = target
+		}
+		backend.target = found
 	}
 	// Cleanup must not depend on the foreground terminal still accepting output
 	// (for example after an SSH connection drops). Capture Podman's small result
 	// internally rather than wiring it to the possibly broken gateway log.
-	return lifecycle.podman.RemoveContainer(ctx, name, 2, podman.Streams{})
+	if backend.target != nil {
+		if err := lifecycle.podman.RemoveOwnedContainer(ctx, *backend.target, 2, podman.Streams{}); err != nil {
+			return err
+		}
+	}
+	delete(lifecycle.backends, allocation)
+	return nil
+}
+
+func (lifecycle *ContainerLifecycle) captureBackend(ctx context.Context, allocation Allocation, reference, launchID string) (*podman.OwnedContainer, error) {
+	decoded, err := hex.DecodeString(reference)
+	if err != nil || len(decoded) != 32 || strings.ToLower(reference) != reference {
+		return nil, fmt.Errorf("gateway Podman returned an invalid container ID")
+	}
+	target, err := lifecycle.podman.InspectOwnedContainer(ctx, reference, string(allocation), GatewayBackendRole)
+	if err != nil || target == nil {
+		return nil, err
+	}
+	if target.ID != reference || target.Labels[GatewayInstanceLabel] != lifecycle.options.InstanceID || target.Labels[podman.ManagedLaunchLabel] != launchID {
+		return nil, fmt.Errorf("gateway backend has unexpected ownership labels: %s", reference)
+	}
+	return target, nil
 }

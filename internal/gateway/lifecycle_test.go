@@ -3,12 +3,14 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,22 +22,30 @@ import (
 )
 
 type lifecycleRunner struct {
-	mu            sync.Mutex
-	port          int
-	running       bool
-	conflict      string
-	commands      []process.Command
-	logFollowers  int
-	logsStarted   chan struct{}
-	logsOnce      sync.Once
-	runResult     *process.Result
-	runError      error
-	afterRun      func()
-	removeError   error
-	labels        string
-	portError     error
-	contextErrors []error
+	mu             sync.Mutex
+	port           int
+	running        bool
+	conflict       string
+	commands       []process.Command
+	logFollowers   int
+	logsStarted    chan struct{}
+	logsOnce       sync.Once
+	runResult      *process.Result
+	runError       error
+	afterRun       func()
+	removeError    error
+	labels         string
+	portError      error
+	contextErrors  []error
+	launchID       string
+	name           string
+	replacement    bool
+	inspectOutput  string
+	discoverOutput *string
+	beforeCommand  func(process.Command)
 }
+
+var lifecycleContainerID = strings.Repeat("c", 64)
 
 func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
 	for _, slots := range []int{0, 1, 4, 8, -1, 65} {
@@ -75,6 +85,9 @@ func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command)
 	runner.mu.Lock()
 	runner.commands = append(runner.commands, command)
 	runner.contextErrors = append(runner.contextErrors, ctx.Err())
+	if runner.beforeCommand != nil {
+		runner.beforeCommand(command)
+	}
 	arguments := strings.Join(command.Args, " ")
 	if strings.HasPrefix(arguments, "logs --follow ") {
 		runner.logFollowers++
@@ -99,15 +112,42 @@ func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command)
 	case strings.HasPrefix(arguments, "image exists "):
 		return process.Result{}, nil
 	case strings.HasPrefix(arguments, "ps --all "):
+		if slices.Contains(command.Args, "--no-trunc") {
+			if runner.discoverOutput != nil {
+				return process.Result{Stdout: []byte(*runner.discoverOutput)}, nil
+			}
+			var labels map[string]string
+			_ = json.Unmarshal([]byte(runner.containerLabels()), &labels)
+			matches := runner.running
+			for _, argument := range command.Args {
+				if strings.HasPrefix(argument, "label=") {
+					key, value, _ := strings.Cut(strings.TrimPrefix(argument, "label="), "=")
+					matches = matches && labels[key] == value
+				}
+			}
+			if matches {
+				return process.Result{Stdout: []byte(lifecycleContainerID + "\n")}, nil
+			}
+			return process.Result{}, nil
+		}
+		if runner.running && runner.launchID != "" {
+			return process.Result{Stdout: []byte(runner.containerName() + "\n")}, nil
+		}
 		return process.Result{Stdout: []byte(runner.conflict)}, nil
 	case strings.HasPrefix(arguments, "container exists "):
 		status := 1
-		if runner.running {
+		reference := command.Args[len(command.Args)-1]
+		if (runner.running && (reference == lifecycleContainerID || reference == runner.containerName())) || (runner.replacement && reference == gatewayContainerNames[AllocationLlamaCPP]) {
 			status = 0
 		}
 		return process.Result{Status: status}, nil
 	case strings.HasPrefix(arguments, "run "):
 		runner.running = true
+		for _, argument := range command.Args {
+			if strings.HasPrefix(argument, podman.ManagedLaunchLabel+"=") {
+				runner.launchID = strings.TrimPrefix(argument, podman.ManagedLaunchLabel+"=")
+			}
+		}
 		if runner.afterRun != nil {
 			runner.afterRun()
 		}
@@ -118,19 +158,23 @@ func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command)
 			}
 			return result, runner.runError
 		}
-		return process.Result{Stdout: []byte("container-id\n")}, nil
+		return process.Result{Stdout: []byte(lifecycleContainerID + "\n")}, nil
 	case strings.HasPrefix(arguments, "port "):
 		if runner.portError != nil {
 			return process.Result{}, runner.portError
 		}
 		return process.Result{Stdout: []byte(fmt.Sprintf("127.0.0.1:%d\n", runner.port))}, nil
 	case strings.HasPrefix(arguments, "inspect --format {{json .Config.Labels}} "):
-		if runner.labels != "" {
-			return process.Result{Stdout: []byte(runner.labels)}, nil
+		return process.Result{Stdout: []byte(runner.containerLabels())}, nil
+	case strings.HasPrefix(arguments, "container inspect "):
+		if runner.inspectOutput != "" {
+			return process.Result{Stdout: []byte(runner.inspectOutput)}, nil
 		}
-		labels := fmt.Sprintf(`{"%s":"true","%s":"llama-cpp","%s":"%s","%s":"%s"}`,
-			podman.ManagedContainerLabel, podman.ManagedApplicationLabel, podman.ManagedRoleLabel, GatewayBackendRole, GatewayInstanceLabel, strings.Repeat("a", 32))
-		return process.Result{Stdout: []byte(labels)}, nil
+		if !runner.running {
+			return process.Result{Status: 125, Stderr: []byte("container missing")}, nil
+		}
+		record := fmt.Sprintf(`[{"Id":%q,"Name":%q,"Config":{"Labels":%s},"State":{"Running":true,"ExitCode":0}}]`, lifecycleContainerID, runner.containerName(), runner.containerLabels())
+		return process.Result{Stdout: []byte(record)}, nil
 	case strings.HasPrefix(arguments, "rm --force "):
 		if runner.removeError != nil {
 			return process.Result{}, runner.removeError
@@ -140,6 +184,25 @@ func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command)
 	default:
 		return process.Result{}, fmt.Errorf("unexpected command: %s %s", command.Name, arguments)
 	}
+}
+
+func (runner *lifecycleRunner) containerName() string {
+	if runner.name != "" {
+		return runner.name
+	}
+	return gatewayContainerNames[AllocationLlamaCPP]
+}
+
+func (runner *lifecycleRunner) containerLabels() string {
+	if runner.labels != "" {
+		return runner.labels
+	}
+	labels, _ := json.Marshal(map[string]string{
+		podman.ManagedContainerLabel: "true", podman.ManagedApplicationLabel: "llama-cpp",
+		podman.ManagedRoleLabel: GatewayBackendRole, GatewayInstanceLabel: strings.Repeat("a", 32),
+		podman.ManagedLaunchLabel: runner.launchID,
+	})
+	return string(labels)
 }
 
 func llamaLifecycleFixture(t *testing.T, runner process.Runner, logs ...io.Writer) *ContainerLifecycle {
@@ -203,7 +266,7 @@ func TestContainerLifecycleStartsOnPrivateDynamicPortAndStopsOwnedContainer(t *t
 	for _, command := range runner.commands {
 		joined += "\n" + command.Name + " " + strings.Join(command.Args, " ")
 	}
-	for _, required := range []string{"--publish 127.0.0.1::8080/tcp", "--name paracetamol-gateway-llama-cpp", "gateway-backend", "logs --follow paracetamol-gateway-llama-cpp"} {
+	for _, required := range []string{"--publish 127.0.0.1::8080/tcp", "--name paracetamol-gateway-llama-cpp", "gateway-backend", "logs --follow " + lifecycleContainerID, "port " + lifecycleContainerID + " 8080/tcp", "rm --force --time 2 --ignore " + lifecycleContainerID} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("commands lack %q:%s", required, joined)
 		}
@@ -291,8 +354,12 @@ func TestContainerLifecycleCleansOwnedBackendAfterFailedRun(t *testing.T) {
 					cleanupCommands = append(cleanupCommands, strings.Join(command.Args, " "))
 				}
 			}
-			name := gatewayContainerNames[AllocationLlamaCPP]
-			want := []string{"container exists " + name, "inspect --format {{json .Config.Labels}} " + name, "rm --force --time 2 --ignore " + name}
+			want := []string{
+				"ps --all --no-trunc --filter label=" + podman.ManagedContainerLabel + "=true --filter label=" + podman.ManagedApplicationLabel + "=llama-cpp --filter label=" + podman.ManagedRoleLabel + "=" + GatewayBackendRole + " --filter label=" + GatewayInstanceLabel + "=" + lifecycle.options.InstanceID + " --filter label=" + podman.ManagedLaunchLabel + "=" + runner.launchID + " --format {{.ID}}",
+				"container exists " + lifecycleContainerID, "container inspect " + lifecycleContainerID,
+				"container exists " + lifecycleContainerID, "container inspect " + lifecycleContainerID,
+				"rm --force --time 2 --ignore " + lifecycleContainerID,
+			}
 			if fmt.Sprint(cleanupCommands) != fmt.Sprint(want) {
 				t.Fatalf("cleanup commands=%v, want %v", cleanupCommands, want)
 			}
@@ -318,7 +385,7 @@ func TestContainerLifecycleReportsCleanupFailureAtEveryStartupStage(t *testing.T
 			case "run":
 				runner.runError, detail = startErr, startErr.Error()
 			case "log-follower":
-				if err := lifecycle.followBackendLogs(AllocationLlamaCPP); err != nil {
+				if err := lifecycle.followBackendLogs(AllocationLlamaCPP, lifecycleContainerID); err != nil {
 					t.Fatal(err)
 				}
 				detail = "already following"
@@ -361,7 +428,7 @@ func TestContainerLifecycleFailedRunPreservesForeignContainer(t *testing.T) {
 			lifecycle := llamaLifecycleFixture(t, runner)
 			_, err := lifecycle.Start(context.Background(), AllocationLlamaCPP)
 			var cleanupFailure *backendCleanupError
-			if !errors.As(err, &cleanupFailure) || !strings.Contains(err.Error(), "unexpected ownership labels") || !runner.running {
+			if errors.As(err, &cleanupFailure) || err == nil || !runner.running {
 				t.Fatalf("foreign container cleanup: running=%t err=%v", runner.running, err)
 			}
 			for _, command := range runner.commands {
@@ -475,5 +542,239 @@ func TestSchedulerShutdownCleansBackendAfterInterruptedDetachedRun(t *testing.T)
 	}
 	if runner.running {
 		t.Fatal("interrupted Podman client left its detached backend running")
+	}
+}
+
+func readyLifecycleFixture(t *testing.T, runner *lifecycleRunner) *ContainerLifecycle {
+	t.Helper()
+	backend := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+	endpoint, _ := url.Parse(backend.URL)
+	runner.port, _ = strconv.Atoi(endpoint.Port())
+	return llamaLifecycleFixture(t, runner)
+}
+
+func TestContainerLifecycleRetainsImmutableIDAcrossRenameAndNameReuse(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		removeEarly bool
+	}{
+		{name: "renamed-original"},
+		{name: "disappeared-original", removeEarly: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &lifecycleRunner{}
+			lifecycle := readyLifecycleFixture(t, runner)
+			if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err != nil {
+				t.Fatal(err)
+			}
+			runner.mu.Lock()
+			runner.name = "renamed-original"
+			runner.replacement = true
+			if test.removeEarly {
+				runner.running = false
+			}
+			runner.mu.Unlock()
+			if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil {
+				t.Fatal(err)
+			}
+			if runner.running || !runner.replacement || lifecycle.backends[AllocationLlamaCPP] != nil {
+				t.Fatalf("cleanup: original=%t replacement=%t retained=%v", runner.running, runner.replacement, lifecycle.backends)
+			}
+			for _, command := range runner.commands {
+				if command.Args[0] == "rm" && command.Args[len(command.Args)-1] != lifecycleContainerID {
+					t.Fatalf("cleanup retargeted a name: %v", command.Args)
+				}
+			}
+		})
+	}
+}
+
+func TestContainerLifecycleNameReuseCannotRedirectStartupProbes(t *testing.T) {
+	runner := &lifecycleRunner{}
+	lifecycle := readyLifecycleFixture(t, runner)
+	runner.beforeCommand = func(command process.Command) {
+		if command.Args[0] == "port" {
+			runner.name, runner.replacement = "renamed-before-port", true
+		}
+	}
+	if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range runner.commands {
+		switch command.Args[0] {
+		case "port", "logs", "rm":
+			if !slices.Contains(command.Args, lifecycleContainerID) || slices.Contains(command.Args, gatewayContainerNames[AllocationLlamaCPP]) {
+				t.Fatalf("startup probe retargeted a name: %v", command.Args)
+			}
+		}
+	}
+	if !runner.replacement {
+		t.Fatal("removed replacement")
+	}
+}
+
+func TestContainerLifecycleRejectsReadyHTTPFromDisappearedBackend(t *testing.T) {
+	runner := &lifecycleRunner{}
+	lifecycle := readyLifecycleFixture(t, runner)
+	runner.beforeCommand = func(command process.Command) {
+		if command.Args[0] == "port" {
+			runner.name, runner.replacement, runner.running = "renamed-before-readiness", true, false
+		}
+	}
+	if upstream, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); upstream != nil || err == nil || !strings.Contains(err.Error(), "missing or exited") {
+		t.Fatalf("accepted unrelated readiness: upstream=%v err=%v", upstream, err)
+	}
+	if !runner.replacement || lifecycle.backends[AllocationLlamaCPP] != nil {
+		t.Fatalf("unexpected residency: replacement=%t backends=%v", runner.replacement, lifecycle.backends)
+	}
+}
+
+func TestContainerLifecycleFailedRunDiscoversRenamedLaunch(t *testing.T) {
+	for _, output := range []string{"", "short-id\n", strings.Repeat("C", 64), lifecycleContainerID + "\n" + lifecycleContainerID} {
+		t.Run(fmt.Sprintf("output-%q", output), func(t *testing.T) {
+			runner := &lifecycleRunner{runResult: &process.Result{Stdout: []byte(output)}}
+			runner.afterRun = func() {
+				runner.name, runner.replacement = "renamed-after-run", true
+			}
+			lifecycle := llamaLifecycleFixture(t, runner)
+			_, err := lifecycle.Start(context.Background(), AllocationLlamaCPP)
+			var cleanupFailure *backendCleanupError
+			if err == nil || !strings.Contains(err.Error(), "invalid container ID") || errors.As(err, &cleanupFailure) || runner.running || !runner.replacement {
+				t.Fatalf("malformed run cleanup: original=%t replacement=%t err=%v", runner.running, runner.replacement, err)
+			}
+		})
+	}
+}
+
+func TestContainerLifecycleCanceledRunDiscoversRenamedLaunchByID(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner := &lifecycleRunner{runError: context.Canceled}
+	runner.afterRun = func() {
+		runner.name, runner.replacement = "renamed-after-cancel", true
+		cancel()
+	}
+	runner.beforeCommand = func(command process.Command) {
+		if command.Args[0] == "container" && command.Args[1] == "inspect" {
+			// Rename again after discovery; cleanup must not inspect its old name.
+			runner.name = "renamed-during-recovery"
+		}
+	}
+	lifecycle := llamaLifecycleFixture(t, runner)
+	_, err := lifecycle.Start(ctx, AllocationLlamaCPP)
+	var cleanupFailure *backendCleanupError
+	if !errors.Is(err, context.Canceled) || errors.As(err, &cleanupFailure) || runner.running || !runner.replacement {
+		t.Fatalf("canceled renamed cleanup: original=%t replacement=%t err=%v", runner.running, runner.replacement, err)
+	}
+}
+
+func TestContainerLifecycleFailedDiscoveryRetainsLaunchForRetry(t *testing.T) {
+	for _, raw := range []string{"short-id", lifecycleContainerID + " " + lifecycleContainerID, strings.Repeat("C", 64)} {
+		t.Run(raw, func(t *testing.T) {
+			runner := &lifecycleRunner{runError: context.Canceled, discoverOutput: &raw}
+			lifecycle := llamaLifecycleFixture(t, runner)
+			_, err := lifecycle.Start(context.Background(), AllocationLlamaCPP)
+			var cleanupFailure *backendCleanupError
+			if !errors.As(err, &cleanupFailure) || !errors.Is(err, context.Canceled) || !runner.running {
+				t.Fatalf("failed discovery lost launch: running=%t err=%v", runner.running, err)
+			}
+			if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err == nil || !strings.Contains(err.Error(), "still requires cleanup") {
+				t.Fatalf("pending launch replaced: %v", err)
+			}
+			runner.discoverOutput = nil
+			if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil || runner.running {
+				t.Fatalf("retry discovery: running=%t err=%v", runner.running, err)
+			}
+		})
+	}
+}
+
+func TestContainerLifecycleRecoveryRechecksFilteredIdentity(t *testing.T) {
+	for _, key := range []string{podman.ManagedContainerLabel, podman.ManagedApplicationLabel, podman.ManagedRoleLabel, GatewayInstanceLabel, podman.ManagedLaunchLabel} {
+		t.Run(key, func(t *testing.T) {
+			runner := &lifecycleRunner{runError: context.Canceled}
+			runner.beforeCommand = func(command process.Command) {
+				if command.Args[0] != "container" || command.Args[1] != "inspect" || runner.labels != "" {
+					return
+				}
+				var labels map[string]string
+				_ = json.Unmarshal([]byte(runner.containerLabels()), &labels)
+				labels[key] = "foreign"
+				raw, _ := json.Marshal(labels)
+				runner.labels = string(raw)
+			}
+			lifecycle := llamaLifecycleFixture(t, runner)
+			_, err := lifecycle.Start(context.Background(), AllocationLlamaCPP)
+			var cleanupFailure *backendCleanupError
+			if !errors.As(err, &cleanupFailure) || !runner.running {
+				t.Fatalf("filtered identity not checked: running=%t err=%v", runner.running, err)
+			}
+			for _, command := range runner.commands {
+				if command.Args[0] == "rm" {
+					t.Fatalf("removed changed filtered identity: %v", command.Args)
+				}
+			}
+		})
+	}
+}
+
+func TestContainerLifecycleRejectsMalformedInspectAndRetainsCleanup(t *testing.T) {
+	for _, raw := range []string{
+		`not json`, `[]`, `[{},{}]`,
+		`[{"Id":"short","Name":"paracetamol-gateway-llama-cpp"}]`,
+		`[{"Id":"` + strings.Repeat("d", 64) + `","Name":"unrelated","Config":{"Labels":{}}}]`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			runner := &lifecycleRunner{inspectOutput: raw}
+			lifecycle := llamaLifecycleFixture(t, runner)
+			_, err := lifecycle.Start(context.Background(), AllocationLlamaCPP)
+			var cleanupFailure *backendCleanupError
+			if !errors.As(err, &cleanupFailure) || !runner.running || lifecycle.backends[AllocationLlamaCPP] == nil {
+				t.Fatalf("malformed inspection lost pending cleanup: running=%t err=%v", runner.running, err)
+			}
+			for _, command := range runner.commands {
+				if command.Args[0] == "rm" || command.Args[0] == "port" || command.Args[0] == "logs" {
+					t.Fatalf("malformed identity authorized operation: %v", command.Args)
+				}
+			}
+			runner.inspectOutput = ""
+			if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil || runner.running {
+				t.Fatalf("retry pending cleanup: running=%t err=%v", runner.running, err)
+			}
+		})
+	}
+}
+
+func TestContainerLifecycleStopRejectsChangedCapturedOwnership(t *testing.T) {
+	for _, key := range []string{podman.ManagedContainerLabel, podman.ManagedApplicationLabel, podman.ManagedRoleLabel, GatewayInstanceLabel, podman.ManagedLaunchLabel} {
+		t.Run(key, func(t *testing.T) {
+			runner := &lifecycleRunner{}
+			lifecycle := readyLifecycleFixture(t, runner)
+			if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err != nil {
+				t.Fatal(err)
+			}
+			runner.mu.Lock()
+			var labels map[string]string
+			if err := json.Unmarshal([]byte(runner.containerLabels()), &labels); err != nil {
+				t.Fatal(err)
+			}
+			labels[key] = "foreign"
+			raw, _ := json.Marshal(labels)
+			runner.labels = string(raw)
+			runner.mu.Unlock()
+			if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err == nil || !runner.running || lifecycle.backends[AllocationLlamaCPP] == nil {
+				t.Fatalf("changed ownership cleanup: running=%t err=%v", runner.running, err)
+			}
+			runner.labels = ""
+			if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err != nil || runner.running {
+				t.Fatalf("restored identity cleanup: running=%t err=%v", runner.running, err)
+			}
+		})
 	}
 }
