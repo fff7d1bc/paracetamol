@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -519,13 +520,17 @@ func (app *App) executeSpeculativeTrial(command []string, port int, payload map[
 		return metrics, err
 	}
 	startup := time.Now()
-	if _, err := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: "llama-cpp", Role: "benchmark", Image: image, Command: command, LaunchID: launchID}); err != nil {
+	_, target, err := runtime.LaunchOwned(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: "llama-cpp", Role: "benchmark", Image: image, Command: command, LaunchID: launchID})
+	if err != nil {
 		return metrics, err
 	}
 	defer func() {
-		returned = withCleanupFailure(returned, "clean up speculative benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), speculativeBenchmarkContainer, "llama-cpp", "benchmark", launchID, 10))
+		returned = withCleanupFailure(returned, "clean up speculative benchmark container", app.podman().RemoveOwnedContainer(contextWithoutCancel(), *target, 10, podman.Streams{}))
 	}()
-	if err := benchmark.WaitForHealth(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port)); err != nil {
+	checkBackend := func(ctx context.Context) error {
+		return app.podman().RequireOwnedContainerRunning(ctx, *target)
+	}
+	if err := benchmark.WaitForHealthWithBackend(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port), checkBackend); err != nil {
 		return metrics, err
 	}
 	startupSeconds := time.Since(startup).Seconds()

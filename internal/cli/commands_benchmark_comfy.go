@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -572,13 +573,17 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		return "", summary, controlerr.New("benchmark image changed after suite planning: %s", options.image)
 	}
 	startedAt := benchmark.Timestamp()
-	if _, err := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: options.dataRoot, Application: "comfyui", Role: "benchmark", Image: options.image, Command: command, LaunchID: launchID, Prepare: prepare}); err != nil {
+	_, target, err := runtime.LaunchOwned(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: options.dataRoot, Application: "comfyui", Role: "benchmark", Image: options.image, Command: command, LaunchID: launchID, Prepare: prepare})
+	if err != nil {
 		return "", summary, err
 	}
 	defer func() {
-		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), comfyBenchmarkContainer, "comfyui", "benchmark", launchID, 2))
+		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveOwnedContainer(contextWithoutCancel(), *target, 2, podman.Streams{}))
 	}()
-	stats, err := benchmark.WaitForServer(app.Context, fmt.Sprintf("http://127.0.0.1:%d", options.port))
+	checkBackend := func(ctx context.Context) error {
+		return app.podman().RequireOwnedContainerRunning(ctx, *target)
+	}
+	stats, err := benchmark.WaitForServerWithBackend(app.Context, fmt.Sprintf("http://127.0.0.1:%d", options.port), checkBackend)
 	if err != nil {
 		return "", summary, err
 	}
@@ -594,7 +599,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		if err != nil {
 			return "", summary, err
 		}
-		history, err := benchmark.WaitForPrompt(app.Context, fmt.Sprintf("http://127.0.0.1:%d", options.port), promptID)
+		history, err := benchmark.WaitForPromptWithBackend(app.Context, fmt.Sprintf("http://127.0.0.1:%d", options.port), promptID, checkBackend)
 		if err != nil {
 			return "", summary, err
 		}

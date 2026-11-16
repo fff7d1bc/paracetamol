@@ -364,6 +364,11 @@ The normal container and isolated-cache cleanup still runs, and a suite with
 `--keep-going` can continue to its next bundle. Pending jobs remain cancellable
 and have no fixed inference deadline.
 
+ComfyUI startup and job polling, and speculative-server startup, also check the
+captured backend container's identity and running state. A missing or exited
+backend fails the run instead of polling indefinitely. These bounded metadata
+probes do not impose a deadline on a live backend loading or processing work.
+
 llama.cpp uses its native `llama-bench`:
 
 ```bash

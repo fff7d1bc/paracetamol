@@ -380,17 +380,28 @@ func PortAvailable(port int) error {
 }
 
 func WaitForServer(ctx context.Context, baseURL string) (map[string]any, error) {
+	return WaitForServerWithBackend(ctx, baseURL, nil)
+}
+
+func WaitForServerWithBackend(ctx context.Context, baseURL string, check func(context.Context) error) (map[string]any, error) {
 	client := &http.Client{Timeout: 3 * time.Second}
-	return WaitForServerWithClient(ctx, client, baseURL, time.Second)
+	return waitForServer(ctx, client, baseURL, time.Second, check)
 }
 
 func WaitForServerWithClient(ctx context.Context, client HTTPDoer, baseURL string, interval time.Duration) (map[string]any, error) {
+	return waitForServer(ctx, client, baseURL, interval, nil)
+}
+
+func waitForServer(ctx context.Context, client HTTPDoer, baseURL string, interval time.Duration, check func(context.Context) error) (map[string]any, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("poll interval must be positive")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if err := checkBackend(ctx, check); err != nil {
+			return nil, err
+		}
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/system_stats", nil)
 		response, err := client.Do(request)
 		if err == nil {
@@ -444,17 +455,28 @@ func QueuePromptWithClient(ctx context.Context, client HTTPDoer, baseURL string,
 }
 
 func WaitForPrompt(ctx context.Context, baseURL, promptID string) (map[string]any, error) {
+	return WaitForPromptWithBackend(ctx, baseURL, promptID, nil)
+}
+
+func WaitForPromptWithBackend(ctx context.Context, baseURL, promptID string, check func(context.Context) error) (map[string]any, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
-	return WaitForPromptWithClient(ctx, client, baseURL, promptID, time.Second)
+	return waitForPrompt(ctx, client, baseURL, promptID, time.Second, check)
 }
 
 func WaitForPromptWithClient(ctx context.Context, client HTTPDoer, baseURL, promptID string, interval time.Duration) (map[string]any, error) {
+	return waitForPrompt(ctx, client, baseURL, promptID, interval, nil)
+}
+
+func waitForPrompt(ctx context.Context, client HTTPDoer, baseURL, promptID string, interval time.Duration, check func(context.Context) error) (map[string]any, error) {
 	if interval <= 0 {
 		return nil, fmt.Errorf("poll interval must be positive")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if err := checkBackend(ctx, check); err != nil {
+			return nil, err
+		}
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/history/"+promptID, nil)
 		response, err := client.Do(request)
 		if err == nil {

@@ -426,6 +426,13 @@ graphs and a fresh process for its first request. Native throughput, backend
 comparisons and speculative depth screens measure distinct things; none is
 interchangeable with quality evidence.
 
+Detached ComfyUI and speculative benchmark launches retain the full container
+ID and ownership labels captured at creation. Readiness and ComfyUI history
+polling use bounded metadata probes against that ID, not its reusable name.
+Missing, exited or identity-mismatched backends fail the run. Live workloads
+remain cancellable without an overall loading or inference deadline. Cleanup
+revalidates the same captured identity.
+
 Acceptance and speculative-benchmark checkpoint fingerprints bind run
 definitions, inputs, images, runtime policy and host source identity. Clean
 source uses the Git revision. Tracked or untracked changes add a content digest.

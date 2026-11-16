@@ -27,12 +27,18 @@ type LaunchOptions struct {
 // the container, never an unregistered workload using persistent mounts. The
 // reservation is not held during inference or an interactive shell.
 func Launch(ctx context.Context, runner process.Runner, options LaunchOptions) (result process.Result, returned error) {
+	result, _, returned = LaunchOwned(ctx, runner, options)
+	return result, returned
+}
+
+// LaunchOwned also returns the verified immutable identity for detached workload
+// liveness and cleanup. Callers must not rediscover it by its reusable name.
+func LaunchOwned(ctx context.Context, runner process.Runner, options LaunchOptions) (result process.Result, target *podman.OwnedContainer, returned error) {
 	create, detached, interactive, err := launchCreateCommand(options.Command, options.Image, options.LaunchID)
 	if err != nil {
-		return result, err
+		return result, nil, err
 	}
 	client := podman.Client{Runner: runner}
-	var target *podman.OwnedContainer
 	err = content.WithMutation(ctx, options.DataRoot, func() (returned error) {
 		if err := (storage.Layout{Root: options.DataRoot}).PrepareRuntime(options.Application); err != nil {
 			return err
@@ -85,7 +91,7 @@ func Launch(ctx context.Context, runner process.Runner, options LaunchOptions) (
 		return nil
 	})
 	if err != nil {
-		return result, err
+		return result, nil, err
 	}
 	arguments := []string{"start"}
 	if !detached {
@@ -104,9 +110,9 @@ func Launch(ctx context.Context, runner process.Runner, options LaunchOptions) (
 	}
 	if err != nil {
 		cleanupErr := client.RemoveOwnedContainer(context.WithoutCancel(ctx), *target, 1, podman.Streams{})
-		return result, errors.Join(err, cleanupErr)
+		return result, nil, errors.Join(err, cleanupErr)
 	}
-	return result, nil
+	return result, target, nil
 }
 
 func launchStatus(result process.Result) error {

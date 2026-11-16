@@ -215,7 +215,7 @@ func TestComfySuiteRetriesRealPublishedChildAfterCleanupFailure(t *testing.T) {
 				return process.Result{Status: 1}
 			}
 			if command.Args[1] == "inspect" {
-				return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, comfyBenchmarkContainer, fixtureContainerLabels("comfyui", "benchmark", launch))}
+				return process.Result{Stdout: fixtureRunningContainerJSON(t, fixtureContainerID, comfyBenchmarkContainer, fixtureContainerLabels("comfyui", "benchmark", launch))}
 			}
 			return process.Result{}
 		case "start":

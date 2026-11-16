@@ -119,6 +119,20 @@ func admissionOptions(t *testing.T, flags ...string) LaunchOptions {
 	return LaunchOptions{DataRoot: t.TempDir(), Application: "comfyui", Role: "application", Image: "fixture-image", Command: command, LaunchID: token}
 }
 
+func TestLaunchOwnedReturnsIdentityCapturedBeforeStart(t *testing.T) {
+	options := admissionOptions(t, "--detach")
+	runner := &admissionRunner{t: t, options: options}
+	_, target, err := LaunchOwned(context.Background(), runner, options)
+	if err != nil || target == nil || target.ID != strings.Repeat("a", 64) || target.Labels[podman.ManagedLaunchLabel] != options.LaunchID || target.Labels[podman.ManagedApplicationLabel] != options.Application || target.Labels[podman.ManagedRoleLabel] != options.Role {
+		t.Fatalf("target=%v err=%v", target, err)
+	}
+	for _, command := range runner.commands {
+		if command.Args[0] == "container" && command.Args[1] == "inspect" && command.Args[2] != target.ID {
+			t.Fatalf("launch target was rediscovered by name: %v", command.Args)
+		}
+	}
+}
+
 func TestLaunchAdmissionAndAttachedDetachedShellSemantics(t *testing.T) {
 	for _, flags := range [][]string{nil, {"--detach"}, {"-it"}, {"--interactive", "--tty"}} {
 		t.Run(strings.Join(flags, ","), func(t *testing.T) {

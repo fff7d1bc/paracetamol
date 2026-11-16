@@ -125,18 +125,35 @@ func WaitForHealth(ctx context.Context, endpoint string) error {
 	return WaitForURL(ctx, endpoint+"/health")
 }
 
+func WaitForHealthWithBackend(ctx context.Context, endpoint string, check func(context.Context) error) error {
+	return WaitForURLWithBackend(ctx, endpoint+"/health", check)
+}
+
 func WaitForURL(ctx context.Context, endpoint string) error {
+	return WaitForURLWithBackend(ctx, endpoint, nil)
+}
+
+// WaitForURLWithBackend has no loading deadline: it polls until ready, canceled,
+// or the captured backend's liveness check reports failure.
+func WaitForURLWithBackend(ctx context.Context, endpoint string, check func(context.Context) error) error {
 	client := &http.Client{Timeout: 3 * time.Second}
-	return WaitForURLWithClient(ctx, client, endpoint, time.Second)
+	return waitForURL(ctx, client, endpoint, time.Second, check)
 }
 
 func WaitForURLWithClient(ctx context.Context, client HTTPDoer, endpoint string, interval time.Duration) error {
+	return waitForURL(ctx, client, endpoint, interval, nil)
+}
+
+func waitForURL(ctx context.Context, client HTTPDoer, endpoint string, interval time.Duration, check func(context.Context) error) error {
 	if interval <= 0 {
 		return fmt.Errorf("poll interval must be positive")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if err := checkBackend(ctx, check); err != nil {
+			return err
+		}
 		request, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 		response, err := client.Do(request)
 		if err == nil {
@@ -152,6 +169,20 @@ func WaitForURLWithClient(ctx context.Context, client HTTPDoer, endpoint string,
 		case <-ticker.C:
 		}
 	}
+}
+
+func checkBackend(ctx context.Context, check func(context.Context) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if check != nil {
+		err := check(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
+	return nil
 }
 
 func ParseSpeculativeResponse(value map[string]any, wall, startup float64) (SpeculativeMetrics, error) {

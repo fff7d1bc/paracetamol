@@ -145,6 +145,13 @@ gaps. Dry runs remain unreserved and non-mutating. Use fake subprocesses for
 contention tests and a local CPU-only container for real create/start,
 confinement and terminal lifecycle checks. This does not qualify GPU inference.
 
+Detached benchmark polling tests must distinguish a live, slow-loading backend
+from an exited or auto-removed one, including death during ComfyUI history
+polling. Cover renamed originals, reused names, changed ownership, bounded
+metadata probes and cancellation. Failures must release the maintenance
+reservation and isolated cache, retain both workload and cleanup errors, and
+never reclaim a replacement container.
+
 Checkpoint recovery tests must interrupt the parent after a child result is
 published and retry from the last durable checkpoint. The next attempt must
 use distinct result/media/cache paths and leave the first result unchanged.
