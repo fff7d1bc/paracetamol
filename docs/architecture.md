@@ -137,6 +137,9 @@ inspects bounded manifest/config members without extracting the archive,
 rejects unmanaged or duplicate tags, incomplete prerequisites, unsupported
 platforms and conflicting current IDs before Podman loads layers. Verify exact
 tags/config IDs again after loading. Archive success is not GPU acceptance.
+Image inspection accepts full bare or `sha256:`-prefixed SHA-256 config IDs and
+normalizes them before comparison with archive digests. Malformed or genuinely
+different IDs remain errors at export, import preflight and post-load checks.
 
 The `.containerignore` allowlist must include new build inputs. Source is
 fetched at full commits and checked against `HEAD`; licenses remain after

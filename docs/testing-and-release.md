@@ -284,9 +284,9 @@ helpers. Source, embedded-asset and helper-fixture deletions, including whole
 subtrees, must invalidate the existing executable. A successful rebuild must
 return to an unchanged incremental no-op without republishing the binary.
 Run these fixtures in checkout paths containing spaces. Make's `launcher-binary`
-target must print only the absolute binary path, and clean must retain its anchored-path and
-symlink refusal checks there too. Exercise the real Go test wrapper and custom
-static output in that path, not only fake compilation.
+target must print only the absolute binary path. Clean must retain its
+anchored-path and symlink refusal checks there too. Exercise the real Go test
+wrapper and custom static output in that path, not only fake compilation.
 The tests also retain older transferred source timestamps to
 check that a forced deployment build replaces an otherwise up-to-date binary.
 A failure or interruption must return a nonzero status,
@@ -417,6 +417,13 @@ save it as a Docker archive, inspect it through `images import --dry-run`, remov
 load it, compare the image config ID, and remove it again. Do not use a full
 Paracetamol export merely to exercise archive plumbing on every development
 pass.
+
+CLI transfer fixtures must use Podman's bare full config IDs as well as their
+`sha256:`-prefixed form. Require successful export, identical imports without a
+load, missing-image load followed by verification, and no load when a later
+preflight entry conflicts. Malformed IDs, genuine digest mismatches and failed
+save/load operations must remain failures. Check create-only publication,
+temporary-output cleanup, unchanged input archives and dry-run nonmutation.
 
 ### Tier 3: image builds
 

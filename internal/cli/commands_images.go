@@ -89,7 +89,7 @@ func (app *App) imagesExport(args []string) error {
 		if !present {
 			return controlerr.New("cannot export missing image %s", reference)
 		}
-		localIDs[reference], err = app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", reference}, "cannot inspect image "+reference)
+		localIDs[reference], err = app.podman().InspectImageID(app.Context, reference)
 		if err != nil {
 			return err
 		}
@@ -191,7 +191,7 @@ func (app *App) imagesImport(args []string) error {
 		}
 		state := "missing"
 		if present {
-			localID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", image.Reference}, "cannot inspect image "+image.Reference)
+			localID, err := app.podman().InspectImageID(app.Context, image.Reference)
 			if err != nil {
 				return err
 			}
@@ -223,8 +223,8 @@ func (app *App) imagesImport(args []string) error {
 	}
 	var invalid []string
 	for _, image := range archive.Images {
-		localID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", image.Reference}, "cannot verify image "+image.Reference)
-		if err != nil || strings.TrimSpace(localID) != image.ID {
+		localID, err := app.podman().InspectImageID(app.Context, image.Reference)
+		if err != nil || localID != image.ID {
 			invalid = append(invalid, image.Reference)
 		}
 	}
