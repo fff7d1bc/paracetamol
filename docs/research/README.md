@@ -19,6 +19,9 @@ without the relevant acceptance checks.
   patch investigations and their original limitations.
 - [Bounded coding-quality screen](coding-quality-screen.md) records the
   retained private developer protocol and what a fresh clone can reproduce.
+- [Maintainer acceptance kit qualification](llama-acceptance-kit-qualification.md)
+  records clean-clone, sandbox and production-path checks of the tracked kit,
+  including failed and deferred coverage.
 - [Archived coding-agent evaluation](coding-agent-evaluation.md) describes
   frozen tasks and fixtures from the retired Pi runner.
 

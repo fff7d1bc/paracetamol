@@ -614,3 +614,7 @@ engine/control campaign before claiming that the full gate is runtime
 qualified. Source tests and fake HTTP/Podman tests alone are not that evidence.
 Back up irreplaceable private results before `make clean`; `build/` is not a
 backup, and deleting it must not delete the versioned test definitions.
+
+The [initial qualification record](../../docs/research/llama-acceptance-kit-qualification.md)
+distinguishes exercised paths from failed or deferred coverage. It is dated
+evidence, not permission to omit a required gate in the next source update.
