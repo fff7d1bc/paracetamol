@@ -144,7 +144,7 @@ func TestMakePublishesOnlySuccessfulBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatal("make is required for checkout build tests")
 	}
-	for _, target := range []string{"build", "static", "gufo-recheck"} {
+	for _, target := range []string{"build", "static", "gufo-recheck", "llama-acceptance"} {
 		for _, failure := range []string{"none", "compile", "empty", "mktemp", "chmod", "mv", "INT", "TERM", "HUP"} {
 			t.Run(target+"/"+failure, func(t *testing.T) {
 				testMakePublication(t, makePath, makefile, target, failure, true)
@@ -194,7 +194,19 @@ func testMakePublication(t *testing.T, makePath string, makefile []byte, target,
 	write("tools/gufo-recheck/Containerfile.fragment", []byte("# experiment fixture\n"), 0o644)
 	write("tools/gufo-recheck/main.go", []byte("package main\nfunc main() {}\n"), 0o644)
 	write("tools/gufo-recheck/testdata/literal-xml.json", []byte("{}\n"), 0o644)
+	if err := os.MkdirAll(filepath.Join(root, "tools", "llama-acceptance"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write("tools/llama-acceptance/main.go", []byte("package main\nfunc main() {}\n"), 0o644)
+	write("tools/llama-acceptance/fixture.txt", []byte("acceptance fixture\n"), 0o644)
 	write("internal/gateway/assets/gateway.css", []byte("body {}\n"), 0o644)
+	write("internal/gateway/assets/gateway.js", []byte("// retained embedded fixture\n"), 0o644)
+	for _, dir := range []string{"internal/removed-source", "internal/removed-subtree"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(dir, "fixture.go"), []byte("package fixture\n"), 0o644)
+	}
 	write("fake-bin/go", []byte(`#!/bin/sh
 set -eu
 case "$1/$2" in
@@ -225,8 +237,8 @@ esac
 	name := "paracetamol"
 	if target == "static" {
 		name += "-static"
-	} else if target == "gufo-recheck" {
-		name = "gufo-recheck"
+	} else if target == "gufo-recheck" || target == "llama-acceptance" {
+		name = target
 	}
 	destination := filepath.Join(outputDir, name)
 	const previous = "previous executable fixture\n"
@@ -235,7 +247,8 @@ esac
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, makePath, "--no-print-directory", "-B", target, "GO_SOURCE_ROOTS=main.go")
+	const sourceRoots = "GO_SOURCE_ROOTS=main.go internal tools"
+	cmd := exec.CommandContext(ctx, makePath, "--no-print-directory", "-B", target, sourceRoots)
 	cmd.Dir = root
 	// Do not inherit caller-specific make overrides or a developer's build
 	// identity. All output and subprocess boundaries belong to this fixture.
@@ -278,7 +291,7 @@ esac
 		// An asset-only edit must invalidate both normal and static binaries.
 		check := func(wantStale bool) {
 			t.Helper()
-			probe := exec.CommandContext(ctx, makePath, "--no-print-directory", "-q", target, "GO_SOURCE_ROOTS=main.go")
+			probe := exec.CommandContext(ctx, makePath, "--no-print-directory", "-q", target, sourceRoots)
 			probe.Dir, probe.Env = root, cmd.Env
 			output, err := probe.CombinedOutput()
 			if wantStale {
@@ -308,7 +321,7 @@ esac
 			}
 			check(false)
 			for _, force := range []bool{false, true} {
-				arguments := []string{"--no-print-directory", "build", "GO_SOURCE_ROOTS=main.go"}
+				arguments := []string{"--no-print-directory", "build", sourceRoots}
 				if force {
 					arguments = append(arguments, "-B")
 				}
@@ -352,5 +365,58 @@ esac
 			t.Fatal(err)
 		}
 		check(true)
+		// Return the asset to the past before testing real incremental builds;
+		// a future-dated prerequisite would intentionally remain out of date.
+		past := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(filepath.Join(root, "internal/gateway/assets/gateway.css"), past, past); err != nil {
+			t.Fatal(err)
+		}
+		check(false)
+
+		// Removing a file erases it from Make's dynamically enumerated inputs.
+		// The retained parent directories must still invalidate every target,
+		// including when the last file and its entire directory are removed.
+		removals := []string{
+			"internal/removed-source/fixture.go",
+			"internal/removed-subtree",
+			"internal/gateway/assets/gateway.css",
+		}
+		if target == "gufo-recheck" {
+			removals = append(removals, "tools/gufo-recheck/testdata/literal-xml.json")
+		} else if target == "llama-acceptance" {
+			removals = append(removals, "tools/llama-acceptance/fixture.txt")
+		}
+		for _, removed := range removals {
+			if err := os.RemoveAll(filepath.Join(root, removed)); err != nil {
+				t.Fatal(err)
+			}
+			check(true)
+			want := "rebuilt after removing " + removed + "\n"
+			build := exec.CommandContext(ctx, makePath, "--no-print-directory", target, sourceRoots)
+			build.Dir = root
+			build.Env = append(append([]string(nil), cmd.Env...), "BUILD_TEST_EXECUTABLE_CONTENT="+strings.TrimSuffix(want, "\n"))
+			if output, err := build.CombinedOutput(); err != nil {
+				t.Fatalf("rebuild after removing %s: %v\n%s", removed, err, output)
+			}
+			if data, err := os.ReadFile(destination); err != nil || string(data) != want {
+				t.Fatalf("removing %s left stale executable=%q want=%q err=%v", removed, data, want, err)
+			}
+			check(false)
+			before, err := os.Stat(destination)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// An unchanged launcher/build must not compile or republish.
+			unchanged := exec.CommandContext(ctx, makePath, "--no-print-directory", target, sourceRoots)
+			unchanged.Dir = root
+			unchanged.Env = append(append([]string(nil), cmd.Env...), "BUILD_TEST_EXECUTABLE_CONTENT=unexpected rebuild")
+			if output, err := unchanged.CombinedOutput(); err != nil {
+				t.Fatalf("unchanged build: %v\n%s", err, output)
+			}
+			after, err := os.Stat(destination)
+			if err != nil || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+				t.Fatalf("unchanged build republished executable: before=%v after=%v err=%v", before, after, err)
+			}
+		}
 	}
 }

@@ -30,17 +30,22 @@ BIN_DIR := $(PLATFORM_BUILD_DIR)/bin
 BIN := $(BIN_DIR)/$(PRODUCT_ID)
 STATIC_BIN := $(BIN_DIR)/$(PRODUCT_ID)-static
 GUFO_RECHECK_BIN := $(BIN_DIR)/gufo-recheck
-GUFO_RECHECK_ASSETS := tools/gufo-recheck/Containerfile.fragment $(wildcard tools/gufo-recheck/testdata/*.json)
+GUFO_RECHECK_ASSETS := tools/gufo-recheck tools/gufo-recheck/testdata tools/gufo-recheck/Containerfile.fragment $(wildcard tools/gufo-recheck/testdata/*.json)
 LLAMA_ACCEPTANCE_BIN := $(BIN_DIR)/llama-acceptance
-LLAMA_ACCEPTANCE_ASSETS := $(shell find tools/llama-acceptance -type f ! -name '*.go' -print)
+LLAMA_ACCEPTANCE_ASSETS := $(shell find tools/llama-acceptance ! -name '*.go' -print)
 # Keep host packages explicit: frozen evaluation modules and ignored local
 # content are repository inputs, not control-plane packages.
 GO_SOURCE_ROOTS := main.go internal tools $(wildcard cmd)
 GO_SOURCES := $(shell find $(GO_SOURCE_ROOTS) -type f -name '*.go' -print)
+GO_SOURCE_DIRS := . $(shell find $(GO_SOURCE_ROOTS) -type d -print)
 GO_PACKAGES := . ./internal/... ./tools/... $(if $(wildcard cmd),./cmd/...)
 GO_MODULE_FILES := go.mod $(wildcard go.sum)
-WEB_ASSETS := $(shell find internal/gateway/assets -type f -print)
-GO_BUILD_INPUTS := Makefile tools/go-test-exec.sh $(GO_MODULE_FILES) $(GO_SOURCES) $(WEB_ASSETS)
+WEB_ASSETS := $(shell find internal/gateway/assets -print)
+# Existing-file lists alone forget removed inputs. Directory mtimes also track
+# deletion (including a whole subtree through its parent) without invoking the
+# compiler or replacing an unchanged binary on every launcher call. As with file
+# mtimes, timestamp-preserving checkout transfers still require make -B build.
+GO_BUILD_INPUTS := Makefile tools/go-test-exec.sh $(GO_MODULE_FILES) $(GO_SOURCES) $(GO_SOURCE_DIRS) $(WEB_ASSETS)
 GOCACHE := $(PLATFORM_BUILD_DIR)/gocache
 GOMODCACHE := $(PLATFORM_BUILD_DIR)/gomodcache
 GOPATH := $(PLATFORM_BUILD_DIR)/gopath
@@ -84,6 +89,7 @@ $(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_D
 	trap 'rm -f "$$temporary"' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
 	$(GO_COMMAND) build -trimpath -ldflags "$(IDENTITY_LDFLAGS)" -o "$$temporary" ./tools/llama-acceptance; \
+	test -s "$$temporary"; \
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(LLAMA_ACCEPTANCE_BIN)"; \
 	trap - EXIT INT TERM HUP

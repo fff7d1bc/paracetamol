@@ -260,7 +260,11 @@ make -B build
 ```
 
 The project tests exercise both build recipes with a fake compiler and failed
-file operations. They also retain older transferred source timestamps to
+file operations, and apply the same publication checks to both developer
+helpers. Source, embedded-asset and helper-fixture deletions, including whole
+subtrees, must invalidate the existing executable. A successful rebuild must
+return to an unchanged incremental no-op without republishing the binary.
+The tests also retain older transferred source timestamps to
 check that a forced deployment build replaces an otherwise up-to-date binary.
 A failure or interruption must return a nonzero status,
 preserve the previous executable and remove the temporary output. Only a

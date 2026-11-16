@@ -40,8 +40,10 @@ or archived evaluation fixtures, not host command dispatch.
 
 The checkout launcher asks Make for the current platform binary below
 `build/<goos>-<goarch>/bin/` and executes it. Make tracks Go source, module
-files, the Makefile and embedded gateway assets. Normal builds use CGO and
-glibc so networking follows host NSS policy, including installed mDNS modules.
+files, the Makefile and embedded gateway assets. Parent-directory timestamps
+also invalidate builds after input files or entire source subtrees are removed.
+Normal builds use CGO and glibc so networking follows host NSS policy, including
+installed mDNS modules.
 They fail when CGO is disabled. `make static` is the explicit pure-Go
 alternative. All Go build, cache, module, temporary and telemetry state stays
 below the anchored ignored `build/` tree.
