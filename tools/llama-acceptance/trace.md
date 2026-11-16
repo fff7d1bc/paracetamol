@@ -30,8 +30,24 @@ control separately:
 "$CHECKER" prepare-trace --control qsa-host-span --out build/trace-control-recipe
 ```
 
+Before exporting either arm, create fresh owner-only evidence envelopes.
+Do not rely on the checkout or `build/` directory being private. These commands
+refuse existing destinations (including symlinks); on failure stop and choose
+fresh paths consistently throughout the procedure. Do not chmod existing
+evidence or delete it to make a destination reusable.
+
+<!-- trace-export-create -->
+```bash
+(
+  set -eu
+  umask 077
+  mkdir -m 0700 build/trace-normal-export
+  mkdir -m 0700 build/trace-control-export
+)
+```
+
 For each recipe, build its builder, extract its actual instrumented source
-tree and then build the runtime. For the normal-source arm:
+tree into its new envelope and then build the runtime. For the normal-source arm:
 
 ```bash
 podman build --pull=never --layers --target llama-acceptance-trace-builder \
@@ -39,7 +55,6 @@ podman build --pull=never --layers --target llama-acceptance-trace-builder \
   -t localhost/paracetamol-experiment:trace-normal-builder .
 TRACE_BUILDER_ID=$(podman image inspect --format '{{.Id}}' \
   localhost/paracetamol-experiment:trace-normal-builder)
-mkdir build/trace-normal-export
 EXPORT_ID=$(podman create --pull=never --network=none --read-only \
   --cap-drop=ALL --security-opt no-new-privileges \
   --entrypoint /bin/false "$TRACE_BUILDER_ID")
@@ -129,11 +144,25 @@ For decode-only activation investigation, `--trace --suite short` is a bounded
 diagnostic subset, not physical-span or complete source-update coverage.
 Keep full raw worker traces rather than filtering collection by a kernel name.
 
-Save a native process snapshot before shutdown:
+Save a native process snapshot before shutdown. Select the current arm's
+already-created envelope (`build/trace-control-export` for the control):
 
 ```bash
-podman top "$CONTAINER_ID" pid hpid args > build/trace-normal-export/processes.txt
-podman logs "$CONTAINER_ID" > build/trace-normal-export/backend.log 2>&1
+TRACE_EXPORT_DIR=build/trace-normal-export
+```
+
+Process arguments and backend logs can contain private paths or request data.
+Use a private creation mask for the redirections themselves, even inside the
+private envelope; refuse overwriting an existing snapshot:
+
+<!-- trace-export-snapshot -->
+```bash
+(
+  set -euC
+  umask 077
+  podman top "$CONTAINER_ID" pid hpid args > "$TRACE_EXPORT_DIR/processes.txt"
+  podman logs "$CONTAINER_ID" > "$TRACE_EXPORT_DIR/backend.log" 2>&1
+)
 ```
 
 Record exact model-worker PID and host PID (plus process start identity) and

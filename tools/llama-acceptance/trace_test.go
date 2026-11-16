@@ -118,6 +118,124 @@ func TestPrepareTracePrivateCreateOnceAndNoSubprocess(t *testing.T) {
 	}
 }
 
+func TestDocumentedTraceExportsArePrivateAndCreateOnce(t *testing.T) {
+	root, err := project.Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := os.ReadFile(filepath.Join(root, "tools/llama-acceptance/trace.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	block := func(name string) string {
+		t.Helper()
+		marker := "<!-- trace-export-" + name + " -->\n```bash\n"
+		if strings.Count(string(doc), marker) != 1 {
+			t.Fatalf("expected one documented %s block", name)
+		}
+		_, rest, _ := strings.Cut(string(doc), marker)
+		command, _, ok := strings.Cut(rest, "\n```")
+		if !ok {
+			t.Fatalf("unterminated documented %s block", name)
+		}
+		return command
+	}
+	create, snapshot := block("create"), block("snapshot")
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mkdir, err := exec.LookPath("mkdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		for _, path := range []string{dir, filepath.Join(dir, "build"), filepath.Join(dir, "bin")} {
+			if path != dir {
+				if err := os.Mkdir(path, 0o777); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// The test must not inherit privacy from t.TempDir or its parent.
+			if err := os.Chmod(path, 0o777); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Symlink(mkdir, filepath.Join(dir, "bin/mkdir")); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	run := func(dir, command, exportDir string) ([]byte, error) {
+		// Only mkdir is executable through PATH. Podman is a shell fixture;
+		// no container, inference client or real evidence is used.
+		mock := `umask 000
+podman() {
+  case "$*" in
+    'top fixture-container pid hpid args') printf '%s\n' synthetic-process ;;
+    'logs fixture-container') printf '%s\n' synthetic-log; printf '%s\n' synthetic-stderr >&2 ;;
+    *) return 127 ;;
+  esac
+}
+`
+		cmd := exec.Command(bash, "--noprofile", "--norc", "-c", mock+command)
+		cmd.Dir = dir
+		cmd.Env = []string{"PATH=" + filepath.Join(dir, "bin"), "CONTAINER_ID=fixture-container", "TRACE_EXPORT_DIR=" + exportDir}
+		return cmd.CombinedOutput()
+	}
+	dir := fixture(t)
+	if output, err := run(dir, create, ""); err != nil {
+		t.Fatalf("create: %v: %s", err, output)
+	}
+	for _, arm := range []string{"normal", "control"} {
+		exportDir := "build/trace-" + arm + "-export"
+		if output, err := run(dir, snapshot, exportDir); err != nil {
+			t.Fatalf("%s snapshot: %v: %s", arm, err, output)
+		}
+		for name, want := range map[string]string{"processes.txt": "synthetic-process\n", "backend.log": "synthetic-log\nsynthetic-stderr\n"} {
+			path := filepath.Join(dir, exportDir, name)
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != want {
+				t.Fatalf("%s: %q: %v", path, data, err)
+			}
+		}
+		if err := filepath.WalkDir(filepath.Join(dir, exportDir), func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err == nil && info.Mode().Perm()&0o077 != 0 {
+				t.Errorf("group/other access to %s: %s", path, info.Mode())
+			}
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := run(dir, snapshot, exportDir); err == nil {
+			t.Fatalf("%s snapshot overwritten", arm)
+		}
+		t.Run("existing-"+arm, func(t *testing.T) {
+			dir := fixture(t)
+			path := filepath.Join(dir, exportDir)
+			if err := os.Mkdir(path, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := run(dir, create, ""); err == nil {
+				t.Fatal("existing export directory accepted")
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.Mode().Perm() != 0o755 {
+				t.Fatalf("existing directory modified: %v: %v", info, err)
+			}
+		})
+	}
+}
+
 func TestTraceSpanPatchIsOnlyObservation(t *testing.T) {
 	// Apply the exact tracked hunk to its mechanically reconstructed context,
 	// without a source checkout, compiler, Podman, model or GPU.
