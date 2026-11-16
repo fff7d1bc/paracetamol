@@ -118,8 +118,8 @@ func (app *App) commandAcceptance(args []string) error {
 	set.Var(&applications, "application", "limit application workload; repeatable")
 	dataFlag := set.String("data-dir", "", "persistent data directory")
 	portText := set.String("port", "8190", "private ComfyUI smoke port")
-	output := set.String("output", "", "new acceptance JSON")
-	resume := set.String("resume", "", "resume a compatible Go acceptance JSON")
+	output := set.String("output", "", "new acceptance checkpoint with a .json extension")
+	resume := set.String("resume", "", "resume a compatible .json acceptance checkpoint")
 	prepare := set.Bool("prepare", false, "build missing images and install smoke content")
 	dryRun := set.Bool("dry-run", false, "show preparation and smoke cases")
 	nonInteractive := set.Bool("non-interactive", false, "do not prompt for visual review")
@@ -139,11 +139,11 @@ func (app *App) commandAcceptance(args []string) error {
 	if *resume != "" && (*prepare || *dryRun) {
 		return controlerr.Usage("--resume cannot be combined with --prepare or --dry-run")
 	}
-	resultPath := ""
+	resultPath, reportPath := "", ""
 	var result acceptanceResult
 	var err error
 	if *resume != "" {
-		resultPath, err = filepath.Abs(*resume)
+		resultPath, reportPath, err = resolveAcceptancePaths(*resume, atomicfile.ReplaceRegular)
 		if err != nil {
 			return err
 		}
@@ -154,12 +154,8 @@ func (app *App) commandAcceptance(args []string) error {
 			return err
 		}
 	} else if *output != "" {
-		resultPath, err = absoluteNewPath(*output)
+		resultPath, reportPath, err = resolveAcceptancePaths(*output, atomicfile.Create)
 		if err != nil {
-			return err
-		}
-		reportPath := strings.TrimSuffix(resultPath, filepath.Ext(resultPath)) + ".md"
-		if _, err := absoluteNewPath(reportPath); err != nil {
 			return err
 		}
 	}
@@ -373,7 +369,10 @@ func (app *App) commandAcceptance(args []string) error {
 		return err
 	}
 	if resultPath == "" {
-		resultPath = benchmark.DefaultPath((storage.Layout{Root: dataRoot}).AcceptanceResults(), ".json")
+		resultPath, reportPath, err = resolveAcceptancePaths(benchmark.DefaultPath((storage.Layout{Root: dataRoot}).AcceptanceResults(), ".json"), atomicfile.Create)
+		if err != nil {
+			return err
+		}
 	}
 	if *resume != "" {
 		if result.Fingerprint != fingerprint {
@@ -446,7 +445,6 @@ func (app *App) commandAcceptance(args []string) error {
 	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
 		return err
 	}
-	reportPath := strings.TrimSuffix(resultPath, filepath.Ext(resultPath)) + ".md"
 	reportPolicy := atomicfile.Create
 	if *resume != "" {
 		reportPolicy = atomicfile.ReplaceRegular

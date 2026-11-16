@@ -75,10 +75,12 @@ from an older schema remains available as a historical JSON/Markdown record,
 but a new Paracetamol acceptance policy requires a new run instead of resuming
 that file.
 
-An explicit `--output` must be a new `.json` path whose neighboring `.md`
-path is also unused. Paracetamol validates output and resume files before GPU
-probing, building, or downloading, then creates a new checkpoint without
-replacing a file that appeared in the meantime.
+Both `--output` and `--resume` require a `.json` checkpoint path. An explicit
+`--output` and its neighboring `.md` report must both be unused. Paracetamol
+validates both destinations before GPU probing, building, or downloading.
+Symlinks and hard-linked files are refused, including aliases between the
+checkpoint and report. New runs use create-only publication so they cannot
+replace a file that appeared in the meantime.
 
 The source identity is the Git commit for a clean checkout. In a dirty
 checkout it also hashes staged and unstaged tracked changes plus every

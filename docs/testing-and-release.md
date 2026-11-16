@@ -154,6 +154,11 @@ inconsistent attempt metadata, and intact passed entries remaining skipped.
 Use fake Podman and fixture HTTP responses, not GPU workloads. Never make
 resume work by replacing append-only evidence or accepting an orphan as a pass.
 
+Acceptance path tests must cover both `--output` and `--resume`. Reject non-JSON
+checkpoint names before source/device probes or data preparation. Keep the
+neighboring Markdown report distinct during publication and resume, and refuse
+symlink or hard-link aliases without changing either file.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file
