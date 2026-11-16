@@ -74,10 +74,10 @@ var specs = []Spec{
 		Image:         identity.Image("llama-cpp-ubuntu26.04-rocm10.1-ded522f-r78"),
 		ContainerName: identity.Container("llama-cpp"), Build: BuildLlamaCPP, Port: 8080,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server", "cli"}, Shell: true, Logs: true, MultiGPU: true,
-		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8-flash-next"}, Description: "install the recommended Qwen3.8 Flash-Next DFlash2 selection"}},
+		AfterBuild: []Action{{Arguments: []string{"content", "install", "llama-cpp", "qwen3.8-flash-next"}, Description: "high-memory ROCm Strix Halo only, with fast SSD storage and over 100 GiB for models. Other hosts can choose a smaller model with " + identity.Command("content", "install", "llama-cpp")}},
 		AfterContent: []Action{{
 			Arguments:   []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"},
-			Description: "start the default direct-model server",
+			Description: "start the preferred Flash-Next DFlash2 server on high-memory ROCm Strix Halo",
 		}},
 	},
 }

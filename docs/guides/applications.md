@@ -290,6 +290,12 @@ with fast local SSD storage and explicit license-risk review. The repack's
 referenced license text is absent, so it remains `NOASSERTION`. Its projector
 has its own license-risk gate.
 
+The built-in `guide llama-cpp` walkthrough uses this high-memory ROCm Strix
+Halo selection, not a model that fits every supported host. On other hardware,
+use `./paracetamol content install llama-cpp` to choose a suitable family and
+variant, and inspect its `--dry-run` plan before downloading. This does not
+change the exported Maki preference for Flash-Next when it is available.
+
 ```bash
 ./paracetamol content install llama-cpp qwen3.8-flash-next \
   --accept-license --acknowledge-license-risk

@@ -30,6 +30,11 @@ func TestLlamaGuideActionsUseRecommendedSelection(t *testing.T) {
 		!slices.Equal(spec.AfterContent[0].Arguments, []string{"run", "llama-cpp", "server", "--preset", "unsloth-qwen3.8-flash-next-125b-a6b-ud-q4-k-xl-dflash2"}) {
 		t.Fatalf("incoherent recommended install/start actions: %#v", spec)
 	}
+	for _, detail := range []string{"high-memory", "ROCm", "Strix Halo only", "fast SSD", "100 GiB", "Other hosts", "content install llama-cpp"} {
+		if !strings.Contains(spec.AfterBuild[0].Description, detail) {
+			t.Errorf("recommended installation omits its operating envelope or alternative %q", detail)
+		}
+	}
 }
 
 func TestManagedApplicationSet(t *testing.T) {
