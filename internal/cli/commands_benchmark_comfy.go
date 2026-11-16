@@ -317,16 +317,14 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 		if done[bundle.ID] {
 			continue
 		}
-		path, summary, runErr := app.executeComfyBenchmark(managed, bundle, options, suiteID)
-		entry := benchmark.ComfySuiteEntry{Bundle: bundle.ID, Result: path, Status: "pass", ColdSeconds: summary.cold, WarmMeanSeconds: summary.warmMean}
-		if runErr != nil {
-			entry.Status, entry.Result, entry.Error = "fail", "", runErr.Error()
-			failed = true
+		runErr, err := runComfySuiteAttempt(suitePath, &suite, bundle.ID, dataRoot, func(attemptID string) (string, comfySummary, error) {
+			return app.executeComfyBenchmark(managed, bundle, options, attemptID)
+		})
+		if err != nil {
+			return withCleanupFailure(runErr, "write ComfyUI suite checkpoint", err)
 		}
-		entries = upsertComfySuiteEntry(entries, entry)
-		suite.Entries = entries
-		if err := benchmark.WriteCheckpoint(suitePath, suite); err != nil {
-			return err
+		if runErr != nil {
+			failed = true
 		}
 		if runErr != nil && !*keepGoing {
 			suite.Status = "failed"
@@ -352,6 +350,46 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	return nil
 }
 
+func runComfySuiteAttempt(path string, suite *benchmark.ComfySuite, bundle, dataRoot string, run func(string) (string, comfySummary, error)) (error, error) {
+	entry := benchmark.ComfySuiteEntry{Bundle: bundle}
+	for _, previous := range suite.Entries {
+		if previous.Bundle == bundle {
+			entry = previous
+			break
+		}
+	}
+	attemptID, err := nextCheckpointAttemptID(suite.SuiteID, entry.Attempts)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Attempts > 0 {
+		entry.PreviousAttempts = append(entry.PreviousAttempts, benchmark.ComfySuiteAttempt{Status: entry.Status, Result: entry.Result, Error: entry.Error})
+	}
+	entry.Attempts++
+	entry.Status, entry.Error, entry.ColdSeconds, entry.WarmMeanSeconds = "running", "", 0, 0
+	entry.Result = comfySuiteAttemptResult(dataRoot, attemptID, bundle)
+	suite.Entries = upsertComfySuiteEntry(suite.Entries, entry)
+	// Persist the attempt and its intended child path before launch; publication
+	// or cleanup may succeed without the parent's completion write succeeding.
+	if err := benchmark.WriteCheckpoint(path, suite); err != nil {
+		return nil, err
+	}
+	resultPath, summary, runErr := run(attemptID)
+	entry.Status, entry.ColdSeconds, entry.WarmMeanSeconds = "pass", summary.cold, summary.warmMean
+	if runErr == nil && resultPath != entry.Result {
+		runErr = controlerr.New("ComfyUI benchmark returned an unexpected attempt result path")
+	}
+	if runErr != nil {
+		entry.Status, entry.Error = "fail", runErr.Error()
+	}
+	suite.Entries = upsertComfySuiteEntry(suite.Entries, entry)
+	return runErr, benchmark.WriteCheckpoint(path, suite)
+}
+
+func comfySuiteAttemptResult(dataRoot, attemptID, bundle string) string {
+	return filepath.Join((storage.Layout{Root: dataRoot}).ComfyBenchmarks(), attemptID+"-"+bundle+".json")
+}
+
 func validateComfySuiteResume(suite benchmark.ComfySuite, managed catalog.Catalog, bundles []catalog.Bundle, dataRoot string) error {
 	if !managedRunID.MatchString(suite.SuiteID) || suite.CreatedAt == "" || !map[string]bool{"running": true, "failed": true, "complete": true, "completed-with-failures": true}[suite.Status] {
 		return controlerr.New("ComfyUI suite checkpoint has invalid root metadata")
@@ -363,14 +401,24 @@ func validateComfySuiteResume(suite benchmark.ComfySuite, managed catalog.Catalo
 	seen := make(map[string]bool)
 	resultsRoot := (storage.Layout{Root: dataRoot}).ComfyBenchmarks()
 	for index, entry := range suite.Entries {
-		if !selected[entry.Bundle] || seen[entry.Bundle] || entry.Status != "pass" && entry.Status != "fail" {
+		if !selected[entry.Bundle] || seen[entry.Bundle] || entry.Status != "pass" && entry.Status != "fail" && entry.Status != "running" {
 			return controlerr.New("ComfyUI suite checkpoint entry %d has invalid metadata", index+1)
 		}
 		seen[entry.Bundle] = true
-		if entry.Status != "pass" {
-			if entry.Error == "" || entry.Result != "" {
-				return controlerr.New("failed ComfyUI suite entry %s has invalid evidence", entry.Bundle)
+		attemptID, err := checkpointAttemptID(suite.SuiteID, entry.Attempts)
+		if err != nil || len(entry.PreviousAttempts) != entry.Attempts-1 {
+			return controlerr.New("ComfyUI suite checkpoint entry %s has invalid attempt metadata", entry.Bundle)
+		}
+		for index, previous := range entry.PreviousAttempts {
+			previousID, _ := checkpointAttemptID(suite.SuiteID, index+1)
+			if err := validateComfyAttempt(previous.Status, previous.Result, previous.Error, comfySuiteAttemptResult(dataRoot, previousID, entry.Bundle)); err != nil {
+				return err
 			}
+		}
+		if err := validateComfyAttempt(entry.Status, entry.Result, entry.Error, comfySuiteAttemptResult(dataRoot, attemptID, entry.Bundle)); err != nil {
+			return err
+		}
+		if entry.Status != "pass" {
 			continue
 		}
 		if entry.Result == "" || entry.Error != "" {
@@ -384,9 +432,16 @@ func validateComfySuiteResume(suite benchmark.ComfySuite, managed catalog.Catalo
 			return controlerr.New("completed ComfyUI suite result is missing or unexpected: %s", entry.Result)
 		}
 		var result benchmark.ComfyResult
-		if err := benchmark.ReadJSON(entry.Result, &result, true); err != nil || result.Schema != benchmark.ComfyResultSchema || result.Status != "complete" || result.Bundle != entry.Bundle || !comfyResultMatches(result, suite.Configuration, managed, managed.Bundles[entry.Bundle]) {
+		if err := benchmark.ReadJSON(entry.Result, &result, true); err != nil || result.Schema != benchmark.ComfyResultSchema || result.RunID != attemptID || result.Status != "complete" || result.Bundle != entry.Bundle || !comfyResultMatches(result, suite.Configuration, managed, managed.Bundles[entry.Bundle]) {
 			return controlerr.New("completed ComfyUI suite result is incompatible: %s", entry.Result)
 		}
+	}
+	return nil
+}
+
+func validateComfyAttempt(status, result, reason, expected string) error {
+	if result != expected || unsafeCheckpointText(reason) || !(status == "running" && reason == "" || status == "fail" && reason != "" || status == "pass" && reason == "") {
+		return controlerr.New("ComfyUI suite checkpoint has invalid attempt evidence")
 	}
 	return nil
 }

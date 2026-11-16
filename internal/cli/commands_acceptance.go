@@ -27,7 +27,7 @@ import (
 	"paracetamol/internal/ui"
 )
 
-const acceptanceSchema = "paracetamol.hardware-acceptance.v2"
+const acceptanceSchema = "paracetamol.hardware-acceptance.v3"
 
 type acceptanceCase struct {
 	id, description, application, bundle string
@@ -60,14 +60,24 @@ type acceptanceDefinition struct {
 }
 
 type acceptanceEntry struct {
-	Identifier  string               `json:"identifier"`
-	Description string               `json:"description"`
-	Application string               `json:"application,omitempty"`
-	Bundle      string               `json:"bundle,omitempty"`
-	Visual      bool                 `json:"visual"`
+	Identifier       string               `json:"identifier"`
+	Description      string               `json:"description"`
+	Application      string               `json:"application,omitempty"`
+	Bundle           string               `json:"bundle,omitempty"`
+	Visual           bool                 `json:"visual"`
+	Status           string               `json:"status"`
+	Attempts         int                  `json:"attempts"`
+	StartedAt        string               `json:"started_at,omitempty"`
+	FinishedAt       string               `json:"finished_at,omitempty"`
+	WallSeconds      float64              `json:"wall_seconds,omitempty"`
+	Artifacts        []acceptanceArtifact `json:"artifacts"`
+	Reason           string               `json:"reason,omitempty"`
+	PreviousAttempts []acceptanceAttempt  `json:"previous_attempts,omitempty"`
+}
+
+type acceptanceAttempt struct {
 	Status      string               `json:"status"`
-	Attempts    int                  `json:"attempts"`
-	StartedAt   string               `json:"started_at,omitempty"`
+	StartedAt   string               `json:"started_at"`
 	FinishedAt  string               `json:"finished_at,omitempty"`
 	WallSeconds float64              `json:"wall_seconds,omitempty"`
 	Artifacts   []acceptanceArtifact `json:"artifacts"`
@@ -394,25 +404,9 @@ func (app *App) commandAcceptance(args []string) error {
 		if entry.Status == "pass" || entry.Status == "review" {
 			continue
 		}
-		entry.Status, entry.Attempts, entry.StartedAt, entry.Reason = "running", entry.Attempts+1, benchmark.Timestamp(), ""
-		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
-			return err
-		}
-		started := time.Now()
-		paths, caseErr := app.runAcceptanceCase(managed, candidate, dataRoot, detected.ID, selectedNodes[0], port, result.SuiteID, *memory, *kernel)
-		artifacts, evidenceErr := captureAcceptanceArtifacts(paths)
-		if caseErr == nil && evidenceErr != nil {
-			caseErr = evidenceErr
-		}
-		entry.WallSeconds, entry.FinishedAt, entry.Artifacts = time.Since(started).Seconds(), benchmark.Timestamp(), artifacts
-		if caseErr != nil {
-			entry.Status, entry.Reason = "fail", caseErr.Error()
-		} else if candidate.visual {
-			entry.Status = "review"
-		} else {
-			entry.Status = "pass"
-		}
-		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+		if err := runAcceptanceAttempt(resultPath, &result, index, func(attemptID string) ([]string, error) {
+			return app.runAcceptanceCase(managed, candidate, dataRoot, detected.ID, selectedNodes[0], port, attemptID, *memory, *kernel)
+		}); err != nil {
 			return err
 		}
 	}
@@ -472,6 +466,40 @@ func (app *App) commandAcceptance(args []string) error {
 	return nil
 }
 
+func runAcceptanceAttempt(path string, result *acceptanceResult, index int, run func(string) ([]string, error)) error {
+	entry := &result.Cases[index]
+	attemptID, err := nextCheckpointAttemptID(result.SuiteID, entry.Attempts)
+	if err != nil {
+		return err
+	}
+	if entry.Attempts > 0 {
+		entry.PreviousAttempts = append(entry.PreviousAttempts, acceptanceAttempt{Status: entry.Status, StartedAt: entry.StartedAt, FinishedAt: entry.FinishedAt, WallSeconds: entry.WallSeconds, Artifacts: entry.Artifacts, Reason: entry.Reason})
+	}
+	entry.Status, entry.Attempts, entry.StartedAt, entry.Reason = "running", entry.Attempts+1, benchmark.Timestamp(), ""
+	entry.FinishedAt, entry.WallSeconds, entry.Artifacts = "", 0, nil
+	if err := benchmark.WriteCheckpoint(path, result); err != nil {
+		return err
+	}
+	started := time.Now()
+	paths, caseErr := run(attemptID)
+	artifacts, evidenceErr := captureAcceptanceArtifacts(paths)
+	if caseErr == nil {
+		caseErr = evidenceErr
+	}
+	entry.WallSeconds, entry.FinishedAt, entry.Artifacts = time.Since(started).Seconds(), benchmark.Timestamp(), artifacts
+	if caseErr != nil {
+		entry.Status, entry.Reason = "fail", caseErr.Error()
+	} else if entry.Visual {
+		entry.Status = "review"
+	} else {
+		entry.Status = "pass"
+	}
+	if err := benchmark.WriteCheckpoint(path, result); err != nil {
+		return withCleanupFailure(caseErr, "write acceptance checkpoint", err)
+	}
+	return nil
+}
+
 func validateAcceptanceResult(result acceptanceResult, cases []acceptanceCase) error {
 	if err := validateAcceptanceEnvelope(result); err != nil {
 		return err
@@ -515,13 +543,34 @@ func validateAcceptanceEnvelope(result acceptanceResult) error {
 			return controlerr.New("acceptance checkpoint has invalid case metadata")
 		}
 		seen[entry.Identifier] = true
+		if entry.Status == "pending" {
+			if entry.Attempts != 0 || len(entry.PreviousAttempts) != 0 {
+				return controlerr.New("acceptance checkpoint has invalid pending attempt metadata")
+			}
+		} else if _, err := checkpointAttemptID(result.SuiteID, entry.Attempts); err != nil || len(entry.PreviousAttempts) != entry.Attempts-1 {
+			return controlerr.New("acceptance checkpoint has invalid attempt metadata")
+		}
+		for _, previous := range entry.PreviousAttempts {
+			if !allowedStatus[previous.Status] || previous.Status == "pending" || unsafeCheckpointText(previous.Reason) {
+				return controlerr.New("acceptance checkpoint has invalid previous attempt metadata")
+			}
+			for _, artifact := range previous.Artifacts {
+				if !validAcceptanceArtifact(artifact) {
+					return controlerr.New("acceptance checkpoint has invalid previous attempt evidence")
+				}
+			}
+		}
 		for _, artifact := range entry.Artifacts {
-			if !filepath.IsAbs(artifact.Path) || unsafeCheckpointText(artifact.Path) || len(artifact.SHA256) != 64 || strings.Trim(artifact.SHA256, "0123456789abcdef") != "" || artifact.Size < 1 {
+			if !validAcceptanceArtifact(artifact) {
 				return controlerr.New("acceptance checkpoint case %q has an invalid artifact path", entry.Identifier)
 			}
 		}
 	}
 	return nil
+}
+
+func validAcceptanceArtifact(artifact acceptanceArtifact) bool {
+	return filepath.IsAbs(artifact.Path) && !unsafeCheckpointText(artifact.Path) && len(artifact.SHA256) == 64 && strings.Trim(artifact.SHA256, "0123456789abcdef") == "" && artifact.Size > 0
 }
 
 func unsafeCheckpointText(value string) bool {
@@ -636,7 +685,7 @@ func findAcceptanceCase(cases []acceptanceCase, identifier string) (acceptanceCa
 	return acceptanceCase{}, false
 }
 
-func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceCase, dataRoot, profile, renderNode string, port int, suiteID, memory, kernel string) ([]string, error) {
+func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceCase, dataRoot, profile, renderNode string, port int, attemptID, memory, kernel string) ([]string, error) {
 	switch candidate.id {
 	case "host-gpu":
 		return []string{}, nil
@@ -646,9 +695,12 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		if candidate.id == "comfyui-video" {
 			transform, extension = benchmark.SmokeVideoPrompt, ".mp4"
 		}
-		runID := "acceptance-" + suiteID + "-" + candidate.id
+		runID := "acceptance-" + attemptID + "-" + candidate.id
 		path, _, err := app.executeComfyBenchmark(managed, managed.Bundles[candidate.bundle], comfyBenchmarkOptions{profile: profile, dataRoot: dataRoot, image: configApplicationImage("comfyui"), renderNode: renderNode, port: port, runs: 1, seed: 10, memoryPolicy: memory, kernelPolicy: kernel, cacheMode: "persistent", acceptLicense: true, transform: transform}, runID)
 		if err != nil {
+			if path != "" {
+				return []string{path}, err
+			}
 			return nil, err
 		}
 		outputRoot := filepath.Join((storage.Layout{Root: dataRoot}).Application("comfyui"), "output", identity.StateNamespace+"-benchmarks", runID)
@@ -660,10 +712,10 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 			return walkErr
 		})
 		if len(outputs) != 1 {
-			return nil, fmt.Errorf("%s expected one %s output, found %d", candidate.id, extension, len(outputs))
+			return append(outputs, path), fmt.Errorf("%s expected one %s output, found %d", candidate.id, extension, len(outputs))
 		}
 		if err := validateMedia(outputs[0], extension); err != nil {
-			return nil, err
+			return []string{outputs[0], path}, err
 		}
 		return []string{outputs[0], path}, nil
 	case "llama-cpp":
@@ -685,7 +737,7 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		if err != nil {
 			return nil, err
 		}
-		path := filepath.Join((storage.Layout{Root: dataRoot}).AcceptanceResults(), "cases", suiteID+"-llama.json")
+		path := filepath.Join((storage.Layout{Root: dataRoot}).AcceptanceResults(), "cases", attemptID+"-llama.json")
 		if err := benchmark.WriteLlama(path, benchmark.LlamaRun{Image: benchmark.ImageIdentity{Reference: configApplicationImage("llama-cpp")}, Profile: profile, Backend: "rocm", RenderNodes: []string{renderNode}, Model: benchmark.ModelIdentity{Preset: preset.ID, Path: content.ArtifactPath(dataRoot, artifact)}, Parameters: benchmark.LlamaParameters{PromptTokens: 32, GenerationTokens: 16}, Results: rows}); err != nil {
 			return nil, err
 		}

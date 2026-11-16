@@ -434,6 +434,15 @@ image and runtime configuration, but not host source identity. Resume rejects
 incompatible checkpoints and validates paths/state before trusting progress.
 These checks establish compatibility, not authenticity of outcomes.
 
+Acceptance and ComfyUI suites checkpoint an attempt number before starting each
+workload. That identity selects new child result and media paths on every
+retry. Child results remain create-only, including when a crash leaves a
+published result without the parent's completion checkpoint. Resume retries
+that inconclusive attempt rather than treating the orphan as a pass or
+overwriting its evidence. Parent JSON retains earlier attempt status, errors
+and recorded evidence. A failed cleanup remains a failure and never authorizes
+automatic reclamation of another workload's container.
+
 [Testing](testing-and-release.md) defines checks and
 [hardware acceptance](hardware-acceptance.md) records applicable evidence.
 A build, CPU startup, allocation or tiny retrieval does not establish GPU

@@ -136,3 +136,9 @@ The Go transition changed command shapes and checkpoint formats. `acceptance`
 is a direct leaf command. Benchmarks use `comfyui run`, `comfyui suite`,
 `llama-cpp throughput` and `llama-cpp speculative`. Older benchmark and
 acceptance JSON remains historical evidence but cannot resume a current run.
+
+Hardware acceptance and ComfyUI suite checkpoints now use v3, with durable
+per-workload attempt identities and previous-attempt history. Start a new run
+instead of passing a v2 checkpoint to `--resume`. Existing checkpoint files,
+child results and media remain untouched. Individual ComfyUI benchmark result
+and native throughput result formats are unchanged.

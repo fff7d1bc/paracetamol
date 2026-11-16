@@ -62,6 +62,14 @@ evidence is recorded with its size and SHA-256; resume also rejects evidence
 that disappeared or changed. Exit status is 0 for `PASS`, 1 for `FAIL`, and 2
 for `BLOCKED`.
 
+Every workload attempt is checkpointed before it starts. A retry uses new
+result and media paths, leaving earlier files untouched. If the process stops
+after saving a child result but before checkpointing its outcome, resume
+retries that case with a new attempt rather than trusting or overwriting the
+orphaned result. The JSON checkpoint retains previous attempt statuses, errors
+and recorded evidence. A container cleanup failure still requires explicit
+operator recovery before retrying. It is not silently treated as success.
+
 Acceptance result schemas are deliberately not migrated in place. A result
 from an older schema remains available as a historical JSON/Markdown record,
 but a new Paracetamol acceptance policy requires a new run instead of resuming

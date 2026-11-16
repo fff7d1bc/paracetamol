@@ -28,7 +28,7 @@ import (
 
 const (
 	ComfyResultSchema = "paracetamol.comfyui-benchmark.v2"
-	ComfySuiteSchema  = "paracetamol.comfyui-benchmark-suite.v2"
+	ComfySuiteSchema  = "paracetamol.comfyui-benchmark-suite.v3"
 )
 
 var SyntheticInput = identity.StateNamespace + "/benchmark-input-768.png"
@@ -48,12 +48,20 @@ type ComfyConfiguration struct {
 }
 
 type ComfySuiteEntry struct {
-	Bundle          string  `json:"bundle"`
-	Result          string  `json:"result,omitempty"`
-	Status          string  `json:"status"`
-	ColdSeconds     float64 `json:"cold_seconds,omitempty"`
-	WarmMeanSeconds float64 `json:"warm_mean_seconds,omitempty"`
-	Error           string  `json:"error,omitempty"`
+	Bundle           string              `json:"bundle"`
+	Result           string              `json:"result,omitempty"`
+	Status           string              `json:"status"`
+	ColdSeconds      float64             `json:"cold_seconds,omitempty"`
+	WarmMeanSeconds  float64             `json:"warm_mean_seconds,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	Attempts         int                 `json:"attempts"`
+	PreviousAttempts []ComfySuiteAttempt `json:"previous_attempts,omitempty"`
+}
+
+type ComfySuiteAttempt struct {
+	Status string `json:"status"`
+	Result string `json:"result,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
 type ComfySuite struct {

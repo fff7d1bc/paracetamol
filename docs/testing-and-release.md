@@ -145,6 +145,15 @@ gaps. Dry runs remain unreserved and non-mutating. Use fake subprocesses for
 contention tests and a local CPU-only container for real create/start,
 confinement and terminal lifecycle checks. This does not qualify GPU inference.
 
+Checkpoint recovery tests must interrupt the parent after a child result is
+published and retry from the last durable checkpoint. The next attempt must
+use distinct result/media/cache paths and leave the first result unchanged.
+Also cover a published ComfyUI result followed by failed container cleanup,
+failed initial checkpoint publication starting no workload, exhausted or
+inconsistent attempt metadata, and intact passed entries remaining skipped.
+Use fake Podman and fixture HTTP responses, not GPU workloads. Never make
+resume work by replacing append-only evidence or accepting an orphan as a pass.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file

@@ -348,7 +348,11 @@ node, seed, cache mode, and both runtime policies:
 
 A suite requires all selected bundles before its first GPU workload. It writes
 incremental JSON and self-contained Markdown/HTML summaries. Compatible resume
-skips completed entries.
+skips completed entries. Each workload attempt is checkpointed before launch.
+Failed or interrupted bundles retry with new result, media and isolated-cache
+paths, while previous result files and attempt history remain available.
+A published child result alone is not a completed suite entry. Resolve any
+reported container cleanup failure before resuming.
 
 Persistent cache mode starts a fresh ComfyUI process while retaining generated
 compiler caches. Isolated mode redirects application and compiler caches to a
