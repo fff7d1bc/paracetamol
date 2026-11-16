@@ -283,6 +283,10 @@ file operations, and apply the same publication checks to both developer
 helpers. Source, embedded-asset and helper-fixture deletions, including whole
 subtrees, must invalidate the existing executable. A successful rebuild must
 return to an unchanged incremental no-op without republishing the binary.
+Run these fixtures in checkout paths containing spaces. Make's `launcher-binary`
+target must print only the absolute binary path, and clean must retain its anchored-path and
+symlink refusal checks there too. Exercise the real Go test wrapper and custom
+static output in that path, not only fake compilation.
 The tests also retain older transferred source timestamps to
 check that a forced deployment build replaces an otherwise up-to-date binary.
 A failure or interruption must return a nonzero status,

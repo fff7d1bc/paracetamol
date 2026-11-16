@@ -26,7 +26,11 @@ GOOS ?= $(HOST_GOOS)
 GOARCH ?= $(HOST_GOARCH)
 PLATFORM := $(GOOS)-$(GOARCH)
 PLATFORM_BUILD_DIR := $(BUILD_ROOT)/$(PLATFORM)
-BIN_DIR := $(PLATFORM_BUILD_DIR)/bin
+# Make splits whitespace in target/prerequisite lists even inside quotes. Keep
+# its graph checkout-relative; only Go's environment and the launcher result
+# need absolute paths, so a checkout with spaces needs no Make-path escaping.
+TARGET_BUILD_DIR := build/$(PLATFORM)
+BIN_DIR := $(TARGET_BUILD_DIR)/bin
 BIN := $(BIN_DIR)/$(PRODUCT_ID)
 STATIC_BIN := $(BIN_DIR)/$(PRODUCT_ID)-static
 GUFO_RECHECK_BIN := $(BIN_DIR)/gufo-recheck
@@ -50,6 +54,7 @@ GOCACHE := $(PLATFORM_BUILD_DIR)/gocache
 GOMODCACHE := $(PLATFORM_BUILD_DIR)/gomodcache
 GOPATH := $(PLATFORM_BUILD_DIR)/gopath
 GOTMPDIR := $(PLATFORM_BUILD_DIR)/tmp
+TMP_TARGET_DIR := $(TARGET_BUILD_DIR)/tmp
 GOENV := off
 GOFLAGS := -modcacherw -buildvcs=false
 IDENTITY_LDFLAGS := -X 'paracetamol/internal/identity.CommandName=$(PRODUCT_ID)' \
@@ -83,7 +88,7 @@ gufo-recheck: $(GUFO_RECHECK_BIN)
 # Explicit maintainer helper. Building it never starts an acceptance request.
 llama-acceptance: $(LLAMA_ACCEPTANCE_BIN)
 
-$(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_DIR) $(GOTMPDIR)
+$(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_DIR) $(TMP_TARGET_DIR)
 	@set -eu; \
 	temporary="$$(mktemp "$(BIN_DIR)/.llama-acceptance.XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
@@ -96,7 +101,7 @@ $(LLAMA_ACCEPTANCE_BIN): $(GO_BUILD_INPUTS) $(LLAMA_ACCEPTANCE_ASSETS) | $(BIN_D
 
 # Restoring XDG at execution differs from the Go driver's environment; do not
 # reuse test results hashed against the driver's isolated config path.
-test: | $(GOTMPDIR)
+test: | $(TMP_TARGET_DIR)
 	PARACETAMOL_TEST_XDG_CONFIG_HOME_SET="$${XDG_CONFIG_HOME+x}" \
 	PARACETAMOL_TEST_XDG_CONFIG_HOME="$${XDG_CONFIG_HOME-}" \
 	$(GO_COMMAND) test -count=1 -exec 'sh "$(CURDIR)/tools/go-test-exec.sh"' $(GO_PACKAGES)
@@ -113,7 +118,7 @@ race:
 	PARACETAMOL_TEST_XDG_CONFIG_HOME="$${XDG_CONFIG_HOME-}" \
 	CGO_ENABLED=1 $(GO_COMMAND) test -race -count=1 -exec 'sh "$(CURDIR)/tools/go-test-exec.sh"' $(GO_PACKAGES)
 
-check: | $(GOTMPDIR)
+check: | $(TMP_TARGET_DIR)
 	@test -z "$$($(GO_CONFIG_ENV) gofmt -l $(GO_SOURCES))" || { \
 		printf '%s\n' 'Go source needs formatting:'; \
 		$(GO_CONFIG_ENV) gofmt -l $(GO_SOURCES); \
@@ -122,12 +127,12 @@ check: | $(GOTMPDIR)
 	$(GO_COMMAND) vet $(GO_PACKAGES)
 
 print-bin:
-	@printf '%s\n' "$(BIN)"
+	@printf '%s\n' "$(CURDIR)/$(BIN)"
 
 launcher-binary: build
-	@printf '%s\n' "$(BIN)"
+	@printf '%s\n' "$(CURDIR)/$(BIN)"
 
-$(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
+$(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(TMP_TARGET_DIR)
 	@test "$$($(GO_COMMAND) env CGO_ENABLED)" = 1 || { \
 		printf '%s\n' 'normal builds require CGO; use make static for the pure-Go binary'; \
 		exit 2; \
@@ -142,7 +147,7 @@ $(BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	mv -f "$$temporary" "$(BIN)"; \
 	trap - EXIT INT TERM HUP
 
-$(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
+$(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(TMP_TARGET_DIR)
 	@set -eu; \
 	temporary="$$(mktemp "$(BIN_DIR)/.$(PRODUCT_ID)-static.XXXXXX")"; \
 	trap 'rm -f "$$temporary"' EXIT; \
@@ -154,9 +159,9 @@ $(STATIC_BIN): $(GO_BUILD_INPUTS) | $(BIN_DIR) $(GOTMPDIR)
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(STATIC_BIN)"; \
 	trap - EXIT INT TERM HUP
-	@printf '%s\n' "static binary: $(STATIC_BIN)"
+	@printf '%s\n' "static binary: $(CURDIR)/$(STATIC_BIN)"
 
-$(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GOTMPDIR)
+$(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(TMP_TARGET_DIR)
 	@test "$$($(GO_COMMAND) env CGO_ENABLED)" = 1 || { \
 		printf '%s\n' 'normal developer-tool builds require CGO'; \
 		exit 2; \
@@ -171,9 +176,9 @@ $(GUFO_RECHECK_BIN): $(GO_BUILD_INPUTS) $(GUFO_RECHECK_ASSETS) | $(BIN_DIR) $(GO
 	chmod 0755 "$$temporary"; \
 	mv -f "$$temporary" "$(GUFO_RECHECK_BIN)"; \
 	trap - EXIT INT TERM HUP
-	@printf '%s\n' "developer tool: $(GUFO_RECHECK_BIN)"
+	@printf '%s\n' "developer tool: $(CURDIR)/$(GUFO_RECHECK_BIN)"
 
-$(BIN_DIR) $(GOTMPDIR):
+$(BIN_DIR) $(TMP_TARGET_DIR):
 	mkdir -p "$(BIN_DIR)" "$(GOCACHE)" "$(GOMODCACHE)" \
 		"$(GOPATH)" "$(GOTMPDIR)"
 

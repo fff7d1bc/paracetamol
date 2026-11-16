@@ -22,7 +22,7 @@ func TestMakeCleanConfinesMutationToBuildDirectory(t *testing.T) {
 	for _, kind := range []string{"missing", "directory", "directory-symlink", "file-symlink", "dangling-symlink", "file", "override", "override-ignore-errors"} {
 		t.Run(kind, func(t *testing.T) {
 			root := t.TempDir()
-			checkout := filepath.Join(root, "checkout")
+			checkout := filepath.Join(root, "checkout with spaces")
 			outside := filepath.Join(root, "outside")
 			for _, path := range []string{checkout, outside, filepath.Join(checkout, "internal/gateway/assets"), filepath.Join(checkout, "tools/llama-acceptance")} {
 				if err := os.MkdirAll(path, 0o755); err != nil {
@@ -158,7 +158,7 @@ func TestMakePublishesOnlySuccessfulBuilds(t *testing.T) {
 
 func testMakePublication(t *testing.T, makePath string, makefile []byte, target, failure string, existing bool) {
 	t.Helper()
-	root := t.TempDir()
+	root := filepath.Join(t.TempDir(), "checkout with spaces")
 	fakeBin := filepath.Join(root, "fake-bin")
 	outputDir := filepath.Join(root, "build", "linux-amd64", "bin")
 	for _, dir := range []string{fakeBin, outputDir, filepath.Join(root, "internal/gateway/assets")} {
@@ -294,6 +294,9 @@ esac
 			probe := exec.CommandContext(ctx, makePath, "--no-print-directory", "-q", target, sourceRoots)
 			probe.Dir, probe.Env = root, cmd.Env
 			output, err := probe.CombinedOutput()
+			if !wantStale && len(output) != 0 {
+				t.Fatalf("make freshness probe emitted diagnostics: %q", output)
+			}
 			if wantStale {
 				if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
 					t.Fatalf("asset did not trigger rebuild: %v %s", err, output)
@@ -303,6 +306,22 @@ esac
 			}
 		}
 		check(false)
+		if target == "build" {
+			before, err := os.Stat(destination)
+			if err != nil {
+				t.Fatal(err)
+			}
+			launcher := exec.CommandContext(ctx, makePath, "--no-print-directory", "-s", "launcher-binary", sourceRoots)
+			launcher.Dir, launcher.Env = root, cmd.Env
+			output, err := launcher.CombinedOutput()
+			if err != nil || string(output) != destination+"\n" {
+				t.Fatalf("launcher-binary must print only its absolute path: %v %q", err, output)
+			}
+			after, err := os.Stat(destination)
+			if err != nil || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+				t.Fatalf("unchanged launcher republished executable: before=%v after=%v err=%v", before, after, err)
+			}
+		}
 		if target == "build" {
 			// rsync -a replaces source while retaining its old timestamp and
 			// preserving excluded build/. Incremental Make cannot detect that

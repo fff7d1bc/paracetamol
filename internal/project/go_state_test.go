@@ -20,7 +20,7 @@ func TestMakeConfinesRealGoStateAndPreservesApplicationConfig(t *testing.T) {
 	if err := os.MkdirAll(scratchParent, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	root, err := os.MkdirTemp(scratchParent, "checkout-")
+	root, err := os.MkdirTemp(scratchParent, "checkout with spaces-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +115,14 @@ func TestUserConfig(t *testing.T) {
 	formatEnv := append(append([]string(nil), baseEnv...), "XDG_CONFIG_HOME="+filepath.Join(root, "build", "go-config"))
 	run(t, formatEnv, "gofmt", "-w", "main.go", "main_test.go")
 	run(t, probeEnv, "make", "-s", "check", "GO_PACKAGES=.")
+	// The explicit pure-Go artifact keeps its custom product name below the
+	// same whitespace-containing checkout and confined toolchain state.
+	run(t, probeEnv, "make", "-s", "static", "PRODUCT_ID=fixture", "DISPLAY_NAME=Fixture Product")
+	static := filepath.Join(filepath.Dir(bin), "fixture-static")
+	if info, err := os.Stat(static); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("custom static binary not published below checkout build: info=%v err=%v", info, err)
+	}
+	run(t, probeEnv, static)
 	assertNoExternalGoState(t)
 
 	for _, mode := range []string{"unset", "empty", "spaced"} {
