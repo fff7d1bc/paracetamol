@@ -1170,11 +1170,11 @@ Use:
 
 If normal stop cannot recover an abandoned managed container, inspect it with
 Podman before using `./paracetamol cleanup containers` and confirming its plan.
-The cleanup plan must include labelled transient benchmark, acceptance,
-diagnostic, shell, and downloader containers as well as application
-containers. It must never select an unlabelled container merely because its
-name begins with a broad project-like prefix; only exact known transient names
-and the generated downloader prefix are exceptions.
+The cleanup plan includes containers with reviewed managed ownership labels,
+including benchmark, diagnostic, shell and downloader roles as well as
+applications. A canonical application name, exact legacy transient name or
+generated downloader prefix is not an ownership exception. Unlabelled
+containers require manual verification and explicit operator removal.
 Cleanup never removes persistent data unless the explicit `data` scope is
 selected and its plan is confirmed.
 

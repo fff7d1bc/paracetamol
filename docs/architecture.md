@@ -209,17 +209,22 @@ data continues to honor the invoking user's mask.
 
 ### Exact lifecycle ownership
 
-Containers carry managed ownership, role and application labels. Attached
-runs retain terminal input/signals and child exit status. If `--rm` cleanup
-lags an attached run, the controller removes that exact container through a
-cancellation-independent operation. Detached runs retain ordinary Podman
-lifecycle.
+Containers carry managed ownership, role and application labels. Direct
+application launches also carry an opaque launch-instance label. Attached
+runs retain terminal input/signals and child exit status. Failure cleanup
+requires that exact launch instance and a captured full container ID, so a
+name-conflict loser cannot remove another invocation's successful container.
+Detached runs retain ordinary Podman lifecycle.
 
 Stop allows a brief graceful interval. Confirmed cleanup uses forced exact
-removal and verifies absence after an error. Discovery uses labels, with only
-constrained known transient-name exceptions. Downloader cleanup runs after
-every outcome, including cancellation, while failed staging remains resumable.
-Never add general Podman or system pruning.
+removal and verifies absence after an error. Discovery uses labels, never a
+canonical application name or legacy transient name alone. Direct-application
+stop and confirmed container cleanup validate their complete plans before
+removal, then revalidate ownership and act on captured immutable IDs. A renamed
+original can be removed, but a new occupant of its former name cannot redirect
+cleanup. Downloader cleanup runs after every outcome, including cancellation,
+while failed staging remains resumable. Never add general Podman or system
+pruning.
 
 ## Persistent data and publication
 
@@ -333,10 +338,10 @@ their gateway-instance label; status and request reports expose the same
 process identity. Acceptance binds the inspected container to that identity
 before sending requests and rechecks it at completion. Matching model
 inventories or container names alone do not establish which image answered.
-Ordinary cleanup requires the current process's label. A canonical nonce does
-not establish that its owner has exited, so startup and allocation never
-reclaim another process's backend. Operators must verify orphan ownership and
-remove that exact container explicitly. This is local correlation, not
+Gateway lifecycle cleanup requires the current process's label. A canonical
+nonce does not establish that its owner has exited, so startup and allocation
+never reclaim another process's backend. Operators must verify orphan ownership
+and remove that exact container explicitly. This is local correlation, not
 authentication against a malicious process running as the same user.
 
 The scheduler, proxy, cancellation and failed-cleanup policy belong to

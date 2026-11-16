@@ -200,6 +200,13 @@ func TestCleanupRetainsOwnershipThroughChecksConfirmationAndRemoval(t *testing.T
 						if scope == "containers" {
 							return process.Result{Stdout: []byte("owned-fixture\n")}
 						}
+					case "container":
+						if scope == "containers" {
+							if command.Args[1] == "inspect" {
+								return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, "owned-fixture", fixtureContainerLabels("llama-cpp", "application", ""))}
+							}
+							return process.Result{}
+						}
 					case "rm", "rmi":
 						assertGatewayOwnershipHeld(t, environment)
 					}
@@ -369,18 +376,29 @@ func TestDirectLlamaRetainsOwnershipThroughRunAndFailureCleanup(t *testing.T) {
 			managed := gatewayOwnershipCatalog(t, root)
 			environment := map[string]string{"HOME": home}
 			ran, cleaned := false, false
+			launch := ""
 			runner := &commandRunner{run: func(command process.Command) process.Result {
 				if command.Name == "podman" && len(command.Args) > 0 {
 					switch command.Args[0] {
 					case "run":
 						assertGatewayOwnershipHeld(t, environment)
 						ran = true
+						launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
 						if mode == "failed-cli" {
 							return process.Result{Status: 7}
 						}
 					case "rm":
 						assertGatewayOwnershipHeld(t, environment)
 						cleaned = true
+					case "inspect":
+						return process.Result{Stdout: []byte(fmt.Sprintf(`{"%s":%q}`, podman.ManagedLaunchLabel, launch))}
+					case "container":
+						if ran && mode == "failed-cli" {
+							if command.Args[1] == "inspect" {
+								return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, identity.Container("llama-cpp"), fixtureContainerLabels("llama-cpp", "application", launch))}
+							}
+							return process.Result{}
+						}
 					}
 				}
 				return gatewayOwnershipPodman(command)
@@ -443,12 +461,15 @@ func TestStopAllDuringAttachedDirectRunStillStopsContainer(t *testing.T) {
 	removed := false
 	stopRunner := &commandRunner{run: func(command process.Command) process.Result {
 		if command.Name == "podman" && len(command.Args) > 0 {
-			if command.Args[0] == "container" && command.Args[len(command.Args)-1] == directContainer {
+			if command.Args[0] == "container" && (command.Args[len(command.Args)-1] == directContainer || command.Args[len(command.Args)-1] == fixtureContainerID) {
+				if command.Args[1] == "inspect" {
+					return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, directContainer, fixtureContainerLabels("llama-cpp", "application", ""))}
+				}
 				return process.Result{}
 			}
 			if command.Args[0] == "rm" {
 				assertGatewayOwnershipHeld(t, environment)
-				removed = command.Args[len(command.Args)-1] == directContainer
+				removed = command.Args[len(command.Args)-1] == fixtureContainerID
 			}
 		}
 		return gatewayOwnershipPodman(command)

@@ -194,11 +194,11 @@ func TestMissingManagedComfyUIImageOffersCompleteSetupCommands(t *testing.T) {
 	}}
 	app, _, _ := testApp(t, runner)
 	application, _ := config.ApplicationByID("comfyui")
-	err := app.startManaged(application, application.Image, nil, false, nil)
+	err := app.startManaged(application, application.Image, nil, false, nil, "")
 	if err == nil || !strings.Contains(err.Error(), identity.Command("build", "comfyui")) || !strings.Contains(err.Error(), identity.Command("content", "install", "comfyui", "image")) {
 		t.Fatalf("missing-image guidance = %v", err)
 	}
-	err = app.startManaged(application, "localhost/custom:test", nil, false, nil)
+	err = app.startManaged(application, "localhost/custom:test", nil, false, nil, "")
 	if err == nil || strings.Contains(err.Error(), "Install content:") {
 		t.Fatalf("custom-image guidance = %v", err)
 	}

@@ -12,7 +12,6 @@ import (
 	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
-	"paracetamol/internal/runtime"
 )
 
 type cleanupTarget struct {
@@ -145,35 +144,44 @@ func (app *App) cleanupContainers(application string, yes, nonInteractive bool) 
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
-	names, err := app.managedContainers(application)
+	containers, err := app.managedContainerPlan(application)
 	if err != nil {
 		return err
 	}
-	if len(names) == 0 {
+	if len(containers) == 0 {
 		fmt.Fprintln(app.Stdout, app.terminal(app.Stdout).Muted("No managed containers are present."))
 		return nil
 	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Cleanup plan:"))
-	for _, name := range names {
-		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Label("container:"), name)
+	for _, target := range containers {
+		fmt.Fprintf(app.Stdout, "  %s %s\n", terminal.Label("container:"), target.Name)
 	}
 	if err := app.confirmCleanup("containers", yes, nonInteractive); err != nil {
 		return err
 	}
-	for _, name := range names {
-		if err := app.podman().RemoveContainer(app.Context, name, 0, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
-			present, inspectErr := app.podman().Exists(app.Context, "container", name)
-			if inspectErr != nil || present {
-				return err
-			}
+	for _, target := range containers {
+		if err := app.podman().RemoveOwnedContainer(app.Context, target, 0, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
+			return err
 		}
-		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Removed container:"), name)
+		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Success("Removed container:"), target.Name)
 	}
 	return nil
 }
 
 func (app *App) managedContainers(application string) ([]string, error) {
+	containers, err := app.managedContainerPlan(application)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, target := range containers {
+		names = append(names, target.Name)
+	}
+	return names, nil
+}
+
+func (app *App) managedContainerPlan(application string) ([]podman.OwnedContainer, error) {
 	filter := application
 	if application == "all" {
 		filter = ""
@@ -183,43 +191,19 @@ func (app *App) managedContainers(application string) ([]string, error) {
 		return nil, err
 	}
 	seen := make(map[string]bool)
-	var result []string
-	add := func(name string) error {
-		if seen[name] {
-			return nil
-		}
-		present, err := app.podman().Exists(app.Context, "container", name)
-		if err != nil {
-			return err
-		}
-		if present {
-			seen[name] = true
-			result = append(result, name)
-		}
-		return nil
-	}
-	for _, spec := range config.Applications() {
-		if application == "all" || application == spec.ID {
-			if err := add(spec.ContainerName); err != nil {
-				return nil, err
-			}
-		}
-	}
-	transient := map[string]string{comfyBenchmarkContainer: "comfyui", runtime.LlamaBenchmarkContainer: "llama-cpp", speculativeBenchmarkContainer: "llama-cpp"}
-	for name, owner := range transient {
-		if application == "all" || application == owner {
-			if err := add(name); err != nil {
-				return nil, err
-			}
-		}
-	}
+	var result []podman.OwnedContainer
+	// Names discover candidates only. Capture and validate every immutable ID
+	// before confirmation; canonical and legacy transient names confer no ownership.
 	for _, name := range labelled {
-		if !seen[name] {
-			seen[name] = true
-			result = append(result, name)
+		target, err := app.podman().InspectOwnedContainer(app.Context, name, filter, "")
+		if err != nil {
+			return nil, err
+		}
+		if target != nil && !seen[target.ID] {
+			seen[target.ID] = true
+			result = append(result, *target)
 		}
 	}
-	sortStrings(result)
 	return result, nil
 }
 

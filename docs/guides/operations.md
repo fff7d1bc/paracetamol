@@ -402,14 +402,21 @@ any of these commands:
 ./paracetamol cleanup data
 ```
 
-`cleanup containers` covers more than the application
-names. It also discovers Paracetamol-labelled benchmark, acceptance, shell,
-diagnostic, and downloader containers. Exact benchmark names and the generated
-`paracetamol-download-*` namespace remain recognized so cleanup can recover
-owned containers after an interruption.
+`cleanup containers` discovers containers by their reviewed Paracetamol
+ownership labels, including application, benchmark, shell, diagnostic and
+downloader containers. A familiar application or old benchmark name alone is
+not proof of ownership. Unlabelled containers are not automatic cleanup
+candidates. Stop commands refuse an application name occupied by a container
+whose ownership labels do not match.
 This scope uses immediate forced removal because it is explicitly for
 abandoned or unwanted containers; persistent application and content data
 are not removed.
+
+Container plans retain full immutable IDs and recheck ownership before
+removal. If a container disappears and another takes its name while you review
+the plan, cleanup does not switch to the replacement. Old unlabelled containers
+require manual ownership verification and deliberate removal outside this
+automatic cleanup path.
 
 Every cleanup scope resolves and validates its exact non-empty plan, prints
 the resources it will remove, and asks once for confirmation on a terminal.

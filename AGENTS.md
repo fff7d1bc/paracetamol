@@ -127,8 +127,11 @@ them:
   user modifications unless replacement is explicitly forced.
 - Source patches, workflow renderers, catalog validation, and benchmark
   transformations fail closed when upstream structure or pinned bytes change.
-- Cleanup is scoped to Paracetamol-owned resources. Never introduce a general
-  Podman or system prune.
+- Cleanup is scoped to Paracetamol-owned resources. Direct-application stop
+  and confirmed container cleanup verify ownership labels and remove captured
+  full container IDs, not reusable names. Failed application launches may
+  remove only their own launch instance. Never introduce a general Podman or
+  system prune.
 
 Use project terminology precisely:
 

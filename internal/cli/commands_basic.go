@@ -526,6 +526,10 @@ func (app *App) runComfyUI(args []string) error {
 	}
 	imageValue := firstNonEmpty(*image, config.EnvironmentValue(app.Environment, "IMAGE", application.Image))
 	command := runtime.WebCommand(runtime.WebOptions{Image: imageValue, Profile: profileValue, Listen: listenValue, Port: portValue, DataDir: dataRoot, RenderNodes: selected, Detach: *detach, Unconfined: *unconfined, DisableBundledExtensions: *disableExtensions, Arguments: upstreamArgs, ContainerName: application.ContainerName, Application: "comfyui", MemoryPolicy: memoryValue, KernelPolicy: kernelValue, Publish: true}, app.podman().SELinuxVolumeSuffix(app.Context))
+	command, launchID, err := podman.WithLaunchIdentity(command)
+	if err != nil {
+		return err
+	}
 	if !isLoopback(listenValue) {
 		fmt.Fprintf(app.Stderr, "%s ComfyUI is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), listenValue, portValue)
 	}
@@ -538,7 +542,7 @@ func (app *App) runComfyUI(args []string) error {
 	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("comfyui"); err != nil {
 		return err
 	}
-	return app.startManaged(application, imageValue, command, *detach, nil)
+	return app.startManaged(application, imageValue, command, *detach, nil, launchID)
 }
 
 func (app *App) runLlama(mode string, args []string) error {
@@ -736,6 +740,10 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
+	command, launchID, err := podman.WithLaunchIdentity(command)
+	if err != nil {
+		return err
+	}
 	if mode == "server" && !isLoopback(options.Listen) && options.APIKeyFile == "" {
 		fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
 	}
@@ -772,7 +780,7 @@ func (app *App) runLlama(mode string, args []string) error {
 			return err
 		}
 		return nil
-	})
+	}, launchID)
 }
 
 func (app *App) commandShell(args []string) error {
@@ -897,25 +905,29 @@ func (app *App) commandStop(args []string) error {
 			targets = append(targets, spec.ID)
 		}
 	}
+	var plan []podman.OwnedContainer
 	for _, identifier := range targets {
 		application, _ := config.ApplicationByID(identifier)
-		present, err := app.podman().Exists(app.Context, "container", application.ContainerName)
+		target, err := app.podman().InspectOwnedContainer(app.Context, application.ContainerName, application.ID, "application")
 		if err != nil {
 			return err
 		}
-		if !present {
+		if target == nil {
 			fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Muted("Container not present:"), application.ContainerName)
 			continue
 		}
-		if err := app.podman().RemoveContainer(app.Context, application.ContainerName, 2, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
+		plan = append(plan, *target)
+	}
+	for _, target := range plan {
+		if err := app.podman().RemoveOwnedContainer(app.Context, target, 2, podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}); err != nil {
 			return err
 		}
-		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Removed container:"), application.ContainerName)
+		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Removed container:"), target.Name)
 	}
 	return nil
 }
 
-func (app *App) startManaged(application config.Application, image string, command []string, detach bool, prepare func() error) error {
+func (app *App) startManaged(application config.Application, image string, command []string, detach bool, prepare func() error, launchID string) error {
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -944,6 +956,9 @@ func (app *App) startManaged(application config.Application, image string, comma
 	if exists {
 		return controlerr.New("container name is already occupied: %s", application.ContainerName)
 	}
+	if err := podman.ValidateLaunchIdentity(command, launchID); err != nil {
+		return err
+	}
 	if prepare != nil {
 		if err := prepare(); err != nil {
 			return err
@@ -955,7 +970,7 @@ func (app *App) startManaged(application config.Application, image string, comma
 	}
 	_, runErr := app.run(command, false)
 	if runErr != nil && !detach {
-		cleanupErr := app.podman().RemoveContainer(contextWithoutCancel(), application.ContainerName, 1, podman.Streams{})
+		cleanupErr := app.podman().RemoveLaunchContainer(contextWithoutCancel(), application.ContainerName, application.ID, launchID, 1)
 		if app.Context.Err() != nil {
 			return withCleanupFailure(app.Context.Err(), "remove interrupted application container", cleanupErr)
 		}
