@@ -163,7 +163,10 @@ for inspection rather than being downloaded again automatically.
 One content installation may mutate a given data directory at a time. A second
 installer fails immediately with a clear message instead of sharing staging,
 verification, or final moves with the active command. The lock is released on
-normal completion, failure, and Ctrl-C; resumable staging remains in place.
+normal completion, failure, Ctrl-C, and process exit; resumable staging remains
+in place. The lock belongs to the actual data directory, so directory aliases
+and different home, runtime, or temporary-directory settings do not bypass it.
+Different data directories can be installed independently.
 
 Installation begins only after exact size and SHA-256 verification.
 Paracetamol records a durable receipt after a successful hash. A missing or stale

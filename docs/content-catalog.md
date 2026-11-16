@@ -214,6 +214,16 @@ Missing roots or parent tails remain valid read-only plans. Inspection does
 not create them. This shared inspection rule covers install planning,
 existing-file verification and runtime bundle readiness.
 
+The installer holds a nonblocking Linux `flock` on an open data-root directory
+descriptor across downloader checks, staging, verification, receipt publication,
+and completed-staging cleanup. Exclusion follows the directory inode, including
+aliases, rather than a pathname or launcher environment. Different roots remain
+independent. The descriptor is close-on-exec and released on every return or
+process exit; no persistent lock file is created. Read-only planning, dry runs,
+and rejected plans do not create the root or acquire the lock. Caller-owned
+`BeforeMutation` metadata publication still precedes root preparation and lock
+acquisition, so a failed publication leaves an absent data root absent.
+
 If an artifact filename appears in a curated workflow, update the reviewed
 JSON resource and its model provenance together. Installation copies that
 resource; it does not regenerate filenames from a host-side alias table.

@@ -160,7 +160,7 @@ func Install(options InstallOptions) error {
 	if err := os.MkdirAll(options.DataRoot, 0o755); err != nil {
 		return fmt.Errorf("prepare data directory: %w", err)
 	}
-	lock, err := acquireInstallLock(options.DataRoot, options.Environment)
+	lock, err := acquireInstallLock(options.DataRoot)
 	if err != nil {
 		return err
 	}
@@ -956,50 +956,23 @@ func withinPath(candidate, root string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func acquireInstallLock(dataRoot string, environment map[string]string) (*os.File, error) {
-	runtimeRoot := environment["XDG_RUNTIME_DIR"]
-	if runtimeRoot == "" {
-		runtimeRoot = filepath.Join(os.TempDir(), fmt.Sprintf("%s-runtime-%d", identity.StateNamespace, os.Geteuid()))
-	}
-	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
-		return nil, err
-	}
-	locks := filepath.Join(runtimeRoot, identity.StateNamespace+"-locks")
-	if err := os.MkdirAll(locks, 0o700); err != nil {
-		return nil, err
-	}
-	for _, directory := range []string{runtimeRoot, locks} {
-		info, err := os.Lstat(directory)
-		if err != nil {
-			return nil, controlerr.New("cannot inspect content lock directory %s: %v", directory, err)
-		}
-		status, ok := info.Sys().(*syscall.Stat_t)
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !ok || int(status.Uid) != os.Geteuid() || info.Mode().Perm()&0o077 != 0 {
-			return nil, controlerr.New("content lock directory is not private and owned: %s", directory)
-		}
-	}
-	resolved, err := filepath.EvalSymlinks(dataRoot)
+func acquireInstallLock(dataRoot string) (*os.File, error) {
+	// Lock the directory inode, not a pathname-derived file in a runtime or
+	// temporary directory. Aliases and different launcher environments must
+	// serialize the same staging tree and verification receipt read/modify/write.
+	// A directory descriptor also leaves no lock file that can be unlinked to
+	// bypass a live lock; O_CLOEXEC keeps child processes from retaining it.
+	descriptor, err := syscall.Open(dataRoot, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open content installation directory: %w", err)
 	}
-	digest := sha256.Sum256([]byte(resolved))
-	file, err := os.OpenFile(filepath.Join(locks, fmt.Sprintf("content-%x.lock", digest)), os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, err
-	}
-	status, ok := info.Sys().(*syscall.Stat_t)
-	if !info.Mode().IsRegular() || !ok || int(status.Uid) != os.Geteuid() || info.Mode().Perm()&0o077 != 0 {
-		file.Close()
-		return nil, controlerr.New("content lock is not a private owned file")
-	}
+	file := os.NewFile(uintptr(descriptor), dataRoot)
 	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		file.Close()
-		return nil, controlerr.New("another content installation is active for %s", dataRoot)
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, controlerr.New("another content installation is active for %s", dataRoot)
+		}
+		return nil, fmt.Errorf("lock content installation directory: %w", err)
 	}
 	return file, nil
 }
