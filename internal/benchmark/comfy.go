@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"paracetamol/internal/atomicfile"
 	"paracetamol/internal/catalog"
@@ -455,9 +456,13 @@ func WaitForPromptWithClient(ctx context.Context, client HTTPDoer, baseURL, prom
 				var value map[string]any
 				if json.Unmarshal(contents, &value) == nil {
 					if raw, ok := value[promptID].(map[string]any); ok {
-						if status, ok := raw["status"].(map[string]any); ok && status["completed"] == false {
-							// Still running.
-						} else {
+						status, _ := raw["status"].(map[string]any)
+						// ComfyUI sets completed=false for terminal execution errors
+						// too. Check the outcome before treating that flag as pending.
+						if status["status_str"] == "error" {
+							return nil, fmt.Errorf("ComfyUI benchmark prompt %s failed%s", promptID, comfyPromptFailureDetail(status))
+						}
+						if status["completed"] == true {
 							return raw, nil
 						}
 					}
@@ -470,6 +475,42 @@ func WaitForPromptWithClient(ctx context.Context, client HTTPDoer, baseURL, prom
 		case <-ticker.C:
 		}
 	}
+}
+
+func comfyPromptFailureDetail(status map[string]any) string {
+	messages, _ := status["messages"].([]any)
+	for _, raw := range messages {
+		message, _ := raw.([]any)
+		if len(message) != 2 {
+			continue
+		}
+		if message[0] == "execution_interrupted" {
+			return ": execution interrupted"
+		}
+		if message[0] != "execution_error" {
+			continue
+		}
+		detail, _ := message[1].(map[string]any)
+		kind, _ := detail["exception_type"].(string)
+		text, _ := detail["exception_message"].(string)
+		// Include a bounded, single-line cause, not the full history, traceback
+		// or node inputs. It must also remain safe to persist in checkpoints.
+		var cause strings.Builder
+		for index, character := range kind + ": " + text {
+			if index >= 1024 {
+				cause.WriteString("...")
+				break
+			}
+			if unicode.IsControl(character) {
+				character = ' '
+			}
+			cause.WriteRune(character)
+		}
+		if value := strings.Trim(strings.TrimSpace(cause.String()), ": "); value != "" {
+			return ": " + value
+		}
+	}
+	return ""
 }
 
 func WriteSuiteReports(subject string, suite ComfySuite, format, explicit string, replace bool) ([]string, error) {

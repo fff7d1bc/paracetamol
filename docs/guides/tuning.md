@@ -354,6 +354,12 @@ Persistent cache mode starts a fresh ComfyUI process while retaining generated
 compiler caches. Isolated mode redirects application and compiler caches to a
 fresh per-run directory and removes it afterward.
 
+Terminal ComfyUI execution failures return as failed runs, including node
+errors and out-of-memory errors. They do not remain in the polling loop.
+The normal container and isolated-cache cleanup still runs, and a suite with
+`--keep-going` can continue to its next bundle. Pending jobs remain cancellable
+and have no fixed inference deadline.
+
 llama.cpp uses its native `llama-bench`:
 
 ```bash
