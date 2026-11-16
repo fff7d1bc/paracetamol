@@ -331,7 +331,12 @@ type traceWrapperFixture struct {
 
 func newTraceWrapperFixture(t *testing.T, environment ...string) *traceWrapperFixture {
 	t.Helper()
-	f := &traceWrapperFixture{root: t.TempDir(), done: make(chan error, 1)}
+	// Exercise shell substitutions independently of the checkout/temp parent.
+	root := filepath.Join(t.TempDir(), "trace fixture with spaces")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f := &traceWrapperFixture{root: root, done: make(chan error, 1)}
 	profiler, server, wrapper := filepath.Join(f.root, "profiler"), filepath.Join(f.root, "server"), filepath.Join(f.root, "wrapper")
 	executable, err := os.Executable()
 	if err != nil {
@@ -340,10 +345,11 @@ func newTraceWrapperFixture(t *testing.T, environment ...string) *traceWrapperFi
 	// Mirrors pinned Linux rocprofv3 single-pass exec semantics. No profiler,
 	// container, GPU or path outside the test's temporary directory is used.
 	fake := "#!/bin/bash\nif [[ $1 == --version ]]; then echo mock; exit; fi\nwhile [[ $1 != -- ]]; do shift; done\nshift\nexec \"$@\"\n"
-	script := strings.NewReplacer("/opt/venv/bin/rocprofv3", profiler, "/opt/trace/llama-server", server, "/data/acceptance-trace-v1.XXXXXXXX", filepath.Join(f.root, "trace.XXXXXXXX")).Replace(traceEntrypoint)
+	quote := func(path string) string { return "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'" }
+	script := strings.NewReplacer("/opt/venv/bin/rocprofv3", quote(profiler), "/opt/trace/llama-server", quote(server), "/data/acceptance-trace-v1.XXXXXXXX", quote(filepath.Join(f.root, "trace.XXXXXXXX"))).Replace(traceEntrypoint)
 	for path, data := range map[string]string{
 		profiler: fake,
-		server:   "#!/bin/bash\nexec '" + strings.ReplaceAll(executable, "'", "'\"'\"'") + "' -test.run=^TestTraceMockServerProcess$\n",
+		server:   "#!/bin/bash\nexec " + quote(executable) + " -test.run=^TestTraceMockServerProcess$\n",
 		wrapper:  script,
 	} {
 		if err := os.WriteFile(path, []byte(data), 0o700); err != nil {

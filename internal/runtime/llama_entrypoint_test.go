@@ -4,13 +4,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/project"
 )
+
+func llamaEntrypointFixtureDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "fixture with spaces 'quote' $literal")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// These substitutions occupy shell words or assignment values, not quoted
+// strings. Go string quoting would still allow shell expansion of $ and `.
+func quoteLlamaEntrypointPath(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", "'\"'\"'") + "'"
+}
 
 // Exercise the actual entrypoint with only filesystem and executable boundaries
 // substituted. No fixture executable loads a model or accesses a GPU.
@@ -20,7 +34,7 @@ func runLlamaPolicyEntrypoint(t *testing.T, backend, arch string, env []string, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
+	dir := llamaEntrypointFixtureDir(t)
 	write := func(name, contents string) string {
 		t.Helper()
 		path := filepath.Join(dir, name)
@@ -36,9 +50,9 @@ func runLlamaPolicyEntrypoint(t *testing.T, backend, arch string, env []string, 
 	}
 	script := string(source)
 	for from, to := range map[string]string{
-		"source /usr/local/share/paracetamol/llama-model-load-policy.sh": "source " + strconv.Quote(filepath.Join(root, "applications/llama-cpp/model-load-policy.sh")),
-		"runtime_report=/tmp/paracetamol-llama-runtime":                  "runtime_report=" + strconv.Quote(filepath.Join(dir, "report")),
-		"router_preset=/tmp/paracetamol-models.ini":                      "router_preset=" + strconv.Quote(filepath.Join(dir, "rendered.ini")),
+		"source /usr/local/share/paracetamol/llama-model-load-policy.sh": "source " + quoteLlamaEntrypointPath(filepath.Join(root, "applications/llama-cpp/model-load-policy.sh")),
+		"runtime_report=/tmp/paracetamol-llama-runtime":                  "runtime_report=" + quoteLlamaEntrypointPath(filepath.Join(dir, "report")),
+		"router_preset=/tmp/paracetamol-models.ini":                      "router_preset=" + quoteLlamaEntrypointPath(filepath.Join(dir, "rendered.ini")),
 	} {
 		if strings.Count(script, from) != 1 {
 			t.Fatalf("entrypoint boundary changed: %s", from)
@@ -47,7 +61,10 @@ func runLlamaPolicyEntrypoint(t *testing.T, backend, arch string, env []string, 
 	}
 	if router != nil {
 		ini := write("models.ini", router(model))
-		script = strings.ReplaceAll(script, "/run/paracetamol/models.ini", ini)
+		if strings.Count(script, "/run/paracetamol/models.ini") != 5 {
+			t.Fatal("entrypoint router input boundaries changed")
+		}
+		script = strings.ReplaceAll(script, "/run/paracetamol/models.ini", quoteLlamaEntrypointPath(ini))
 		env = append(env, "PARACETAMOL_LLAMA_ROUTER=1")
 	}
 	entrypoint := write("entrypoint", script)
@@ -304,7 +321,7 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := llamaEntrypointFixtureDir(t)
 			write := func(name, contents string) string {
 				t.Helper()
 				path := filepath.Join(dir, name)
@@ -318,8 +335,8 @@ func TestLlamaEntrypointScopesQwen4expOptimizations(t *testing.T) {
 			// final environment policy execute through the real entrypoint.
 			script := string(source)
 			replacements := map[string]string{
-				"source /usr/local/share/paracetamol/llama-model-load-policy.sh": "source " + strconv.Quote(filepath.Join(root, "applications/llama-cpp/model-load-policy.sh")),
-				"runtime_report=/tmp/paracetamol-llama-runtime":                  "runtime_report=" + strconv.Quote(filepath.Join(dir, "report")),
+				"source /usr/local/share/paracetamol/llama-model-load-policy.sh": "source " + quoteLlamaEntrypointPath(filepath.Join(root, "applications/llama-cpp/model-load-policy.sh")),
+				"runtime_report=/tmp/paracetamol-llama-runtime":                  "runtime_report=" + quoteLlamaEntrypointPath(filepath.Join(dir, "report")),
 			}
 			for from, to := range replacements {
 				if strings.Count(script, from) != 1 {
