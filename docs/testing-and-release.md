@@ -11,6 +11,9 @@ files and telemetry state below the ignored `build/` directory. `make build`
 is the normal incremental path. Force the ordinary binary through publication
 with `make -B build` before finishing Go or Makefile changes. `make clean`
 removes only the repository's anchored `build/` tree.
+It refuses a symlink or non-directory at that path before changing permissions
+or deleting anything. Read-only Go cache files inside a real build directory
+are made owner-writable before removal; an absent build directory is a no-op.
 
 Normal builds use CGO, glibc and the host NSS resolver. They require a C
 compiler and glibc development headers. `make static` explicitly builds the
@@ -200,6 +203,10 @@ check that a forced deployment build replaces an otherwise up-to-date binary.
 A failure or interruption must return a nonzero status,
 preserve the previous executable and remove the temporary output. Only a
 successful, non-empty build may replace the executable.
+The actual clean recipe is also exercised in isolated scratch checkouts,
+including read-only cache trees, top-level and nested symlinks, missing build
+directories, and attempts to override the anchored cleanup path. Refused paths
+must retain their contents and permissions.
 
 CI uses Go 1.26.9. The `go 1.26.0` directive in `go.mod` is the language
 compatibility floor, not a recommendation to run the original 1.26.0

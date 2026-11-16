@@ -10,6 +10,128 @@ import (
 	"time"
 )
 
+func TestMakeCleanConfinesMutationToBuildDirectory(t *testing.T) {
+	makefile, err := os.ReadFile("../../Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	makePath, err := exec.LookPath("make")
+	if err != nil {
+		t.Fatal("make is required for checkout cleanup tests")
+	}
+	for _, kind := range []string{"missing", "directory", "directory-symlink", "file-symlink", "dangling-symlink", "file", "override", "override-ignore-errors"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			checkout := filepath.Join(root, "checkout")
+			outside := filepath.Join(root, "outside")
+			for _, path := range []string{checkout, outside, filepath.Join(checkout, "internal/gateway/assets"), filepath.Join(checkout, "tools/llama-acceptance")} {
+				if err := os.MkdirAll(path, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(filepath.Join(checkout, "Makefile"), makefile, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			sentinel := filepath.Join(outside, "sentinel")
+			const contents = "unrelated fixture content\n"
+			if err := os.WriteFile(sentinel, []byte(contents), 0o400); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(sentinel, 0o400); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(outside, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(outside, 0o755) })
+
+			buildRoot := filepath.Join(checkout, "build")
+			args := []string{"--no-print-directory", "clean", "HOST_GOOS=linux", "HOST_GOARCH=amd64", "GO_SOURCE_ROOTS=Makefile"}
+			switch kind {
+			case "directory":
+				cache := filepath.Join(buildRoot, "gomodcache", "readonly")
+				if err := os.MkdirAll(cache, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(cache, "module.go"), []byte("cache fixture\n"), 0o444); err != nil {
+					t.Fatal(err)
+				}
+				// Recursive chmod must still make Go's read-only cache removable,
+				// without following symlinks found inside the owned build tree.
+				if err := os.Symlink(outside, filepath.Join(cache, "outside")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(cache, 0o555); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(cache, 0o755) })
+			case "directory-symlink", "file-symlink", "dangling-symlink":
+				target := outside
+				if kind == "file-symlink" {
+					target = sentinel
+				} else if kind == "dangling-symlink" {
+					target = filepath.Join(root, "absent")
+				}
+				if err := os.Symlink(target, buildRoot); err != nil {
+					t.Fatal(err)
+				}
+			case "file":
+				if err := os.WriteFile(buildRoot, []byte(contents), 0o400); err != nil {
+					t.Fatal(err)
+				}
+			case "override", "override-ignore-errors":
+				args = append(args, "BUILD_ROOT="+outside)
+				if kind == "override-ignore-errors" {
+					args = append(args, "--ignore-errors")
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, makePath, args...)
+			cmd.Dir = checkout
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH")}
+			output, cleanErr := cmd.CombinedOutput()
+			if ctx.Err() != nil {
+				t.Fatalf("clean did not finish: %v\n%s", ctx.Err(), output)
+			}
+			wantSuccess := kind == "missing" || kind == "directory" || kind == "override-ignore-errors"
+			if (cleanErr == nil) != wantSuccess {
+				t.Errorf("clean error=%v wantSuccess=%t\n%s", cleanErr, wantSuccess, output)
+			}
+			if kind == "missing" || kind == "directory" {
+				retry := exec.CommandContext(ctx, makePath, args...)
+				retry.Dir, retry.Env = cmd.Dir, cmd.Env
+				if output, err := retry.CombinedOutput(); err != nil {
+					t.Errorf("clean is not idempotent: %v\n%s", err, output)
+				}
+			}
+			if data, err := os.ReadFile(sentinel); err != nil || string(data) != contents {
+				t.Errorf("outside sentinel=%q err=%v", data, err)
+			}
+			for path, want := range map[string]os.FileMode{outside: 0o500, sentinel: 0o400} {
+				if info, err := os.Stat(path); err != nil || info.Mode().Perm() != want {
+					t.Errorf("outside permissions changed: path=%s info=%v err=%v", path, info, err)
+				}
+			}
+			info, err := os.Lstat(buildRoot)
+			if strings.HasSuffix(kind, "symlink") {
+				if err != nil || info.Mode()&os.ModeSymlink == 0 {
+					t.Errorf("refused build symlink changed: info=%v err=%v", info, err)
+				}
+			} else if kind == "file" {
+				if data, err := os.ReadFile(buildRoot); err != nil || string(data) != contents {
+					t.Errorf("refused build file changed: data=%q err=%v", data, err)
+				}
+				if err != nil || info.Mode().Perm() != 0o400 {
+					t.Errorf("refused build file permissions changed: info=%v err=%v", info, err)
+				}
+			} else if !os.IsNotExist(err) {
+				t.Errorf("build path remains: info=%v err=%v", info, err)
+			}
+		})
+	}
+}
+
 // Exercise the actual recipes with a fake compiler in an isolated checkout.
 // A successful final shell command must not hide an earlier build failure or
 // publish the partial file that a failed compiler can leave behind.

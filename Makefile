@@ -160,7 +160,20 @@ $(BIN_DIR) $(GOTMPDIR):
 	mkdir -p "$(BIN_DIR)" "$(GOCACHE)" "$(GOMODCACHE)" \
 		"$(GOPATH)" "$(GOTMPDIR)" "$(GOTELEMETRYDIR)"
 
+# Keep validation and mutation in one shell, even under make --ignore-errors.
+# Recursive chmod follows a command-line symlink but is needed for Go caches.
 clean:
-	@test "$(BUILD_ROOT)" = "$(CURDIR)/build"
-	chmod -R u+w "$(BUILD_ROOT)" 2>/dev/null || true
-	rm -rf -- "$(BUILD_ROOT)"
+	@set -eu; \
+	test "$(BUILD_ROOT)" = "$(CURDIR)/build"; \
+	if test -L "$(BUILD_ROOT)"; then \
+		printf '%s\n' 'make clean refuses a symlink build directory' >&2; \
+		exit 2; \
+	fi; \
+	if test -e "$(BUILD_ROOT)"; then \
+		test -d "$(BUILD_ROOT)" || { \
+			printf '%s\n' 'make clean requires a build directory' >&2; \
+			exit 2; \
+		}; \
+		chmod -R u+w -- "$(BUILD_ROOT)"; \
+		rm -rf -- "$(BUILD_ROOT)"; \
+	fi
