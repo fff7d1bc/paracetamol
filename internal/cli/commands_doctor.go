@@ -202,23 +202,28 @@ func reportDoctorDevices(output interface{ Write([]byte) (int, error) }, termina
 func reportAppArmorPolicy(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal) {
 	path := "/proc/sys/kernel/apparmor_restrict_unprivileged_userns"
 	contents, err := os.ReadFile(path)
+	reportAppArmorPolicyResult(output, terminal, contents, err)
+}
+
+func reportAppArmorPolicyResult(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal, contents []byte, err error) {
 	if os.IsNotExist(err) {
 		return
 	}
-	value := strings.TrimSpace(string(contents))
-	if err != nil || value != "0" && value != "1" {
+	if err != nil {
 		writeDoctorField(output, terminal, "AppArmor", terminal.Warning("user namespace restriction state is unreadable"))
+		return
+	}
+	value := strings.TrimSpace(string(contents))
+	if value != "0" && value != "1" {
+		writeDoctorField(output, terminal, "AppArmor", terminal.Warning("user namespace restriction state is invalid"))
 		return
 	}
 	if value == "0" {
 		writeDoctorField(output, terminal, "AppArmor", terminal.State("user namespace restriction is off"))
 		return
 	}
-	writeDoctorField(output, terminal, "AppArmor", terminal.Warning("restricts unprivileged user namespaces"))
-	writeDoctorField(output, terminal, "Impact", terminal.Warning("bubblewrap without a matching AppArmor profile may be blocked"))
-	writeDoctorField(output, terminal, "Host action", terminal.Command(fmt.Sprintf("printf '%%s\\n' 'kernel.apparmor_restrict_unprivileged_userns = 0' | sudo tee /etc/sysctl.d/70-%s-userns.conf", identity.StateNamespace)))
-	writeDoctorField(output, terminal, "Apply", terminal.Command("sudo sysctl --system"))
-	writeDoctorField(output, terminal, "Security", terminal.Warning("this disables the AppArmor restriction system-wide"))
+	// The sysctl alone does not establish that a managed workload is blocked.
+	writeDoctorField(output, terminal, "AppArmor", terminal.State("restricts unprivileged user namespaces"))
 }
 
 func reportTTMMemory(output interface{ Write([]byte) (int, error) }, terminal ui.Terminal, renderNode string, state *hostdoctor.TTMState, platformName string) {

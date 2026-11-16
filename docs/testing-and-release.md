@@ -506,8 +506,8 @@ Verify:
   it is off, and pass a real GPU tensor operation after it is enabled without
   disabling container labels;
 - hosts exposing AppArmor's unprivileged-user-namespace sysctl report whether
-  it is active; a nonzero value prints the persistent opt-out, apply command,
-  bubblewrap impact, and system-wide security scope without changing the host;
+  it is active, and unreadable or invalid values remain explicit; this is
+  informational and prints no global opt-out or host-policy apply command;
 - Strix Halo and Strix Point diagnostics report system RAM, the active TTM
   module and ceiling, and effective GTT; undersized GTT prints the expected
   RAM-aware host recipe without changing the host. The additional KFD kernel

@@ -199,9 +199,12 @@ Enforcing SELinux hosts require `container_use_devices` for GPU runs;
 the launcher reports a remedy instead of disabling labels. Shared read-only
 content and resumable downloader storage use shared `z` labels; private
 application state uses `Z`. Label content before hashing so runtime access
-does not invalidate receipts through ctime changes. Doctor reports device,
-AppArmor and memory-policy remediation without host mutation; system-wide
-security relaxations remain labelled as such.
+does not invalidate receipts through ctime changes. Doctor reports device and
+memory-policy remediation without host mutation; system-wide security
+relaxations remain labelled as such. AppArmor's unprivileged-user-namespace
+restriction is informational: its sysctl value alone does not establish a
+managed-workload failure or justify a system-wide opt-out. Investigate actual
+AppArmor denials and the applicable host policy before choosing remediation.
 
 Copied image helpers need explicit readable modes even under a restrictive
 developer umask. Tmpfs scratch must be writable to keep-id users. Persistent
