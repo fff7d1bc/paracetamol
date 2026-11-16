@@ -403,6 +403,11 @@ Inspect resolved commands for:
 - exactly `/dev/kfd` plus the complete selected render-node set in GPU mode;
 - offline/network-none behavior where promised.
 
+Direct llama.cpp publication must warn for non-loopback and wildcard addresses
+with or without an API-key file. Cover IPv4 and IPv6, keep loopback quiet, and
+never print key contents. The authenticated warning must distinguish access
+control from transport encryption.
+
 For image-archive changes, additionally create a tiny disposable local image,
 save it as a Docker archive, inspect it through `images import --dry-run`, remove and
 load it, compare the image config ID, and remove it again. Do not use a full

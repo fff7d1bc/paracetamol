@@ -741,8 +741,13 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
-	if mode == "server" && !isLoopback(options.Listen) && options.APIKeyFile == "" {
-		fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s:%d without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), options.Listen, options.Port)
+	if mode == "server" && !isLoopback(options.Listen) {
+		endpoint := net.JoinHostPort(options.Listen, strconv.Itoa(options.Port))
+		if options.APIKeyFile == "" {
+			fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s without authentication.\n", app.terminal(app.Stderr).Warning("WARNING:"), endpoint)
+		} else {
+			fmt.Fprintf(app.Stderr, "%s llama.cpp is published on %s with an API-key file, but HTTP does not encrypt keys or prompts. Use a trusted network or TLS reverse proxy.\n", app.terminal(app.Stderr).Warning("WARNING:"), endpoint)
+		}
 	}
 	terminal := app.terminal(app.Stdout)
 	backendDisplay := options.Backend
