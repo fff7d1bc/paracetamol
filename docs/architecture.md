@@ -286,11 +286,18 @@ old library. Interruption does not restore them.
 
 Installer-owned data mutation and destructive data, download and runtime-cache
 cleanup share a nonblocking directory-inode lock owned by `internal/storage/`.
-Cleanup holds it across planning, confirmation and removal, including when an
-offline install has no downloader container. This protects moved mirror files
-while they are staged or verified. Directory aliases share the same lock,
-and process exit releases it without a persistent lock file. The gateway's
-lifecycle reservation is separate and remains required for cleanup.
+`internal/content/` retains one reservation from artifact installation through
+curated workflow publication and the final readiness report. Standalone workflow
+installation uses the same mutation boundary without requiring a downloader.
+Cleanup holds its reservation across planning, confirmation and removal,
+including when an offline install has no downloader container. This protects
+moved mirror files while they are staged or verified. Directory aliases share
+the same lock. Process exit releases it without a persistent lock file. The
+gateway's lifecycle reservation is separate and remains required for cleanup.
+
+This exclusion does not roll back completed work. If workflow publication fails
+after model verification, verified models and any completed workflows remain in
+place for inspection and retry. Failure must not print the final ready message.
 
 `internal/atomicfile/` has two publication policies. Final results, archives
 and immutable resources are create-once. Exact owned checkpoints, reports,

@@ -8,6 +8,7 @@ import (
 
 	"paracetamol/internal/atomicfile"
 	"paracetamol/internal/catalog"
+	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
 	"paracetamol/internal/storage"
 )
@@ -59,9 +60,30 @@ func (app *App) planWorkflowInstall(workflow catalog.Workflow, dataRoot string, 
 }
 
 func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, force bool) error {
+	if _, err := app.planWorkflowInstall(workflow, dataRoot, force); err != nil {
+		return err
+	}
+	return content.WithMutation(app.Context, dataRoot, func() error {
+		return app.publishWorkflow(workflow, dataRoot, force)
+	})
+}
+
+// publishWorkflow requires the caller's retained content mutation reservation.
+// Bundle installation must not reacquire it between artifacts and workflows.
+func (app *App) publishWorkflow(workflow catalog.Workflow, dataRoot string, force bool) error {
+	if app.Context != nil {
+		if err := app.Context.Err(); err != nil {
+			return err
+		}
+	}
 	plan, err := app.planWorkflowInstall(workflow, dataRoot, force)
 	if err != nil {
 		return err
+	}
+	if app.Context != nil {
+		if err := app.Context.Err(); err != nil {
+			return err
+		}
 	}
 	if plan.ready {
 		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Workflow already installed:"), plan.destination)
@@ -70,6 +92,11 @@ func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, forc
 	managedRoot := (storage.Layout{Root: dataRoot}).CuratedWorkflows()
 	if err := storage.ValidateManagedParent(plan.destination, managedRoot, dataRoot, "curated workflow"); err != nil {
 		return err
+	}
+	if app.Context != nil {
+		if err := app.Context.Err(); err != nil {
+			return err
+		}
 	}
 	if err := atomicfile.Write(plan.destination, plan.contents, 0o644, plan.policy); err != nil {
 		return err

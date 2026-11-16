@@ -46,6 +46,10 @@ type InstallOptions struct {
 	// Dry runs and rejected plans never call it. Published metadata survives
 	// later install failures so a caller can preserve a resumable import pack.
 	BeforeMutation func() error
+	// AfterInstall completes caller-owned publication and success reporting
+	// after artifacts, receipts and staging cleanup, under the same mutation
+	// reservation. It is not called for dry runs or failed installations.
+	AfterInstall func() error
 }
 
 type InstallPlan struct {
@@ -157,14 +161,47 @@ func Install(options InstallOptions) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(options.DataRoot, 0o755); err != nil {
+	return WithMutation(options.Context, options.DataRoot, func() error {
+		if err := installArtifacts(options); err != nil {
+			return err
+		}
+		if err := options.Context.Err(); err != nil {
+			return err
+		}
+		if options.AfterInstall != nil {
+			return options.AfterInstall()
+		}
+		return nil
+	})
+}
+
+// WithMutation reserves a data root for one complete content mutation,
+// including caller-owned publication and reporting. Callers must validate
+// their plan and obtain approvals first: this prepares an absent root.
+// Workflow-only callers need no downloader/container checks; artifact installs
+// retain those checks in installArtifacts under this same reservation.
+func WithMutation(ctx context.Context, dataRoot string, mutate func() error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dataRoot, 0o755); err != nil {
 		return fmt.Errorf("prepare data directory: %w", err)
 	}
-	lock, err := storage.AcquireMutationLock(options.DataRoot)
+	lock, err := storage.AcquireMutationLock(dataRoot)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return mutate()
+}
+
+func installArtifacts(options InstallOptions) error {
 	client := podman.Client{Runner: options.Runner}
 	// A killed launcher releases flock without necessarily stopping its child
 	// container. Check before touching staging, even for offline-only reuse.

@@ -167,6 +167,8 @@ verification, or final moves. The lock is released on
 normal completion, failure, Ctrl-C, and process exit; resumable staging remains
 in place. The lock belongs to the actual data directory, so directory aliases
 and different home, runtime, or temporary-directory settings do not bypass it.
+Bundle installation keeps that lock through curated workflow installation and
+its final ready message. Workflow-only installation takes the same lock.
 Locks for different data directories are independent. The separate downloader
 guard still blocks installation while any managed downloader container remains,
 even for another data directory. Wait for active downloads to finish. Remove a

@@ -456,21 +456,34 @@ func (app *App) contentInstall(args []string) error {
 		return err
 	}
 	image := firstNonEmpty(*imageFlag, config.EnvironmentValue(app.Environment, "IMAGE", config.ContentToolsImage))
-	if err := content.Install(content.InstallOptions{Context: app.Context, DataRoot: dataRoot, Artifacts: artifacts, Image: image, AcceptRisk: acknowledged, LocalMirror: *localMirror, MoveFromMirror: *localMirrorMove, Environment: app.Environment, Runner: app.Runner, Output: app.Stdout, BeforeMutation: validateWorkflows}); err != nil {
-		return err
-	}
-	for _, workflowID := range workflowIDs {
-		if err := app.installWorkflow(managed.Workflows[workflowID], dataRoot, *forceWorkflow); err != nil {
-			return err
-		}
-	}
-	fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Success("All selected content is verified and ready."))
-	if recipes.IsApplication(target) {
-		if recipe, recipeErr := recipes.Find(target, selection); recipeErr == nil {
-			terminal.Next(recipe.NextCommand())
-		}
-	}
-	return nil
+	return content.Install(content.InstallOptions{
+		Context: app.Context, DataRoot: dataRoot, Artifacts: artifacts, Image: image,
+		AcceptRisk: acknowledged, LocalMirror: *localMirror, MoveFromMirror: *localMirrorMove,
+		Environment: app.Environment, Runner: app.Runner, Output: app.Stdout,
+		BeforeMutation: validateWorkflows,
+		AfterInstall: func() error {
+			if err := validateWorkflows(); err != nil {
+				return err
+			}
+			for _, workflowID := range workflowIDs {
+				if err := app.publishWorkflow(managed.Workflows[workflowID], dataRoot, *forceWorkflow); err != nil {
+					return err
+				}
+			}
+			if app.Context != nil {
+				if err := app.Context.Err(); err != nil {
+					return err
+				}
+			}
+			fmt.Fprintf(app.Stdout, "\n%s\n", terminal.Success("All selected content is verified and ready."))
+			if recipes.IsApplication(target) {
+				if recipe, recipeErr := recipes.Find(target, selection); recipeErr == nil {
+					terminal.Next(recipe.NextCommand())
+				}
+			}
+			return nil
+		},
+	})
 }
 
 func (app *App) confirmContentApprovals(agreements []catalog.Agreement, risky []catalog.Artifact, accepted, acknowledged, nonInteractive bool) (bool, error) {

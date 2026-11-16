@@ -215,9 +215,15 @@ not create them. This shared inspection rule covers install planning,
 existing-file verification and runtime bundle readiness.
 
 `internal/storage/` owns the shared nonblocking Linux `flock` on an open
-data-root directory descriptor. The installer retains it across downloader
-checks, staging, verification, receipt publication, and completed-staging
-cleanup. Destructive data, download and runtime-cache cleanup acquires the
+data-root directory descriptor. `content.WithMutation` owns root preparation
+and the reservation lifetime for installation. The artifact installer retains
+it across downloader checks, staging, verification, receipt publication,
+completed-staging cleanup and its `AfterInstall` callback. Bundled workflow
+publication and the final readiness report run inside that callback, not after
+the artifact install returns. Standalone workflow installation uses the same
+mutation boundary, with validation before root preparation and another check
+under the reservation. It does not require Podman or a downloader image.
+Destructive data, download and runtime-cache cleanup acquires the
 same lock before subprocess checks, planning or approval and retains it through
 removal. Container checks alone cannot protect offline mirror moves or
 existing-file verification. A busy cleanup fails without prompting or deleting
@@ -230,6 +236,11 @@ not create the root or acquire the lock. Cleanup of an absent root also creates
 no state. Caller-owned `BeforeMutation` metadata publication still precedes
 installer root preparation and lock acquisition, so a failed publication leaves
 an absent data root absent.
+
+`AfterInstall` is skipped for dry runs, rejected plans, failed artifact work
+and cancellation. A callback failure releases the reservation and returns the
+failure without the final ready report. This is exclusion, not rollback:
+verified models and already published workflows remain available for retry.
 
 The installer's separate `requireNoDownloaders` guard rejects any managed
 downloader container, regardless of its data root. This conservatively protects

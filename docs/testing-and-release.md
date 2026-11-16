@@ -125,6 +125,14 @@ Podman command construction, persistent verification, and client-config exports.
 Add tests for behavior and failure paths, not merely new lines or parser
 choices.
 
+Content-mutation tests use tiny local fixtures and fake Podman responses to
+exercise the complete install/cleanup boundary. Cover artifact transfer,
+curated workflow publication, forced replacement and the final readiness
+report under one reservation. Test both contention orders, cancellation and
+failure release. Standalone workflow installation must remain usable without
+Podman. Run the content, CLI and storage race tests after changing this
+boundary. No model download or inference is needed for these checks.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file
