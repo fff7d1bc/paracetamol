@@ -1019,6 +1019,9 @@ func (app *App) resolveDataDir(value string, prepare bool) (string, error) {
 }
 
 func (app *App) projectRevision() string {
+	if err := app.requireSourceCheckout(); err != nil {
+		return "unavailable"
+	}
 	result, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "rev-parse", "HEAD"}})
 	if err != nil || result.Status != 0 {
 		return "unavailable"
@@ -1035,6 +1038,9 @@ func (app *App) projectRevision() string {
 }
 
 func (app *App) projectSourceIdentity() (string, error) {
+	if err := app.requireSourceCheckout(); err != nil {
+		return "", err
+	}
 	result, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "rev-parse", "HEAD"}})
 	if err != nil || result.Status != 0 {
 		return "", fmt.Errorf("cannot resolve project revision")

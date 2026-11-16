@@ -83,7 +83,7 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 if [ "$BUILD_TEST_FAILURE" = empty ]; then exit 0; fi
-printf 'new executable fixture\n' > "$output"
+printf '%s\n' "${BUILD_TEST_EXECUTABLE_CONTENT-new executable fixture}" > "$output"
 case "$BUILD_TEST_FAILURE" in
     compile) exit 42 ;;
     INT|TERM|HUP) kill -s "$BUILD_TEST_FAILURE" "$PPID" ;;
@@ -160,6 +160,45 @@ esac
 			}
 		}
 		check(false)
+		if target == "build" {
+			// rsync -a replaces source while retaining its old timestamp and
+			// preserving excluded build/. Incremental Make cannot detect that
+			// transfer; the documented destination make -B build must publish
+			// the transferred controller instead of keeping the newer binary.
+			path := filepath.Join(root, "main.go")
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("package main\nfunc main() { println(\"transferred\") }\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			check(false)
+			for _, force := range []bool{false, true} {
+				arguments := []string{"--no-print-directory", "build", "GO_SOURCE_ROOTS=main.go"}
+				if force {
+					arguments = append(arguments, "-B")
+				}
+				build := exec.CommandContext(ctx, makePath, arguments...)
+				build.Dir = root
+				build.Env = append(append([]string(nil), cmd.Env...), "BUILD_TEST_EXECUTABLE_CONTENT=transferred executable fixture")
+				if output, err := build.CombinedOutput(); err != nil {
+					t.Fatalf("transferred source force=%t: %v\n%s", force, err, output)
+				}
+				want := "new executable fixture\n"
+				if force {
+					want = "transferred executable fixture\n"
+				}
+				data, err := os.ReadFile(destination)
+				if err != nil || string(data) != want {
+					t.Fatalf("transferred source force=%t: executable=%q want=%q err=%v", force, data, want, err)
+				}
+			}
+			check(false)
+		}
 		if target == "gufo-recheck" {
 			for _, asset := range []string{"Containerfile.fragment", "testdata/literal-xml.json"} {
 				path := filepath.Join(root, "tools", "gufo-recheck", asset)

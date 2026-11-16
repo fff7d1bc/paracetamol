@@ -165,6 +165,12 @@ func (app *App) commandAcceptance(args []string) error {
 			return err
 		}
 	}
+	// Identity is required even for a plan: fail before device probes, image
+	// preparation or downloads when this is only a Git-free execution copy.
+	sourceIdentity, err := app.projectSourceIdentity()
+	if err != nil {
+		return err
+	}
 	selectedNodes, err := app.resolveDevices(*profileFlag, nodes, nodes != nil)
 	if err != nil {
 		return err
@@ -337,10 +343,6 @@ func (app *App) commandAcceptance(args []string) error {
 			identity.Artifacts[artifactID] = managed.Artifacts[artifactID].SHA256
 		}
 		bundleIdentities = append(bundleIdentities, identity)
-	}
-	sourceIdentity, err := app.projectSourceIdentity()
-	if err != nil {
-		return err
 	}
 	definition := acceptanceDefinition{
 		Profile: detected.ID, Architecture: hardware["Architecture"], RenderNode: selectedNodes[0],

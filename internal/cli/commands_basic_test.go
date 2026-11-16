@@ -273,6 +273,8 @@ func TestProjectSourceIdentityHashesUntrackedContents(t *testing.T) {
 	runner := &commandRunner{run: func(command process.Command) process.Result {
 		joined := strings.Join(command.Args, " ")
 		switch {
+		case strings.Contains(joined, "--show-toplevel"):
+			return process.Result{Stdout: []byte(root + "\n")}
 		case strings.Contains(joined, "rev-parse"):
 			return process.Result{Stdout: []byte(strings.Repeat("a", 40) + "\n")}
 		case strings.Contains(joined, "ls-files"):
@@ -300,9 +302,12 @@ func TestProjectSourceIdentityHashesUntrackedContents(t *testing.T) {
 }
 
 func TestProjectSourceIdentityAllowsTrackedOnlyDirtyTree(t *testing.T) {
+	root := t.TempDir()
 	runner := &commandRunner{run: func(command process.Command) process.Result {
 		joined := strings.Join(command.Args, " ")
 		switch {
+		case strings.Contains(joined, "--show-toplevel"):
+			return process.Result{Stdout: []byte(root + "\n")}
 		case strings.Contains(joined, "rev-parse"):
 			return process.Result{Stdout: []byte(strings.Repeat("a", 40) + "\n")}
 		case strings.Contains(joined, "diff"):
@@ -314,6 +319,7 @@ func TestProjectSourceIdentityAllowsTrackedOnlyDirtyTree(t *testing.T) {
 		}
 	}}
 	app, _, _ := testApp(t, runner)
+	app.Root = root
 	identity, err := app.projectSourceIdentity()
 	if err != nil {
 		t.Fatal(err)

@@ -23,12 +23,13 @@ toolchain selection is intentional. Its Go state stays below `build/`.
 
 ### Transfer a source checkout
 
-To copy a checkout to a test host without transferring repository-local
-binaries or Go caches, use:
+For ordinary image builds and application execution, a Git-free source copy
+is supported. To copy one without transferring repository-local binaries or
+Go caches, use:
 
 ```bash
 rsync -a -n -v --progress --delete \
-  --exclude=/.git/ --exclude=/build/ --exclude=/local-content/ \
+  --exclude=/.git --exclude=/build/ --exclude=/local-content/ \
   --exclude='__pycache__/' --exclude='*.py[cod]' \
   /absolute/source-checkout/ gateway.example:src/paracetamol/
 ```
@@ -40,6 +41,34 @@ contains no unrelated work. Excluded Git metadata, build state and private
 local packs remain at the destination; do not add `--delete-excluded`.
 Check other untracked/private files before transfer. Record the source commit
 and dirty state separately because this copy deliberately excludes Git.
+
+After **every actual transfer**, including the first deployment, repeated
+updates and rollback, rebuild on the destination before running the launcher:
+
+```bash
+cd /absolute/destination-checkout
+make -B build
+./paracetamol --help
+```
+
+`rsync -a` preserves source timestamps while the excluded destination `build/`
+survives. A newer existing binary can therefore look up to date to incremental
+Make even when transferred source or resources changed. `make -B build`
+forces the controller to match the transferred source and republishes its
+normal product identity. Keep the old deployment recoverable until the new
+build and relevant checks pass.
+
+Maintainer `acceptance` and `benchmark llama-cpp speculative` runs, including
+their dry runs, instead require a real Git checkout rooted at the project
+directory. Their checkpoints bind the Git revision and tracked/untracked
+source changes; a separately recorded revision is not a substitute. Use a
+dedicated Git clone or worktree on the test host at the reviewed revision,
+inspect `git status --short` there, and reproduce any intended source changes
+explicitly before `make -B build`. Do not run these workflows from the Git-free
+copy, place it inside an unrelated repository, or trust Git metadata retained
+from an earlier destination. Source-identity validation fails before device
+probes, image preparation, downloads or workloads. Ordinary CPU/application
+dry runs remain available in Git-free execution copies.
 
 ### Build a custom product identity
 
@@ -166,7 +195,9 @@ make -B build
 ```
 
 The project tests exercise both build recipes with a fake compiler and failed
-file operations. A failure or interruption must return a nonzero status,
+file operations. They also retain older transferred source timestamps to
+check that a forced deployment build replaces an otherwise up-to-date binary.
+A failure or interruption must return a nonzero status,
 preserve the previous executable and remove the temporary output. Only a
 successful, non-empty build may replace the executable.
 

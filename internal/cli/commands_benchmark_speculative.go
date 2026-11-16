@@ -249,6 +249,12 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	if err := platform.ValidateProfile(profile); err != nil || profile == "cpu" {
 		return controlerr.Usage("speculative sweeps require a valid GPU profile")
 	}
+	// A sweep checkpoint binds the host source as well as model and image
+	// bytes. Reject Git-free copies before host probes or workload planning.
+	sourceIdentity, err := app.projectSourceIdentity()
+	if err != nil {
+		return err
+	}
 	selectedNodes, err := app.resolveDevices(profile, nodes, nodes != nil)
 	if err != nil {
 		return err
@@ -376,10 +382,6 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return err
 	}
 	imageID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", image}, "cannot inspect benchmark image")
-	if err != nil {
-		return err
-	}
-	sourceIdentity, err := app.projectSourceIdentity()
 	if err != nil {
 		return err
 	}
