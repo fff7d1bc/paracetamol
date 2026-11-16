@@ -13,14 +13,21 @@ printf '\n' >> "$out/entrypoint-arguments.txt"
   --output-directory "$out" --output-file 'trace-%pid%' -- \
   /opt/trace/llama-server "$@" &
 profiler=$!
-forward() { kill -s "$1" "$profiler" 2>/dev/null || true; }
+wait_interrupted=0
+forward() {
+  wait_interrupted=1
+  kill -s "$1" "$profiler" 2>/dev/null || true
+}
 trap 'forward TERM' TERM
 trap 'forward INT' INT
 trap 'forward HUP' HUP
 status=0
 while true; do
-  wait "$profiler" && { status=0; break; } || status=$?
-  kill -0 "$profiler" 2>/dev/null || break
+  wait_interrupted=0
+  wait "$profiler" && status=0 || status=$?
+  # A trap interrupts wait before the child finishes flushing. Retry even if
+  # it has since exited: Bash retains its real status, unlike a kill -0 probe.
+  (( wait_interrupted == 0 )) && break
 done
 printf '%s\n' "$status" > "$out/profiler-exit-status"
 printf 'ACCEPTANCE_TRACE_COMPLETED=%s status=%s\n' "$out" "$status" >&2

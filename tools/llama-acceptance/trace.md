@@ -102,8 +102,12 @@ trampoline uses `os.execv`; the single-pass [rocprofv3 script](https://github.co
 defaults to `use_execv=True` and replaces itself with the application via
 `os.execvpe`. Multipass/counter collection is not requested. The tracked shell
 forwards INT/TERM/HUP unchanged to that exact PID, waits for its exit and saves
-the status. Host-only mock tests cover SIGINT/SIGTERM delivery, application
-flush and nonzero exit preservation; they do not qualify the actual profiler.
+the status. A handled signal interrupts Bash's `wait`; the wrapper retries it
+even if the child has already exited, collecting the retained child status
+rather than the interrupted-wait status. Host-only mock tests cover all three
+signals, repeated stops, application flush, ordinary/signaled child statuses
+and a synchronized child exit between interrupted wait and status collection;
+they do not qualify the actual profiler.
 Recheck this launch contract when updating the modular ROCm package.
 
 ## Collect through the ordinary gateway

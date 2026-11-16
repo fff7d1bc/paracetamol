@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -265,92 +266,253 @@ func TestTraceMockServerProcess(t *testing.T) {
 	if os.Getenv("PARACETAMOL_TRACE_MOCK") != "1" {
 		return
 	}
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-	if err := os.WriteFile(os.Getenv("PARACETAMOL_TRACE_READY"), []byte("ready"), 0o600); err != nil {
+	// A private inherited pipe bounds fixture cleanup even if a failed test
+	// leaves the child blocked in a FIFO. No PID lookup or later PID reuse can
+	// redirect cleanup to a different process.
+	go func() {
+		lifetime := os.NewFile(3, "mock-lifetime")
+		var permit [1]byte
+		_, _ = lifetime.Read(permit[:])
+		os.Exit(9)
+	}()
+	ch := make(chan os.Signal, 4)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	if err := os.WriteFile(os.Getenv("PARACETAMOL_TRACE_READY"), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		os.Exit(9)
 	}
-	var got os.Signal
-	select {
-	case got = <-ch:
-	case <-time.After(10 * time.Second):
-		os.Exit(9)
+	if code := os.Getenv("PARACETAMOL_TRACE_EXIT"); code != "" {
+		status, err := strconv.Atoi(code)
+		if err != nil {
+			os.Exit(9)
+		}
+		os.Exit(status)
 	}
-	if err := os.WriteFile(os.Getenv("PARACETAMOL_TRACE_FLUSHED"), []byte(got.String()), 0o600); err != nil {
-		os.Exit(9)
+	if os.Getenv("PARACETAMOL_TRACE_SELF_SIGNAL") == "1" {
+		signal.Reset(syscall.SIGTERM)
+		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		select {}
+	}
+	count := 1
+	if os.Getenv("PARACETAMOL_TRACE_REPEAT") == "1" {
+		count = 3
+	}
+	var flushed string
+	for range count {
+		select {
+		case got := <-ch:
+			flushed += got.String() + "\n"
+		case <-time.After(10 * time.Second):
+			os.Exit(9)
+		}
+		if err := os.WriteFile(os.Getenv("PARACETAMOL_TRACE_FLUSHED"), []byte(flushed), 0o600); err != nil {
+			os.Exit(9)
+		}
+	}
+	if gate := os.Getenv("PARACETAMOL_TRACE_CHILD_GATE"); gate != "" {
+		f, err := os.Open(gate)
+		if err != nil {
+			os.Exit(9)
+		}
+		var permit [1]byte
+		if _, err := f.Read(permit[:]); err != nil {
+			os.Exit(9)
+		}
+		_ = f.Close()
 	}
 	os.Exit(7)
 }
 
+type traceWrapperFixture struct {
+	root    string
+	command *exec.Cmd
+	output  bytes.Buffer
+	done    chan error
+}
+
+func newTraceWrapperFixture(t *testing.T, environment ...string) *traceWrapperFixture {
+	t.Helper()
+	f := &traceWrapperFixture{root: t.TempDir(), done: make(chan error, 1)}
+	profiler, server, wrapper := filepath.Join(f.root, "profiler"), filepath.Join(f.root, "server"), filepath.Join(f.root, "wrapper")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Mirrors pinned Linux rocprofv3 single-pass exec semantics. No profiler,
+	// container, GPU or path outside the test's temporary directory is used.
+	fake := "#!/bin/bash\nif [[ $1 == --version ]]; then echo mock; exit; fi\nwhile [[ $1 != -- ]]; do shift; done\nshift\nexec \"$@\"\n"
+	script := strings.NewReplacer("/opt/venv/bin/rocprofv3", profiler, "/opt/trace/llama-server", server, "/data/acceptance-trace-v1.XXXXXXXX", filepath.Join(f.root, "trace.XXXXXXXX")).Replace(traceEntrypoint)
+	for path, data := range map[string]string{
+		profiler: fake,
+		server:   "#!/bin/bash\nexec '" + strings.ReplaceAll(executable, "'", "'\"'\"'") + "' -test.run=^TestTraceMockServerProcess$\n",
+		wrapper:  script,
+	} {
+		if err := os.WriteFile(path, []byte(data), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.command = exec.Command("bash", wrapper)
+	f.command.Env = append(os.Environ(), "BASH_ENV=", "PARACETAMOL_TRACE_MOCK=1", "PARACETAMOL_TRACE_READY="+filepath.Join(f.root, "ready"), "PARACETAMOL_TRACE_FLUSHED="+filepath.Join(f.root, "flushed"))
+	f.command.Env = append(f.command.Env, environment...)
+	f.command.Stdout, f.command.Stderr = &f.output, &f.output
+	return f
+}
+
+func (f *traceWrapperFixture) start(t *testing.T) {
+	t.Helper()
+	lifetime, keepalive, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = keepalive.Close() })
+	f.command.ExtraFiles = []*os.File{lifetime}
+	if err := f.command.Start(); err != nil {
+		_ = lifetime.Close()
+		t.Fatal(err)
+	}
+	_ = lifetime.Close()
+	go func() { f.done <- f.command.Wait() }()
+	t.Cleanup(func() {
+		_ = f.command.Process.Kill()
+	})
+	data := f.await(t, "ready", func(data []byte, err error) bool { return err == nil && len(data) != 0 })
+	if _, err := strconv.Atoi(string(data)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *traceWrapperFixture) await(t *testing.T, path string, ready func([]byte, error) bool) []byte {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(f.root, path)
+	}
+	for {
+		data, err := os.ReadFile(path)
+		if ready(data, err) {
+			return data
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out awaiting %s", path)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (f *traceWrapperFixture) finish(t *testing.T, status int) {
+	t.Helper()
+	select {
+	case err := <-f.done:
+		if f.command.ProcessState.ExitCode() != status || (err == nil) != (status == 0) {
+			t.Fatalf("exit=%d want=%d: %v: %s", f.command.ProcessState.ExitCode(), status, err, f.output.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("wrapper did not finish/wait for flush")
+	}
+	files, err := filepath.Glob(filepath.Join(f.root, "trace.*", "profiler-exit-status"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("missing exit status: %v %v", files, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil || string(data) != strconv.Itoa(status)+"\n" {
+		t.Fatalf("lost child exit status: %q %v", data, err)
+	}
+}
+
+func TestTraceWrapperPreservesTerminalChildStatuses(t *testing.T) {
+	for _, status := range []int{0, 7, 130, 143} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			f := newTraceWrapperFixture(t, "PARACETAMOL_TRACE_EXIT="+strconv.Itoa(status))
+			f.start(t)
+			f.finish(t, status)
+		})
+	}
+	t.Run("signaled-child", func(t *testing.T) {
+		f := newTraceWrapperFixture(t, "PARACETAMOL_TRACE_SELF_SIGNAL=1")
+		f.start(t)
+		f.finish(t, 143)
+	})
+}
+
 func TestTraceWrapperForwardsNativeStopAndRetainsFlushStatus(t *testing.T) {
-	for _, stop := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
+	for _, stop := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(stop.String(), func(t *testing.T) {
-			root := t.TempDir()
-			profiler := filepath.Join(root, "profiler")
-			server := filepath.Join(root, "server")
-			wrapper := filepath.Join(root, "wrapper")
-			executable, err := os.Executable()
-			if err != nil {
+			f := newTraceWrapperFixture(t)
+			f.start(t)
+			if err := f.command.Process.Signal(stop); err != nil {
 				t.Fatal(err)
 			}
-			// Mirrors pinned Linux rocprofv3 single-pass exec semantics. No
-			// profiler/GPU is executed, and no host path outside t.TempDir is written.
-			fake := "#!/bin/bash\nif [[ $1 == --version ]]; then echo mock; exit; fi\nwhile [[ $1 != -- ]]; do shift; done\nshift\nexec \"$@\"\n"
-			if err := os.WriteFile(profiler, []byte(fake), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(server, []byte("#!/bin/bash\nexec '"+strings.ReplaceAll(executable, "'", "'\"'\"'")+"' -test.run=^TestTraceMockServerProcess$\n"), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			script := strings.NewReplacer("/opt/venv/bin/rocprofv3", profiler, "/opt/trace/llama-server", server, "/data/acceptance-trace-v1.XXXXXXXX", filepath.Join(root, "trace.XXXXXXXX")).Replace(traceEntrypoint)
-			if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			ready, flushed := filepath.Join(root, "ready"), filepath.Join(root, "flushed")
-			command := exec.Command("bash", wrapper)
-			command.Env = append(os.Environ(), "PARACETAMOL_TRACE_MOCK=1", "PARACETAMOL_TRACE_READY="+ready, "PARACETAMOL_TRACE_FLUSHED="+flushed)
-			var output bytes.Buffer
-			command.Stdout = &output
-			command.Stderr = &output
-			if err := command.Start(); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = command.Process.Kill() })
-			deadline := time.Now().Add(5 * time.Second)
-			for {
-				if _, err := os.Stat(ready); err == nil {
-					break
-				}
-				if time.Now().After(deadline) {
-					t.Fatal("mock server not ready")
-				}
-				time.Sleep(time.Millisecond)
-			}
-			if err := command.Process.Signal(stop); err != nil {
-				t.Fatal(err)
-			}
-			done := make(chan error, 1)
-			go func() { done <- command.Wait() }()
-			select {
-			case err := <-done:
-				if err == nil || command.ProcessState.ExitCode() != 7 {
-					t.Fatalf("lost child status: %v %s", err, output.String())
-				}
-			case <-time.After(5 * time.Second):
-				t.Fatal("wrapper did not forward stop/wait for flush")
-			}
-			data, err := os.ReadFile(flushed)
-			if err != nil || string(data) != stop.String() {
+			f.finish(t, 7)
+			data, err := os.ReadFile(filepath.Join(f.root, "flushed"))
+			if err != nil || string(data) != stop.String()+"\n" {
 				t.Fatalf("signal/flush=%q %v", data, err)
-			}
-			files, err := filepath.Glob(filepath.Join(root, "trace.*", "profiler-exit-status"))
-			if err != nil || len(files) != 1 {
-				t.Fatalf("missing exit status: %v %v", files, err)
-			}
-			data, err = os.ReadFile(files[0])
-			if err != nil || string(data) != "7\n" {
-				t.Fatal("lost flushed exit status")
 			}
 		})
 	}
+}
+
+func TestTraceWrapperRetriesAfterChildExitsDuringInterruptedWait(t *testing.T) {
+	for _, stop := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
+		t.Run(stop.String(), func(t *testing.T) {
+			f := newTraceWrapperFixture(t)
+			childGate, hookGate := filepath.Join(f.root, "child-gate"), filepath.Join(f.root, "hook-gate")
+			for _, gate := range []string{childGate, hookGate} {
+				if err := syscall.Mkfifo(gate, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Pause at the first command after wait records 128+signal. The child
+			// cannot exit until this barrier is reached. Then release the child,
+			// prove Bash has reaped it, and only then resume the wrapper. No
+			// liveness/status expression or trap handler is replaced by the hook.
+			hook := `trap 'if [[ ${status-} == "$PARACETAMOL_TRACE_INTERRUPTED_STATUS" && ${hooked-} != 1 ]]; then hooked=1; printf "ready\n" > "$PARACETAMOL_TRACE_HOOK_READY"; read -r permit < "$PARACETAMOL_TRACE_HOOK_GATE"; fi' DEBUG
+`
+			hookPath := filepath.Join(f.root, "bashenv")
+			if err := os.WriteFile(hookPath, []byte(hook), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f.command.Env = append(f.command.Env, "BASH_ENV="+hookPath, "PARACETAMOL_TRACE_CHILD_GATE="+childGate, "PARACETAMOL_TRACE_HOOK_GATE="+hookGate, "PARACETAMOL_TRACE_HOOK_READY="+filepath.Join(f.root, "hook-ready"), "PARACETAMOL_TRACE_INTERRUPTED_STATUS="+strconv.Itoa(128+int(stop)))
+			f.start(t)
+			if err := f.command.Process.Signal(stop); err != nil {
+				t.Fatal(err)
+			}
+			f.await(t, "hook-ready", func(data []byte, err error) bool { return err == nil && string(data) == "ready\n" })
+			// O_RDWR keeps opening either fixture FIFO bounded even on failure.
+			for _, gate := range []string{childGate, hookGate} {
+				file, err := os.OpenFile(gate, os.O_RDWR, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = file.Close() })
+				if gate == hookGate {
+					pidData, err := os.ReadFile(filepath.Join(f.root, "ready"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					f.await(t, filepath.Join("/proc", string(pidData), "stat"), func(_ []byte, err error) bool { return os.IsNotExist(err) })
+				}
+				if _, err := file.WriteString("continue\n"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.finish(t, 7)
+			data, err := os.ReadFile(filepath.Join(f.root, "flushed"))
+			if err != nil || string(data) != stop.String()+"\n" {
+				t.Fatalf("signal/flush=%q %v", data, err)
+			}
+		})
+	}
+}
+
+func TestTraceWrapperForwardsRepeatedStopsWhileFlushing(t *testing.T) {
+	f := newTraceWrapperFixture(t, "PARACETAMOL_TRACE_REPEAT=1")
+	f.start(t)
+	var want string
+	for _, stop := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
+		if err := f.command.Process.Signal(stop); err != nil {
+			t.Fatal(err)
+		}
+		want += stop.String() + "\n"
+		f.await(t, "flushed", func(data []byte, err error) bool { return err == nil && string(data) == want })
+	}
+	f.finish(t, 7)
 }
