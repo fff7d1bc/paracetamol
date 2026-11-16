@@ -1,6 +1,7 @@
 package atomicfile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,53 @@ func TestReplaceRegularRefusesHardLink(t *testing.T) {
 	}
 	if err := Write(path, []byte("new"), 0o600, ReplaceRegular); err == nil {
 		t.Fatal("replaced a hard-linked file")
+	}
+}
+
+func TestValidateDestinationChecksPolicyWithoutMutation(t *testing.T) {
+	for _, shape := range []string{"missing", "regular", "directory", "symlink", "hardlink"} {
+		for _, policy := range []Policy{Create, ReplaceRegular, Policy(99)} {
+			t.Run(fmt.Sprintf("%s/policy=%d", shape, policy), func(t *testing.T) {
+				base := t.TempDir()
+				path := filepath.Join(base, "nested", "output")
+				original := filepath.Join(base, "original")
+				if err := os.WriteFile(original, []byte("original"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if shape != "missing" {
+					if err := os.Mkdir(filepath.Dir(path), 0o700); err != nil {
+						t.Fatal(err)
+					}
+					var err error
+					switch shape {
+					case "regular":
+						err = os.WriteFile(path, []byte("original"), 0o600)
+					case "directory":
+						err = os.Mkdir(path, 0o700)
+					case "symlink":
+						err = os.Symlink(original, path)
+					case "hardlink":
+						err = os.Link(original, path)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				err := ValidateDestination(path, policy)
+				wantValid := (shape == "missing" && (policy == Create || policy == ReplaceRegular)) || (shape == "regular" && policy == ReplaceRegular)
+				if (err == nil) != wantValid {
+					t.Fatalf("valid=%t err=%v", wantValid, err)
+				}
+				if got, err := os.ReadFile(original); err != nil || string(got) != "original" {
+					t.Fatalf("validation changed original: %q %v", got, err)
+				}
+				if shape == "missing" {
+					if _, err := os.Lstat(filepath.Dir(path)); !os.IsNotExist(err) {
+						t.Fatalf("validation created parent: %v", err)
+					}
+				}
+			})
+		}
 	}
 }
 

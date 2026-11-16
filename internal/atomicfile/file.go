@@ -74,12 +74,9 @@ func Ensure(path string, contents []byte, mode os.FileMode) error {
 	return nil
 }
 
-func Write(path string, contents []byte, mode os.FileMode, policy Policy) error {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve output path %s: %w", path, err)
-	}
-	path = absolute
+// ValidateDestination checks the current destination without creating files or
+// directories. It supports preflight, not a reservation; publication rechecks.
+func ValidateDestination(path string, policy Policy) error {
 	status, inspectErr := os.Lstat(path)
 	switch policy {
 	case Create:
@@ -95,6 +92,18 @@ func Write(path string, contents []byte, mode os.FileMode, policy Policy) error 
 	}
 	if inspectErr != nil && !os.IsNotExist(inspectErr) {
 		return fmt.Errorf("inspect output %s: %w", path, inspectErr)
+	}
+	return nil
+}
+
+func Write(path string, contents []byte, mode os.FileMode, policy Policy) error {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve output path %s: %w", path, err)
+	}
+	path = absolute
+	if err := ValidateDestination(path, policy); err != nil {
+		return err
 	}
 	directory := filepath.Dir(path)
 	if err := os.MkdirAll(directory, 0o755); err != nil {

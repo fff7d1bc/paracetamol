@@ -419,6 +419,18 @@ func (app *App) contentInstall(args []string) error {
 	if err := plan.Validate(); err != nil {
 		return err
 	}
+	workflowIDs := selectedWorkflowIDs(bundles)
+	validateWorkflows := func() error {
+		for _, workflowID := range workflowIDs {
+			if _, err := app.planWorkflowInstall(managed.Workflows[workflowID], dataRoot, *forceWorkflow); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := validateWorkflows(); err != nil {
+		return err
+	}
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Content installation"))
 	fmt.Fprintf(app.Stdout, "  %s %d bundles, %d unique artifacts\n", terminal.Label("Selected:"), len(bundles), len(artifacts))
@@ -444,10 +456,10 @@ func (app *App) contentInstall(args []string) error {
 		return err
 	}
 	image := firstNonEmpty(*imageFlag, config.EnvironmentValue(app.Environment, "IMAGE", config.ContentToolsImage))
-	if err := content.Install(content.InstallOptions{Context: app.Context, DataRoot: dataRoot, Artifacts: artifacts, Image: image, AcceptRisk: acknowledged, LocalMirror: *localMirror, MoveFromMirror: *localMirrorMove, Environment: app.Environment, Runner: app.Runner, Output: app.Stdout}); err != nil {
+	if err := content.Install(content.InstallOptions{Context: app.Context, DataRoot: dataRoot, Artifacts: artifacts, Image: image, AcceptRisk: acknowledged, LocalMirror: *localMirror, MoveFromMirror: *localMirrorMove, Environment: app.Environment, Runner: app.Runner, Output: app.Stdout, BeforeMutation: validateWorkflows}); err != nil {
 		return err
 	}
-	for _, workflowID := range selectedWorkflowIDs(bundles) {
+	for _, workflowID := range workflowIDs {
 		if err := app.installWorkflow(managed.Workflows[workflowID], dataRoot, *forceWorkflow); err != nil {
 			return err
 		}
@@ -1063,7 +1075,7 @@ func (app *App) contentWorkflows(args []string) error {
 			}
 			return controlerr.Usage("choose an exact workflow")
 		}
-		dataRoot, err := app.resolveDataDir(*dataFlag, true)
+		dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
 		if err != nil {
 			return err
 		}
@@ -1327,49 +1339,4 @@ func saveImportPack(path string, contents []byte) error {
 		return err
 	}
 	return atomicfile.Write(path, contents, 0o600, atomicfile.Create)
-}
-
-func (app *App) installWorkflow(workflow catalog.Workflow, dataRoot string, force bool) error {
-	destination := workflowPath(dataRoot, workflow)
-	managedRoot := (storage.Layout{Root: dataRoot}).CuratedWorkflows()
-	if err := storage.ValidateManagedParent(destination, managedRoot, dataRoot, "curated workflow"); err != nil {
-		return err
-	}
-	if workflowReady(dataRoot, workflow) {
-		fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Workflow already installed:"), destination)
-		return nil
-	}
-	replace := false
-	if info, err := os.Lstat(destination); err == nil {
-		if !info.Mode().IsRegular() {
-			return controlerr.New("workflow path is not a regular file: %s", destination)
-		}
-		if !force {
-			return controlerr.New("workflow differs from the curated version: %s; use --force to replace it", destination)
-		}
-		replace = true
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	resource := filepath.Join(app.Root, "catalog", "workflows", workflow.ID+".json")
-	contents, err := os.ReadFile(resource)
-	if err != nil {
-		return fmt.Errorf("read curated workflow resource: %w", err)
-	}
-	digest := fmt.Sprintf("%x", sha256.Sum256(contents))
-	if digest != workflow.RenderedSHA256 {
-		return controlerr.New("curated workflow resource does not match catalog: %s", workflow.ID)
-	}
-	if err := storage.ValidateManagedParent(destination, managedRoot, dataRoot, "curated workflow"); err != nil {
-		return err
-	}
-	policy := atomicfile.Create
-	if replace {
-		policy = atomicfile.ReplaceRegular
-	}
-	if err := atomicfile.Write(destination, contents, 0o644, policy); err != nil {
-		return err
-	}
-	fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Success("Installed workflow:"), destination)
-	return nil
 }

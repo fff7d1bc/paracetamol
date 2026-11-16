@@ -94,7 +94,7 @@ same change when behavior, commands, counts or defaults change.
 | Runnable application-first recipes | `internal/recipes/` |
 | Download, verification and installation | `internal/content/` |
 | Allowlisted remote metadata and local-pack generation | `internal/remoteimport/`, `internal/contentpack/` |
-| Immutable curated workflow installation | `catalog/workflows/`, `internal/cli/commands_content.go` |
+| Immutable curated workflow installation | `catalog/workflows/`, `internal/cli/workflow_install.go`, `internal/cli/commands_content.go` |
 | Benchmarks, typed results, resume and cleanup | `internal/benchmark/` |
 | Offline managed-image transfer | `internal/imagearchive/` |
 | Bounded target-hardware acceptance | `internal/cli/commands_acceptance.go` |

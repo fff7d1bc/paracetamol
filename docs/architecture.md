@@ -306,7 +306,10 @@ not forwarded across redirects. Local packs cannot add serving presets,
 executable code or arbitrary workflow renderers.
 
 Curated workflows retain pinned upstream provenance and reviewed JSON under
-`catalog/workflows/`. Installation checks the rendered hash and copies exact
+`catalog/workflows/`. Bundle installation preflights every selected workflow
+before approval and model installation, and rechecks before mutation and again
+when publishing workflows. Dry runs use that same validation without creating
+data. Installation checks the rendered hash and copies exact
 bytes; it does not extract or transform an image template. Source and rendered
 hashes identify different provenance stages. The
 [authoring procedure](content-catalog.md#add-or-update-a-curated-workflow)
