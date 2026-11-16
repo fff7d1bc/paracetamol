@@ -133,6 +133,18 @@ failure release. Standalone workflow installation must remain usable without
 Podman. Run the content, CLI and storage race tests after changing this
 boundary. No model download or inference is needed for these checks.
 
+Runtime startup tests must cover both contention orders with destructive data
+cleanup, including cleanup paused at confirmation and startup paused during
+preparation or container creation. A stopped, ownership-verified container must
+be visible before admission is released. Check exact-ID start and failure
+cleanup, cancellation identity, attached exit status and shell input/TTY
+composition. The data reservation must be released before workload execution.
+Managed benchmark and acceptance controllers must retain their separate local
+lifecycle reservation through host result/checkpoint writes and inter-trial
+gaps. Dry runs remain unreserved and non-mutating. Use fake subprocesses for
+contention tests and a local CPU-only container for real create/start,
+confinement and terminal lifecycle checks. This does not qualify GPU inference.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file

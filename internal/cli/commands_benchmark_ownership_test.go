@@ -50,7 +50,7 @@ func (runner *benchmarkOwnershipRunner) Run(ctx context.Context, command process
 		return process.Result{Stdout: []byte("true")}, nil
 	case "image":
 		return process.Result{Stdout: []byte("sha256:fixture-image")}, nil
-	case "run":
+	case "create":
 		runner.ran = true
 		if len(command.Args) < 3 || command.Args[1] != "--label" || !strings.HasPrefix(command.Args[2], podman.ManagedLaunchLabel+"=") {
 			runner.t.Fatalf("benchmark has no launch prefix: %v", command.Args)
@@ -68,6 +68,11 @@ func (runner *benchmarkOwnershipRunner) Run(ctx context.Context, command process
 			return process.Result{Status: 125, Stderr: []byte("name already occupied")}, nil
 		}
 		return process.Result{Status: 7, Stderr: []byte("fixture workload failed")}, nil
+	case "ps":
+		if runner.ran {
+			return process.Result{Stdout: []byte(runner.name)}, nil
+		}
+		return process.Result{}, nil
 	case "container":
 		if !runner.ran || runner.mode == "absent" {
 			return process.Result{Status: 1}, nil
@@ -145,7 +150,7 @@ func TestBenchmarkFailureCleanupIsLaunchSpecific(t *testing.T) {
 					runner.name = speculativeBenchmarkContainer
 					// This is the production per-trial path below GPU validation.
 					// The fake launch fails before any health/inference HTTP.
-					_, err = app.executeSpeculativeTrial([]string{"podman", "run", "--name", runner.name, "fixture-image"}, 1, map[string]any{"fixture": true})
+					_, err = app.executeSpeculativeTrial([]string{"podman", "run", "--name", runner.name, "fixture-image"}, 1, map[string]any{"fixture": true}, t.TempDir(), "fixture-image")
 				case "comfyui":
 					runner.name, runner.application = comfyBenchmarkContainer, "comfyui"
 					managed, bundle, source, data := comfyOwnershipFixture(t, root)
@@ -243,7 +248,7 @@ func TestSpeculativeTrialsAndRetriesReceiveFreshIdentityOutsideDefinition(t *tes
 	result := speculativeResult{Schema: benchmark.SpeculativeSchema, SuiteID: "20260820T010203Z-abcdef12", Definition: definition, Fingerprint: fingerprint, Status: "running", StartedAt: "now", Trials: append([]benchmark.SpeculativeTrial(nil), planned...)}
 	var failed error
 	for range 3 { // Same depth, another trial, then a resumed retry.
-		if _, failed = app.executeSpeculativeTrial(command, 1, map[string]any{"seed": 42}); failed == nil {
+		if _, failed = app.executeSpeculativeTrial(command, 1, map[string]any{"seed": 42}, t.TempDir(), "fixture-image"); failed == nil {
 			t.Fatal("fixture launch unexpectedly succeeded")
 		}
 	}

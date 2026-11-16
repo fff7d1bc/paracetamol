@@ -443,18 +443,27 @@ removal so a gateway cannot start halfway through cleanup. Build-cache and
 ComfyUI-only container or image cleanup do not require this reservation.
 
 Data, cache and download cleanup also reserves the selected data directory
-against content installation before checks, planning and confirmation. This
-includes standalone workflows and the workflow phase of bundle installation.
+against content installation and runtime startup before checks, planning and
+confirmation. This includes standalone workflows and the workflow phase of
+bundle installation.
 The reservation protects offline mirror moves and existing-file verification,
 even when no downloader container exists. If installation or another cleanup
 is using that directory, cleanup fails without prompting or deleting anything.
-Retry after it finishes. Installation cannot start mutating the same directory
-while you review a cleanup plan. The directory lock is scoped to one real data
-root. The gateway reservation and managed-container checks described above
+Retry after it finishes. Installation, application runs and shells cannot start
+mutating the same directory while you review a cleanup plan. Startup releases
+the directory reservation once its stopped container is registered, before
+starting the workload. The managed-container check then prevents cleanup of
+its data. The directory lock is scoped to one real data root. The gateway
+reservation and managed-container checks described above
 still apply across data directories. This reservation creates no lock file and
 is released on failure, cancellation or process exit. Cleanup of an absent root
 creates no state. Build-cache cleanup remains separate from this persistent-data
 reservation.
+
+Managed benchmark runs and hardware acceptance retain the local lifecycle
+reservation through their final results and cleanup, including gaps with no
+running container. Wait for them to finish before destructive data cleanup or
+starting the gateway. Their dry runs do not acquire this reservation.
 
 Completed installs remove their owned staging. A complete file that fails
 SHA-256 verification is preserved with an `.invalid-*` suffix while the

@@ -231,14 +231,24 @@ func TestManagedLaunchFailureCleanupRequiresThisLaunchAndPreservesLifecycle(t *t
 				switch command.Args[0] {
 				case "info":
 					return process.Result{Stdout: []byte("true")}, nil
-				case "image", "ps":
+				case "image":
 					return process.Result{}, nil
-				case "run":
+				case "ps":
+					if ran {
+						return process.Result{Stdout: []byte(spec.ContainerName)}, nil
+					}
+					return process.Result{}, nil
+				case "create":
 					ran = true
 					launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
 					if len(launch) != 32 {
 						t.Fatalf("missing launch identity: %v", command.Args)
 					}
+					if strings.HasSuffix(mode, "success") || mode == "interrupted" {
+						return process.Result{Stdout: []byte(fixtureContainerID)}, nil
+					}
+					return process.Result{Status: 7}, nil
+				case "start":
 					if mode == "interrupted" {
 						cancel()
 						return process.Result{}, context.Canceled
@@ -286,11 +296,11 @@ func TestManagedLaunchFailureCleanupRequiresThisLaunchAndPreservesLifecycle(t *t
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = app.startManaged(spec, spec.Image, command, strings.HasPrefix(mode, "detached"), nil, token)
+			err = app.startManaged(spec, spec.Image, command, nil, token, t.TempDir())
 			if wantError := !strings.HasSuffix(mode, "success"); (err != nil) != wantError {
 				t.Fatalf("err=%v wantError=%t", err, wantError)
 			}
-			if removed != (mode == "own failure" || mode == "interrupted") {
+			if removed != (mode == "own failure" || mode == "interrupted" || mode == "detached failure") {
 				t.Fatalf("removed=%t err=%v", removed, err)
 			}
 			if mode == "interrupted" && !errors.Is(err, context.Canceled) {
@@ -299,7 +309,7 @@ func TestManagedLaunchFailureCleanupRequiresThisLaunchAndPreservesLifecycle(t *t
 			if mode == "inspection failure" && !strings.Contains(err.Error(), "inspection unavailable") {
 				t.Fatalf("lost cleanup failure: %v", err)
 			}
-			if strings.HasPrefix(mode, "detached") || strings.HasSuffix(mode, "success") {
+			if strings.HasSuffix(mode, "success") {
 				if inspected {
 					t.Fatal("ordinary detached/success lifecycle performed failure cleanup")
 				}
@@ -314,6 +324,7 @@ func TestManagedLaunchFailureCleanupRequiresThisLaunchAndPreservesLifecycle(t *t
 }
 
 type concurrentLaunchRunner struct {
+	t         *testing.T
 	mu        sync.Mutex
 	preflight int
 	ready     chan struct{}
@@ -327,10 +338,24 @@ func (runner *concurrentLaunchRunner) Run(_ context.Context, command process.Com
 	switch command.Args[0] {
 	case "info":
 		return process.Result{Stdout: []byte("true")}, nil
-	case "image", "ps":
+	case "image":
+		return process.Result{}, nil
+	case "ps":
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		spec, _ := config.ApplicationByID("comfyui")
+		if runner.winner != nil {
+			return process.Result{Stdout: []byte(spec.ContainerName)}, nil
+		}
 		return process.Result{}, nil
 	case "container":
 		runner.mu.Lock()
+		if command.Args[1] == "inspect" {
+			spec, _ := config.ApplicationByID("comfyui")
+			data := fixtureContainerJSON(runner.t, fixtureContainerID, spec.ContainerName, runner.winner)
+			runner.mu.Unlock()
+			return process.Result{Stdout: data}, nil
+		}
 		if runner.winner == nil {
 			runner.preflight++
 			if runner.preflight == 2 {
@@ -347,7 +372,7 @@ func (runner *concurrentLaunchRunner) Run(_ context.Context, command process.Com
 		data, err := json.Marshal(runner.winner)
 		runner.mu.Unlock()
 		return process.Result{Stdout: data}, err
-	case "run":
+	case "create":
 		launch := strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
 		runner.mu.Lock()
 		if runner.winner != nil {
@@ -356,6 +381,8 @@ func (runner *concurrentLaunchRunner) Run(_ context.Context, command process.Com
 		}
 		runner.winner = fixtureContainerLabels("comfyui", "application", launch)
 		runner.mu.Unlock()
+		return process.Result{Stdout: []byte(fixtureContainerID)}, nil
+	case "start":
 		<-runner.finish
 		return process.Result{}, nil
 	case "rm":
@@ -369,7 +396,7 @@ func (runner *concurrentLaunchRunner) Run(_ context.Context, command process.Com
 
 func TestConcurrentAttachedLaunchLoserNeverRemovesWinner(t *testing.T) {
 	spec, _ := config.ApplicationByID("comfyui")
-	runner := &concurrentLaunchRunner{ready: make(chan struct{}), finish: make(chan struct{})}
+	runner := &concurrentLaunchRunner{t: t, ready: make(chan struct{}), finish: make(chan struct{})}
 	var finishOnce sync.Once
 	finish := func() { finishOnce.Do(func() { close(runner.finish) }) }
 	defer finish()
@@ -383,7 +410,7 @@ func TestConcurrentAttachedLaunchLoserNeverRemovesWinner(t *testing.T) {
 				outcomes <- err
 				return
 			}
-			outcomes <- app.startManaged(spec, spec.Image, command, false, nil, token)
+			outcomes <- app.startManaged(spec, spec.Image, command, nil, token, t.TempDir())
 		}()
 	}
 	select {

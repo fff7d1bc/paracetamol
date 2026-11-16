@@ -211,9 +211,16 @@ data continues to honor the invoking user's mask.
 
 Containers carry managed ownership, role and application labels. Direct
 application runs and the `benchmark` command family attach an opaque
-launch-instance label. Attached runs retain terminal input/signals and child
-exit status. Failure cleanup
-requires that exact launch instance and a captured full container ID, so a
+launch-instance label. Direct runs, shells and managed benchmark workloads
+prepare their writable data and create a stopped container under the data-root
+mutation reservation. They verify its full ID and launch identity before
+releasing that reservation, then start that exact ID. Destructive data cleanup
+therefore sees either a startup reservation or a registered container. The
+reservation does not span inference or an interactive shell, so ordinary
+content installation remains possible while an application runs.
+
+Attached runs retain terminal input/signals and child exit status. Failure
+cleanup requires that exact launch instance and a captured full container ID, so a
 name-conflict loser cannot remove another invocation's successful container.
 Detached runs retain ordinary Podman lifecycle.
 
@@ -284,8 +291,9 @@ symlinks. Mirror and data roots cannot overlap, and candidates are reused only
 after size/hash verification. Explicit move mode can remove files from the
 old library. Interruption does not restore them.
 
-Installer-owned data mutation and destructive data, download and runtime-cache
-cleanup share a nonblocking directory-inode lock owned by `internal/storage/`.
+Installer-owned data mutation, runtime startup admission and destructive data,
+download and runtime-cache cleanup share a nonblocking directory-inode lock
+owned by `internal/storage/`.
 `internal/content/` retains one reservation from artifact installation through
 curated workflow publication and the final readiness report. Standalone workflow
 installation uses the same mutation boundary without requiring a downloader.
@@ -355,10 +363,18 @@ control messages. This is not a cross-HOME or hostile same-user boundary.
 Availability checks never remove containers; existing backend, direct,
 benchmark and foreign collisions fail.
 
-Direct llama.cpp launches and cleanup affecting gateway resources acquire the
-same reservation across their checks and mutations. An idle gateway therefore
-blocks them even without a container. Direct router publication also waits for
-image and container preflight, so a rejected launch cannot change a running
+Direct llama.cpp launches, mutating managed benchmarks, hardware acceptance
+and cleanup affecting gateway resources acquire the same reservation across
+their checks and mutations. Benchmark and acceptance controllers retain it
+across inter-trial gaps, host checkpoint/report publication and final cleanup,
+when no workload container may exist. These maintenance runs are exclusive
+with the gateway and with one another within the same HOME. Ordinary direct
+ComfyUI runs and shells do not take this lifetime reservation and can coexist
+with the gateway.
+
+An idle gateway blocks exclusive operations even without a container.
+Direct router publication also waits for image and container preflight, so a
+rejected launch cannot change a running
 service's generated configuration. Detached launches release the reservation
 after startup, with subsequent ownership checks relying on the container.
 Read-only dry runs do not reserve resources.

@@ -18,8 +18,10 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
+	"paracetamol/internal/podman"
 	"paracetamol/internal/runtime"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/ui"
@@ -239,6 +241,13 @@ func (app *App) commandAcceptance(args []string) error {
 		}
 		return nil
 	}
+	// Retain exclusion through preparation, inter-case gaps, visual review
+	// and final reports, not only while a workload container exists.
+	operation, err := gateway.AcquireLocalOperation(app.Environment, "hardware acceptance")
+	if err != nil {
+		return err
+	}
+	defer operation.Close()
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -664,7 +673,15 @@ func (app *App) runAcceptanceCase(managed catalog.Catalog, candidate acceptanceC
 		if err != nil {
 			return nil, err
 		}
-		rows, err := benchmark.RunLlama(app.Context, app.Runner, command)
+		command, launchID, err := podman.WithLaunchIdentity(command)
+		if err != nil {
+			return nil, err
+		}
+		output, err := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: "llama-cpp", Role: "benchmark", Image: configApplicationImage("llama-cpp"), Command: command, LaunchID: launchID})
+		if err != nil {
+			return nil, err
+		}
+		rows, err := benchmark.ParseLlama(output)
 		if err != nil {
 			return nil, err
 		}

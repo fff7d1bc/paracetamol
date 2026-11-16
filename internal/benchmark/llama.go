@@ -2,7 +2,6 @@ package benchmark
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -99,14 +98,7 @@ type LlamaComparison struct {
 	Errors      map[string]string             `json:"errors"`
 }
 
-func RunLlama(ctx context.Context, runner process.Runner, command []string) ([]json.RawMessage, error) {
-	if len(command) == 0 {
-		return nil, fmt.Errorf("empty llama-bench command")
-	}
-	result, err := runner.Run(ctx, process.Command{Name: command[0], Args: command[1:]})
-	if err != nil {
-		return nil, err
-	}
+func ParseLlama(result process.Result) ([]json.RawMessage, error) {
 	if result.Status != 0 {
 		detail := strings.TrimSpace(string(result.Stderr))
 		if detail == "" {

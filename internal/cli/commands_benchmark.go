@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/podman"
 	"paracetamol/internal/runtime"
@@ -239,9 +241,6 @@ func (app *App) benchmarkLlama(args []string) error {
 		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started."))
 		return nil
 	}
-	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
-		return err
-	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -256,11 +255,21 @@ func (app *App) benchmarkLlama(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Keep host-side result publication protected after auto-removed trials
+	// exit, including gaps between backends. No data lock spans inference.
+	operation, err := gateway.AcquireLocalOperation(app.Environment, "llama.cpp throughput benchmark")
+	if err != nil {
+		return err
+	}
+	defer operation.Close()
 	results := make(map[string]benchmark.LlamaBackendResult)
 	errorsByBackend := make(map[string]string)
 	for _, candidate := range backends {
-		rows, runErr := benchmark.RunLlama(app.Context, app.Runner, commands[candidate])
-		runErr = withCleanupFailure(runErr, "clean up llama.cpp benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), runtime.LlamaBenchmarkContainer, "llama-cpp", "benchmark", launchIDs[candidate], 0))
+		output, runErr := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: "llama-cpp", Role: "benchmark", Image: image, Command: commands[candidate], LaunchID: launchIDs[candidate]})
+		var rows []json.RawMessage
+		if runErr == nil {
+			rows, runErr = benchmark.ParseLlama(output)
+		}
 		if runErr != nil {
 			errorsByBackend[candidate] = runErr.Error()
 			if !*compare {

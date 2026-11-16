@@ -346,8 +346,8 @@ func TestDirectLlamaPreflightPreservesRouter(t *testing.T) {
 						if failure == "occupied-name" {
 							return process.Result{}
 						}
-					case "run":
-						t.Fatal("failed preflight reached Podman run")
+					case "create", "start", "run":
+						t.Fatal("failed preflight reached a Podman launch")
 					}
 				}
 				return gatewayOwnershipPodman(command)
@@ -375,15 +375,22 @@ func TestDirectLlamaRetainsOwnershipThroughRunAndFailureCleanup(t *testing.T) {
 			root := filepath.Join(home, "data")
 			managed := gatewayOwnershipCatalog(t, root)
 			environment := map[string]string{"HOME": home}
-			ran, cleaned := false, false
+			created, ran, cleaned := false, false, false
 			launch := ""
 			runner := &commandRunner{run: func(command process.Command) process.Result {
 				if command.Name == "podman" && len(command.Args) > 0 {
 					switch command.Args[0] {
-					case "run":
+					case "create":
+						assertGatewayOwnershipHeld(t, environment)
+						created = true
+						launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
+						return process.Result{Stdout: []byte(fixtureContainerID)}
+					case "start":
 						assertGatewayOwnershipHeld(t, environment)
 						ran = true
-						launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
+						if command.Args[len(command.Args)-1] != fixtureContainerID {
+							t.Fatalf("start did not use captured ID: %v", command.Args)
+						}
 						if mode == "failed-cli" {
 							return process.Result{Status: 7}
 						}
@@ -393,7 +400,7 @@ func TestDirectLlamaRetainsOwnershipThroughRunAndFailureCleanup(t *testing.T) {
 					case "inspect":
 						return process.Result{Stdout: []byte(fmt.Sprintf(`{"%s":%q}`, podman.ManagedLaunchLabel, launch))}
 					case "container":
-						if ran && mode == "failed-cli" {
+						if created && !cleaned {
 							if command.Args[1] == "inspect" {
 								return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, identity.Container("llama-cpp"), fixtureContainerLabels("llama-cpp", "application", launch))}
 							}
@@ -476,13 +483,29 @@ func TestStopAllDuringAttachedDirectRunStillStopsContainer(t *testing.T) {
 	}}
 	stopper, stdout, _ := testApp(t, stopRunner)
 	stopper.Environment = environment
+	created, launch := false, ""
 	runner := &commandRunner{run: func(command process.Command) process.Result {
-		if command.Name == "podman" && len(command.Args) > 0 && command.Args[0] == "run" {
-			assertGatewayOwnershipHeld(t, environment)
-			if err := stopper.commandStop([]string{"all"}); err != nil {
-				t.Fatalf("stop all failed during attached direct reservation: %v", err)
+		if command.Name == "podman" && len(command.Args) > 0 {
+			switch command.Args[0] {
+			case "create":
+				assertGatewayOwnershipHeld(t, environment)
+				created = true
+				launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
+				return process.Result{Stdout: []byte(fixtureContainerID)}
+			case "container":
+				if created && command.Args[len(command.Args)-1] == fixtureContainerID {
+					if command.Args[1] == "inspect" {
+						return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, directContainer, fixtureContainerLabels("llama-cpp", "application", launch))}
+					}
+					return process.Result{}
+				}
+			case "start":
+				assertGatewayOwnershipHeld(t, environment)
+				if err := stopper.commandStop([]string{"all"}); err != nil {
+					t.Fatalf("stop all failed during attached direct reservation: %v", err)
+				}
+				assertGatewayOwnershipHeld(t, environment)
 			}
-			assertGatewayOwnershipHeld(t, environment)
 		}
 		return gatewayOwnershipPodman(command)
 	}}

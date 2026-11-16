@@ -94,9 +94,9 @@ func TestLlamaRatesRequireUniquePromptAndGenerationRows(t *testing.T) {
 	}
 }
 
-func TestRunLlamaRejectsTrailingJSON(t *testing.T) {
+func TestParseLlamaRejectsTrailingJSON(t *testing.T) {
 	runner := resultRunner{result: process.Result{Stdout: []byte(`[{"n_prompt":1}] {}`)}}
-	if _, err := RunLlama(context.Background(), runner, []string{"llama-bench"}); err == nil {
+	if _, err := ParseLlama(runner.result); err == nil {
 		t.Fatal("trailing llama-bench JSON was accepted")
 	}
 }

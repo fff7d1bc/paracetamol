@@ -7,11 +7,11 @@ import (
 	"syscall"
 )
 
-// ErrMutationBusy means an installer or cleanup already owns the data inode.
-var ErrMutationBusy = errors.New("another content installation or cleanup is active")
+// ErrMutationBusy means a mutator or runtime admission owns the data inode.
+var ErrMutationBusy = errors.New("another data mutation or runtime startup is active")
 
-// MutationLock excludes installers and destructive persistent-data cleanup for
-// one existing data directory. It creates neither the root nor a lock file.
+// MutationLock excludes installers, runtime admission and destructive data
+// cleanup for one existing directory. It creates neither root nor lock file.
 type MutationLock struct{ file *os.File }
 
 func AcquireMutationLock(dataRoot string) (*MutationLock, error) {

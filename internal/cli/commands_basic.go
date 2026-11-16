@@ -539,10 +539,7 @@ func (app *App) runComfyUI(args []string) error {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
-	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("comfyui"); err != nil {
-		return err
-	}
-	return app.startManaged(application, imageValue, command, *detach, nil, launchID)
+	return app.startManaged(application, imageValue, command, nil, launchID, dataRoot)
 }
 
 func (app *App) runLlama(mode string, args []string) error {
@@ -769,18 +766,16 @@ func (app *App) runLlama(mode string, args []string) error {
 		return err
 	}
 	defer control.Close()
-	return app.startManaged(application, options.Image, command, detach, func() error {
+	return app.startManaged(application, options.Image, command, func() error {
 		// Preflight must finish before publishing shared llama.cpp state. The
-		// operation lease excludes gateway startup through attached-run cleanup.
-		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
-			return err
-		}
+		// operation lease excludes gateway startup through attached-run cleanup;
+		// Launch also holds data mutation ownership while publishing the router.
 		if routerMode {
 			_, err := runtime.WriteRouter(dataRoot, routerContents)
 			return err
 		}
 		return nil
-	}, launchID)
+	}, launchID, dataRoot)
 }
 
 func (app *App) commandShell(args []string) error {
@@ -805,11 +800,8 @@ func (app *App) commandShell(args []string) error {
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, true)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
-		return err
-	}
-	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime(applicationID); err != nil {
 		return err
 	}
 	image := firstNonEmpty(*imageFlag, config.EnvironmentValue(app.Environment, "IMAGE", application.Image))
@@ -820,7 +812,11 @@ func (app *App) commandShell(args []string) error {
 	if !present {
 		return controlerr.New("image not found: %s", image)
 	}
-	_, err = app.run(runtime.ShellCommand(image, dataRoot, app.podman().SELinuxVolumeSuffix(app.Context), applicationID), false)
+	command, launchID, err := podman.WithLaunchIdentity(runtime.ShellCommand(image, dataRoot, app.podman().SELinuxVolumeSuffix(app.Context), applicationID))
+	if err != nil {
+		return err
+	}
+	_, err = runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: applicationID, Role: "shell", Image: image, Command: command, LaunchID: launchID, Streams: podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}})
 	return err
 }
 
@@ -927,7 +923,7 @@ func (app *App) commandStop(args []string) error {
 	return nil
 }
 
-func (app *App) startManaged(application config.Application, image string, command []string, detach bool, prepare func() error, launchID string) error {
+func (app *App) startManaged(application config.Application, image string, command []string, prepare func() error, launchID, dataRoot string) error {
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -959,23 +955,11 @@ func (app *App) startManaged(application config.Application, image string, comma
 	if err := podman.ValidateLaunchIdentity(command, launchID); err != nil {
 		return err
 	}
-	if prepare != nil {
-		if err := prepare(); err != nil {
-			return err
-		}
-	}
 	if application.Port != 0 {
 		terminal := app.terminal(app.Stdout)
 		fmt.Fprintf(app.Stdout, "%s %s\n%s %s\n", terminal.Label("Logs:"), terminal.Command(identity.Command("logs", application.ID)), terminal.Label("Stop:"), terminal.Command(identity.Command("stop", application.ID)))
 	}
-	_, runErr := app.run(command, false)
-	if runErr != nil && !detach {
-		cleanupErr := app.podman().RemoveLaunchContainer(contextWithoutCancel(), application.ContainerName, application.ID, "application", launchID, 1)
-		if app.Context.Err() != nil {
-			return withCleanupFailure(app.Context.Err(), "remove interrupted application container", cleanupErr)
-		}
-		return withCleanupFailure(runErr, "remove failed application container", cleanupErr)
-	}
+	_, runErr := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: application.ID, Role: "application", Image: image, Command: command, LaunchID: launchID, Prepare: prepare, Streams: podman.Streams{Stdin: app.Stdin, Stdout: app.Stdout, Stderr: app.Stderr}})
 	return runErr
 }
 

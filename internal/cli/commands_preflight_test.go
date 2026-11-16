@@ -11,6 +11,7 @@ import (
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/identity"
+	"paracetamol/internal/podman"
 	"paracetamol/internal/process"
 	"paracetamol/internal/storage"
 	"paracetamol/internal/verification"
@@ -181,12 +182,24 @@ func TestRuntimePreflightStillPreparesCanonicalApplicationData(t *testing.T) {
 			if err := os.WriteFile(model, []byte("fixture"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+			created, launch := false, ""
 			runner := &commandRunner{run: func(command process.Command) process.Result {
 				if command.Name == "podman" && len(command.Args) > 0 {
 					if command.Args[0] == "info" {
 						return process.Result{Stdout: []byte("true\n")}
 					}
+					if command.Args[0] == "create" {
+						created = true
+						launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
+						return process.Result{Stdout: []byte(fixtureContainerID)}
+					}
 					if command.Args[0] == "container" {
+						if created && command.Args[len(command.Args)-1] == fixtureContainerID {
+							if command.Args[1] == "inspect" {
+								return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, identity.Container(application), fixtureContainerLabels(application, "application", launch))}
+							}
+							return process.Result{}
+						}
 						return process.Result{Status: 1}
 					}
 				}
@@ -208,7 +221,7 @@ func TestRuntimePreflightStillPreparesCanonicalApplicationData(t *testing.T) {
 			}
 			found := false
 			for _, command := range runner.commands {
-				if len(command.Args) > 0 && command.Args[0] == "run" {
+				if len(command.Args) > 0 && command.Args[0] == "create" {
 					found = strings.Contains(strings.Join(command.Args, " "), layout.Application(application)+":/data")
 				}
 			}
@@ -245,12 +258,24 @@ func TestLlamaRouterPublishesOnlyAfterPlanValidation(t *testing.T) {
 	if err := store.Save(); err != nil {
 		t.Fatal(err)
 	}
+	created, launch := false, ""
 	runner := &commandRunner{run: func(command process.Command) process.Result {
 		if command.Name == "podman" && len(command.Args) > 0 {
 			if command.Args[0] == "info" {
 				return process.Result{Stdout: []byte("true\n")}
 			}
+			if command.Args[0] == "create" {
+				created = true
+				launch = strings.TrimPrefix(command.Args[2], podman.ManagedLaunchLabel+"=")
+				return process.Result{Stdout: []byte(fixtureContainerID)}
+			}
 			if command.Args[0] == "container" {
+				if created && command.Args[len(command.Args)-1] == fixtureContainerID {
+					if command.Args[1] == "inspect" {
+						return process.Result{Stdout: fixtureContainerJSON(t, fixtureContainerID, identity.Container("llama-cpp"), fixtureContainerLabels("llama-cpp", "application", launch))}
+					}
+					return process.Result{}
+				}
 				return process.Result{Status: 1}
 			}
 		}
@@ -274,7 +299,7 @@ func TestLlamaRouterPublishesOnlyAfterPlanValidation(t *testing.T) {
 		t.Fatalf("valid router configuration was not published: contents=%q err=%v", contents, err)
 	}
 	for _, command := range runner.commands {
-		if len(command.Args) > 0 && command.Args[0] == "run" && strings.Contains(strings.Join(command.Args, " "), routerPath+":/run/paracetamol/models.ini") {
+		if len(command.Args) > 0 && command.Args[0] == "create" && strings.Contains(strings.Join(command.Args, " "), routerPath+":/run/paracetamol/models.ini") {
 			return
 		}
 	}

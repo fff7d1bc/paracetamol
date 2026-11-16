@@ -322,6 +322,14 @@ workloads and correctness limits.
 
 ## Benchmarks
 
+Stop the gateway before a managed benchmark or hardware acceptance run. These
+maintenance operations reserve the local lifecycle until their final results
+and cleanup, including gaps between workload containers. This prevents data
+cleanup from deleting checkpoints or output during a run. Only one such
+operation may run at a time within the same account HOME. Dry runs and stored
+result reports do not take this reservation. Ordinary direct ComfyUI runs can
+still coexist with the gateway.
+
 Managed ComfyUI benchmark results record image, content pins, profile, render
 node, seed, cache mode, and both runtime policies:
 

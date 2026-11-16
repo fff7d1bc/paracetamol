@@ -16,6 +16,7 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/podman"
@@ -117,6 +118,13 @@ func (app *App) benchmarkComfyUI(args []string) error {
 	}
 	if err := app.requireBenchmarkAgreements(managed, []catalog.Bundle{bundle}, options.acceptLicense, options.dryRun, options.nonInteractive); err != nil {
 		return err
+	}
+	if !options.dryRun {
+		control, err := gateway.AcquireLocalOperation(app.Environment, "ComfyUI benchmark")
+		if err != nil {
+			return err
+		}
+		defer control.Close()
 	}
 	path, _, err := app.executeComfyBenchmark(managed, bundle, *options, "")
 	if err != nil {
@@ -264,6 +272,11 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started."))
 		return nil
 	}
+	control, err := gateway.AcquireLocalOperation(app.Environment, "ComfyUI benchmark suite")
+	if err != nil {
+		return err
+	}
+	defer control.Close()
 	suiteID := time.Now().UTC().Format("20060102T150405Z") + "-" + benchmark.Identifier()
 	suitePath := benchmark.DefaultPath(filepath.Join((storage.Layout{Root: dataRoot}).ComfyBenchmarks(), "suites"), ".json")
 	createdAt := benchmark.Timestamp()
@@ -468,29 +481,33 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	if err := benchmark.PortAvailable(options.port); err != nil {
 		return "", summary, err
 	}
-	if err := (storage.Layout{Root: options.dataRoot}).PrepareRuntime("comfyui"); err != nil {
-		return "", summary, err
-	}
-	if cacheRoot != "" {
-		if _, err := os.Lstat(cacheRoot); err == nil {
-			return "", summary, controlerr.New("isolated benchmark cache already exists: %s", cacheRoot)
-		} else if !os.IsNotExist(err) {
-			return "", summary, err
-		}
-		if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
-			return "", summary, err
-		}
-		defer func() {
+	cacheCreated := false
+	defer func() {
+		if cacheCreated {
 			returned = withCleanupFailure(returned, "remove isolated benchmark cache", os.RemoveAll(cacheRoot))
-		}()
-	}
-	var inputMetadata *benchmark.ComfySyntheticInput
-	if needsInput {
-		inputPath, digest, err := benchmark.EnsureSyntheticInput(options.dataRoot)
-		if err != nil {
-			return "", summary, err
 		}
-		inputMetadata = &benchmark.ComfySyntheticInput{Path: inputPath, SHA256: digest, Width: 768, Height: 768}
+	}()
+	var inputMetadata *benchmark.ComfySyntheticInput
+	prepare := func() error {
+		if cacheRoot != "" {
+			if _, err := os.Lstat(cacheRoot); err == nil {
+				return controlerr.New("isolated benchmark cache already exists: %s", cacheRoot)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			if err := os.MkdirAll(cacheRoot, 0o755); err != nil {
+				return err
+			}
+			cacheCreated = true
+		}
+		if needsInput {
+			inputPath, digest, err := benchmark.EnsureSyntheticInput(options.dataRoot)
+			if err != nil {
+				return err
+			}
+			inputMetadata = &benchmark.ComfySyntheticInput{Path: inputPath, SHA256: digest, Width: 768, Height: 768}
+		}
+		return nil
 	}
 	imageID, err := app.podman().Capture(app.Context, []string{"image", "inspect", "--format", "{{.Id}}", options.image}, "cannot inspect benchmark image")
 	if err != nil {
@@ -500,12 +517,12 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		return "", summary, controlerr.New("benchmark image changed after suite planning: %s", options.image)
 	}
 	startedAt := benchmark.Timestamp()
+	if _, err := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: options.dataRoot, Application: "comfyui", Role: "benchmark", Image: options.image, Command: command, LaunchID: launchID, Prepare: prepare}); err != nil {
+		return "", summary, err
+	}
 	defer func() {
 		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), comfyBenchmarkContainer, "comfyui", "benchmark", launchID, 2))
 	}()
-	if _, err := app.run(command, true); err != nil {
-		return "", summary, err
-	}
 	stats, err := benchmark.WaitForServer(app.Context, fmt.Sprintf("http://127.0.0.1:%d", options.port))
 	if err != nil {
 		return "", summary, err

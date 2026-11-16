@@ -17,6 +17,7 @@ import (
 	"paracetamol/internal/config"
 	"paracetamol/internal/content"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/platform"
 	"paracetamol/internal/podman"
@@ -418,6 +419,12 @@ func (app *App) benchmarkSpeculative(args []string) error {
 			return err
 		}
 	}
+	// Checkpoints and final reports outlive individual backend containers.
+	operation, err := gateway.AcquireLocalOperation(app.Environment, "llama.cpp speculative benchmark")
+	if err != nil {
+		return err
+	}
+	defer operation.Close()
 	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
 		return err
 	}
@@ -456,7 +463,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		} else if nativeReasoning != "on" {
 			payload["reasoning_effort"] = nativeReasoning
 		}
-		metrics, startErr := app.executeSpeculativeTrial(commands[depth], port, payload)
+		metrics, startErr := app.executeSpeculativeTrial(commands[depth], port, payload, dataRoot, image)
 		if startErr != nil {
 			trial.Status, trial.Error, trial.FinishedAt = "failed", startErr.Error(), benchmark.Timestamp()
 			failed = true
@@ -504,20 +511,20 @@ func checkpointRunningSpeculativeTrial(path string, result *speculativeResult, i
 	return benchmark.WriteCheckpoint(path, result)
 }
 
-func (app *App) executeSpeculativeTrial(command []string, port int, payload map[string]any) (metrics benchmark.SpeculativeMetrics, returned error) {
+func (app *App) executeSpeculativeTrial(command []string, port int, payload map[string]any, dataRoot, image string) (metrics benchmark.SpeculativeMetrics, returned error) {
 	// A depth command is reused by multiple trials and resume attempts. Its
 	// ephemeral launch identity must never be reused or enter the definition.
 	command, launchID, err := podman.WithLaunchIdentity(command)
 	if err != nil {
 		return metrics, err
 	}
+	startup := time.Now()
+	if _, err := runtime.Launch(app.Context, app.Runner, runtime.LaunchOptions{DataRoot: dataRoot, Application: "llama-cpp", Role: "benchmark", Image: image, Command: command, LaunchID: launchID}); err != nil {
+		return metrics, err
+	}
 	defer func() {
 		returned = withCleanupFailure(returned, "clean up speculative benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), speculativeBenchmarkContainer, "llama-cpp", "benchmark", launchID, 10))
 	}()
-	startup := time.Now()
-	if _, err := app.run(command, true); err != nil {
-		return metrics, err
-	}
 	if err := benchmark.WaitForHealth(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port)); err != nil {
 		return metrics, err
 	}
