@@ -101,7 +101,7 @@ func (app *App) runGateway(args []string) (result error) {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, false)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}

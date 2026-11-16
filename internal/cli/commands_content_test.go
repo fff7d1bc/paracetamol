@@ -322,7 +322,7 @@ func TestContentInstallRejectsCollisionBeforeApprovalOrDryRun(t *testing.T) {
 	}
 }
 
-func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t *testing.T) {
+func TestManagedDataRootResolvesExistingAliasWithoutCreatingMissingRoot(t *testing.T) {
 	app, _, _ := testApp(t, &commandRunner{})
 	base := t.TempDir()
 	target := filepath.Join(base, "real")
@@ -333,19 +333,19 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 	if err := os.Symlink(target, alias); err != nil {
 		t.Fatal(err)
 	}
-	if root, err := app.resolveDataDirForMutation(alias); err != nil || root != target {
+	if root, err := app.resolveManagedDataRoot(alias); err != nil || root != target {
 		t.Fatalf("existing alias = %q, %v", root, err)
 	}
 	underAlias := filepath.Join(alias, "nested", "data")
 	want := filepath.Join(target, "nested", "data")
-	if root, err := app.resolveDataDirForMutation(underAlias); err != nil || root != want {
+	if root, err := app.resolveManagedDataRoot(underAlias); err != nil || root != want {
 		t.Fatalf("missing root under alias = %q, %v; want %q", root, err, want)
 	}
 	if _, err := os.Lstat(filepath.Join(target, "nested")); !os.IsNotExist(err) {
 		t.Fatalf("resolution created missing suffix under alias: %v", err)
 	}
 	missing := filepath.Join(base, "absent")
-	if root, err := app.resolveDataDirForMutation(missing); err != nil || root != missing {
+	if root, err := app.resolveManagedDataRoot(missing); err != nil || root != missing {
 		t.Fatalf("missing root = %q, %v", root, err)
 	}
 	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
@@ -355,7 +355,7 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 	if err := os.Symlink(missing, dangling); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := app.resolveDataDirForMutation(dangling); err == nil {
+	if _, err := app.resolveManagedDataRoot(dangling); err == nil {
 		t.Fatal("dangling existing alias was accepted")
 	}
 	regular := filepath.Join(base, "file")
@@ -367,7 +367,7 @@ func TestContentInstallDataDirResolvesExistingAliasWithoutCreatingMissingRoot(t 
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{filepath.Join(dangling, "child"), regular, filepath.Join(regular, "child"), loop, filepath.Join(loop, "child")} {
-		if root, err := app.resolveDataDirForMutation(invalid); err == nil {
+		if root, err := app.resolveManagedDataRoot(invalid); err == nil {
 			t.Fatalf("invalid data root %q resolved to %q", invalid, root)
 		}
 	}

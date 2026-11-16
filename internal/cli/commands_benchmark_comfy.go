@@ -87,7 +87,7 @@ func (app *App) comfyBenchmarkFlags(name, usage string, args []string) (*comfyBe
 	if err := platform.ValidateProfile(profile); err != nil {
 		return nil, nil, controlerr.Usage("%v", err)
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -192,7 +192,7 @@ func (app *App) benchmarkSuiteParsed(args []string) error {
 	if err := platform.ValidateProfile(profile); err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}

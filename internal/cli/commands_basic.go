@@ -374,7 +374,7 @@ func (app *App) commandStatus(args []string) error {
 }
 
 func (app *App) applicationStatus(spec config.Application, dataFlag string) error {
-	dataRoot, err := app.resolveDataDir(dataFlag, false)
+	dataRoot, err := app.resolveManagedDataRoot(dataFlag)
 	if err != nil {
 		return err
 	}
@@ -513,7 +513,7 @@ func (app *App) runComfyUI(args []string) error {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}
@@ -631,7 +631,7 @@ func (app *App) runLlama(mode string, args []string) error {
 	if err != nil {
 		return err
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}
@@ -1000,7 +1000,10 @@ func (app *App) resolveDevices(profile string, requested []string, explicit bool
 	return selected, nil
 }
 
-func (app *App) resolveDataDirForMutation(value string) (string, error) {
+// resolveManagedDataRoot canonicalizes user-selected root aliases once so
+// partition validation, receipts, inventory and mounts use one physical root.
+// Cleanup deliberately uses the raw selection to reject aliases.
+func (app *App) resolveManagedDataRoot(value string) (string, error) {
 	root, err := app.resolveDataDir(value, false)
 	if err != nil {
 		return "", err

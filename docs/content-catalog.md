@@ -202,6 +202,18 @@ including a same-size change. Existing same-sized content without a receipt is
 prepared, hashed in place, and recorded by `content install`; dry runs report
 this as verification work without reading or writing the file.
 
+Existing artifact inspection uses the same managed-parent validation as new
+file promotion. CLI managed-content readers and writers resolve a selected
+data-root alias once, including aliases above a missing suffix, without
+creating directories. Cleanup retains its raw-path symlink refusal. Below the
+resolved root, every existing parent through the artifact's containing directory
+must be a directory, not a symlink, including links within the same target
+partition. Reject invalid parents before consulting receipts or
+hashing, and revalidate parents after hashing before recording a receipt.
+Missing roots or parent tails remain valid read-only plans. Inspection does
+not create them. This shared inspection rule covers install planning,
+existing-file verification and runtime bundle readiness.
+
 If an artifact filename appears in a curated workflow, update the reviewed
 JSON resource and its model provenance together. Installation copies that
 resource; it does not regenerate filenames from a host-side alias table.

@@ -10,6 +10,32 @@ import (
 	"paracetamol/internal/identity"
 )
 
+func TestCleanupStillRejectsSelectedRootAndAncestorAliases(t *testing.T) {
+	for _, shape := range []string{"root-alias", "ancestor-alias"} {
+		for _, scope := range []string{"data", "downloads", "caches"} {
+			t.Run(shape+"/"+scope, func(t *testing.T) {
+				root, selected, _ := managedAliasFixture(t, shape)
+				sentinel := filepath.Join(root, "staging", "sentinel")
+				writeOwnershipSentinel(t, sentinel)
+				runner := &commandRunner{}
+				app, stdout, _ := testApp(t, runner)
+				if canonical, err := app.resolveManagedDataRoot(selected); err != nil || canonical != root {
+					t.Fatalf("valid managed alias = %q, %v", canonical, err)
+				}
+				if err := app.commandCleanup([]string{scope, "--data-dir", selected, "--yes"}); err == nil || !strings.Contains(err.Error(), "refusing cleanup through symlinked path") {
+					t.Fatalf("cleanup accepted aliased selection: %v", err)
+				}
+				if len(runner.commands) != 0 || stdout.Len() != 0 {
+					t.Fatalf("aliased cleanup reached planning or subprocesses: %s, %v", stdout, runner.commands)
+				}
+				if got, err := os.ReadFile(sentinel); err != nil || string(got) != "must survive\n" {
+					t.Fatalf("aliased cleanup changed data: %q, %v", got, err)
+				}
+			})
+		}
+	}
+}
+
 func TestCleanupRejectsReplacedAncestorDuringConfirmation(t *testing.T) {
 	for _, scope := range []string{"data", "caches", "downloads", "build-cache"} {
 		for _, replacement := range []string{"symlink", "directory"} {

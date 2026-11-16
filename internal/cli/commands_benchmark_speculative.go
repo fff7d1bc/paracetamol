@@ -284,7 +284,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	} else if preset.ReasoningControl == "toggle" {
 		nativeReasoning = "on"
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}

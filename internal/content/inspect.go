@@ -33,17 +33,7 @@ type ArtifactStatus struct {
 }
 
 func ArtifactPath(dataRoot string, artifact catalog.Artifact) string {
-	layout := storage.Layout{Root: dataRoot}
-	var root string
-	switch artifact.Target {
-	case "models":
-		root = layout.ComfyModels()
-	case "llama-models":
-		root = layout.LlamaModels()
-	case "workflows":
-		root = filepath.Join(layout.Application("comfyui"), "user", "default", "workflows", "imported")
-	}
-	return filepath.Join(root, filepath.FromSlash(artifact.Destination))
+	return filepath.Join(artifactRoot(dataRoot, artifact), filepath.FromSlash(artifact.Destination))
 }
 
 func InspectArtifact(store *verification.Store, dataRoot string, artifact catalog.Artifact, verifyHash bool) (ArtifactStatus, error) {
@@ -57,6 +47,15 @@ func VerifyArtifact(ctx context.Context, store *verification.Store, dataRoot str
 func inspectArtifact(ctx context.Context, store *verification.Store, dataRoot string, artifact catalog.Artifact, verifyHash bool, progress func(int64)) (ArtifactStatus, error) {
 	file := ArtifactPath(dataRoot, artifact)
 	status := ArtifactStatus{Artifact: artifact, Path: file, State: Missing}
+	root := artifactRoot(dataRoot, artifact)
+	if root == "" {
+		return status, fmt.Errorf("unknown managed content target: %s", artifact.Target)
+	}
+	// Existing files and compatible receipts must obey the same partition
+	// boundary as new installations, before either trusting or hashing bytes.
+	if err := storage.ValidateManagedParent(file, root, dataRoot, "content"); err != nil {
+		return status, err
+	}
 	info, err := os.Lstat(file)
 	if os.IsNotExist(err) {
 		return status, nil
@@ -83,6 +82,11 @@ func inspectArtifact(ctx context.Context, store *verification.Store, dataRoot st
 	fingerprint := fileIdentity(info)
 	digest, err := fileSHA256Context(ctx, file, progress)
 	if err != nil {
+		return status, err
+	}
+	// A progress callback or ordinary filesystem change may redirect a parent
+	// while the original open file is hashed. Do not receipt that new path.
+	if err := storage.ValidateManagedParent(file, root, dataRoot, "content"); err != nil {
 		return status, err
 	}
 	hashed, err := os.Lstat(file)

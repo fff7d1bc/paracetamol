@@ -100,7 +100,7 @@ func (app *App) contentList(args []string) error {
 		if len(scans) > 0 && *application != "" && *application != "llama-cpp" {
 			return controlerr.Usage("--scan applies only to llama.cpp GGUF models")
 		}
-		dataRoot, err := app.resolveDataDir(*dataFlag, false)
+		dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 		if err != nil {
 			return err
 		}
@@ -226,7 +226,7 @@ func (app *App) contentStatus(args []string) error {
 			return err
 		}
 	}
-	dataRoot, err := app.resolveDataDir(*dataFlag, false)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}
@@ -404,7 +404,7 @@ func (app *App) contentInstall(args []string) error {
 		}
 	}
 	agreements := uniqueAgreements(managed, bundles)
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}
@@ -1022,7 +1022,7 @@ func (app *App) contentWorkflows(args []string) error {
 			}
 			ids = []string{id}
 		}
-		dataRoot, err := app.resolveDataDir(*dataFlag, false)
+		dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 		if err != nil {
 			return err
 		}
@@ -1075,7 +1075,7 @@ func (app *App) contentWorkflows(args []string) error {
 			}
 			return controlerr.Usage("choose an exact workflow")
 		}
-		dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+		dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 		if err != nil {
 			return err
 		}
@@ -1250,7 +1250,7 @@ func (app *App) contentImport(args []string) error {
 	if strings.ToLower(filepath.Ext(packPath)) != ".json" {
 		return controlerr.Usage("import pack path must end in .json")
 	}
-	dataRoot, err := app.resolveDataDirForMutation(*dataFlag)
+	dataRoot, err := app.resolveManagedDataRoot(*dataFlag)
 	if err != nil {
 		return err
 	}

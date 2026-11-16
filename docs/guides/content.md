@@ -177,6 +177,16 @@ same-sized existing files, records successful results, refuses mismatches, and
 does not redownload or replace the files. A dry run reports the bytes under
 `Verify` but neither hashes files nor writes receipts.
 
+The selected data directory may be an alias: managed-content commands resolve
+it to one physical root without creating missing directories. Below that root,
+managed files and their parent directories must stay in their assigned storage
+partition without symlinks, even when a link points to another managed
+directory. Planning, verification and runtime readiness refuse linked parents;
+an older receipt does not make such a path usable. Keep the real files in the
+normal managed layout, or reuse a separate library through a local mirror.
+Destructive cleanup still refuses a data directory selected through any
+symlink. Select its physical path explicitly.
+
 Ctrl-C kills the downloader, waits until its exact container is gone, and keeps
 partial data for the next attempt.
 
@@ -476,6 +486,12 @@ Curated workflows use pinned licensed sources and deterministic renderers:
 ```text
 apps/comfyui/user/default/workflows/curated/
 ```
+
+`content install` preflights selected workflows before approval or model
+installation. It checks destination paths and conflicts, and verifies source
+resources for workflows that need installing. Differing workflows require
+explicit replacement with `--force-workflow`. A dry run never writes workflows
+or model content.
 
 Exact third-party workflows are preserved under:
 
