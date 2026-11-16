@@ -159,6 +159,13 @@ checkpoint names before source/device probes or data preparation. Keep the
 neighboring Markdown report distinct during publication and resume, and refuse
 symlink or hard-link aliases without changing either file.
 
+For both acceptance and ComfyUI suites, round-trip a failed attempt through
+save, read, validation and retry. Include joined workload/cleanup errors,
+multiline subprocess stderr, terminal controls and long diagnostics. Preserve
+every cause and prior attempt while keeping persisted text printable, and
+retain the original returned error. Do not weaken metadata validation to make
+a checkpoint resumable.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file

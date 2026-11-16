@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -481,12 +482,12 @@ func runAcceptanceAttempt(path string, result *acceptanceResult, index int, run 
 	started := time.Now()
 	paths, caseErr := run(attemptID)
 	artifacts, evidenceErr := captureAcceptanceArtifacts(paths)
-	if caseErr == nil {
-		caseErr = evidenceErr
+	if evidenceErr != nil {
+		caseErr = errors.Join(caseErr, evidenceErr)
 	}
 	entry.WallSeconds, entry.FinishedAt, entry.Artifacts = time.Since(started).Seconds(), benchmark.Timestamp(), artifacts
 	if caseErr != nil {
-		entry.Status, entry.Reason = "fail", caseErr.Error()
+		entry.Status, entry.Reason = "fail", checkpointDiagnostic(caseErr)
 	} else if entry.Visual {
 		entry.Status = "review"
 	} else {

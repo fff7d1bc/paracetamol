@@ -380,7 +380,7 @@ func runComfySuiteAttempt(path string, suite *benchmark.ComfySuite, bundle, data
 		runErr = controlerr.New("ComfyUI benchmark returned an unexpected attempt result path")
 	}
 	if runErr != nil {
-		entry.Status, entry.Error = "fail", runErr.Error()
+		entry.Status, entry.Error = "fail", checkpointDiagnostic(runErr)
 	}
 	suite.Entries = upsertComfySuiteEntry(suite.Entries, entry)
 	return runErr, benchmark.WriteCheckpoint(path, suite)

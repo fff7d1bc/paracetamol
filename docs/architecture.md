@@ -443,6 +443,12 @@ overwriting its evidence. Parent JSON retains earlier attempt status, errors
 and recorded evidence. A failed cleanup remains a failure and never authorizes
 automatic reclamation of another workload's container.
 
+Persisted acceptance and ComfyUI suite diagnostics escape controls and line
+breaks without dropping error causes. This keeps combined workload, evidence
+and cleanup failures compatible with strict checkpoint validation. Returned
+errors retain their original text and identity. Previously invalid checkpoints
+are not repaired on read.
+
 [Testing](testing-and-release.md) defines checks and
 [hardware acceptance](hardware-acceptance.md) records applicable evidence.
 A build, CPU startup, allocation or tiny retrieval does not establish GPU
