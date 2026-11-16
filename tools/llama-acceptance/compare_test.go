@@ -83,7 +83,7 @@ func changeCase(s *summary, name string, fn func(*contract.Result)) {
 }
 
 func TestComparisonMatchedCoverageAndCounterbalance(t *testing.T) {
-	for _, suite := range []string{"short", "coding", "history", "prefill", "all"} {
+	for _, suite := range []string{"short", "lifecycle", "coding", "history", "prefill", "all"} {
 		t.Run(suite, func(t *testing.T) {
 			old, next := comparisonArms(suite)
 			status, messages := compareRuns(old, next)
@@ -91,6 +91,45 @@ func TestComparisonMatchedCoverageAndCounterbalance(t *testing.T) {
 				t.Fatalf("status=%s messages=%v", status, messages)
 			}
 		})
+	}
+}
+
+func TestLifecycleCoverageIsIndependentAndStillRequiredByAll(t *testing.T) {
+	history, _, err := caseCoverage(summary{Suite: "history"})
+	if err != nil || history["cancel-stream-false"] || !history["history-append-2"] {
+		t.Fatalf("history coverage is not limited to long-context cases: %v %v", history, err)
+	}
+	lifecycle, _, err := caseCoverage(summary{Suite: "lifecycle"})
+	if err != nil || lifecycle["history-cold"] || !lifecycle["lifecycle-slot-init-0"] || !lifecycle["lifecycle-slot-init-3"] || !lifecycle["cancel-stream-false"] || !lifecycle["cancel-stream-true"] || !lifecycle["media-text"] || !lifecycle["four-worker-isolation"] {
+		t.Fatalf("standalone lifecycle coverage incomplete: %v %v", lifecycle, err)
+	}
+	run := comparisonFixture("all", 0, false)
+	for i, item := range run.Cases {
+		if item.Name == "cancel-stream-true" {
+			run.Cases = append(run.Cases[:i:i], run.Cases[i+1:]...)
+			break
+		}
+	}
+	if err := validateObservation(run); err == nil {
+		t.Fatal("all accepted without independent lifecycle coverage")
+	}
+}
+
+func TestInitializationCoverageAndPrefillWorkCannotBeOmitted(t *testing.T) {
+	old, next := comparisonArms("lifecycle")
+	for i, item := range next[0].Cases {
+		if item.Name == "lifecycle-slot-init-1" {
+			next[0].Cases = append(next[0].Cases[:i:i], next[0].Cases[i+1:]...)
+			break
+		}
+	}
+	if status, _ := compareRuns(old, next); status != contract.Blocked {
+		t.Fatal("lifecycle accepted without observed initialization of every slot")
+	}
+	old, next = comparisonArms("prefill")
+	next[0].Evidence["prefill-slot-init-2.request.json"] = strings.Repeat("9", 64)
+	if status, _ := compareRuns(old, next); status != contract.Blocked {
+		t.Fatal("prefill accepted unmatched initialization work")
 	}
 }
 

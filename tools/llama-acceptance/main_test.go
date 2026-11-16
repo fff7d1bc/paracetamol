@@ -40,6 +40,17 @@ func TestRunRequiresExplicitIdentityAndTimingTolerance(t *testing.T) {
 	if _, _, err := parseRun(append(base, "--suite", "prefill", "--prefill-regression-percent", "10"), io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := parseRun(append(append([]string{}, base...), "--suite", "lifecycle"), io.Discard); err != nil {
+		t.Fatalf("standalone lifecycle suite should need neither a grader nor timing tolerance: %v", err)
+	}
+}
+
+func TestOldRunSchemaIsNotRelabeledForNewCoverage(t *testing.T) {
+	run := comparisonFixture("history", 0, false)
+	run.Schema = "paracetamol.llama-acceptance.v1"
+	if err := validateObservation(run); err == nil {
+		t.Fatal("old combined-history evidence accepted as the new separated coverage")
+	}
 }
 
 func TestOutputBoundariesAndCreateOnce(t *testing.T) {
@@ -113,6 +124,31 @@ func TestJoinedErrorSeverityDoesNotHideRequiredFailures(t *testing.T) {
 		if calls != 1 || len(results) != 1 || results[0].Status == contract.Review {
 			t.Fatalf("calls=%d results=%+v", calls, results)
 		}
+	}
+}
+
+func TestStrictScenarioCeilingDoesNotBecomeCodingReview(t *testing.T) {
+	strict := contract.Result{Name: "off-replay-seed-42", Status: contract.Fail, RequestIDs: []string{"r1"}}
+	classifyResult(&strict, map[string]string{"r1": transport.OutputLimit})
+	if strict.Status != contract.Fail {
+		t.Fatal("truncated strict replay became a coding-style REVIEW")
+	}
+	coding := contract.Result{Name: "go-first", Status: contract.Review, RequestIDs: []string{"r2"}}
+	classifyResult(&coding, map[string]string{"r2": transport.OutputLimit})
+	if coding.Status != contract.Review {
+		t.Fatal("predeclared bounded coding ceiling lost its REVIEW classification")
+	}
+	for _, ids := range [][]string{{"policy", "infra"}, {"infra", "policy"}, {"protocol", "infra"}, {"infra", "protocol"}} {
+		result := contract.Result{Name: "four-worker-isolation", Status: contract.Fail, RequestIDs: ids}
+		classifyResult(&result, map[string]string{"policy": transport.Policy, "protocol": transport.Protocol, "infra": transport.Infrastructure})
+		if result.Status != contract.Fail {
+			t.Fatal("request iteration order hid a hard failure behind infrastructure classification")
+		}
+	}
+	infra := contract.Result{Name: "unavailable", Status: contract.Fail}
+	classifyResult(&infra, map[string]string{"unavailable": transport.Infrastructure})
+	if infra.Status != contract.Blocked {
+		t.Fatal("infrastructure failure did not remain blocked")
 	}
 }
 

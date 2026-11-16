@@ -61,7 +61,7 @@ func parseRun(args []string, stderr io.Writer) (runOptions, bool, error) {
 	set.StringVar(&opts.model, "model", regularModel+"-dflash2", "regular Flash-Next model or its -dflash2 control")
 	set.StringVar(&opts.output, "out", "", "new private directory below checkout build/")
 	set.StringVar(&opts.keyFile, "gateway-api-key-file", "", "absolute private gateway Bearer-key file")
-	set.StringVar(&opts.suite, "suite", "short", "short, coding, history, prefill or all")
+	set.StringVar(&opts.suite, "suite", "short", "short, lifecycle, coding, history, prefill or all")
 	set.StringVar(&opts.containerID, "container-id", "", "full ID of the already-running gateway-owned llama.cpp container")
 	set.StringVar(&opts.imageID, "image-id", "", "expected immutable backend image ID, not a tag")
 	set.StringVar(&opts.dataRoot, "data-dir", "", "explicit existing verified Paracetamol data root")
@@ -87,7 +87,7 @@ func parseRun(args []string, stderr io.Writer) (runOptions, bool, error) {
 		return opts, false, fmt.Errorf("prefill tolerance must be finite")
 	}
 	switch opts.suite {
-	case "short", "coding", "history", "prefill", "all":
+	case "short", "lifecycle", "coding", "history", "prefill", "all":
 	default:
 		return opts, false, fmt.Errorf("unsupported suite %q", opts.suite)
 	}

@@ -186,18 +186,7 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 	appendResults := func(results []contract.Result) {
 		mu.Lock()
 		for i := range results {
-			kind := classifications[results[i].Name]
-			for _, id := range results[i].RequestIDs {
-				if classifications[id] != "" {
-					kind = classifications[id]
-				}
-			}
-			if results[i].Status == contract.Fail && kind == transport.Infrastructure {
-				results[i].Status = contract.Blocked
-			}
-			if results[i].Status == contract.Fail && kind == transport.OutputLimit {
-				results[i].Status = contract.Review
-			}
+			classifyResult(&results[i], classifications)
 		}
 		mu.Unlock()
 		record.Cases = append(record.Cases, results...)
@@ -212,6 +201,18 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 	}
 	// Deterministic failures stop expensive work. A separately classified coding
 	// miss remains REVIEW, not permission to discard it and retry until green.
+	if len(record.Cases) != 0 && (contract.Worst(record.Cases) == contract.Fail || contract.Worst(record.Cases) == contract.Blocked) {
+		return errIncomplete
+	}
+	// Exercise independently meaningful session/protocol checks before costly
+	// generated-code and near-limit retrieval. A retrieval miss must not make
+	// cancellation or changed-media coverage impossible to invoke on its own.
+	if opts.suite == "lifecycle" || opts.suite == "all" {
+		appendResults(scenarios.Lifecycle(ctx, options, call))
+	}
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
+	}
 	if len(record.Cases) != 0 && (contract.Worst(record.Cases) == contract.Fail || contract.Worst(record.Cases) == contract.Blocked) {
 		return errIncomplete
 	}
@@ -369,18 +370,46 @@ func equalJSON(a, b any) bool {
 	return bytes.Equal(x, y)
 }
 
+func transportRank(kind string) int {
+	switch kind {
+	case transport.OutputLimit:
+		return 1
+	case transport.Infrastructure:
+		return 2
+	case transport.Protocol:
+		return 3
+	case transport.Policy:
+		return 4
+	}
+	return 0
+}
+
+func classifyResult(result *contract.Result, kinds map[string]string) {
+	kind := kinds[result.Name]
+	for _, id := range result.RequestIDs {
+		if transportRank(kinds[id]) > transportRank(kind) {
+			kind = kinds[id]
+		}
+	}
+	if result.Status == contract.Fail && kind == transport.Infrastructure {
+		result.Status = contract.Blocked
+	}
+	// Only codingCases owns a bounded coding ceiling's REVIEW classification.
+	// Strict scenario oracles require natural completion; a repeated answer
+	// truncated at their budget must remain FAIL, not become a coding miss.
+}
+
 // Joined response, report and persistence errors are independent evidence.
 // Inspect every branch so an earlier output ceiling cannot hide bad policy or
 // missing reports and accidentally authorize additional inference attempts.
 func transportErrorKind(err error) string {
-	rank := map[string]int{transport.OutputLimit: 1, transport.Infrastructure: 2, transport.Protocol: 3, transport.Policy: 4}
 	best := ""
 	var visit func(error)
 	visit = func(current error) {
 		if current == nil {
 			return
 		}
-		if typed, ok := current.(*transport.Error); ok && rank[typed.Kind] > rank[best] {
+		if typed, ok := current.(*transport.Error); ok && transportRank(typed.Kind) > transportRank(best) {
 			best = typed.Kind
 		}
 		if joined, ok := current.(interface{ Unwrap() []error }); ok {

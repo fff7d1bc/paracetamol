@@ -47,6 +47,14 @@ func FixtureManifest() map[string]string {
 	}
 	sum := sha256.Sum256([]byte(generatorVersion))
 	manifest["distributed-record-generator.v1"] = hex.EncodeToString(sum[:])
+	var initialization strings.Builder
+	fmt.Fprintln(&initialization, slotInitVersion)
+	for slot := 0; slot < 4; slot++ {
+		prompt, expected := slotInitPrompt(slot)
+		fmt.Fprintf(&initialization, "%s\nORACLE=%s\n", prompt, expected)
+	}
+	sum = sha256.Sum256([]byte(initialization.String()))
+	manifest["slot-init.v1"] = hex.EncodeToString(sum[:])
 	return manifest
 }
 
@@ -63,6 +71,7 @@ func ValidateFixtures() error {
 		"history-append-queries-10000":    "64a3a44ee6aad050aee38486198379777f2605d69f54f28c8eca5c04996312c5",
 		"solid-media-red-false":           "68b752d6b19b2824ff729dc29d59054e3da0721c7b2e5980c63217ac4abe762e",
 		"solid-media-red-true":            "1734858fdd52aaecacf3a56421ae6daf12fe559eee7970bbcf66e65320079561",
+		"slot-init.v1":                    "20e5c42ddb88035de6941687f7627201d79f66113027cd2d957d480e127543c1",
 	} {
 		if manifest[name] != want {
 			return fmt.Errorf("frozen synthetic fixture %s changed; review a new fixture identity", name)
@@ -134,8 +143,7 @@ func Short(ctx context.Context, opts contract.Options, call contract.Call) []con
 		r, err := replay()
 		name := fmt.Sprintf("off-replay-seed-%d", seed)
 		if err != nil {
-			results = append(results, outcome(name, contract.Response{}, err))
-			continue
+			return append(results, outcome(name, contract.Response{}, err))
 		}
 		r["model"] = opts.Model
 		r["seed"] = seed
@@ -151,7 +159,11 @@ func Short(ctx context.Context, opts contract.Options, call contract.Call) []con
 		if err == nil && strings.TrimSpace(response.Reasoning) != "" {
 			err = fmt.Errorf("off mode returned reasoning")
 		}
-		results = append(results, outcome(name, response, err))
+		result := outcome(name, response, err)
+		results = append(results, result)
+		if result.Status != contract.Pass {
+			return results
+		}
 	}
 	for _, effort := range []string{"low", "medium", "xhigh"} {
 		name := "effort-" + effort
@@ -160,7 +172,11 @@ func Short(ctx context.Context, opts contract.Options, call contract.Call) []con
 		if err == nil {
 			err = exact(response, "EFFORT_271828")
 		}
-		results = append(results, outcome(name, response, err))
+		result := outcome(name, response, err)
+		results = append(results, result)
+		if result.Status != contract.Pass {
+			return results
+		}
 	}
 	// Raw API omission is distinct from explicit xhigh client preferences. The
 	// transport verifies gateway default provenance without sending samplers.
@@ -170,9 +186,17 @@ func Short(ctx context.Context, opts contract.Options, call contract.Call) []con
 	if defaultErr == nil {
 		defaultErr = exact(defaultResponse, "DEFAULT_161803")
 	}
-	results = append(results, outcome("omitted-effort", defaultResponse, defaultErr))
+	result := outcome("omitted-effort", defaultResponse, defaultErr)
+	results = append(results, result)
+	if result.Status != contract.Pass {
+		return results
+	}
 	for _, stream := range []bool{false, true} {
-		results = append(results, toolRoundTrip(ctx, opts, call, stream))
+		result = toolRoundTrip(ctx, opts, call, stream)
+		results = append(results, result)
+		if result.Status != contract.Pass {
+			return results
+		}
 	}
 	return results
 }
@@ -366,17 +390,16 @@ func History(ctx context.Context, opts contract.Options, call contract.Call) []c
 		}
 		previous = response
 	}
-	results = append(results, idleHistory(ctx, opts, call, n)...)
-	results = append(results, concurrent(ctx, opts, call))
-	for _, stream := range []bool{false, true} {
-		results = append(results, cancellation(ctx, opts, call, stream))
-	}
-	results = append(results, media(ctx, opts, call)...)
 	return results
 }
 
 func Prefill(ctx context.Context, opts contract.Options, call contract.Call) []contract.Result {
-	_, response, results, ok := calibratedTable(ctx, opts, call, "prefill-32k", 32768, "none")
+	results := initializeSlots(ctx, opts, call, "prefill-slot-init")
+	if contract.Worst(results) != contract.Pass {
+		return results
+	}
+	_, response, calibration, ok := calibratedTable(ctx, opts, call, "prefill-32k", 32768, "none")
+	results = append(results, calibration...)
 	if !ok {
 		return results
 	}

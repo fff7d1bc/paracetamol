@@ -139,6 +139,108 @@ Record actual execution/results separately from preparation. Keep diagnostic
 image IDs distinct; use the final normal image for performance and gateway
 acceptance. Kernel activation still needs an independent trace where required.
 
+### Execute exported probes
+
+Confirm `podman info --format '{{.Host.Security.Rootless}}'` reports `true`.
+For the weight-free lifetime and convolution fixtures, set `NORMAL_IMAGE_ID`
+to the normal runtime's full inspected ID, `RENDER_NODE` to the exact accepted
+device and `PROBES` to the absolute exported probe directory. With no other
+model work running:
+
+```bash
+(
+  set -eu
+  for PROBE in test-topk-moe-lifetime test-qwen4exp-conv-rollback; do
+    podman run --rm --pull=never --network=none --read-only \
+      --cap-drop=ALL --security-opt no-new-privileges --userns keep-id \
+      --device /dev/kfd --device "$RENDER_NODE" \
+      --env HOME=/tmp --env XDG_CACHE_HOME=/tmp/cache \
+      --env PARACETAMOL_QWEN4EXP_QSA_GRAPH=1 \
+      --env PARACETAMOL_QWEN4EXP_QSA_KERNEL=1 \
+      --tmpfs /tmp:rw,nosuid,nodev,size=512m \
+      --volume "$PROBES:/opt/probe:ro,Z" \
+      --entrypoint /usr/bin/env "$NORMAL_IMAGE_ID" \
+      -u GGML_CUDA_ENABLE_UNIFIED_MEMORY "/opt/probe/$PROBE"
+  done
+)
+```
+
+These two programs require `ROCm0` internally. Check each exit status and
+retain its output before proceeding. Require eight passing lifetime cases
+with nonzero valid dependency callbacks, then
+`CONV_ROLLBACK_SUMMARY cases=40 rounds=160 mode=ROCm-matcher-required PASS`.
+The convolution program's `--cpu` switch is not a substitute. A CPU result,
+zero cases, unexpected skipped cases or an unavailable ROCm backend cannot
+pass GPU acceptance. Do not run these commands against a merely similarly
+named diagnostic library set.
+
+### Numerical case manifest
+
+With `--upstream-tests` prepared, the same confinement can run the complete
+maintained Qwen/QSA numerical group:
+
+```bash
+podman run --rm --pull=never --network=none --read-only \
+  --cap-drop=ALL --security-opt no-new-privileges --userns keep-id \
+  --device /dev/kfd --device "$RENDER_NODE" \
+  --env HOME=/tmp --env XDG_CACHE_HOME=/tmp/cache \
+  --env PARACETAMOL_QWEN4EXP_QSA_GRAPH=1 \
+  --env PARACETAMOL_QWEN4EXP_QSA_KERNEL=1 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=512m \
+  --volume "$PROBES:/opt/probe:ro,Z" \
+  --entrypoint /usr/bin/env "$NORMAL_IMAGE_ID" \
+  -u GGML_CUDA_ENABLE_UNIFIED_MEMORY /opt/probe/test-backend-ops \
+  test -b ROCm0 -o 'QSA_.*,QWEN_.*'
+```
+
+This selects correctness testing against CPU references, not `perf` or
+`support` mode. These commands bypass the normal entrypoint, so they enable
+the normal QSA kernel/graph policy explicitly and unset unified-memory mode
+like the managed Flash-Next child. Environment enablement establishes
+eligibility, not dispatch. Save per-case results and unsupported/skipped
+cases, not just the final exit code. The expected case manifest belongs to the selected
+source, not whichever count a candidate happens to print. Additional
+upstream `TOPK_MOE`, GDN and cache/state groups remain separate gates from
+these maintained custom groups. Review the pinned test source and expected
+case list before running a changed source tuple. Do not use grouped regexes
+containing `(` with `-o`; the pinned parser treats those as literal full-case
+selectors and can silently select no cases.
+
+For upstream `ded522f8304554317e7ff8f88698dbbbca5425aa`, patched tree
+`20d5c279af454b8bb9ba78fb7a8f4a0e93ded53c`, the source-defined manifest is
+506 custom cases:
+
+| `op_desc` names | Cases |
+| --- | ---: |
+| `QSA_ORDER`, `QSA_INTERSECTION`, `QSA_END_BLOCK` | 9, 7, 4 |
+| `QSA_PREFILL`, `QSA_DECODE`, `QSA_MASKLESS` | 10, 5, 7 |
+| `QWEN_GDN_DECODE`, `QWEN_NARROW_NORM` | 260, 66 |
+| `QWEN_HC_NORM`, `QWEN_HC_GATE_NORM` | 23, 7 |
+| `QWEN_HC_INJECT`, `QWEN_HC_GATE_INJECT` | 10, 6 |
+| `QWEN_GDN_CONV`, `QWEN_GDN_CONV_MUTATION` | 9, 1 |
+| `QWEN_PLE_CONV`, `QWEN_PLE_CONV_MUTATION` | 14, 1 |
+| `QWEN_MOE_TILES`, `QWEN_MOE_REDUCE` | 26, 6 |
+| `QWEN_Q8_GROUP`, `QWEN_Q8_MMV` | 12, 23 |
+
+These counts were independently enumerated from the source, not inferred
+from a successful GPU run. Preserve each compiled numerical oracle and its
+thresholds; counts alone are insufficient. Review and version the manifest
+if case construction changes. Numerical agreement does not prove that every
+optimized kernel was dispatched. Retain a separate
+diagnostic kernel trace for changed optimization paths; never use a traced
+image as a normal timing arm.
+
+### Missing GPU poisoned-reset coverage
+
+The exported `test-recurrent-state-clear` currently has only a CPU mode.
+It can check the real helper's poison/reset semantics, but does not supply
+the separately required GPU-backed poisoned-reset gate. The full-model state
+probe covers different save/restore behavior and is not that missing test.
+Keep this coverage BLOCKED until an explicit GPU fixture is implemented and
+qualified against both the corrected helper and a rejected old-helper
+control. Do not reinterpret a CPU PASS as GPU coverage or silently drop that
+requirement from a refresh campaign.
+
 ## Prepare an inference comparison
 
 Run the checker on the inference host. Both gateway and private native probes
@@ -231,10 +333,35 @@ Neither the checker nor comparison owns that transition.
 | Suite | Bounded coverage |
 | --- | --- |
 | `short` | Six thinking-off replay controls, low/medium/xhigh effort, nested tool calls and complete JSON/SSE round trips. |
+| `lifecycle` | A resident history reused after second-slot work, four slot-directed workers, both cancellation paths and synthetic media/history changes. Runs independently of near-limit retrieval. |
 | `coding` | CPU grader self-test and original Go/Python generated-code cases with the predeclared attempt policy below. |
-| `history` | Measured near-limit distributed retrieval, exact repeat, isolated edit, true appends preserving reasoning, idle-slot reuse, four slot-directed workers, both cancellation paths and synthetic media/history changes. |
+| `history` | Measured near-limit distributed retrieval, exact repeat, isolated edit and true appends preserving reasoning. |
 | `prefill` | Measured cold 32K prefill and a versioned multi-slot conditioning sequence followed by cold 16K work. |
-| `all` | All four families, stopping expensive work after a deterministic early failure. |
+| `all` | All five families, starting with short and lifecycle checks and stopping further work after a deterministic failure. |
+
+Run `lifecycle` independently when a long retrieval case fails. It does not
+turn that failure into success, but allows idle-slot, cancellation and media
+checks to establish their own evidence. Lifecycle uses a fixed 2048-record
+resident prompt rather than requiring a completed near-limit calibration.
+
+Fresh llama.cpp slots omit prompt counters until they have processed a
+request. `lifecycle` and `prefill` therefore explicitly initialize all four
+idle slots with versioned bounded marker requests before requiring occupancy
+observations. These use reasoning off, seed 42, cache disabled and a 128-token
+budget through the same gateway defaults. The following strict native probe
+must report measured counters for every slot. Missing counters are never
+invented as zero. This is test preparation inside `check`, not hidden
+inference in `preflight` or the build. Lifecycle requires 18 cases and 21
+requests, including these four initialization cases.
+
+Saved gateway-run summaries use `paracetamol.llama-acceptance.v2`. Version 2
+separates lifecycle coverage from history and makes both mandatory in `all`.
+Earlier combined-history v1 results remain historical evidence; do not edit
+their schema or treat them as complete v2 coverage. The new comparator
+rejects them. Coding task and corpus identities have not been relaxed.
+Short checks also stop at their first non-PASS case. A truncated strict
+replay remains FAIL because natural completion is part of its oracle; it
+does not receive the coding screen's output-ceiling REVIEW classification.
 
 Calibration uses the native tokenizer with a finite adjustment budget and then
 requires actual request work counts. Missing token/cache/slot observations,
@@ -370,6 +497,14 @@ is sent to the model. A later pass never replaces an earlier miss or upgrades
 the campaign to PASS. Do not increase budgets, pick favorable seeds or weaken
 tests after observing a failure.
 
+Keep the runner's result separate from the source-update decision. An
+isolated coding miss recovered under that fixed protocol is different from
+persistent failure. A maintainer may document an inherited limitation when
+matched baseline/candidate evidence shows no deterioration, without changing
+REVIEW to PASS. A persistently failing baseline cannot discriminate an
+upgrade. This judgment cannot waive the other acceptance gates. Follow the
+[coding review policy](../../docs/testing-and-release.md#bounded-coding-quality-screen).
+
 Oracles independently compute expected values and check deterministic edge,
 property and ownership cases. They do not prove the requested asymptotic
 complexity or broad coding ability. Tests and solutions are public reviewer
@@ -380,6 +515,28 @@ fixtures use the project's [BSD-3-Clause license](../../LICENSE); review
 provenance and any third-party licensing before importing replacements.
 
 ## Evidence, comparison and decisions
+
+Keep a campaign ledger in private experiment notes. Begin each applicable row
+as BLOCKED and record its commands, immutable inputs, expected/observed case
+counts, evidence paths and limitations. Preparation or a successful process
+exit does not establish that a GPU case actually ran.
+
+| Required coverage | Supplied by this kit |
+| --- | --- |
+| Image/source/runtime closure, CPU CLI/router startup and offline content | Preparation and identity checks only; retain the separate image/startup checks. |
+| Native numerical, state, poisoned-reset and kernel-activation gates | Matching-source compilation for selected probes, not execution of the complete numerical/trace matrix. CPU reset checks are not GPU reset coverage. |
+| Plain and greedy DFlash2 protocol, lifecycle, coding, history and prefill | Explicit `check --suite all` for each model/image arm, with individual outcomes retained. |
+| Matched repeated performance | `compare` checks saved counterbalanced observations, not an isolated rate. |
+| Responses API, direct CLI/router generation and lifecycle | Separate integration checks from the source-update procedure. The kit's inference transport uses Chat Completions. |
+| Real overlapping-generation throughput | Separate measurement. Four worker markers check isolation, not sustained overlap or aggregate throughput. |
+| Other affected backends and hardware classes | Separate applicable hardware acceptance. The frozen kit policy targets a sufficiently capable `gfx1151` host. |
+
+Finish with a separate maintainer decision covering every applicable row.
+Explain non-applicable rows and keep unavailable hardware or unimplemented
+required checks visibly BLOCKED/deferred. Neither `all` nor `compare` emits a
+whole-campaign approval. The
+[source-update procedure](../../docs/testing-and-release.md#llamacpp-source-update-acceptance)
+owns that wider contract.
 
 Private evidence includes requests, raw JSON/SSE responses, full assistant
 objects, typed correlated gateway reports, native slot snapshots, image/source
@@ -430,8 +587,8 @@ changes none of their files.
 `PASS` means only that every required case in the selected operation has
 complete passing evidence. `FAIL` records a deterministic protocol, policy or
 answer-oracle failure. `BLOCKED` records missing prerequisites or required
-observations. `REVIEW` preserves a bounded coding miss/output ceiling or
-unresolved performance comparison; it does not establish an engine defect.
+observations. `REVIEW` preserves bounded coding misses, coding output ceilings
+and unresolved performance comparisons. It does not establish an engine defect.
 Only PASS exits zero. A completed non-PASS operation exits two, execution/setup
 errors exit one and interruption exits 130. Read individual cases rather than
 treating every nonzero result as the same failure.
@@ -439,9 +596,9 @@ treating every nonzero result as the same failure.
 A full source update still needs matching-source native fixtures, numerical
 checks, all required production-path suites/controls, repeated performance
 comparisons and applicable hardware acceptance. Record unavailable hardware
-or required gates as BLOCKED/deferred. A targeted `short`, `coding`, `history`
-or `prefill` PASS cannot silently replace the missing coverage. If the baseline
-fails or varies, retain it and narrow the conclusion; a candidate coding miss
+or required gates as BLOCKED/deferred. A targeted `short`, `lifecycle`,
+`coding`, `history` or `prefill` PASS cannot silently replace the missing
+coverage. If the baseline fails or varies, retain it and narrow the conclusion; a candidate coding miss
 is not automatically a successful-baseline-to-candidate regression.
 
 Do not hardcode a current candidate image ID or arbitrary one-shot prose into

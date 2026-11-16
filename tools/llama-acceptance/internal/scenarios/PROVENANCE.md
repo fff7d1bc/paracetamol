@@ -21,6 +21,16 @@ algorithm in scenarios.go; their sizes are calibrated using observed input
 tokens, not assumed character/token ratios. Oracle failures fail the case.
 Missing token, cache or native-slot evidence blocks the affected coverage.
 
+Version 2 adds explicit fixed slot preparation before Lifecycle and Prefill,
+independently identified by `slot-init.v1`. The initial read-only probe requires
+exactly four distinct idle slot IDs but permits unused slots to omit counters.
+Four ordered requests then target slots 0 through 3 with original fixed markers,
+thinking off, seed 42, cache disabled and a 128-token output budget. Each requires
+natural completion and its exact marker through the normal correlated gateway
+transport. The subsequent strict probe must observe measured prompt counters for
+all four slots; missing counters are never replaced with zero. This preparation
+is new versioned input, not a recovered historical conditioning sequence.
+
 The cache-conditioning family/slot/depth sequence comes from the known synthetic
 October 26 cache experiment and the public full-span correction record. Only its
 synthetic prompt-generator section and scalar fixture metadata were inspected;

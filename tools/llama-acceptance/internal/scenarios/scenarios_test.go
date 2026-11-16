@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -31,7 +32,7 @@ func TestFixtureSelfTestAndManifest(t *testing.T) {
 	}
 	first := FixtureManifest()
 	second := FixtureManifest()
-	if !reflect.DeepEqual(first, second) || len(first) != 13 {
+	if !reflect.DeepEqual(first, second) || len(first) != 14 {
 		t.Fatalf("unstable/incomplete manifest: %v", first)
 	}
 	text, want := table(128, false)
@@ -98,8 +99,12 @@ func TestShortPositiveAndKnownBadReplay(t *testing.T) {
 				return fakeResponse(want, 400, 0), nil
 			}
 			results := Short(context.Background(), contract.Options{Model: "runtime-model"}, call)
-			if len(results) != 12 {
-				t.Fatalf("got %d cases", len(results))
+			wantCases, wantRequests := 12, 14
+			if bad != "" {
+				wantCases, wantRequests = 1, 1
+			}
+			if len(results) != wantCases || len(requests) != wantRequests {
+				t.Fatalf("got %d cases, %d requests", len(results), len(requests))
 			}
 			for _, r := range results {
 				if strings.HasPrefix(r.Name, "off-") && bad != "" {
@@ -122,6 +127,40 @@ func TestShortPositiveAndKnownBadReplay(t *testing.T) {
 				_, explicit := r["temperature"]
 				if explicit != (name == "off-replay-temperature-zero") {
 					t.Fatal("unexpected temperature override")
+				}
+			}
+		})
+	}
+}
+
+func TestShortStopsAfterFirstFailedRequiredCase(t *testing.T) {
+	sequence := []string{"off-replay-seed-42", "off-replay-seed-1234", "off-replay-seed-2026", "off-replay-seed-7", "off-replay-seed-99", "off-replay-temperature-zero", "effort-low", "effort-medium", "effort-xhigh", "omitted-effort", "nested-tool-stream-false-call", "nested-tool-stream-false-result", "nested-tool-stream-true-call", "nested-tool-stream-true-result"}
+	for stop, name := range sequence {
+		t.Run(name, func(t *testing.T) {
+			var called []string
+			results := Short(context.Background(), contract.Options{}, func(_ context.Context, current string, _ map[string]any) (contract.Response, error) {
+				called = append(called, current)
+				if current == name {
+					return fakeResponse("WRONG", 400, 0), nil
+				}
+				if strings.HasSuffix(current, "-call") {
+					return contract.Response{Finish: "tool_calls", Message: map[string]any{"role": "assistant", "reasoning_content": "preserved"}, Tools: []contract.ToolCall{{ID: "tool-1", Name: "lookup_record", Arguments: map[string]any{"query": map[string]any{"key": "ALDER"}}}}}, nil
+				}
+				want := "ALDER_937261"
+				if strings.HasPrefix(current, "effort-") {
+					want = "EFFORT_271828"
+				}
+				if current == "omitted-effort" {
+					want = "DEFAULT_161803"
+				}
+				return fakeResponse(want, 400, 0), nil
+			})
+			if !reflect.DeepEqual(called, sequence[:stop+1]) || len(results) == 0 || results[len(results)-1].Status != contract.Fail {
+				t.Fatalf("short did not stop at first failed request: calls=%v results=%+v", called, results)
+			}
+			for _, result := range results[:len(results)-1] {
+				if result.Status != contract.Pass {
+					t.Fatalf("continued after an earlier non-PASS case: %+v", results)
 				}
 			}
 		})
@@ -164,16 +203,6 @@ func TestHistoryAppendPreservesCompleteAssistantAndWrongValueFails(t *testing.T)
 			appendCount := 0
 			previousAppend := ""
 			call := func(_ context.Context, name string, r map[string]any) (contract.Response, error) {
-				if strings.HasPrefix(name, "media-") {
-					want := "RED"
-					if name == "media-blue" {
-						want = "BLUE"
-					}
-					if name == "media-text" {
-						want = "TEXT_RECOVERY"
-					}
-					return fakeResponse(want, 1000, 990), nil
-				}
 				if r["reasoning_effort"] != "xhigh" {
 					t.Fatal("history changed reasoning policy")
 				}
@@ -247,7 +276,7 @@ func TestHistoryAppendPreservesCompleteAssistantAndWrongValueFails(t *testing.T)
 			}
 			results := History(context.Background(), contract.Options{Tokenize: fakeTokens}, call)
 			if bad == "" {
-				if appendCount != 2 {
+				if appendCount != 2 || len(results) != 6 || contract.Worst(results) != contract.Pass {
 					t.Fatalf("appends=%d results=%v", appendCount, results)
 				}
 				for _, r := range results {
@@ -272,9 +301,233 @@ func TestHistoryAppendPreservesCompleteAssistantAndWrongValueFails(t *testing.T)
 	}
 }
 
+func TestHistoryFailureDoesNotRunOrClaimLifecycle(t *testing.T) {
+	var called []string
+	opts := contract.Options{Tokenize: fakeTokens, Slots: func(context.Context) ([]contract.Slot, error) {
+		t.Error("long retrieval must not probe lifecycle slots")
+		return nil, errors.New("unexpected slot probe")
+	}}
+	results := History(context.Background(), opts, func(_ context.Context, name string, request map[string]any) (contract.Response, error) {
+		called = append(called, name)
+		text := request["messages"].([]any)[0].(map[string]any)["content"].(string)
+		n := strings.Count(text, "checksum-label synthetic-only.")
+		_, want := table(n, name == "history-edit")
+		if name == "history-append-1" {
+			want = "WRONG"
+		}
+		input, cache := int64(n*24+96), int64(n*24+64)
+		if name == "history-cold" {
+			cache = 0
+		}
+		return fakeResponse(want, input, cache), nil
+	})
+	want := []string{"history-cold", "history-populate", "history-repeat", "history-edit", "history-append-1"}
+	if contract.Worst(results) != contract.Fail || !reflect.DeepEqual(called, want) || len(results) != len(want) {
+		t.Fatalf("retrieval failure hid/claimed lifecycle coverage: calls=%v results=%+v", called, results)
+	}
+	for i, result := range results {
+		if result.Name != want[i] {
+			t.Fatalf("unrun lifecycle case appeared: %+v", result)
+		}
+	}
+}
+
+func TestStandaloneLifecycleAndStopAfterNonPassingSubphase(t *testing.T) {
+	for _, test := range []struct {
+		fault     string
+		status    contract.Status
+		callCount int
+		caseCount int
+	}{
+		{"", contract.Pass, 21, 18},
+		{"history-idle-populate", contract.Fail, 5, 5},
+		{"history-idle-reactivate-blocked", contract.Blocked, 9, 11},
+		{"worker-2", contract.Fail, 13, 12},
+		{"cancel-stream-false", contract.Fail, 14, 13},
+		{"cancel-stream-true", contract.Fail, 16, 14},
+		{"media-red", contract.Fail, 18, 15},
+	} {
+		t.Run(test.fault, func(t *testing.T) {
+			var active atomic.Bool
+			var mu sync.Mutex
+			called := map[string]int{}
+			// No tokenizer or long retrieval result is supplied. This family must
+			// independently prove its fixed resident fixture and lifecycle gates.
+			opts := contract.Options{Slots: func(context.Context) ([]contract.Slot, error) { return testSlots(50000, active.Load()), nil }}
+			results := Lifecycle(context.Background(), opts, func(ctx context.Context, name string, request map[string]any) (contract.Response, error) {
+				mu.Lock()
+				called[name]++
+				mu.Unlock()
+				if request["reasoning_effort"] != "none" {
+					t.Error("lifecycle changed reasoning policy")
+				}
+				want := ""
+				input, cache := int64(1000), int64(968)
+				switch {
+				case strings.HasPrefix(name, "lifecycle-slot-init-"):
+					want = fmt.Sprintf("SLOT_INIT_%d_271828", request["id_slot"].(int))
+				case name == "history-idle-populate" || name == "history-idle-reactivate":
+					text := request["messages"].([]any)[0].(map[string]any)["content"].(string)
+					if strings.Count(text, "checksum-label synthetic-only.") != 2048 || request["id_slot"] != 0 {
+						t.Error("lifecycle resident fixture or slot changed")
+					}
+					_, want = table(2048, false)
+					input, cache = 49216, 49184
+				case strings.HasPrefix(name, "history-active-second-"):
+					want = "SECOND_" + strings.TrimPrefix(name, "history-active-second-")
+				case strings.HasPrefix(name, "worker-"):
+					want = "WORKER_" + strings.TrimPrefix(name, "worker-")
+				case strings.HasPrefix(name, "cancel-stream-"):
+					if strings.HasSuffix(name, "-recovery") {
+						want = "CANCEL_RECOVERY"
+						break
+					}
+					active.Store(true)
+					<-ctx.Done()
+					active.Store(false)
+					response := canceledResponse()
+					response.RequestID, response.Report.Record.ID = name, name
+					response.CancellationVerified = name != test.fault
+					return response, ctx.Err()
+				case name == "media-red" || name == "media-same-red":
+					want = "RED"
+				case name == "media-blue":
+					want = "BLUE"
+				case name == "media-text":
+					want = "TEXT_RECOVERY"
+				default:
+					t.Errorf("unexpected lifecycle request %s", name)
+				}
+				if name == test.fault {
+					want = "WRONG"
+				}
+				response := fakeResponse(want, input, cache)
+				response.RequestID = name
+				if name == "history-idle-reactivate" && test.fault == name+"-blocked" {
+					response.Report.Record.Tokens.Cached = nil
+				}
+				return response, nil
+			})
+			if contract.Worst(results) != test.status || len(called) != test.callCount || len(results) != test.caseCount {
+				t.Fatalf("status/calls/phases mismatch: calls=%v results=%+v", called, results)
+			}
+			if test.fault == "" {
+				for _, name := range []string{"lifecycle-slot-init-0", "lifecycle-slot-init-1", "lifecycle-slot-init-2", "lifecycle-slot-init-3", "history-idle-reactivate", "worker-0", "worker-1", "worker-2", "worker-3", "cancel-stream-false", "cancel-stream-false-recovery", "cancel-stream-true", "cancel-stream-true-recovery", "media-red", "media-same-red", "media-blue", "media-text"} {
+					if called[name] != 1 {
+						t.Fatalf("standalone lifecycle did not exercise %s exactly once: %v", name, called)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestSlotInitializationRequiresObservedIdleIDsThenMeasuredCounters(t *testing.T) {
+	for _, test := range []struct {
+		fault     string
+		status    contract.Status
+		calls     int
+		caseCount int
+	}{
+		{"", contract.Pass, 4, 4},
+		{"still-missing", contract.Blocked, 4, 5},
+		{"no-slots", contract.Blocked, 0, 1},
+		{"probe-error", contract.Blocked, 0, 1},
+		{"missing-slot", contract.Blocked, 0, 1},
+		{"duplicate-id", contract.Blocked, 0, 1},
+		{"out-of-range-id", contract.Blocked, 0, 1},
+		{"active", contract.Blocked, 0, 1},
+		{"wrong-marker", contract.Fail, 2, 2},
+		{"truncated", contract.Fail, 2, 2},
+	} {
+		t.Run(test.fault, func(t *testing.T) {
+			initialized := [4]bool{}
+			probeCount, calls := 0, 0
+			opts := contract.Options{Model: "synthetic-model", Slots: func(context.Context) ([]contract.Slot, error) {
+				probeCount++
+				if test.fault == "probe-error" {
+					return nil, errors.New("native metadata unavailable")
+				}
+				var observed []contract.Slot
+				for id := 0; id < 4; id++ {
+					slot := contract.Slot{ID: id}
+					if initialized[id] && !(test.fault == "still-missing" && id == 3) {
+						slot.PromptTokens = ptr(int64(20))
+					}
+					observed = append(observed, slot)
+				}
+				switch test.fault {
+				case "missing-slot":
+					observed = observed[:3]
+				case "duplicate-id":
+					observed[3].ID = 0
+				case "out-of-range-id":
+					observed[3].ID = 4
+				case "active":
+					observed[2].Processing = true
+				}
+				return observed, nil
+			}}
+			if test.fault == "no-slots" {
+				opts.Slots = nil
+			}
+			results := initializeSlots(context.Background(), opts, func(_ context.Context, name string, request map[string]any) (contract.Response, error) {
+				slot := calls
+				calls++
+				marker := fmt.Sprintf("SLOT_INIT_%d_271828", slot)
+				prompt := request["messages"].([]any)[0].(map[string]any)
+				if name != fmt.Sprintf("lifecycle-slot-init-%d", slot) || request["id_slot"] != slot || request["model"] != opts.Model || request["max_tokens"] != 128 || request["reasoning_effort"] != "none" || request["cache_prompt"] != false || request["seed"] != 42 || request["stream"] != false || prompt["role"] != "user" || prompt["content"] != "Return exactly "+marker+", no explanation." {
+					t.Fatalf("initialization policy changed: name=%s request=%v", name, request)
+				}
+				initialized[slot] = true
+				response := fakeResponse(marker, 20, 0)
+				if slot == 1 && test.fault == "wrong-marker" {
+					response.Text = "WRONG"
+				}
+				if slot == 1 && test.fault == "truncated" {
+					response.Finish = "length"
+				}
+				return response, nil
+			}, "lifecycle-slot-init")
+			if calls != test.calls || len(results) != test.caseCount || contract.Worst(results) != test.status {
+				t.Fatalf("initialization gate mismatch: calls=%d results=%+v", calls, results)
+			}
+			if test.calls == 4 && probeCount != 2 {
+				t.Fatalf("missing strict post-initialization observation: probes=%d", probeCount)
+			}
+		})
+	}
+}
+
+func TestInitializationBlocksFamiliesBeforeInferenceOrCalibration(t *testing.T) {
+	for _, family := range []struct {
+		name string
+		run  func(context.Context, contract.Options, contract.Call) []contract.Result
+	}{{"lifecycle", Lifecycle}, {"prefill", Prefill}} {
+		t.Run(family.name, func(t *testing.T) {
+			opts := contract.Options{Tokenize: func(context.Context, string) (int, error) {
+				t.Error("calibrated before required slot preparation")
+				return 0, errors.New("unexpected calibration")
+			}}
+			results := family.run(context.Background(), opts, func(context.Context, string, map[string]any) (contract.Response, error) {
+				t.Error("sent inference without observing four idle slot identities")
+				return contract.Response{}, errors.New("unexpected inference")
+			})
+			if len(results) != 1 || results[0].Status != contract.Blocked || results[0].Name != family.name+"-slot-init-preflight" {
+				t.Fatalf("missing preparation did not block family: %+v", results)
+			}
+		})
+	}
+}
+
 func TestPrefillMeasuredWorkAndMissingTiming(t *testing.T) {
 	for _, missing := range []bool{false, true} {
-		call := func(_ context.Context, _ string, r map[string]any) (contract.Response, error) {
+		var names []string
+		call := func(_ context.Context, name string, r map[string]any) (contract.Response, error) {
+			names = append(names, name)
+			if strings.HasPrefix(name, "prefill-slot-init-") {
+				return fakeResponse(fmt.Sprintf("SLOT_INIT_%d_271828", r["id_slot"].(int)), 20, 0), nil
+			}
 			text := r["messages"].([]any)[0].(map[string]any)["content"].(string)
 			n := strings.Count(text, "checksum-label synthetic-only.")
 			_, want := table(n, false)
@@ -284,7 +537,10 @@ func TestPrefillMeasuredWorkAndMissingTiming(t *testing.T) {
 			}
 			return response, nil
 		}
-		results := Prefill(context.Background(), contract.Options{Tokenize: fakeTokens}, call)
+		results := Prefill(context.Background(), contract.Options{Tokenize: fakeTokens, Slots: func(context.Context) ([]contract.Slot, error) { return testSlots(50000, false), nil }}, call)
+		if len(names) < 5 || !reflect.DeepEqual(names[:5], []string{"prefill-slot-init-0", "prefill-slot-init-1", "prefill-slot-init-2", "prefill-slot-init-3", "prefill-32k-cold"}) {
+			t.Fatalf("timed prefill preceded required slot preparation: %v", names)
+		}
 		found := false
 		for _, r := range results {
 			if r.Name == "prefill-32k-measurement" {

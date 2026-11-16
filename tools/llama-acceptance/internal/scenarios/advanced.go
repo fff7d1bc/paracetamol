@@ -15,6 +15,56 @@ import (
 	"paracetamol/tools/llama-acceptance/internal/contract"
 )
 
+const slotInitVersion = "slot-init.v1; prefixes=lifecycle-slot-init,prefill-slot-init; slots=0,1,2,3; initial=exact-four-unique-idle-IDs; final=measured-prompt-counts-all-four; reasoning=none; cache=false; stream=false; seed=42; max_tokens=128"
+
+func slotInitPrompt(slot int) (string, string) {
+	marker := fmt.Sprintf("SLOT_INIT_%d_271828", slot)
+	return "Return exactly " + marker + ", no explanation.", marker
+}
+
+func initializeSlots(ctx context.Context, opts contract.Options, call contract.Call, prefix string) []contract.Result {
+	name := prefix + "-preflight"
+	if opts.Slots == nil {
+		return []contract.Result{blocked(name, "native slot probe unavailable")}
+	}
+	observed, err := opts.Slots(ctx)
+	if err != nil || len(observed) != 4 {
+		return []contract.Result{blocked(name, "requires four observable idle native slots")}
+	}
+	seen := map[int]bool{}
+	for _, slot := range observed {
+		// Fresh unused slots legitimately omit counters. Only this preflight
+		// admits absent counts: identity and idle state must still be observed.
+		if slot.ID < 0 || slot.ID > 3 || seen[slot.ID] || slot.Processing {
+			return []contract.Result{blocked(name, "requires exactly idle native slot IDs 0, 1, 2 and 3")}
+		}
+		seen[slot.ID] = true
+	}
+	var results []contract.Result
+	for slot := 0; slot < 4; slot++ {
+		prompt, want := slotInitPrompt(slot)
+		r := request(opts, []any{message("user", prompt)}, "none", false, false)
+		r["max_tokens"], r["id_slot"] = 128, slot
+		name := fmt.Sprintf("%s-%d", prefix, slot)
+		response, err := call(ctx, name, r)
+		if err == nil {
+			err = exact(response, want)
+		}
+		result := outcome(name, response, err)
+		results = append(results, result)
+		if result.Status != contract.Pass {
+			return results
+		}
+	}
+	// Initialization never fabricates zeroes. All later occupancy gates retain
+	// the strict measured-counter contract, even when every marker succeeded.
+	_, ready := slots(ctx, opts, prefix+"-ready")
+	if ready.Status != contract.Pass {
+		results = append(results, ready)
+	}
+	return results
+}
+
 func slots(ctx context.Context, opts contract.Options, name string) ([]contract.Slot, contract.Result) {
 	if opts.Slots == nil {
 		return nil, blocked(name, "native slot probe unavailable")
@@ -35,17 +85,41 @@ func slots(ctx context.Context, opts contract.Options, name string) ([]contract.
 	return s, contract.Result{Name: name, Status: contract.Pass, Measurements: map[string]float64{"sum_slot_prompt_tokens": float64(sum)}}
 }
 
-func idleHistory(ctx context.Context, opts contract.Options, call contract.Call, n int) []contract.Result {
+// Lifecycle is independent of long-context retrieval so an unrelated model
+// miss cannot suppress cancellation, slot isolation or media recovery checks.
+// Every subphase still fails closed; later phases cannot mask missing evidence.
+func Lifecycle(ctx context.Context, opts contract.Options, call contract.Call) []contract.Result {
+	results := initializeSlots(ctx, opts, call, "lifecycle-slot-init")
+	if contract.Worst(results) != contract.Pass {
+		return results
+	}
+	results = append(results, idleHistory(ctx, opts, call)...)
+	if contract.Worst(results) != contract.Pass {
+		return results
+	}
+	result := concurrent(ctx, opts, call)
+	results = append(results, result)
+	if result.Status != contract.Pass {
+		return results
+	}
+	for _, stream := range []bool{false, true} {
+		result = cancellation(ctx, opts, call, stream)
+		results = append(results, result)
+		if result.Status != contract.Pass {
+			return results
+		}
+	}
+	return append(results, media(ctx, opts, call)...)
+}
+
+func idleHistory(ctx context.Context, opts contract.Options, call contract.Call) []contract.Result {
 	_, probe := slots(ctx, opts, "history-idle-preflight")
 	if probe.Status != contract.Pass {
 		return []contract.Result{probe}
 	}
-	// A smaller resident history leaves room for a second sequence, unlike the
-	// near-limit single sequence above. A named slot is part of the test input.
-	if n > 2048 {
-		n = 2048
-	}
-	text, want := table(n, false)
+	// A fixed resident fixture leaves room for a second sequence and does not
+	// depend on long-context calibration. A named slot is part of the test input.
+	text, want := table(2048, false)
 	r := request(opts, []any{message("user", text)}, "none", true, false)
 	r["id_slot"] = 0
 	first, err := call(ctx, "history-idle-populate", r)

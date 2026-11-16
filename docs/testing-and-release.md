@@ -718,8 +718,8 @@ Retained dense Qwen3.8 27B needs a short completion and tool round trip, not
 a duplicate long-context matrix, unless a changed dense-specific path or a
 failed smoke requires deeper investigation. This does not replace numerical
 backend tests or the hardware-specific patch removal gates.
-The kit's `short`, `coding`, `history` and `prefill` suites permit targeted
-investigation, not a reduced full source-update gate. Missing required native,
+The kit's `short`, `lifecycle`, `coding`, `history` and `prefill` suites permit
+targeted investigation, not a reduced full source-update gate. Missing required native,
 production-path, performance or hardware evidence remains BLOCKED/deferred;
 neither an image build nor a short PASS supplies it. Use the
 [bounded coding-quality screen](#bounded-coding-quality-screen) to interpret
@@ -824,6 +824,10 @@ automatic hash regeneration. Host packaging tests only assert this wiring.
 Keep independent device and model gates. In particular, a long resident idle
 slot must remain reusable after work in another slot. Actual GPU-backed reset
 tests must preserve finite attention/indexer state and reject CPU fallback.
+The tracked recurrent-reset fixture currently executes CPU graphs only.
+It does not implement that GPU gate, which remains BLOCKED until a GPU
+fixture and rejected old-helper control are qualified. The full-model state
+screen below checks different behavior and cannot substitute for poisoning.
 Populated context, prefix reuse, edits, speculation, concurrency, cancellation
 and changed-media histories remain necessary where applicable. Never time a
 layout-verifier image as if it were the normal candidate.
@@ -891,11 +895,24 @@ Use the tracked [llama.cpp maintainer kit](../tools/llama-acceptance/README.md)
 for original public Go/Python toy tasks, independent value/ownership oracles,
 explicit CPU sandbox preparation and trusted/known-bad self-tests. Its
 predeclared first attempt, one repair when available and fresh seeds 1234/2026
-after a miss retain separate results. Coding misses and output ceilings remain
-REVIEW, not a deterministic engine defect or an erased first attempt. Sandbox
+after a miss retain separate results. Coding misses and coding output ceilings
+remain REVIEW, not a deterministic engine defect or an erased first attempt. Sandbox
 or prerequisite failures are BLOCKED. Public tests are withheld from model
 requests, not secret. The kit is not a general coding benchmark, Pi runner or
 Maki client; `tools/gufo-recheck/` remains its separate small literal/tool gate.
+
+Coding REVIEW is not an automatic source-update rejection or a requirement
+for perfect one-shot code generation. Review the complete, unchanged
+baseline/candidate attempt matrix, distinguishing an isolated miss recovered
+by the predeclared repair or fresh attempts from persistent failure to
+produce usable code. A maintainer may accept a documented inherited coding
+limitation when matched evidence shows no candidate deterioration. Preserve
+REVIEW and record that decision separately, never relabel the campaign PASS.
+Persistent candidate failure against a usable baseline requires investigation
+before acceptance. Persistent baseline failure makes this screen
+non-discriminating, not evidence that the candidate is healthy. Do not change
+budgets, seeds or oracles after observing results. This judgment cannot waive
+protocol, sampling-policy, numerical, isolation, performance or hardware gates.
 
 The [historical bounded screen](research/coding-quality-screen.md) preserves
 its full task, attempt, oracle, toolchain and sandbox protocol. Its ignored

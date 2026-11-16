@@ -444,6 +444,10 @@ func normalizedNativeArguments(args []string) ([]string, error) {
 // they are separately retained and never pooled as fixed-work measurements.
 func prefillInputs(run summary) map[string]string {
 	inputs := map[string]string{}
+	for slot := 0; slot < 4; slot++ {
+		name := fmt.Sprintf("prefill-slot-init-%d", slot)
+		inputs[name] = run.Evidence[name+".request.json"]
+	}
 	for _, name := range []string{"prefill-32k-cold", "condition-alpha-74000", "condition-beta-74000", "condition-gamma-74000", "condition-delta-74000", "condition-epsilon-74000", "condition-epsilon-113600", "condition-zeta-16000"} {
 		inputs[name] = run.Evidence[name+".request.json"]
 	}
@@ -550,7 +554,7 @@ func caseCoverage(run summary) (map[string]bool, map[string]bool, error) {
 		}
 	}
 	switch run.Suite {
-	case "short", "coding", "history", "prefill", "all":
+	case "short", "lifecycle", "coding", "history", "prefill", "all":
 	default:
 		return nil, nil, fmt.Errorf("unknown comparison suite")
 	}
@@ -574,9 +578,18 @@ func caseCoverage(run summary) (map[string]bool, map[string]bool, error) {
 		}
 	}
 	if run.Suite == "history" || run.Suite == "all" {
-		add("history-cold", "history-populate", "history-repeat", "history-edit", "history-append-1", "history-append-2", "history-idle-populate", "history-idle-resident", "history-active-second-0", "history-active-second-1", "history-active-second-2", "history-idle-after-second", "history-idle-reactivate", "four-worker-isolation", "cancel-stream-false", "cancel-stream-true", "media-red", "media-same-red", "media-blue", "media-text")
+		add("history-cold", "history-populate", "history-repeat", "history-edit", "history-append-1", "history-append-2")
+	}
+	if run.Suite == "lifecycle" || run.Suite == "all" {
+		for slot := 0; slot < 4; slot++ {
+			add(fmt.Sprintf("lifecycle-slot-init-%d", slot))
+		}
+		add("history-idle-populate", "history-idle-resident", "history-active-second-0", "history-active-second-1", "history-active-second-2", "history-idle-after-second", "history-idle-reactivate", "four-worker-isolation", "cancel-stream-false", "cancel-stream-true", "media-red", "media-same-red", "media-blue", "media-text")
 	}
 	if run.Suite == "prefill" || run.Suite == "all" {
+		for slot := 0; slot < 4; slot++ {
+			add(fmt.Sprintf("prefill-slot-init-%d", slot))
+		}
 		add("prefill-32k-cold", "prefill-32k-measurement", "conditioning-near-pool", "prefill-aged16k")
 		for _, name := range []string{"condition-alpha-74000", "condition-beta-74000", "condition-gamma-74000", "condition-delta-74000", "condition-epsilon-74000", "condition-epsilon-113600"} {
 			add(name, name+"-slots")

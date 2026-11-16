@@ -8,7 +8,7 @@ import (
 	"paracetamol/internal/gateway"
 )
 
-const Version = "paracetamol.llama-acceptance.v1"
+const Version = "paracetamol.llama-acceptance.v2"
 
 type Status string
 
@@ -19,7 +19,7 @@ const (
 	Review  Status = "REVIEW"
 )
 
-// Result is scoped to a named case. REVIEW retains a bounded model miss or a
+// Result is scoped to a named case. REVIEW retains a bounded coding miss or a
 // performance observation without pretending it proves an engine defect.
 type Result struct {
 	Name         string             `json:"name"`
