@@ -224,15 +224,23 @@ func TestContainerLifecycleRefusesManagedDirectContainer(t *testing.T) {
 	}
 }
 
-func TestContainerLifecycleReclaimsOnlyItsExactStaleContainer(t *testing.T) {
+func TestContainerLifecycleAvailabilityNeverReclaimsExistingContainers(t *testing.T) {
 	name := gatewayContainerNames[AllocationLlamaCPP]
 	runner := &lifecycleRunner{conflict: name + "\n", running: true}
 	lifecycle := llamaLifecycleFixture(t, runner)
-	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err != nil {
-		t.Fatal(err)
+	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("existing current-instance backend: %v", err)
 	}
-	if runner.running {
-		t.Fatal("owned stale gateway container was not reclaimed")
+	if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("start over an existing current-instance backend: %v", err)
+	}
+	if !runner.running {
+		t.Fatal("availability checks removed an existing backend")
+	}
+	for _, command := range runner.commands {
+		if len(command.Args) > 0 && (command.Args[0] == "rm" || command.Args[0] == "run") {
+			t.Fatalf("availability check mutated existing backend: %v", command.Args)
+		}
 	}
 
 	unmanaged := &lifecycleRunner{running: true}

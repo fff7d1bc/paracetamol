@@ -198,11 +198,17 @@ backend cleanup. Ctrl-C, `stop gateway`, and `stop all` stop accepting work on
 every address, drain active HTTP requests, remove its exact private backend
 container, print a successful stop, and exit cleanly. The stop commands use a
 private same-user Unix socket, never the published HTTP API. Its location is
-`$XDG_RUNTIME_DIR/paracetamol/gateway.sock`, or
-`$HOME/.local/share/paracetamol/run/gateway.sock` when the runtime directory is
-unset. One gateway may run per user. A gateway started by an older build has no
-control socket and still needs Ctrl-C or SIGTERM. Non-loopback publication is
-visibly warned about using the effective bound addresses. Without a configured
+always `$HOME/.local/share/paracetamol/run/gateway.sock`; `HOME` must be an
+absolute path. The adjacent private lock reserves gateway ownership before
+backend checks or persistent writes and remains held through shutdown. One
+gateway may run within the same account HOME, regardless of its public port,
+data directory or `XDG_RUNTIME_DIR`; changing HOME is not a supported way to
+coordinate gateways sharing a Podman namespace. Stop commands use that same
+HOME even when invoked from another runtime directory. Stop an already-running
+older build before upgrading, using its original checkout or Ctrl-C: builds
+using the former XDG runtime socket cannot be controlled through the new path.
+Builds predating local control still need Ctrl-C or SIGTERM. Non-loopback
+publication is visibly warned about using the effective bound addresses. Without a configured
 key it is an unauthenticated trusted-network publication. With a key, the
 warning still identifies unencrypted HTTP.
 
@@ -379,8 +385,12 @@ If backend removal fails, the scheduler keeps the exact allocation in
 does not retry removal in the background or start another allocation while
 ownership is uncertain. Stop the gateway to request one final exact-owned
 cleanup attempt; a failed shutdown reports the removal error. After resolving
-the underlying Podman problem, restart the gateway to reclaim its exact stale
-backend during normal preflight.
+the underlying Podman problem, verify that the owning gateway has exited and
+inspect the exact container's managed/application/role/instance labels before
+removing that orphan explicitly with Podman. Startup never treats a canonical
+instance label as proof that its owner is dead; it refuses an existing backend
+instead of automatically reclaiming it. Do not remove a live owner's container
+or use a general prune.
 
 A failed startup also attempts exact-owned cleanup, including when the Podman
 client was canceled after creating its detached container. Cleanup does not
@@ -556,10 +566,11 @@ threat model would require independently protecting the backend transport.
 
 Before opening the public listener, startup verifies rootless Podman, every
 selected image, device policy, the receipt-backed content snapshot, and
-container collisions. A stale container may be reclaimed only when its exact
-name and managed/application/`gateway-backend` labels all match and it has a
-canonical gateway-instance label. Ordinary shutdown requires the current
-process's exact instance label. Direct,
+container collisions. It first reserves the HOME-anchored control lock, before
+backend checks or generated router writes. Container availability checks are
+read-only and refuse any existing backend, including one bearing a canonical
+gateway-instance label; that label alone cannot prove staleness. Ordinary
+shutdown requires the current process's exact instance label. Direct,
 benchmark, foreign, or ambiguously labelled containers are preserved and make
 the operation fail. Direct application launch applies the reciprocal check.
 

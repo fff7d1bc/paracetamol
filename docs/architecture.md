@@ -307,9 +307,13 @@ changes require restart to change the snapshot. Inventory is not residency.
 No backend is eagerly loaded. One allocation is resident, using a constrained
 llama.cpp router on an ephemeral loopback port. Public requests use gateway
 listeners; managed local clients retain IPv4 loopback. Complete listener
-validation and binding are all-or-nothing. Reclamation requires the exact
-backend name and every gateway ownership label; direct, benchmark and foreign
-collisions fail.
+validation and binding are all-or-nothing. Before backend checks, listener
+binding or persistent preparation, startup acquires the private HOME-anchored
+control lock and retains it through backend shutdown. Different ports, data
+roots and `XDG_RUNTIME_DIR` values do not create independent gateways within
+the same account HOME. This is not a cross-HOME or hostile same-user boundary.
+Availability checks never remove containers; existing backend, direct,
+benchmark and foreign collisions fail.
 
 The serving process generates one opaque instance nonce and passes it to its
 container lifecycle and HTTP server. Backend containers carry that nonce in
@@ -317,10 +321,12 @@ their gateway-instance label; status and request reports expose the same
 process identity. Acceptance binds the inspected container to that identity
 before sending requests and rechecks it at completion. Matching model
 inventories or container names alone do not establish which image answered.
-Ordinary cleanup requires the current process's label. Explicit startup
-reclamation recognizes a canonical stale instance but never guesses ownership
-from a missing label. This is local correlation, not authentication against a
-malicious process running as the same user.
+Ordinary cleanup requires the current process's label. A canonical nonce does
+not establish that its owner has exited, so startup and allocation never
+reclaim another process's backend. Operators must verify orphan ownership and
+remove that exact container explicitly. A dead control socket can be replaced
+only after acquiring its lock. This is local correlation, not authentication
+against a malicious process running as the same user.
 
 The scheduler, proxy, cancellation and failed-cleanup policy belong to
 `internal/gateway/`. Backend slots, child eviction, KV allocation and

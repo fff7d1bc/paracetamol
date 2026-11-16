@@ -18,8 +18,10 @@ import (
 )
 
 // LocalControl gives the foreground gateway a same-user stop path. The lock
-// prevents two gateways from claiming the same socket, including after a crash
-// leaves the socket inode behind. The HTTP listener is never a stop endpoint.
+// prevents two gateways from claiming the shared backend names and router
+// configuration, including while no backend is loaded. Its location must not
+// vary with XDG_RUNTIME_DIR, public port or application data directory. The
+// HTTP listener is never a stop endpoint.
 type LocalControl struct {
 	path       string
 	listener   *net.UnixListener
@@ -35,19 +37,11 @@ type LocalControl struct {
 }
 
 func localControlPath(environment map[string]string) (string, error) {
-	root := environment["XDG_RUNTIME_DIR"]
-	if root != "" {
-		if !filepath.IsAbs(root) {
-			return "", fmt.Errorf("XDG_RUNTIME_DIR must be an absolute path")
-		}
-		root = filepath.Join(root, identity.StateNamespace)
-	} else {
-		home := environment["HOME"]
-		if home == "" || !filepath.IsAbs(home) {
-			return "", fmt.Errorf("HOME must be an absolute path when XDG_RUNTIME_DIR is unset")
-		}
-		root = filepath.Join(home, ".local", "share", identity.StateNamespace, "run")
+	home := environment["HOME"]
+	if home == "" || !filepath.IsAbs(home) {
+		return "", fmt.Errorf("HOME must be an absolute path for gateway ownership and control")
 	}
+	root := filepath.Join(home, ".local", "share", identity.StateNamespace, "run")
 	return filepath.Join(root, "gateway.sock"), nil
 }
 

@@ -68,6 +68,7 @@ func TestStopGatewayNeedsNoPodmanAndStopAllDrainsGatewayFirst(t *testing.T) {
 				return process.Result{Status: 1}
 			}}
 			app, stdout, _ := testApp(t, runner)
+			app.Environment["HOME"] = absolute
 			app.Environment["XDG_RUNTIME_DIR"] = absolute
 			control, err := gateway.StartLocalControl(app.Environment)
 			if err != nil {

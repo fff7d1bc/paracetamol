@@ -115,9 +115,8 @@ func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error
 	}, nil
 }
 
-// Preflight validates every selected backend before the public listener is
-// opened. Only a stale container bearing the exact gateway ownership labels
-// is reclaimed; direct, benchmark, and foreign containers are preserved.
+// Preflight validates every selected backend without removing containers.
+// A canonical instance label identifies a process, not whether it is dead.
 func (lifecycle *ContainerLifecycle) Preflight(ctx context.Context, allocations []Allocation) error {
 	if err := lifecycle.podman.RequireRootless(ctx); err != nil {
 		return err
@@ -139,7 +138,7 @@ func (lifecycle *ContainerLifecycle) Preflight(ctx context.Context, allocations 
 		if !present {
 			return fmt.Errorf("gateway application image is not built: %s", application.Image)
 		}
-		if err := lifecycle.requireAvailable(ctx, allocation, true); err != nil {
+		if err := lifecycle.requireAvailable(ctx, allocation); err != nil {
 			return err
 		}
 	}
@@ -150,7 +149,7 @@ func (lifecycle *ContainerLifecycle) Start(ctx context.Context, allocation Alloc
 	if _, ok := gatewayContainerNames[allocation]; !ok {
 		return nil, fmt.Errorf("unknown gateway allocation %q", allocation)
 	}
-	if err := lifecycle.requireAvailable(ctx, allocation, true); err != nil {
+	if err := lifecycle.requireAvailable(ctx, allocation); err != nil {
 		return nil, err
 	}
 	command, internalPort, readinessPath, err := lifecycle.command(allocation)
@@ -301,7 +300,7 @@ func (lifecycle *ContainerLifecycle) waitReady(ctx context.Context, allocation A
 	}
 }
 
-func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, allocation Allocation, reclaim bool) error {
+func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, allocation Allocation) error {
 	application := string(allocation)
 	target := gatewayContainerNames[allocation]
 	names, err := lifecycle.podman.ManagedContainerNames(ctx, application)
@@ -332,11 +331,7 @@ func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, alloc
 	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != application || labels[podman.ManagedRoleLabel] != GatewayBackendRole || !ValidInstanceID(labels[GatewayInstanceLabel]) {
 		return fmt.Errorf("gateway container name has unexpected ownership labels: %s", target)
 	}
-	if !reclaim {
-		return fmt.Errorf("gateway backend container already exists: %s", target)
-	}
-	logLine(lifecycle.options.Log, "gateway | reclaiming stale backend container %s", target)
-	return lifecycle.podman.RemoveContainer(ctx, target, 2, podman.Streams{})
+	return fmt.Errorf("gateway backend container already exists; stop its owner or verify and remove the exact orphan explicitly: %s", target)
 }
 
 func (lifecycle *ContainerLifecycle) removeOwned(ctx context.Context, allocation Allocation) error {

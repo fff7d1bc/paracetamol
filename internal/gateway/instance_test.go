@@ -72,11 +72,18 @@ func TestLifecycleBindsContainerAndProtectsAnotherInstance(t *testing.T) {
 	if err := lifecycle.Stop(context.Background(), AllocationLlamaCPP); err == nil || !runner.running {
 		t.Fatalf("stop must preserve a different gateway instance: running=%v err=%v", runner.running, err)
 	}
-	// Explicit startup reclamation still recognizes a canonical old process;
-	// ordinary stop is narrower and only owns this process's container.
+	// A well-formed foreign nonce does not prove its gateway has stopped.
 	runner.conflict = gatewayContainerNames[AllocationLlamaCPP] + "\n"
-	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err != nil || runner.running {
-		t.Fatalf("canonical stale instance was not reclaimed: running=%v err=%v", runner.running, err)
+	if err := lifecycle.Preflight(context.Background(), []Allocation{AllocationLlamaCPP}); err == nil || !runner.running {
+		t.Fatalf("preflight must preserve another gateway instance: running=%v err=%v", runner.running, err)
+	}
+	if _, err := lifecycle.Start(context.Background(), AllocationLlamaCPP); err == nil || !runner.running {
+		t.Fatalf("start must preserve another gateway instance: running=%v err=%v", runner.running, err)
+	}
+	for _, command := range runner.commands {
+		if len(command.Args) > 0 && (command.Args[0] == "rm" || command.Args[0] == "run") {
+			t.Fatalf("foreign instance was mutated: %v", command.Args)
+		}
 	}
 }
 

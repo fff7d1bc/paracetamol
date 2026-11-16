@@ -143,6 +143,17 @@ func (app *App) runGateway(args []string) (result error) {
 		}
 		routerPath = filepath.Join((storage.Layout{Root: dataRoot}).Application("llama-cpp"), "models.ini")
 	}
+	// Reserve the shared gateway names and router before any lifecycle action
+	// or persistent preparation, even when the incumbent has no loaded backend
+	// or uses another port, data root or XDG runtime directory.
+	control, err := gateway.StartLocalControl(app.Environment)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		result = errors.Join(result, control.Close())
+		control.Finish(result)
+	}()
 	gatewayLog := gateway.NewAtomicLogWriter(app.Stderr)
 	instanceID, err := gateway.NewInstanceID()
 	if err != nil {
@@ -184,14 +195,6 @@ func (app *App) runGateway(args []string) (result error) {
 	if err != nil {
 		return err
 	}
-	control, err := gateway.StartLocalControl(app.Environment)
-	if err != nil {
-		return errors.Join(err, scheduler.Shutdown(contextWithoutCancel()))
-	}
-	defer func() {
-		result = errors.Join(result, control.Close())
-		control.Finish(result)
-	}()
 	// The local control lock owns the sole statistics writer. Closing after
 	// HTTP draining preserves final requests without making storage failures
 	// failures of an otherwise successfully stopped inference service.

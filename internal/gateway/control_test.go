@@ -14,12 +14,13 @@ import (
 func controlEnvironment(t *testing.T) map[string]string {
 	t.Helper()
 	// Unix socket paths are short on Linux; Go's test-name temp directories
-	// under GOTMPDIR are long enough to exceed sockaddr_un.sun_path.
+	// under GOTMPDIR are long enough to exceed sockaddr_un.sun_path. Keep the
+	// prefix short too: the HOME suffix must fit in hosted CI checkout paths.
 	build := filepath.Join("..", "..", "build")
 	if err := os.MkdirAll(build, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	root, err := os.MkdirTemp(build, "control-")
+	root, err := os.MkdirTemp(build, "gc-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +29,23 @@ func controlEnvironment(t *testing.T) map[string]string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(absolute) })
-	return map[string]string{"XDG_RUNTIME_DIR": absolute}
+	return map[string]string{"HOME": absolute, "XDG_RUNTIME_DIR": filepath.Join(absolute, "runtime")}
+}
+
+func TestLocalControlOwnershipIgnoresRuntimeDirectory(t *testing.T) {
+	environment := controlEnvironment(t)
+	control, err := StartLocalControl(environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	for _, runtimeRoot := range []string{"", filepath.Join(environment["HOME"], "another-runtime"), "relative-ignored"} {
+		other := map[string]string{"HOME": environment["HOME"], "XDG_RUNTIME_DIR": runtimeRoot}
+		if _, err := StartLocalControl(other); err == nil || !strings.Contains(err.Error(), "already running") {
+			t.Fatalf("runtime root %q bypassed ownership: %v", runtimeRoot, err)
+		}
+	}
+	control.Finish(nil)
 }
 
 func TestLocalControlStopsOnlyItsGatewayAfterDrain(t *testing.T) {
@@ -42,7 +59,8 @@ func TestLocalControlStopsOnlyItsGatewayAfterDrain(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		stopped, stopErr := StopLocalGateway(ctx, environment)
+		otherEnvironment := map[string]string{"HOME": environment["HOME"], "XDG_RUNTIME_DIR": filepath.Join(environment["HOME"], "other-runtime")}
+		stopped, stopErr := StopLocalGateway(ctx, otherEnvironment)
 		if !stopped && stopErr == nil {
 			stopErr = errors.New("live gateway was reported absent")
 		}
@@ -61,6 +79,18 @@ func TestLocalControlStopsOnlyItsGatewayAfterDrain(t *testing.T) {
 	control.Finish(nil)
 	if err := <-result; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLocalControlRequiresAbsoluteHome(t *testing.T) {
+	for _, home := range []string{"", "relative-home"} {
+		environment := map[string]string{"HOME": home, "XDG_RUNTIME_DIR": t.TempDir()}
+		if _, err := StartLocalControl(environment); err == nil || !strings.Contains(err.Error(), "HOME must be an absolute path") {
+			t.Fatalf("home=%q start error=%v", home, err)
+		}
+		if _, err := StopLocalGateway(context.Background(), environment); err == nil || !strings.Contains(err.Error(), "HOME must be an absolute path") {
+			t.Fatalf("home=%q stop error=%v", home, err)
+		}
 	}
 }
 
