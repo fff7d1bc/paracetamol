@@ -436,6 +436,8 @@ revalidates the same captured identity.
 Acceptance and speculative-benchmark checkpoint fingerprints bind run
 definitions, inputs, images, runtime policy and host source identity. Clean
 source uses the Git revision. Tracked or untracked changes add a content digest.
+Tracked changes use Git's binary diff with external diff helpers, text
+conversion and color disabled, so those renderers cannot hide changed bytes.
 ComfyUI suite signatures bind bundle, artifact and workflow identities plus
 image and runtime configuration, but not host source identity. Resume rejects
 incompatible checkpoints and validates paths/state before trusting progress.

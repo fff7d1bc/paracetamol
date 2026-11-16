@@ -86,6 +86,70 @@ func TestProjectSourceIdentityRequiresMatchingGitWorktree(t *testing.T) {
 
 type sourceIdentityOSRunner struct{ ceiling string }
 
+func TestProjectSourceIdentityBypassesDiffRenderers(t *testing.T) {
+	root := t.TempDir()
+	runner := sourceIdentityOSRunner{root}
+	run := func(arguments ...string) process.Result {
+		t.Helper()
+		result, err := runner.Run(t.Context(), process.Command{Name: "git", Args: append([]string{"-C", root}, arguments...)})
+		if err != nil || result.Status != 0 {
+			t.Fatalf("git %v failed: %v status=%d stderr=%s", arguments, err, result.Status, result.Stderr)
+		}
+		return result
+	}
+	write := func(name, contents string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("init", "--quiet")
+	write("main.go", "package original\n")
+	write(".gitattributes", "*.go diff=fixture\n")
+	run("add", "main.go", ".gitattributes")
+	run("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "--no-gpg-sign", "-m", "fixture")
+	revision := strings.TrimSpace(string(run("rev-parse", "HEAD").Stdout))
+	app, _, _ := testApp(t, runner)
+	app.Root = root
+	write("main.go", "package first_change\n")
+	first, err := app.projectSourceIdentity()
+	if err != nil || !strings.HasPrefix(first, revision+"+dirty.") {
+		t.Fatalf("dirty identity=%q err=%v", first, err)
+	}
+	for _, setting := range []struct{ key, value string }{
+		{"diff.external", "true"},
+		{"diff.fixture.textconv", "true"},
+		{"color.diff", "always"},
+	} {
+		run("config", "--local", setting.key, setting.value)
+		got, err := app.projectSourceIdentity()
+		run("config", "--local", "--unset", setting.key)
+		if err != nil || got != first {
+			t.Fatalf("%s changed or erased source identity: got=%q want=%q err=%v", setting.key, got, first, err)
+		}
+	}
+	// Both staged and unstaged edits must remain visible even when a display
+	// helper would render every revision as the same empty text.
+	run("config", "--local", "diff.external", "true")
+	run("config", "--local", "diff.fixture.textconv", "true")
+	run("add", "main.go")
+	staged, err := app.projectSourceIdentity()
+	if err != nil || staged != first {
+		t.Fatalf("staging changed source identity: got=%q want=%q err=%v", staged, first, err)
+	}
+	write("main.go", "package second_change\n")
+	second, err := app.projectSourceIdentity()
+	if err != nil || second == first || !strings.HasPrefix(second, revision+"+dirty.") {
+		t.Fatalf("second change was lost: got=%q previous=%q err=%v", second, first, err)
+	}
+	write("main.go", "package original\n")
+	run("add", "main.go")
+	clean, err := app.projectSourceIdentity()
+	if err != nil || clean != revision {
+		t.Fatalf("clean configured checkout identity=%q want=%q err=%v", clean, revision, err)
+	}
+}
+
 func (runner sourceIdentityOSRunner) LookPath(name string) (string, error) {
 	return (process.OSRunner{}).LookPath(name)
 }

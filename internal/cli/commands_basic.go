@@ -1051,7 +1051,9 @@ func (app *App) projectSourceIdentity() (string, error) {
 	if len(revision) != 40 || strings.Trim(revision, "0123456789abcdef") != "" {
 		return "", fmt.Errorf("project revision is invalid")
 	}
-	difference, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "diff", "--binary", "HEAD", "--"}})
+	// Fingerprint Git's binary diff, not a configured display helper. External
+	// diff and textconv programs can omit changed bytes or even return no output.
+	difference, err := app.Runner.Run(app.Context, process.Command{Name: "git", Args: []string{"-C", app.Root, "diff", "--binary", "--no-ext-diff", "--no-textconv", "--no-color", "HEAD", "--"}})
 	if err != nil || difference.Status != 0 {
 		return "", fmt.Errorf("cannot fingerprint tracked project changes")
 	}

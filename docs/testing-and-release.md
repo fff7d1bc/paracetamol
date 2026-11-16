@@ -173,6 +173,11 @@ every cause and prior attempt while keeping persisted text printable, and
 retain the original returned error. Do not weaken metadata validation to make
 a checkpoint resumable.
 
+Source-identity checks use a real temporary Git checkout. Test configured
+external diffs and text conversion that return empty output, plus forced diff
+color. They must neither hide staged/unstaged changes nor alter the fingerprint
+for the same bytes. A clean checkout must still identify its exact revision.
+
 Gateway statistics tests use temporary SQLite files and fixture HTTP responses.
 They cover UTC boundaries, retention, restart and shutdown draining, streaming
 and JSON usage, missing observations, queue overflow, corrupt stores, file
