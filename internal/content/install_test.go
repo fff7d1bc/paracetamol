@@ -321,6 +321,8 @@ func (runner *publicationRunner) Run(_ context.Context, command process.Command)
 	case "run":
 		runner.downloads++
 		return process.Result{Status: 42}, nil
+	case "container":
+		return process.Result{Status: 1}, nil // no container survived this launch
 	default:
 		return process.Result{}, fmt.Errorf("unexpected podman command: %v", command.Args)
 	}
@@ -857,6 +859,8 @@ func (runner *archiveRunner) Run(_ context.Context, command process.Command) (pr
 	case "run":
 		runner.downloads++
 		return process.Result{Status: runner.status}, os.WriteFile(runner.path, runner.contents, 0o644)
+	case "container":
+		return process.Result{Status: 1}, nil // --rm removed the completed downloader
 	default:
 		return process.Result{}, fmt.Errorf("unexpected podman operation %v", command.Args)
 	}

@@ -377,6 +377,10 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 				if err != nil {
 					return err
 				}
+				command, launchID, err := podman.WithLaunchIdentity(command)
+				if err != nil {
+					return err
+				}
 				measurement := newDownloadMeasurement(stagingRoot(options.DataRoot, artifact), download, artifact)
 				progress := ui.NewDownloadProgress(options.Output, options.Environment, downloadSize(artifact), artifact.Source.ArchiveMember != "")
 				progress.Update(measurement.bytes(), false)
@@ -409,7 +413,9 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 						fmt.Fprintln(options.Output)
 					}
 				}
-				cleanupErr := client.RemoveContainer(context.WithoutCancel(options.Context), containerName, 0, podman.Streams{})
+				// A failed run may have lost a name conflict without creating any
+				// container. Recover only this launch and remove its captured ID.
+				cleanupErr := client.RemoveLaunchContainer(context.WithoutCancel(options.Context), containerName, "", "download", launchID, 0)
 				if err != nil {
 					if cleanupErr != nil {
 						return fmt.Errorf("download process failed: %w; additionally could not remove %s: %v", err, containerName, cleanupErr)

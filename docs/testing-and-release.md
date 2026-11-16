@@ -133,6 +133,11 @@ failure release. Standalone workflow installation must remain usable without
 Podman. Run the content, CLI and storage race tests after changing this
 boundary. No model download or inference is needed for these checks.
 
+Downloader cleanup tests must include a name-conflict loser that created no
+container. Preserve that foreign occupant, require the matching launch nonce
+and captured full ID before removal, and retain staging and diagnostics after
+workload failure, cancellation or failed cleanup.
+
 Runtime startup tests must cover both contention orders with destructive data
 cleanup, including cleanup paused at confirmation and startup paused during
 preparation or container creation. A stopped, ownership-verified container must

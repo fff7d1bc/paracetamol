@@ -240,8 +240,10 @@ stop and confirmed container cleanup validate their complete plans before
 removal, then revalidate ownership and act on captured immutable IDs. A renamed
 original can be removed, but a new occupant of its former name cannot redirect
 cleanup. Downloader cleanup runs after every outcome, including cancellation,
-while failed staging remains resumable. Never add general Podman or system
-pruning.
+while failed staging remains resumable. It checks the downloader's fresh launch
+nonce before capturing and revalidating a full ID for removal. A name-conflict
+winner is not evidence that the failed launch created a container. Never add
+general Podman or system pruning.
 
 Directory cleanup captures open target and parent handles before approval,
 then revalidates every planned identity before the first deletion. Recursive
