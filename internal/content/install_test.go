@@ -532,6 +532,7 @@ func TestMirrorCopyRefusesLinksAndUnexpectedDestinations(t *testing.T) {
 			if err := os.WriteFile(source, contents, 0o644); err != nil {
 				t.Fatal(err)
 			}
+			candidate := verifiedMirrorCandidate(t, mirrorRoot, source, contents)
 			if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -558,7 +559,7 @@ func TestMirrorCopyRefusesLinksAndUnexpectedDestinations(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, move := range []bool{false, true} {
-				if err := (localMirror{root: mirrorRoot, move: move}).materialize(source, destination); err == nil {
+				if err := (localMirror{root: mirrorRoot, move: move}).materialize(candidate, destination); err == nil {
 					t.Fatalf("accepted %s with move=%v", kind, move)
 				}
 			}
@@ -584,7 +585,8 @@ func TestMirrorCopyHonorsHostUmask(t *testing.T) {
 		if err := os.WriteFile(source, []byte("model"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := (localMirror{root: root}).materialize(source, destination); err != nil {
+		candidate := verifiedMirrorCandidate(t, root, source, []byte("model"))
+		if err := (localMirror{root: root}).materialize(candidate, destination); err != nil {
 			t.Fatal(err)
 		}
 		info, err := os.Stat(destination)

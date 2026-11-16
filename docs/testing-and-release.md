@@ -138,6 +138,13 @@ container. Preserve that foreign occupant, require the matching launch nonce
 and captured full ID before removal, and retain staging and diagnostics after
 workload failure, cancellation or failed cleanup.
 
+Mirror tests replace or edit a candidate after preflight, including same-size
+edits. Both copy and move must refuse it before transfer. Exercise real
+same-filesystem moves plus deterministic cross-device copy, failed publication,
+interruption and source replacement during copying or publication. No changed
+source may be unlinked, no unverified payload published, and failed-copy
+scratch must remain available.
+
 Runtime startup tests must cover both contention orders with destructive data
 cleanup, including cleanup paused at confirmation and startup paused during
 preparation or container creation. A stopped, ownership-verified container must

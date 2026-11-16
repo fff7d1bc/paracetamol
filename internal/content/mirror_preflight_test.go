@@ -198,8 +198,8 @@ func TestLocalMirrorRequiresMatchingNameSizeAndHashWithoutFollowingLinks(t *test
 			}
 			var output bytes.Buffer
 			got, err := index.find(context.Background(), artifact, &output, nil)
-			if err != nil || (got != "") != (name == "match") {
-				t.Fatalf("find = %q, %v", got, err)
+			if err != nil || (got.path != "") != (name == "match") {
+				t.Fatalf("find = %+v, %v", got, err)
 			}
 		})
 	}

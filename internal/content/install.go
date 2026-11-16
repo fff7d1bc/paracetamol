@@ -218,7 +218,7 @@ func installArtifacts(options InstallOptions) error {
 		return err
 	}
 	needsNetwork := false
-	mirrorMatches := make(map[string]string)
+	mirrorMatches := make(map[string]mirrorCandidate)
 	for _, artifact := range options.Artifacts {
 		status, inspectErr := InspectArtifact(store, options.DataRoot, artifact, false)
 		if inspectErr != nil {
@@ -230,7 +230,7 @@ func installArtifacts(options InstallOptions) error {
 				return findErr
 			}
 			mirrorMatches[artifact.ID] = candidate
-			if candidate == "" && !stagedDownloadReady(options.DataRoot, artifact) {
+			if candidate.path == "" && !stagedDownloadReady(options.DataRoot, artifact) {
 				needsNetwork = true
 			}
 		}
@@ -322,7 +322,7 @@ func requireNoDownloaders(ctx context.Context, client podman.Client) error {
 	return nil
 }
 
-func installMissing(options InstallOptions, client podman.Client, store *verification.Store, mirror localMirror, mirrorCandidate string, artifact catalog.Artifact, index int) error {
+func installMissing(options InstallOptions, client podman.Client, store *verification.Store, mirror localMirror, candidate mirrorCandidate, artifact catalog.Artifact, index int) error {
 	payload := payloadPath(options.DataRoot, artifact)
 	download := downloadPath(options.DataRoot, artifact)
 	if err := storage.ValidateManagedParent(payload, stagingPartition(options.DataRoot, artifact), options.DataRoot, "staging"); err != nil {
@@ -349,14 +349,14 @@ func installMissing(options InstallOptions, client podman.Client, store *verific
 		return err
 	}
 	if !stagedPayloadReady(options.DataRoot, artifact) {
-		if mirrorCandidate != "" {
+		if candidate.path != "" {
 			terminal := ui.New(options.Output, options.Environment)
 			action := "Copying"
 			if mirror.move {
 				action = "Moving"
 			}
-			fmt.Fprintf(options.Output, "%s local mirror file: %s\n", terminal.Heading(action), mirrorCandidate)
-			if err := mirror.materialize(mirrorCandidate, payload); err != nil {
+			fmt.Fprintf(options.Output, "%s local mirror file: %s\n", terminal.Heading(action), candidate.path)
+			if err := mirror.materialize(candidate, payload); err != nil {
 				return err
 			}
 		} else {
@@ -799,6 +799,18 @@ type localMirror struct {
 	byName   map[string][]string
 	digests  map[string]string
 	reserved map[string]bool
+	// Narrow transfer boundaries permit deterministic replacement/interruption
+	// checks without real cross-device mounts or concurrent timing guesses.
+	rename  func(string, string) error
+	copy    func(io.Writer, io.Reader) (int64, error)
+	publish func(string, string, os.FileMode, atomicfile.Policy) error
+}
+
+// A pathname or matching bytes alone cannot authorize removing a mirror file:
+// retain the identity observed around hashing through the final mutation.
+type mirrorCandidate struct {
+	path, identity, sha256 string
+	size                   int64
 }
 
 // ValidateLocalMirror checks only the roots, without indexing or hashing mirror
@@ -875,9 +887,9 @@ func openMirror(root, dataRoot string, move bool) (localMirror, error) {
 	return localMirror{root: resolved, move: move, byName: index, digests: make(map[string]string), reserved: make(map[string]bool)}, nil
 }
 
-func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, output io.Writer, environment map[string]string) (string, error) {
+func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, output io.Writer, environment map[string]string) (mirrorCandidate, error) {
 	if mirror.root == "" {
-		return "", nil
+		return mirrorCandidate{}, nil
 	}
 	names := []string{artifact.SHA256, filepath.Base(artifact.Destination), filepath.Base(artifact.Source.Path)}
 	checked := make(map[string]bool)
@@ -888,13 +900,13 @@ func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, 
 			}
 			checked[candidate] = true
 			info, err := os.Lstat(candidate)
-			if err != nil || !info.Mode().IsRegular() || info.Size() != artifact.Size {
+			if err != nil || !singleRegular(info) || info.Size() != artifact.Size {
 				continue
 			}
-			fingerprint := fileIdentity(info)
-			if fingerprint == "" {
-				fingerprint = candidate
+			if err := storage.ValidateManagedParent(candidate, mirror.root, mirror.root, "local mirror"); err != nil {
+				return mirrorCandidate{}, err
 			}
+			fingerprint := fileIdentity(info)
 			digest, ok := mirror.digests[fingerprint]
 			if !ok {
 				terminal := ui.New(output, environment)
@@ -906,28 +918,45 @@ func (mirror *localMirror) find(ctx context.Context, artifact catalog.Artifact, 
 				})
 				if err == nil {
 					progress.Update(filepath.Base(candidate), 1, 1, artifact.Size, true)
-					mirror.digests[fingerprint] = digest
 				} else {
 					progress.Finish()
 					if errors.Is(err, context.Canceled) {
-						return "", err
+						return mirrorCandidate{}, err
 					}
 					continue
 				}
 			}
+			current, err := os.Lstat(candidate)
+			if err != nil || !singleRegular(current) || fileIdentity(current) != fingerprint {
+				return mirrorCandidate{}, controlerr.New("local mirror source changed during verification: %s", candidate)
+			}
+			mirror.digests[fingerprint] = digest
 			if digest == artifact.SHA256 {
 				if mirror.move {
 					mirror.reserved[candidate] = true
 				}
-				return candidate, nil
+				return mirrorCandidate{path: candidate, identity: fingerprint, sha256: digest, size: artifact.Size}, nil
 			}
 		}
 	}
-	return "", nil
+	return mirrorCandidate{}, nil
 }
 
-func (mirror localMirror) materialize(source, destination string) error {
+func (mirror localMirror) validateCandidate(candidate mirrorCandidate) error {
+	source := candidate.path
 	if err := storage.ValidateManagedParent(source, mirror.root, mirror.root, "local mirror"); err != nil {
+		return err
+	}
+	current, err := os.Lstat(source)
+	if err != nil || !singleRegular(current) || candidate.identity == "" || fileIdentity(current) != candidate.identity {
+		return controlerr.New("local mirror source changed since verification: %s", source)
+	}
+	return nil
+}
+
+func (mirror localMirror) materialize(candidate mirrorCandidate, destination string) error {
+	source := candidate.path
+	if err := mirror.validateCandidate(candidate); err != nil {
 		return err
 	}
 	input, err := os.OpenFile(source, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
@@ -939,8 +968,8 @@ func (mirror localMirror) materialize(source, destination string) error {
 	if err != nil {
 		return err
 	}
-	if !singleRegular(original) {
-		return controlerr.New("local mirror source is not a singly linked regular file: %s", source)
+	if !singleRegular(original) || fileIdentity(original) != candidate.identity {
+		return controlerr.New("local mirror source changed since verification: %s", source)
 	}
 	// Older installs copied directly to the payload. Only an incomplete,
 	// unaliased regular file may be replaced after a complete new copy exists.
@@ -952,15 +981,29 @@ func (mirror localMirror) materialize(source, destination string) error {
 		return err
 	}
 	if mirror.move {
-		if err := os.Rename(source, destination); err == nil {
+		if err := mirror.validateCandidate(candidate); err != nil {
+			return err
+		}
+		rename := mirror.rename
+		if rename == nil {
+			rename = os.Rename
+		}
+		if err := rename(source, destination); err == nil {
 			return nil
+		} else if !errors.Is(err, syscall.EXDEV) {
+			return err
 		}
 	}
 	output, err := os.CreateTemp(filepath.Dir(destination), ".mirror-*.partial")
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(output, input)
+	copyFile := mirror.copy
+	if copyFile == nil {
+		copyFile = io.Copy
+	}
+	digest := sha256.New()
+	written, copyErr := copyFile(io.MultiWriter(output, digest), input)
 	closeErr := output.Close()
 	if copyErr != nil || closeErr != nil {
 		if copyErr != nil {
@@ -968,9 +1011,11 @@ func (mirror localMirror) materialize(source, destination string) error {
 		}
 		return closeErr
 	}
-	current, err := os.Lstat(source)
-	if err != nil || !singleRegular(current) || fileIdentity(current) != fileIdentity(original) {
-		return controlerr.New("local mirror source changed during copying: %s", source)
+	if written != candidate.size || fmt.Sprintf("%x", digest.Sum(nil)) != candidate.sha256 {
+		return controlerr.New("local mirror source content changed during copying: %s", source)
+	}
+	if err := mirror.validateCandidate(candidate); err != nil {
+		return err
 	}
 	// A killed copy leaves only a scratch file; the payload name is published
 	// atomically and retries can replace an old interrupted direct copy.
@@ -980,10 +1025,19 @@ func (mirror localMirror) materialize(source, destination string) error {
 	}
 	// Publish chmods its input explicitly, so apply the host mask ourselves
 	// rather than widening permissions selected by a restrictive caller.
-	if err := atomicfile.Publish(destination, output.Name(), 0o644&^fs.FileMode(mask), atomicfile.ReplaceRegular); err != nil {
+	publish := mirror.publish
+	if publish == nil {
+		publish = atomicfile.Publish
+	}
+	if err := publish(destination, output.Name(), 0o644&^fs.FileMode(mask), atomicfile.ReplaceRegular); err != nil {
 		return err
 	}
 	if mirror.move {
+		// Publication may take time (including fsync). Recheck the verified
+		// source immediately before unlink, not just before copying/publishing.
+		if err := mirror.validateCandidate(candidate); err != nil {
+			return err
+		}
 		return os.Remove(source)
 	}
 	return nil

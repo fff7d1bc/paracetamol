@@ -299,6 +299,11 @@ interrupted copy can be retried without removing partial files manually;
 the source is preserved in copy mode. Linked or unexpected staging files are
 refused instead of overwritten.
 
+Move mode rechecks each candidate against its verified file identity before
+transfer. A changed candidate stops the install without removing the changed
+source. Cross-filesystem copies also check size and hash before source removal.
+Verified staging or interrupted scratch remains available after a failure.
+
 Move mode removes only catalog-hash matches, but may leave the old tree's
 managed symlinks broken. Keep the active data directory outside the mirror,
 verify the new installation, then remove the old directory. Planning and dry

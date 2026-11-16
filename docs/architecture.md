@@ -298,6 +298,12 @@ symlinks. Mirror and data roots cannot overlap, and candidates are reused only
 after size/hash verification. Explicit move mode can remove files from the
 old library. Interruption does not restore them.
 
+Mirror selection retains the verified file identity through transfer. A
+changed candidate is refused rather than treated as the earlier hash match.
+Cross-filesystem moves validate the copied size and hash before publication,
+then recheck the original identity before unlinking the source. Failed copies
+retain scratch and leave the source in place.
+
 Installer-owned data mutation, runtime startup admission and destructive data,
 download and runtime-cache cleanup share a nonblocking directory-inode lock
 owned by `internal/storage/`.
