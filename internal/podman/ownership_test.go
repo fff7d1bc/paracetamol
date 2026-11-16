@@ -173,7 +173,7 @@ func TestFailedLaunchCleanupPreservesReplacementAfterMatchingLabelProbe(t *testi
 		}
 		return process.Result{Stdout: ownershipJSON(t, strings.Repeat("d", 64), "owned", labels)}, nil
 	}}
-	if err := (Client{Runner: runner}).RemoveLaunchContainer(context.Background(), "owned", "comfyui", token, 1); err != nil {
+	if err := (Client{Runner: runner}).RemoveLaunchContainer(context.Background(), "owned", "comfyui", "application", token, 1); err != nil {
 		t.Fatal(err)
 	}
 }

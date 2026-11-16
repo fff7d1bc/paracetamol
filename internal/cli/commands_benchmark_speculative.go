@@ -363,8 +363,13 @@ func (app *App) benchmarkSpeculative(args []string) error {
 	fmt.Fprintf(app.Stdout, "%s %s\n%s %s, depths %s, targets %s, %d repetitions (%d requests)\n%s %s, seed %d, %d generated tokens, context %d, parallel 1\n", terminal.Label("Model:"), *presetID, terminal.Label("Parameters:"), preset.SpeculativeType, depths.String(), contexts.String(), *repetitions, requestCount, terminal.Label("Condition:"), level, *seed, *generation, *contextSize)
 	if *dryRun {
 		for _, depth := range depths {
-			fmt.Fprintf(app.Stdout, "\n%s %d\n  %s\n", terminal.Label("Draft depth:"), depth, terminal.Command(shellJoin(commands[depth])))
+			command, _, err := podman.WithLaunchIdentity(commands[depth])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Stdout, "\n%s %d\n  %s\n", terminal.Label("Draft depth:"), depth, terminal.Command(shellJoin(command)))
 		}
+		fmt.Fprintln(app.Stdout, terminal.Muted("Shown launch identities are examples; every actual trial receives a fresh identity."))
 		fmt.Fprintln(app.Stdout, terminal.Muted("No container was started and no checkpoint was written."))
 		return nil
 	}
@@ -426,8 +431,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		}
 	}
 	result.Summary = benchmark.SpeculativeSummary(result.Trials, int(preset.DraftTokensForBackend(*backend)))
-	result.Status = "running"
-	if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+	if err := checkpointRunningSpeculativeSweep(resultPath, &result); err != nil {
 		return err
 	}
 	failed := false
@@ -438,38 +442,21 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		}
 		depth, contextDepth, requestSeed := trial.Depth, trial.ContextDepth, trial.Seed
 		fmt.Fprintf(app.Stdout, "%s depth %d, target %d, seed %d\n", app.terminal(app.Stdout).Info(fmt.Sprintf("[%d/%d]", index+1, len(result.Trials))), depth, contextDepth, requestSeed)
-		trial.Status, trial.StartedAt, trial.Error, trial.Metrics = "running", benchmark.Timestamp(), "", nil
-		if err := benchmark.WriteCheckpoint(resultPath, result); err != nil {
+		if err := checkpointRunningSpeculativeTrial(resultPath, &result, index); err != nil {
 			return err
 		}
-		startup := time.Now()
-		_, startErr := app.run(commands[depth], true)
-		if startErr == nil {
-			startErr = benchmark.WaitForHealth(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port))
+		payload := map[string]any{"model": *presetID, "messages": benchmark.SpeculativeMessages(contextDepth, requestSeed), "max_tokens": *generation, "seed": requestSeed, "stream": false}
+		// Native benchmark endpoints bypass the gateway. Resolve the same
+		// catalog tuple explicitly for this fixed-mode measurement.
+		for key, value := range requestSampling {
+			payload[key] = value
 		}
-		startupSeconds := time.Since(startup).Seconds()
-		var metrics benchmark.SpeculativeMetrics
-		if startErr == nil {
-			payload := map[string]any{"model": *presetID, "messages": benchmark.SpeculativeMessages(contextDepth, requestSeed), "max_tokens": *generation, "seed": requestSeed, "stream": false}
-			// Native benchmark endpoints bypass the gateway. Resolve the same
-			// catalog tuple explicitly for this fixed-mode measurement.
-			for key, value := range requestSampling {
-				payload[key] = value
-			}
-			if nativeReasoning == "off" {
-				payload["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
-			} else if nativeReasoning != "on" {
-				payload["reasoning_effort"] = nativeReasoning
-			}
-			started := time.Now()
-			response, requestErr := benchmark.PostJSON(app.Context, fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", port), payload, 32*1024*1024)
-			if requestErr != nil {
-				startErr = requestErr
-			} else {
-				metrics, startErr = benchmark.ParseSpeculativeResponse(response, time.Since(started).Seconds(), startupSeconds)
-			}
+		if nativeReasoning == "off" {
+			payload["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
+		} else if nativeReasoning != "on" {
+			payload["reasoning_effort"] = nativeReasoning
 		}
-		startErr = withCleanupFailure(startErr, "clean up speculative benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), speculativeBenchmarkContainer, 10, podman.Streams{}))
+		metrics, startErr := app.executeSpeculativeTrial(commands[depth], port, payload)
 		if startErr != nil {
 			trial.Status, trial.Error, trial.FinishedAt = "failed", startErr.Error(), benchmark.Timestamp()
 			failed = true
@@ -482,8 +469,7 @@ func (app *App) benchmarkSpeculative(args []string) error {
 			return err
 		}
 		if startErr != nil && !*keepGoing {
-			result.Status = "failed"
-			return checkpointThenReturn(resultPath, result, startErr)
+			return checkpointFailedSpeculativeSweep(resultPath, result, startErr)
 		}
 	}
 	result.Status, result.FinishedAt = "complete", benchmark.Timestamp()
@@ -498,6 +484,50 @@ func (app *App) benchmarkSpeculative(args []string) error {
 		return controlerr.New("speculative benchmark completed with failed trials")
 	}
 	return nil
+}
+
+func checkpointFailedSpeculativeSweep(path string, result speculativeResult, cause error) error {
+	// A terminal failure must satisfy the same envelope checked on resume.
+	result.Status, result.FinishedAt = "failed", benchmark.Timestamp()
+	return checkpointThenReturn(path, result, cause)
+}
+
+func checkpointRunningSpeculativeSweep(path string, result *speculativeResult) error {
+	result.Status, result.FinishedAt = "running", ""
+	return benchmark.WriteCheckpoint(path, result)
+}
+
+func checkpointRunningSpeculativeTrial(path string, result *speculativeResult, index int) error {
+	trial := &result.Trials[index]
+	// A retry checkpoint must remain resumable if interrupted before completion.
+	trial.Status, trial.StartedAt, trial.FinishedAt, trial.Error, trial.Metrics = "running", benchmark.Timestamp(), "", "", nil
+	return benchmark.WriteCheckpoint(path, result)
+}
+
+func (app *App) executeSpeculativeTrial(command []string, port int, payload map[string]any) (metrics benchmark.SpeculativeMetrics, returned error) {
+	// A depth command is reused by multiple trials and resume attempts. Its
+	// ephemeral launch identity must never be reused or enter the definition.
+	command, launchID, err := podman.WithLaunchIdentity(command)
+	if err != nil {
+		return metrics, err
+	}
+	defer func() {
+		returned = withCleanupFailure(returned, "clean up speculative benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), speculativeBenchmarkContainer, "llama-cpp", "benchmark", launchID, 10))
+	}()
+	startup := time.Now()
+	if _, err := app.run(command, true); err != nil {
+		return metrics, err
+	}
+	if err := benchmark.WaitForHealth(app.Context, fmt.Sprintf("http://127.0.0.1:%d", port)); err != nil {
+		return metrics, err
+	}
+	startupSeconds := time.Since(startup).Seconds()
+	started := time.Now()
+	response, err := benchmark.PostJSON(app.Context, fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", port), payload, 32*1024*1024)
+	if err != nil {
+		return metrics, err
+	}
+	return benchmark.ParseSpeculativeResponse(response, time.Since(started).Seconds(), startupSeconds)
 }
 
 func makeSpeculativeTrials(depths, contexts []int, repetitions, seed int) []benchmark.SpeculativeTrial {

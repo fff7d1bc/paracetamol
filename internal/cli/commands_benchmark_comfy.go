@@ -435,6 +435,10 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 		environment = []string{"HOME=" + containerRoot + "/home", "XDG_CACHE_HOME=" + containerRoot + "/xdg", "HF_HOME=" + containerRoot + "/huggingface", "TORCH_HOME=" + containerRoot + "/torch", "TRITON_CACHE_DIR=" + containerRoot + "/triton"}
 	}
 	command := runtime.WebCommand(runtime.WebOptions{Image: options.image, Profile: options.profile, Listen: "127.0.0.1", Port: options.port, DataDir: options.dataRoot, RenderNodes: []string{options.renderNode}, Detach: true, Unconfined: options.unconfined, DisableBundledExtensions: true, Arguments: []string{"--disable-all-custom-nodes"}, ContainerName: comfyBenchmarkContainer, Application: "comfyui", MemoryPolicy: options.memoryPolicy, KernelPolicy: options.kernelPolicy, Environment: environment, Publish: true, ContainerRole: "benchmark"}, app.podman().SELinuxVolumeSuffix(app.Context))
+	command, launchID, err := podman.WithLaunchIdentity(command)
+	if err != nil {
+		return "", summary, err
+	}
 	path = filepath.Join((storage.Layout{Root: options.dataRoot}).ComfyBenchmarks(), runID+"-"+bundle.ID+".json")
 	if options.dryRun {
 		terminal := app.terminal(app.Stdout)
@@ -497,7 +501,7 @@ func (app *App) executeComfyBenchmark(managed catalog.Catalog, bundle catalog.Bu
 	}
 	startedAt := benchmark.Timestamp()
 	defer func() {
-		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), comfyBenchmarkContainer, 2, podman.Streams{}))
+		returned = withCleanupFailure(returned, "clean up ComfyUI benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), comfyBenchmarkContainer, "comfyui", "benchmark", launchID, 2))
 	}()
 	if _, err := app.run(command, true); err != nil {
 		return "", summary, err

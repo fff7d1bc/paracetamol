@@ -210,11 +210,16 @@ data continues to honor the invoking user's mask.
 ### Exact lifecycle ownership
 
 Containers carry managed ownership, role and application labels. Direct
-application launches also carry an opaque launch-instance label. Attached
-runs retain terminal input/signals and child exit status. Failure cleanup
+application runs and the `benchmark` command family attach an opaque
+launch-instance label. Attached runs retain terminal input/signals and child
+exit status. Failure cleanup
 requires that exact launch instance and a captured full container ID, so a
 name-conflict loser cannot remove another invocation's successful container.
 Detached runs retain ordinary Podman lifecycle.
+
+Benchmark command trials use a fresh launch instance for each backend start,
+including repeated speculative trials at the same depth. The nonce belongs
+to lifecycle control, not workload fingerprints or resume identities.
 
 Stop allows a brief graceful interval. Confirmed cleanup uses forced exact
 removal and verifies absence after an error. Discovery uses labels, never a

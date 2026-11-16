@@ -219,8 +219,13 @@ func (app *App) benchmarkLlama(args []string) error {
 	}
 	parameters := benchmark.LlamaParameters{Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash}
 	commands := make(map[string][]string)
+	launchIDs := make(map[string]string)
 	for _, candidate := range backends {
 		commands[candidate], err = runtime.LlamaBenchmarkCommand(runtime.LlamaBenchmarkOptions{Image: image, Profile: profile, DataDir: dataRoot, Backend: candidate, Model: model, ManagedModel: managedModel, RenderNodes: selectedNodes, Repetitions: *repetitions, PromptTokens: *promptTokens, GenerationTokens: *generationTokens, ContextDepth: *contextDepth, BatchSize: *batch, UBatchSize: *ubatch, CacheTypeK: *cacheK, CacheTypeV: *cacheV, FlashAttention: *flash, Unconfined: *unconfined}, app.podman().SELinuxVolumeSuffix(app.Context))
+		if err != nil {
+			return err
+		}
+		commands[candidate], launchIDs[candidate], err = podman.WithLaunchIdentity(commands[candidate])
 		if err != nil {
 			return err
 		}
@@ -255,7 +260,7 @@ func (app *App) benchmarkLlama(args []string) error {
 	errorsByBackend := make(map[string]string)
 	for _, candidate := range backends {
 		rows, runErr := benchmark.RunLlama(app.Context, app.Runner, commands[candidate])
-		runErr = withCleanupFailure(runErr, "clean up llama.cpp benchmark container", app.podman().RemoveContainer(contextWithoutCancel(), runtime.LlamaBenchmarkContainer, 0, podman.Streams{}))
+		runErr = withCleanupFailure(runErr, "clean up llama.cpp benchmark container", app.podman().RemoveLaunchContainer(contextWithoutCancel(), runtime.LlamaBenchmarkContainer, "llama-cpp", "benchmark", launchIDs[candidate], 0))
 		if runErr != nil {
 			errorsByBackend[candidate] = runErr.Error()
 			if !*compare {

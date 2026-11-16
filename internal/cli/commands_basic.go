@@ -970,7 +970,7 @@ func (app *App) startManaged(application config.Application, image string, comma
 	}
 	_, runErr := app.run(command, false)
 	if runErr != nil && !detach {
-		cleanupErr := app.podman().RemoveLaunchContainer(contextWithoutCancel(), application.ContainerName, application.ID, launchID, 1)
+		cleanupErr := app.podman().RemoveLaunchContainer(contextWithoutCancel(), application.ContainerName, application.ID, "application", launchID, 1)
 		if app.Context.Err() != nil {
 			return withCleanupFailure(app.Context.Err(), "remove interrupted application container", cleanupErr)
 		}

@@ -145,9 +145,9 @@ func validLaunchID(value string) bool {
 
 // RemoveLaunchContainer never treats generic labels or a canonical name as
 // evidence that a failed command created the current occupant.
-func (client Client) RemoveLaunchContainer(ctx context.Context, name, application, launchID string, graceSeconds int) error {
-	if !validLaunchID(launchID) {
-		return fmt.Errorf("invalid managed launch identity")
+func (client Client) RemoveLaunchContainer(ctx context.Context, name, application, role, launchID string, graceSeconds int) error {
+	if !validLaunchID(launchID) || !reviewedOwnership(map[string]string{ManagedContainerLabel: "true", ManagedApplicationLabel: application, ManagedRoleLabel: role}) {
+		return fmt.Errorf("invalid managed launch identity or ownership")
 	}
 	// Inspect ownership only after checking the launch label. A foreign winner
 	// is not ours to remove and is not an application cleanup failure.
@@ -166,7 +166,7 @@ func (client Client) RemoveLaunchContainer(ctx context.Context, name, applicatio
 	if labels[ManagedLaunchLabel] != launchID {
 		return nil
 	}
-	target, err := client.InspectOwnedContainer(ctx, name, application, "application")
+	target, err := client.InspectOwnedContainer(ctx, name, application, role)
 	if err != nil || target == nil {
 		return err
 	}
