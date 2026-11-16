@@ -352,7 +352,10 @@ func (client *Client) Call(ctx context.Context, name string, payload map[string]
 			invalid(parseErr)
 		}
 		answer.CancellationVerified = canceledReportValid && validationErr == nil
-		callErr = errors.Join(wrap(Infrastructure, ctx.Err()), callErr)
+		// Truncated body/parser errors are expected interruption evidence, not
+		// independent protocol failures. validationErr retains every unexpected
+		// body/parser error and all policy, correlation and persistence failures.
+		callErr = errors.Join(wrap(Infrastructure, ctx.Err()), validationErr)
 	}
 	return answer, callErr
 }
@@ -652,6 +655,12 @@ func Metrics(response contract.Response) (Measurements, error) {
 	result = Measurements{Input: *r.Tokens.Input, Cached: *r.Tokens.Cached, Prompt: *t.PromptTokens, Generated: *t.GeneratedTokens, PromptMS: *t.PromptMilliseconds, GeneratedMS: *t.GeneratedMilliseconds}
 	if result.Input < 0 || result.Cached < 0 || result.Prompt < 0 || result.Generated < 0 || result.Cached > result.Input || result.Prompt != result.Input-result.Cached || *r.Tokens.Output != result.Generated {
 		return Measurements{}, failure(Protocol, "token/cache/native work counters are inconsistent")
+	}
+	// Visible answers, reasoning and tool calls establish generation even when
+	// counters agree with one another at zero. Prompt work may still be zero
+	// when a positive input was entirely cached; do not invent new evaluation.
+	if (response.Text != "" || response.Reasoning != "" || len(response.Tools) > 0) && (result.Input == 0 || result.Generated == 0) {
+		return Measurements{}, failure(Protocol, "nonempty assistant generation lacks positive input/generated tokens")
 	}
 	for _, duration := range []float64{result.PromptMS, result.GeneratedMS} {
 		if duration < 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {

@@ -19,7 +19,7 @@ import (
 )
 
 func TestHelpAndSourceOnlyNeedNoGatewayOrPodman(t *testing.T) {
-	for _, args := range [][]string{{}, {"--help"}, {"check", "--help"}, {"compare", "--help"}, {"prepare-grader", "--help"}, {"self-test", "--help"}, {"self-test", "--source-only"}} {
+	for _, args := range [][]string{{}, {"--help"}, {"check", "--help"}, {"compare", "--help"}, {"prepare-grader", "--help"}, {"prepare-trace", "--help"}, {"self-test", "--help"}, {"self-test", "--source-only"}} {
 		var out bytes.Buffer
 		if err := run(context.Background(), args, &out, &out); err != nil {
 			t.Fatalf("%v: %v", args, err)
@@ -46,10 +46,26 @@ func TestRunRequiresExplicitIdentityAndTimingTolerance(t *testing.T) {
 }
 
 func TestOldRunSchemaIsNotRelabeledForNewCoverage(t *testing.T) {
-	run := comparisonFixture("history", 0, false)
-	run.Schema = "paracetamol.llama-acceptance.v1"
-	if err := validateObservation(run); err == nil {
-		t.Fatal("old combined-history evidence accepted as the new separated coverage")
+	for _, version := range []string{"paracetamol.llama-acceptance.v1", "paracetamol.llama-acceptance.v2"} {
+		run := comparisonFixture("history", 0, false)
+		run.Schema = version
+		if err := validateObservation(run); err == nil {
+			t.Fatalf("old evidence accepted as instance-bound coverage: %s", version)
+		}
+	}
+}
+
+func TestTraceRunIsExplicitAndDiagnosticOnly(t *testing.T) {
+	base := []string{"--gateway-url", "http://127.0.0.1:18455/v1", "--container-id", strings.Repeat("a", 64), "--image-id", "sha256:" + strings.Repeat("b", 64), "--data-dir", "/example/content", "--trace"}
+	for _, tail := range [][]string{{"--suite", "coding"}, {"--suite", "all", "--prefill-regression-percent", "10"}, {"--control", "mmq-sum"}} {
+		if _, _, err := parseRun(append(append([]string{}, base...), tail...), io.Discard); err == nil {
+			t.Fatalf("invalid trace campaign accepted: %v", tail)
+		}
+	}
+	for _, tail := range [][]string{{}, {"--suite", "prefill", "--prefill-regression-percent", "10", "--control", "qsa-host-span"}} {
+		if opts, _, err := parseRun(append(append([]string{}, base...), tail...), io.Discard); err != nil || !opts.trace {
+			t.Fatalf("explicit trace diagnostic refused: opts=%+v err=%v", opts, err)
+		}
 	}
 }
 
@@ -211,7 +227,7 @@ func TestContainerInspectionUsesEffectiveCapabilities(t *testing.T) {
 	var c inspectedContainer
 	c.ID, c.Image, c.State.Running = opts.containerID, opts.imageID, true
 	c.Name = "paracetamol-gateway-llama-cpp"
-	c.Config.Labels = map[string]string{podman.ManagedContainerLabel: "true", podman.ManagedApplicationLabel: "llama-cpp", podman.ManagedRoleLabel: gateway.GatewayBackendRole}
+	c.Config.Labels = map[string]string{podman.ManagedContainerLabel: "true", podman.ManagedApplicationLabel: "llama-cpp", podman.ManagedRoleLabel: gateway.GatewayBackendRole, gateway.GatewayInstanceLabel: strings.Repeat("c", 32)}
 	c.HostConfig.ReadonlyRootfs = true
 	c.HostConfig.NetworkMode = "pasta"
 	c.HostConfig.CapDrop = []string{"CAP_CHOWN", "CAP_SETUID"}

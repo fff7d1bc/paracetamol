@@ -147,6 +147,15 @@ the actual child slot idle, not merely allow another request to succeed.
 Selected suites are diagnostic subsets; missing required native, history,
 coding, performance or hardware evidence remains BLOCKED/deferred.
 
+Current checker evidence uses schema v3 and binds the serving gateway's
+instance ID to the inspected backend label. Older v1/v2 records remain useful
+historical evidence, not v3 acceptance. Restart an older gateway normally
+before this check; a matching inventory is not a substitute for binding.
+Kernel or memory guard interruption is BLOCKED, while independently observed
+protocol, policy and answer failures remain FAIL. Positive cached input can
+have zero newly evaluated prompt work; a nonempty answer cannot legitimately
+report zero total input or zero generated tokens.
+
 Long-context acceptance must populate the cache, then test an exact repeat,
 an edited value and true append turns that preserve the complete assistant
 messages, including reasoning. A large context allocation alone is not such

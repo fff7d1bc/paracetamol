@@ -76,6 +76,9 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 	if err != nil {
 		return err
 	}
+	if err := validateGatewayBackend(status, backend); err != nil {
+		return err
+	}
 	if status.Scheduler.ActiveRequests != 0 || status.Scheduler.QueuedRequests != 0 {
 		return fmt.Errorf("use an idle dedicated acceptance gateway, not one serving other work")
 	}
@@ -86,6 +89,9 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 			return err
 		}
 		defer client.Close()
+		if info := client.Info(); info.InstanceID != backend.GatewayInstance || info.InventoryFingerprint != status.InventoryFingerprint {
+			return fmt.Errorf("gateway identity or inventory changed during preflight")
+		}
 		_, stopKernel, err := startKernelGuard(ctx, "")
 		if err != nil {
 			return err
@@ -117,15 +123,15 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 	if err := savePrivateJSON(filepath.Join(dir, "manifest.json"), record); err != nil {
 		return err
 	}
+	if opts.trace {
+		record.Cases = append(record.Cases, contract.Result{Name: "diagnostic-trace-only", Status: contract.Review, Detail: "instrumented dispatch evidence only; traced timing cannot qualify a normal source update"})
+	}
 	defer func() {
 		record.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		record.Status = contract.Worst(record.Cases)
+		record.Status = operationStatus(record.Cases, returnedErr)
 		if returnedErr != nil {
 			record.Complete = false
 			record.Error = returnedErr.Error()
-			if record.Status == contract.Pass {
-				record.Status = contract.Blocked
-			}
 		}
 		files, err := evidenceFiles(dir)
 		if err != nil {
@@ -148,6 +154,9 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 		return err
 	}
 	defer client.Close()
+	if info := client.Info(); info.InstanceID != backend.GatewayInstance || info.InventoryFingerprint != status.InventoryFingerprint {
+		return fmt.Errorf("gateway identity or inventory changed during acceptance setup")
+	}
 	ctx, stopKernel, err := startKernelGuard(ctx, dir)
 	if err != nil {
 		return err
@@ -155,40 +164,12 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 	defer func() { returnedErr = errors.Join(returnedErr, stopKernel()) }()
 	ctx, stopGuard := memoryGuard(ctx, 8<<30)
 	defer stopGuard()
-	var mu sync.Mutex
-	classifications := map[string]string{}
-	var terminalError error
-	call := func(callCtx context.Context, name string, request map[string]any) (contract.Response, error) {
-		mu.Lock()
-		if terminalError != nil {
-			err := terminalError
-			classifications[name] = transportErrorKind(err)
-			mu.Unlock()
-			return contract.Response{}, err
-		}
-		fmt.Fprintf(stdout, "Running  %s\n", name)
-		mu.Unlock()
-		response, err := client.Call(callCtx, name, request)
-		kind := transportErrorKind(err)
-		if kind != "" && !errors.Is(err, context.Canceled) {
-			mu.Lock()
-			classifications[name] = kind
-			if response.RequestID != "" {
-				classifications[response.RequestID] = kind
-			}
-			if kind != transport.OutputLimit {
-				terminalError = err
-			}
-			mu.Unlock()
-		}
-		return response, err
-	}
+	calls := newResultCalls(ctx, client.Call, stdout)
+	call := calls.call
 	appendResults := func(results []contract.Result) {
-		mu.Lock()
 		for i := range results {
-			classifyResult(&results[i], classifications)
+			calls.classify(&results[i])
 		}
-		mu.Unlock()
 		record.Cases = append(record.Cases, results...)
 		printResults(stdout, results)
 	}
@@ -249,11 +230,29 @@ func runGatewayChecks(ctx context.Context, operation string, opts runOptions, st
 		return context.Cause(ctx)
 	}
 	final, err := captureBackend(ctx, root, opts, managed)
-	if err != nil || final.ContainerID != backend.ContainerID || final.ImageID != backend.ImageID || !equalJSON(final.Arguments, backend.Arguments) {
+	if err != nil || final.ContainerID != backend.ContainerID || final.ImageID != backend.ImageID || final.GatewayInstance != backend.GatewayInstance || !equalJSON(final.Arguments, backend.Arguments) {
 		return fmt.Errorf("backend identity or native policy changed during the suite")
+	}
+	finalStatus, err := gateway.FetchStatus(ctx, opts.endpoint, key, 0)
+	if err != nil {
+		return err
+	}
+	if err := validateGatewayBackend(finalStatus, final); err != nil {
+		return err
+	}
+	if finalStatus.InventoryFingerprint != status.InventoryFingerprint {
+		return fmt.Errorf("gateway inventory changed during the suite")
 	}
 	record.Complete = true
 	return nil
+}
+
+func operationStatus(results []contract.Result, err error) contract.Status {
+	status := contract.Worst(results)
+	if err != nil && status != contract.Fail {
+		return contract.Blocked
+	}
+	return status
 }
 
 func codingCases(ctx context.Context, dir string, opts runOptions, call contract.Call) []contract.Result {
@@ -384,6 +383,90 @@ func transportRank(kind string) int {
 	return 0
 }
 
+// Keep per-call evidence instead of relabeling all failures when a guard or the
+// operator cancels the parent. Earlier completed answer oracles remain valid.
+// Names and error details cover calls canceled before a request ID is received;
+// IDs cover composite scenarios whose result name differs from their calls.
+type resultCalls struct {
+	mu       sync.Mutex
+	parent   context.Context
+	invoke   contract.Call
+	stdout   io.Writer
+	kinds    map[string]string
+	errors   map[string]string
+	terminal error
+}
+
+func newResultCalls(parent context.Context, invoke contract.Call, stdout io.Writer) *resultCalls {
+	return &resultCalls{parent: parent, invoke: invoke, stdout: stdout, kinds: map[string]string{}, errors: map[string]string{}}
+}
+
+func (calls *resultCalls) call(ctx context.Context, name string, request map[string]any) (contract.Response, error) {
+	calls.mu.Lock()
+	terminal := calls.terminal
+	if terminal == nil {
+		fmt.Fprintf(calls.stdout, "Running  %s\n", name)
+	}
+	calls.mu.Unlock()
+	var response contract.Response
+	err := terminal
+	if err == nil {
+		response, err = calls.invoke(ctx, name, request)
+	}
+	// Intentional lifecycle cancellation is successful only after transport has
+	// independently verified its report, policy, correlation and saved evidence.
+	// It must not poison the subsequent recovery request or bypass a parent guard.
+	parentInterrupted := calls.parent.Err() != nil && err != nil && (errors.Is(err, calls.parent.Err()) || errors.Is(err, context.Cause(calls.parent)))
+	kind := transportErrorKind(err)
+	if !parentInterrupted && response.CancellationVerified && errors.Is(err, context.Canceled) && transportRank(kind) <= transportRank(transport.Infrastructure) {
+		return response, err
+	}
+	if parentInterrupted && transportRank(kind) < transportRank(transport.Infrastructure) {
+		kind = transport.Infrastructure
+	}
+	if kind != "" {
+		calls.mu.Lock()
+		defer calls.mu.Unlock()
+		for _, key := range []string{name, response.RequestID} {
+			if key == "" {
+				continue
+			}
+			calls.kinds[key] = kind
+		}
+		calls.errors[err.Error()] = kind
+		if kind != transport.OutputLimit {
+			calls.terminal = err
+		}
+	}
+	return response, err
+}
+
+func (calls *resultCalls) classify(result *contract.Result) {
+	calls.mu.Lock()
+	defer calls.mu.Unlock()
+	kinds := map[string]string{result.Name: calls.kinds[result.Name]}
+	for _, id := range result.RequestIDs {
+		kinds[id] = calls.kinds[id]
+	}
+	matchedTransport := false
+	for detail, kind := range calls.errors {
+		if strings.Contains(result.Detail, detail) {
+			matchedTransport = true
+			if transportRank(kind) > transportRank(kinds[result.Name]) {
+				kinds[result.Name] = kind
+			}
+		}
+	}
+	before := result.Status
+	classifyResult(result, kinds)
+	// A composite result can include a failed sibling's ID as well as an
+	// independent answer miss. Only a transport-derived failure detail may
+	// replace FAIL; the scenario retains its own oracle failure separately.
+	if before == contract.Fail && result.Status == contract.Blocked && !matchedTransport {
+		result.Status = contract.Fail
+	}
+}
+
 func classifyResult(result *contract.Result, kinds map[string]string) {
 	kind := kinds[result.Name]
 	for _, id := range result.RequestIDs {
@@ -393,6 +476,9 @@ func classifyResult(result *contract.Result, kinds map[string]string) {
 	}
 	if result.Status == contract.Fail && kind == transport.Infrastructure {
 		result.Status = contract.Blocked
+	}
+	if kind == transport.Policy || kind == transport.Protocol {
+		result.Status = contract.Fail
 	}
 	// Only codingCases owns a bounded coding ceiling's REVIEW classification.
 	// Strict scenario oracles require natural completion; a repeated answer

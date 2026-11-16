@@ -192,6 +192,7 @@ func concurrent(ctx context.Context, opts contract.Options, call contract.Call) 
 	type completed struct {
 		response contract.Response
 		err      error
+		oracle   error
 	}
 	done := make(chan completed, 4)
 	for i := 0; i < 4; i++ {
@@ -199,13 +200,15 @@ func concurrent(ctx context.Context, opts contract.Options, call contract.Call) 
 			r := request(opts, []any{message("user", fmt.Sprintf("Return exactly WORKER_%d, no other text.", i))}, "none", false, true)
 			r["id_slot"] = i
 			response, err := call(ctx, fmt.Sprintf("worker-%d", i), r)
+			var oracle error
 			if err == nil {
-				err = exact(response, fmt.Sprintf("WORKER_%d", i))
+				oracle = exact(response, fmt.Sprintf("WORKER_%d", i))
 			}
-			done <- completed{response, err}
+			done <- completed{response, err, oracle}
 		}(i)
 	}
 	result := contract.Result{Name: "four-worker-isolation", Status: contract.Pass}
+	var oracleFailure error
 	for i := 0; i < 4; i++ {
 		item := <-done
 		if item.response.RequestID != "" {
@@ -215,6 +218,15 @@ func concurrent(ctx context.Context, opts contract.Options, call contract.Call) 
 			result.Status = contract.Fail
 			result.Detail = item.err.Error()
 		}
+		if item.oracle != nil {
+			oracleFailure = item.oracle
+			result.Status = contract.Fail
+		}
+	}
+	// A sibling canceled by the parent cannot overwrite a completed worker's
+	// independent answer failure, regardless of goroutine completion order.
+	if oracleFailure != nil {
+		result.Detail = oracleFailure.Error()
 	}
 	// Fast markers can finish between probes. Do not equate four launched
 	// clients with native overlapping generation or a throughput benchmark.
@@ -315,6 +327,9 @@ func cancellation(ctx context.Context, opts contract.Options, call contract.Call
 						}
 						select {
 						case <-wait.Done():
+							if ctx.Err() != nil {
+								return blocked(name, "parent context canceled before native slot became idle")
+							}
 							return outcome(name, item.response, fmt.Errorf("native slot remained busy after disconnect"))
 						case <-tick.C:
 						}

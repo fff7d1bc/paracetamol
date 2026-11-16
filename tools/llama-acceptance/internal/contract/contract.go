@@ -8,7 +8,7 @@ import (
 	"paracetamol/internal/gateway"
 )
 
-const Version = "paracetamol.llama-acceptance.v2"
+const Version = "paracetamol.llama-acceptance.v3"
 
 type Status string
 

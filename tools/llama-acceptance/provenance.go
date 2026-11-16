@@ -30,27 +30,29 @@ var fullID = regexp.MustCompile(`^(sha256:)?[0-9a-f]{64}$`)
 var sourceID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 type backendEvidence struct {
-	BootSession string            `json:"boot_session_sha256"`
-	Control     string            `json:"diagnostic_control,omitempty"`
-	ContainerID string            `json:"container_id"`
-	ImageID     string            `json:"image_id"`
-	Source      string            `json:"upstream_commit"`
-	SourceTree  string            `json:"patched_source_tree"`
-	Patches     string            `json:"patches"`
-	ROCm        string            `json:"rocm"`
-	NativeURL   string            `json:"private_native_url"`
-	Arguments   []string          `json:"native_arguments"`
-	Policy      map[string]string `json:"native_policy"`
-	Artifacts   map[string]string `json:"artifact_sha256"`
-	Template    string            `json:"template_sha256"`
-	Kernel      string            `json:"kernel,omitempty"`
-	Firmware    string            `json:"firmware_profile,omitempty"`
-	CPUProfile  string            `json:"cpu_epp,omitempty"`
-	Profile     string            `json:"profile"`
-	RenderNodes []string          `json:"render_nodes"`
-	Sampling    map[string]any    `json:"sampling_policy"`
-	Environment map[string]string `json:"native_environment"`
-	MemoryGuard int64             `json:"minimum_available_memory_bytes"`
+	Trace           string            `json:"diagnostic_trace,omitempty"`
+	GatewayInstance string            `json:"gateway_instance"`
+	BootSession     string            `json:"boot_session_sha256"`
+	Control         string            `json:"diagnostic_control,omitempty"`
+	ContainerID     string            `json:"container_id"`
+	ImageID         string            `json:"image_id"`
+	Source          string            `json:"upstream_commit"`
+	SourceTree      string            `json:"patched_source_tree"`
+	Patches         string            `json:"patches"`
+	ROCm            string            `json:"rocm"`
+	NativeURL       string            `json:"private_native_url"`
+	Arguments       []string          `json:"native_arguments"`
+	Policy          map[string]string `json:"native_policy"`
+	Artifacts       map[string]string `json:"artifact_sha256"`
+	Template        string            `json:"template_sha256"`
+	Kernel          string            `json:"kernel,omitempty"`
+	Firmware        string            `json:"firmware_profile,omitempty"`
+	CPUProfile      string            `json:"cpu_epp,omitempty"`
+	Profile         string            `json:"profile"`
+	RenderNodes     []string          `json:"render_nodes"`
+	Sampling        map[string]any    `json:"sampling_policy"`
+	Environment     map[string]string `json:"native_environment"`
+	MemoryGuard     int64             `json:"minimum_available_memory_bytes"`
 }
 
 type inspectedContainer struct {
@@ -167,11 +169,16 @@ func captureBackend(ctx context.Context, root string, opts runOptions, managed c
 		return evidence, fmt.Errorf("cannot inspect exact backend image")
 	}
 	labels := images[0].Config.Labels
+	evidence.Trace = labels[identity.LabelNamespace+".llama-acceptance.trace"]
+	if opts.trace && evidence.Trace != "qwen4exp.v1" || !opts.trace && evidence.Trace != "" {
+		return evidence, fmt.Errorf("diagnostic trace label differs from explicit --trace; traced images never qualify a normal upgrade")
+	}
 	evidence.Control = labels[identity.LabelNamespace+".llama-acceptance.control"]
 	if evidence.Control != opts.control {
 		return evidence, fmt.Errorf("diagnostic control differs from explicit --control; negative images never qualify a normal upgrade")
 	}
 	evidence.ContainerID, evidence.ImageID = c.ID, canonicalID(c.Image)
+	evidence.GatewayInstance = c.Config.Labels[gateway.GatewayInstanceLabel]
 	evidence.Source = labels["org.opencontainers.image.revision"]
 	evidence.SourceTree = labels[identity.LabelNamespace+".llama-cpp.source-tree"]
 	evidence.Patches = labels[identity.LabelNamespace+".llama-cpp.patches"]
@@ -294,6 +301,9 @@ func validateContainer(c inspectedContainer, opts runOptions) error {
 	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != "llama-cpp" || labels[podman.ManagedRoleLabel] != gateway.GatewayBackendRole {
 		return fmt.Errorf("selected container is not an exact gateway-owned llama.cpp backend")
 	}
+	if !gateway.ValidInstanceID(labels[gateway.GatewayInstanceLabel]) {
+		return fmt.Errorf("backend is missing a canonical owning gateway instance")
+	}
 	if !c.HostConfig.ReadonlyRootfs || c.HostConfig.NetworkMode == "host" || len(c.HostConfig.CapDrop) == 0 || len(c.HostConfig.CapAdd) != 0 || !emptyCaps(c.EffectiveCaps) || !emptyCaps(c.BoundingCaps) {
 		return fmt.Errorf("backend confinement differs from the reviewed policy")
 	}
@@ -308,6 +318,19 @@ func validateContainer(c inspectedContainer, opts runOptions) error {
 }
 
 func canonicalID(id string) string { return "sha256:" + strings.TrimPrefix(id, "sha256:") }
+
+// Inventory agreement does not bind a gateway to a container: another product
+// namespace can serve the same models on a different loopback port. Require
+// the lifecycle label that the serving process wrote when creating this child.
+func validateGatewayBackend(status gateway.Status, backend backendEvidence) error {
+	if !gateway.ValidInstanceID(backend.GatewayInstance) || status.InstanceID != backend.GatewayInstance {
+		return fmt.Errorf("gateway instance does not own the inspected backend container")
+	}
+	if status.Scheduler.Allocation != gateway.AllocationLlamaCPP || status.Scheduler.State != gateway.StateReady {
+		return fmt.Errorf("gateway must report the inspected llama.cpp allocation ready")
+	}
+	return nil
+}
 
 func containerBytes(ctx context.Context, id, path string, limit int64) ([]byte, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {

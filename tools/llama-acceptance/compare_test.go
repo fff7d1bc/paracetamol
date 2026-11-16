@@ -28,6 +28,7 @@ func comparisonFixture(suite string, index int, candidate bool) summary {
 		s.GraderImage = "sha256:" + strings.Repeat("9", 64)
 	}
 	s.Backend.BootSession = strings.Repeat("7", 64)
+	s.Backend.GatewayInstance = s.Instance
 	required, _, _ := caseCoverage(s)
 	var names []string
 	for name := range required {
@@ -148,11 +149,41 @@ func TestDiagnosticControlNeverQualifiesNormalUpdate(t *testing.T) {
 	}
 }
 
+func TestDiagnosticTraceNeverQualifiesNormalUpdateOrHidesFailure(t *testing.T) {
+	old, next := comparisonArms("short")
+	for i := range next {
+		next[i].Backend.Trace = "qwen4exp.v1"
+		next[i].Cases = append(next[i].Cases, contract.Result{Name: "diagnostic-trace-only", Status: contract.Review})
+		next[i].Status = contract.Review
+	}
+	if status, messages := compareRuns(old, next); status != contract.Review || !strings.Contains(strings.Join(messages, " "), "Diagnostic trace") {
+		t.Fatalf("traced image qualified normal update: status=%s messages=%v", status, messages)
+	}
+	next[0].Cases[0].Status, next[0].Status = contract.Fail, contract.Fail
+	if status, _ := compareRuns(old, next); status != contract.Fail {
+		t.Fatalf("later diagnostic arm hid an earlier failure: %s", status)
+	}
+	next[0].Backend.Trace = "unknown"
+	if status, _ := compareRuns(old, next); status != contract.Blocked {
+		t.Fatal("unknown trace protocol accepted")
+	}
+}
+
 func TestComparisonRequiresSamePrivateBoot(t *testing.T) {
 	old, next := comparisonArms("short")
 	next[0].Backend.BootSession = strings.Repeat("8", 64)
 	if status, _ := compareRuns(old, next); status != contract.Blocked {
 		t.Fatal("different physical boot session accepted as matched")
+	}
+}
+
+func TestComparisonRequiresGatewayBackendBinding(t *testing.T) {
+	for _, instance := range []string{"", strings.Repeat("0", 32), strings.Repeat("f", 32)} {
+		old, next := comparisonArms("short")
+		next[0].Backend.GatewayInstance = instance
+		if status, _ := compareRuns(old, next); status != contract.Blocked {
+			t.Fatalf("unbound backend accepted: %q status=%s", instance, status)
+		}
 	}
 }
 

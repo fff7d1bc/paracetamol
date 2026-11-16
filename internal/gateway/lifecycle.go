@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,10 @@ var gatewayContainerNames = map[Allocation]string{
 	AllocationLlamaCPP: identity.Container("gateway-llama-cpp"),
 }
 
+var GatewayInstanceLabel = identity.LabelNamespace + ".gateway.instance"
+
 type LifecycleOptions struct {
+	InstanceID        string
 	Registry          Registry
 	DataRoot          string
 	Profile           string
@@ -68,6 +72,9 @@ type backendCleanupError struct{ error }
 func (err *backendCleanupError) Unwrap() error { return err.error }
 
 func NewContainerLifecycle(options LifecycleOptions) (*ContainerLifecycle, error) {
+	if !ValidInstanceID(options.InstanceID) {
+		return nil, fmt.Errorf("gateway backend lifecycle requires a canonical instance identity")
+	}
 	if options.Runner == nil || options.DataRoot == "" || options.Profile == "" || len(options.Registry.Models) == 0 {
 		return nil, fmt.Errorf("invalid gateway backend lifecycle configuration")
 	}
@@ -255,6 +262,11 @@ func (lifecycle *ContainerLifecycle) command(allocation Allocation) ([]string, i
 			Listen: "127.0.0.1", Port: application.Port, Detach: true, Unconfined: lifecycle.options.Unconfined,
 			ContainerName: name, ContainerRole: GatewayBackendRole, AutoRemove: true, DynamicHostPort: true,
 		}, lifecycle.options.VolumeSuffix)
+		if err == nil {
+			// Podman labels precede the image; appending would alter llama.cpp's
+			// argv instead of binding this container to its serving gateway.
+			command = slices.Insert(command, 2, "--label", GatewayInstanceLabel+"="+lifecycle.options.InstanceID)
+		}
 		return command, application.Port, "/health", err
 	default:
 		return nil, 0, "", fmt.Errorf("unknown gateway allocation %q", allocation)
@@ -317,7 +329,7 @@ func (lifecycle *ContainerLifecycle) requireAvailable(ctx context.Context, alloc
 	if err != nil {
 		return err
 	}
-	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != application || labels[podman.ManagedRoleLabel] != GatewayBackendRole {
+	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != application || labels[podman.ManagedRoleLabel] != GatewayBackendRole || !ValidInstanceID(labels[GatewayInstanceLabel]) {
 		return fmt.Errorf("gateway container name has unexpected ownership labels: %s", target)
 	}
 	if !reclaim {
@@ -337,7 +349,7 @@ func (lifecycle *ContainerLifecycle) removeOwned(ctx context.Context, allocation
 	if err != nil {
 		return err
 	}
-	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != string(allocation) || labels[podman.ManagedRoleLabel] != GatewayBackendRole {
+	if labels[podman.ManagedContainerLabel] != "true" || labels[podman.ManagedApplicationLabel] != string(allocation) || labels[podman.ManagedRoleLabel] != GatewayBackendRole || labels[GatewayInstanceLabel] != lifecycle.options.InstanceID {
 		return fmt.Errorf("refusing to remove container with unexpected ownership labels: %s", name)
 	}
 	// Cleanup must not depend on the foreground terminal still accepting output

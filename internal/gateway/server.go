@@ -51,6 +51,9 @@ type Server struct {
 }
 
 type ServerOptions struct {
+	// InstanceID binds the production container lifecycle to HTTP reports. Empty
+	// selects a fresh identity for servers without managed backend containers.
+	InstanceID string
 	Resources  func() hostdoctor.ResourceSnapshot
 	APIKey     string
 	LlamaSlots int
@@ -107,11 +110,14 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 		return nil, err
 	}
 	sharedLog := atomicLogWriter(log)
-	// Request reports must never resolve an old process's ID to a different
-	// request after a restart. The opaque nonce is correlation, not a secret.
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return nil, fmt.Errorf("cannot initialize gateway request identity: %w", err)
+	instanceID := options.InstanceID
+	if instanceID == "" {
+		instanceID, err = NewInstanceID()
+		if err != nil {
+			return nil, err
+		}
+	} else if !ValidInstanceID(instanceID) {
+		return nil, fmt.Errorf("invalid gateway instance identity")
 	}
 	transport := &http.Transport{
 		Proxy:             http.ProxyFromEnvironment,
@@ -121,7 +127,7 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	residencyTransport := transport.Clone()
 	residencyTransport.Proxy = nil
 	server := &Server{
-		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), instanceID: hex.EncodeToString(nonce[:]), transport: transport,
+		registry: registry, scheduler: scheduler, log: sharedLog, started: time.Now().UTC(), instanceID: instanceID, transport: transport,
 		resources:       options.Resources,
 		llamaSlots:      options.LlamaSlots,
 		stats:           options.Statistics,
@@ -130,6 +136,28 @@ func NewServer(registry Registry, scheduler *Scheduler, log io.Writer, options S
 	}
 	server.accepting.Store(true)
 	return server, nil
+}
+
+// NewInstanceID returns process-local correlation, not a secret or a durable
+// host identifier. Production passes the same value to its lifecycle/server.
+func NewInstanceID() (string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", fmt.Errorf("cannot initialize gateway request identity: %w", err)
+	}
+	return hex.EncodeToString(nonce[:]), nil
+}
+
+func ValidInstanceID(id string) bool {
+	if len(id) != 32 || strings.Trim(id, "0") == "" {
+		return false
+	}
+	for _, value := range id {
+		if !(value >= '0' && value <= '9' || value >= 'a' && value <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func (server *Server) BeginShutdown() {

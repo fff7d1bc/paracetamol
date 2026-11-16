@@ -1,0 +1,64 @@
+# Source-matched host matcher observation, never normal timing or engine policy.
+FROM llama-builder AS llama-acceptance-trace-builder
+WORKDIR /opt/llama.cpp
+RUN set -eu; \
+    test ! -e /dev/kfd; test ! -e /dev/dri; \
+    mkdir -p /opt/trace/evidence /opt/trace/override; \
+    export GIT_OPTIONAL_LOCKS=0 GIT_INDEX_FILE="$(mktemp /tmp/acceptance-trace-index.XXXXXX)"; \
+    test "$(git rev-parse HEAD)" = '@SOURCE_COMMIT@'; \
+    git read-tree HEAD; git add --update -- .; git add -- common include src ggml tools tests; \
+    test "$(git write-tree)" = '@BASE_TREE@'; \
+    printf '%s\n' '18b3e67959d253d63e518274fc5bfbd851a326207988652c909e8e761fcc3919  src/models/qwen4exp.cpp' | sha256sum --check --strict -; \
+    library_file="$(readlink -f /opt/llama-install/lib/libllama.so)"; \
+    case "$library_file" in /opt/llama-install/lib/libllama.so.*) ;; *) exit 1;; esac; \
+    payload="$(basename "$library_file")"; \
+    snapshot() { (cd /opt/llama-install && find . -type f ! -path "./lib/$payload" -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum); }; \
+    snapshot > /opt/trace/evidence/unaffected-installed.sha256; \
+    test -s /opt/trace/evidence/unaffected-installed.sha256; \
+    sha256sum "$library_file" > /opt/trace/evidence/selected-before.sha256; \
+    sha256sum build/CMakeCache.txt > /opt/trace/evidence/cmake-cache.sha256; \
+    @CONTROL_MUTATION@ \
+    @TRACE_PATCH@ > /opt/trace/evidence/span.patch; \
+    git apply --check /opt/trace/evidence/span.patch; git apply /opt/trace/evidence/span.patch; \
+    test "$(git diff --name-only)" = src/models/qwen4exp.cpp; \
+    git diff --check; git diff --no-ext-diff --no-textconv > /opt/trace/evidence/mutation.diff; \
+    git add -- src/models/qwen4exp.cpp; git write-tree > /opt/trace/source-tree.txt; \
+    cp /opt/trace/source-tree.txt /opt/trace/evidence/source-tree.txt; \
+    cmake --build build --config Release --target llama --verbose > /opt/trace/evidence/build.log 2>&1; \
+    cmake --install build --config Release > /opt/trace/evidence/install.log 2>&1; \
+    find /opt/llama-install/bin -type f ! -name llama-cli ! -name llama-server ! -name llama-bench -delete; \
+    rm -rf /opt/llama-install/include /opt/llama-install/lib/cmake /opt/llama-install/lib/pkgconfig; \
+    sha256sum --check /opt/trace/evidence/cmake-cache.sha256; \
+    snapshot > /opt/trace/evidence/unaffected-after.sha256; \
+    cmp /opt/trace/evidence/unaffected-installed.sha256 /opt/trace/evidence/unaffected-after.sha256; \
+    test "$(readlink -f /opt/llama-install/lib/libllama.so)" = "$library_file"; \
+    sha256sum "$library_file" > /opt/trace/evidence/selected-after.sha256; \
+    ! cmp -s /opt/trace/evidence/selected-before.sha256 /opt/trace/evidence/selected-after.sha256; \
+    cp "$library_file" "/opt/trace/override/$payload"; \
+    (cd /opt/trace/override && sha256sum "$payload") > /opt/trace/evidence/override.sha256; \
+    chmod 0644 /opt/trace/source-tree.txt /opt/trace/evidence/*
+
+FROM llama-cpp AS llama-acceptance-trace
+ARG ACCEPTANCE_TRACE_TREE
+COPY --from=llama-acceptance-trace-builder /opt/trace/ /opt/trace/
+COPY --from=llama-acceptance-trace-builder /opt/trace/override/ /usr/local/lib/
+RUN set -eu; \
+    test "${#ACCEPTANCE_TRACE_TREE}" = 40; \
+    printf '%s' "$ACCEPTANCE_TRACE_TREE" | grep -Eq '^[0-9a-f]{40}$'; \
+    test "$ACCEPTANCE_TRACE_TREE" = "$(cat /opt/trace/source-tree.txt)"; \
+    cd /usr/local; sha256sum --check /opt/trace/evidence/unaffected-installed.sha256; \
+    cd /usr/local/lib; sha256sum --check /opt/trace/evidence/override.sha256; \
+    test -x /opt/venv/bin/rocprofv3; \
+    /opt/venv/bin/rocprofv3 --version > /opt/trace/evidence/profiler-version.txt 2>&1; \
+    /opt/venv/bin/rocprofv3 --help > /opt/trace/evidence/profiler-help.txt 2>&1; \
+    for option in --kernel-trace --output-format --output-directory --output-file; do grep -F -- "$option" /opt/trace/evidence/profiler-help.txt; done; \
+    ldd /usr/local/bin/llama-server > /opt/trace/evidence/runtime-ldd.txt; \
+    ! grep -F 'not found' /opt/trace/evidence/runtime-ldd.txt; \
+    cp -p /usr/local/bin/llama-server /opt/trace/llama-server; \
+    @ENTRYPOINT@ > /usr/local/bin/llama-server; \
+    chmod 0755 /usr/local/bin/llama-server
+LABEL @LABEL_NAMESPACE@.llama-cpp.source-tree="${ACCEPTANCE_TRACE_TREE}" \
+      @LABEL_NAMESPACE@.llama-acceptance.trace="qwen4exp.v1" \
+      @LABEL_NAMESPACE@.llama-acceptance.control="@CONTROL@" \
+      @LABEL_NAMESPACE@.llama-acceptance.trace-control="@CONTROL@" \
+      @LABEL_NAMESPACE@.llama-acceptance.diagnostic-overhead="true"

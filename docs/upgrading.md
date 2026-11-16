@@ -350,6 +350,14 @@ binary against the new private ABI, or move these patches ahead of GPU
 compilation without reviewing the cache and identity consequences. Their native
 checks are described in [testing](testing-and-release.md#host-pool-and-reset-regressions).
 
+Requalify optimized Qwen4Exp activation after a matcher/source refresh using
+the tracked [dispatch and physical-span protocol](../tools/llama-acceptance/trace.md).
+Its preparation fails closed on a changed owning source or patched tree.
+Retain actual worker dispatches, not merely matcher eligibility, and qualify
+the narrowly reduced `qsa-host-span` control against observed physical spans.
+Source markers, diagnostic timing and CPU fixtures cannot replace that
+evidence or the separately missing GPU poisoned-reset gate.
+
 ### Source-update procedure
 
 For an upstream source update:

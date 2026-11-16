@@ -40,8 +40,9 @@ type lifecycleRunner struct {
 func TestLifecycleKeepsRequestSlotsSeparateFromLoadedModels(t *testing.T) {
 	for _, slots := range []int{0, 1, 4, 8, -1, 65} {
 		lifecycle, err := NewContainerLifecycle(LifecycleOptions{
-			Registry: Registry{Models: []Model{{ID: "fixture", Backend: "llama-cpp"}}},
-			DataRoot: "/data", Profile: "cpu", LlamaBackend: "rocm", LlamaModelsMax: 1,
+			InstanceID: strings.Repeat("a", 32),
+			Registry:   Registry{Models: []Model{{ID: "fixture", Backend: "llama-cpp"}}},
+			DataRoot:   "/data", Profile: "cpu", LlamaBackend: "rocm", LlamaModelsMax: 1,
 			LlamaSlots: slots, RouterPreset: "/data/models.ini", Runner: &lifecycleRunner{}, Log: io.Discard,
 		})
 		if slots < 0 || slots > 64 {
@@ -127,8 +128,8 @@ func (runner *lifecycleRunner) Run(ctx context.Context, command process.Command)
 		if runner.labels != "" {
 			return process.Result{Stdout: []byte(runner.labels)}, nil
 		}
-		labels := fmt.Sprintf(`{"%s":"true","%s":"llama-cpp","%s":"%s"}`,
-			podman.ManagedContainerLabel, podman.ManagedApplicationLabel, podman.ManagedRoleLabel, GatewayBackendRole)
+		labels := fmt.Sprintf(`{"%s":"true","%s":"llama-cpp","%s":"%s","%s":"%s"}`,
+			podman.ManagedContainerLabel, podman.ManagedApplicationLabel, podman.ManagedRoleLabel, GatewayBackendRole, GatewayInstanceLabel, strings.Repeat("a", 32))
 		return process.Result{Stdout: []byte(labels)}, nil
 	case strings.HasPrefix(arguments, "rm --force "):
 		if runner.removeError != nil {
@@ -149,7 +150,8 @@ func llamaLifecycleFixture(t *testing.T, runner process.Runner, logs ...io.Write
 	}
 	registry := Registry{Models: []Model{{ID: "fixture", Application: "llama-cpp", Backend: "llama-cpp", Bundle: "bundle"}}}
 	lifecycle, err := NewContainerLifecycle(LifecycleOptions{
-		Registry: registry, DataRoot: t.TempDir(), Profile: "cpu",
+		InstanceID: strings.Repeat("a", 32),
+		Registry:   registry, DataRoot: t.TempDir(), Profile: "cpu",
 		LlamaBackend: "rocm", LlamaModelsMax: 2, RouterPreset: "/data/models.ini",
 		VolumeSuffix: ":rw", Runner: runner, Log: logOutput,
 		StartupTimeout: time.Second, ReadinessInterval: time.Millisecond,

@@ -137,7 +137,9 @@ rootless, read-only, network-none confinement, only `/dev/kfd` and the exact
 selected render node, and matching receipt-verified model mounts when needed.
 Record actual execution/results separately from preparation. Keep diagnostic
 image IDs distinct; use the final normal image for performance and gateway
-acceptance. Kernel activation still needs an independent trace where required.
+acceptance. Kernel activation still needs an independent trace where required;
+use the tracked [dispatch and physical-span protocol](trace.md), prepared with
+`prepare-trace`, for source-matched `gfx1151` Qwen4Exp diagnostics.
 
 ### Execute exported probes
 
@@ -354,11 +356,12 @@ invented as zero. This is test preparation inside `check`, not hidden
 inference in `preflight` or the build. Lifecycle requires 18 cases and 21
 requests, including these four initialization cases.
 
-Saved gateway-run summaries use `paracetamol.llama-acceptance.v2`. Version 2
-separates lifecycle coverage from history and makes both mandatory in `all`.
-Earlier combined-history v1 results remain historical evidence; do not edit
-their schema or treat them as complete v2 coverage. The new comparator
-rejects them. Coding task and corpus identities have not been relaxed.
+Saved gateway-run summaries use `paracetamol.llama-acceptance.v3`. Version 3
+binds the backend to the live gateway instance; version 2 separated lifecycle
+coverage from history and made both mandatory in `all`. Earlier v1/v2 results
+remain historical evidence; do not edit their schema or treat them as complete
+v3 coverage. The current comparator rejects them. Coding task and corpus
+identities have not been relaxed.
 Short checks also stop at their first non-PASS case. A truncated strict
 replay remains FAIL because natural completion is part of its oracle; it
 does not receive the coding screen's output-ceiling REVIEW classification.
@@ -374,8 +377,12 @@ unqueried original-record values plus their turn-specific marker; returning
 only a marker or repeating an earlier assistant answer cannot pass.
 The conditioning sequence is a maintained reproducer, not proof of a physical
 cache span or fast-kernel activation. Four launched workers alone do not prove
-overlap or throughput. Trace affected kernels separately after correctness
-gates; numerical and matcher tests cannot detect every silent slow fallback.
+overlap or throughput. The versioned [trace procedure](trace.md) supplies
+`prepare-trace`, concrete collection commands, source-matched dispatch names,
+physical-span observations and rejected-control criteria. Numerical and matcher
+tests cannot detect every silent slow fallback. `check --trace` is restricted
+to diagnostic `short`/`prefill` runs and remains REVIEW; normal-image timing
+and complete source-update acceptance stay separate.
 
 ## Fixed diagnostic controls
 
@@ -524,7 +531,7 @@ exit does not establish that a GPU case actually ran.
 | Required coverage | Supplied by this kit |
 | --- | --- |
 | Image/source/runtime closure, CPU CLI/router startup and offline content | Preparation and identity checks only; retain the separate image/startup checks. |
-| Native numerical, state, poisoned-reset and kernel-activation gates | Matching-source compilation for selected probes, not execution of the complete numerical/trace matrix. CPU reset checks are not GPU reset coverage. |
+| Native numerical, state, poisoned-reset and kernel-activation gates | Matching-source probes and a tracked [dispatch/span collection recipe](trace.md), not execution or hardware qualification of the complete matrix. CPU reset checks are not GPU reset coverage. |
 | Plain and greedy DFlash2 protocol, lifecycle, coding, history and prefill | Explicit `check --suite all` for each model/image arm, with individual outcomes retained. |
 | Matched repeated performance | `compare` checks saved counterbalanced observations, not an isolated rate. |
 | Responses API, direct CLI/router generation and lifecycle | Separate integration checks from the source-update procedure. The kit's inference transport uses Chat Completions. |

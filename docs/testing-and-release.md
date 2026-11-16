@@ -774,8 +774,13 @@ acceptance runs its forty cases and 160 rounds against the actual final
 runtime libraries, checking postallocation ROCm matcher eligibility and
 exact agreement with an unmarked reference. Keep graph capture enabled.
 Matcher eligibility and numerical agreement alone do not prove optimized
-kernel activation, which needs a normal model trace. The mechanically
-extracted routing fixture and maintained `QWEN_MOE_TILES` operator cases
+kernel activation, which needs a normal model trace. Follow the tracked
+[Qwen4Exp dispatch/span protocol](../tools/llama-acceptance/trace.md) for its
+source-guarded diagnostic recipe, profiler qualification, expected launch
+names, physical-span interpretation and rejected `qsa-host-span` control.
+Host graph-construction logs are not graph-replay execution evidence;
+profiling and source logging cannot supply normal-image timing acceptance.
+The mechanically extracted routing fixture and maintained `QWEN_MOE_TILES` operator cases
 remain separate gates.
 
 #### Host pool and reset regressions

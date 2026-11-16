@@ -672,6 +672,37 @@ func TestCancellationRequiresDecodedNativeSlotThenIdleAndRecovery(t *testing.T) 
 	}
 }
 
+func TestConcurrentOracleFailureSurvivesCanceledSibling(t *testing.T) {
+	for _, oracleFirst := range []bool{false, true} {
+		t.Run(fmt.Sprintf("oracle-first-%t", oracleFirst), func(t *testing.T) {
+			first := make(chan struct{})
+			second := make(chan struct{})
+			opts := contract.Options{Slots: func(context.Context) ([]contract.Slot, error) { return testSlots(2000, false), nil }}
+			result := concurrent(context.Background(), opts, func(_ context.Context, name string, _ map[string]any) (contract.Response, error) {
+				switch name {
+				case "worker-0":
+					if !oracleFirst {
+						<-first
+					}
+					close(second)
+					return fakeResponse("WRONG", 20, 0), nil
+				case "worker-1":
+					if oracleFirst {
+						<-second
+					}
+					close(first)
+					return contract.Response{}, context.Canceled
+				default:
+					return fakeResponse("WORKER_"+strings.TrimPrefix(name, "worker-"), 20, 0), nil
+				}
+			})
+			if result.Status != contract.Fail || result.Detail != "exact answer oracle rejected response" {
+				t.Fatalf("canceled sibling overwrote genuine oracle evidence: %+v", result)
+			}
+		})
+	}
+}
+
 func TestCancellationRequiresMatchingCompletedCanceledReport(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		for _, fault := range []string{"request-id", "record", "state", "record-id", "outcome", "unverified"} {

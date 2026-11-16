@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"paracetamol/internal/gateway"
 )
 
 // These fixtures describe effective OCI metadata only. The named device paths
@@ -18,6 +20,39 @@ func writeDeviceConfig(t *testing.T, raw string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestGatewayBackendInstanceBinding(t *testing.T) {
+	instance := strings.Repeat("a", 32)
+	backend := backendEvidence{GatewayInstance: instance}
+	status := gateway.Status{InstanceID: instance, InventoryFingerprint: strings.Repeat("b", 64), Scheduler: gateway.SchedulerStatus{Allocation: gateway.AllocationLlamaCPP, State: gateway.StateReady}}
+	if err := validateGatewayBackend(status, backend); err != nil {
+		t.Fatal(err)
+	}
+	for _, fault := range []string{"another-gateway", "missing-owner", "invalid-owner", "unloaded", "starting", "another-allocation"} {
+		t.Run(fault, func(t *testing.T) {
+			actualStatus, actualBackend := status, backend
+			switch fault {
+			case "another-gateway":
+				// Both instances can have the same catalog and valid independent
+				// metadata. Their nonce, not inventory equality, binds the child.
+				actualStatus.InstanceID = strings.Repeat("c", 32)
+			case "missing-owner":
+				actualBackend.GatewayInstance = ""
+			case "invalid-owner":
+				actualStatus.InstanceID, actualBackend.GatewayInstance = strings.Repeat("0", 32), strings.Repeat("0", 32)
+			case "unloaded":
+				actualStatus.Scheduler.State = gateway.StateUnloaded
+			case "starting":
+				actualStatus.Scheduler.State = gateway.StateStarting
+			case "another-allocation":
+				actualStatus.Scheduler.Allocation = "different"
+			}
+			if err := validateGatewayBackend(actualStatus, actualBackend); err == nil {
+				t.Fatal("gateway/backend mismatch passed")
+			}
+		})
+	}
 }
 
 func TestExposedGPUDevicesRootlessBindMountFallback(t *testing.T) {

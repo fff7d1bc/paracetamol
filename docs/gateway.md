@@ -557,7 +557,9 @@ threat model would require independently protecting the backend transport.
 Before opening the public listener, startup verifies rootless Podman, every
 selected image, device policy, the receipt-backed content snapshot, and
 container collisions. A stale container may be reclaimed only when its exact
-name and managed/application/`gateway-backend` labels all match. Direct,
+name and managed/application/`gateway-backend` labels all match and it has a
+canonical gateway-instance label. Ordinary shutdown requires the current
+process's exact instance label. Direct,
 benchmark, foreign, or ambiguously labelled containers are preserved and make
 the operation fail. Direct application launch applies the reciprocal check.
 
@@ -593,6 +595,14 @@ The v7 status schema reports the frozen applications, active allocation,
 lifecycle state, active and queued request counts, inventory fingerprint, and
 exact per-model residency. It also includes the current random `instance_id`.
 Every model reports its catalog-configured context.
+
+The same process identity labels gateway-owned backend containers. Maintainer
+acceptance checks it against status and correlated request reports, so an
+unrelated gateway with the same inventory cannot credit the inspected image.
+After updating from a version without this binding, stop the old gateway
+normally and start the current checkout before running acceptance. Missing
+ownership labels are not inferred or silently repaired.
+
 For a resident llama.cpp allocation, the gateway performs a bounded read-only
 `GET /models` against the private router. Loaded models may also provide
 effective context, training context, parameter count, model byte size, and

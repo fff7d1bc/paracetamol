@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"paracetamol/internal/benchmark"
+	"paracetamol/internal/gateway"
 	"paracetamol/tools/llama-acceptance/internal/coding"
 	"paracetamol/tools/llama-acceptance/internal/contract"
 )
@@ -184,11 +185,22 @@ func compareRuns(baseline, candidate []summary) (contract.Status, []string) {
 	seenRequests := map[string]bool{}
 	imageSources := map[string]sourceIdentity{}
 	for index, run := range all {
+		if run.Backend.Trace != "" {
+			if run.Backend.Trace != "qwen4exp.v1" {
+				return contract.Blocked, []string{"Unknown diagnostic trace identity."}
+			}
+			if result == contract.Pass {
+				result = contract.Review
+			}
+			messages = append(messages, "Diagnostic trace arm only; instrumented timing cannot qualify a normal source update.")
+		}
 		if run.Control != run.Backend.Control || run.Control != "" && run.Control != "mmq-sum" && run.Control != "qsa-host-span" {
 			return contract.Blocked, []string{"Invalid diagnostic control identity."}
 		}
 		if run.Control != "" {
-			result = contract.Review
+			if result == contract.Pass {
+				result = contract.Review
+			}
 			messages = append(messages, "Diagnostic negative-control arm only; it cannot qualify a normal source update.")
 		}
 		if !run.Complete || run.Status == contract.Blocked {
@@ -455,6 +467,9 @@ func prefillInputs(run summary) map[string]string {
 }
 
 func validateObservation(run summary) error {
+	if !gateway.ValidInstanceID(run.Backend.GatewayInstance) || run.Backend.GatewayInstance != run.Instance {
+		return fmt.Errorf("run gateway instance is not bound to its inspected backend")
+	}
 	if !fullID.MatchString(run.Backend.BootSession) {
 		return fmt.Errorf("run lacks its private same-boot comparison identity")
 	}
@@ -483,6 +498,9 @@ func validateObservation(run summary) error {
 			return fmt.Errorf("unknown or duplicate case coverage: %s", item.Name)
 		}
 		seen[item.Name] = true
+		if item.Name == "diagnostic-trace-only" && item.Status != contract.Review {
+			return fmt.Errorf("diagnostic trace disclaimer must remain REVIEW")
+		}
 		switch item.Status {
 		case contract.Pass, contract.Fail, contract.Blocked, contract.Review:
 		default:
@@ -558,6 +576,12 @@ func caseCoverage(run summary) (map[string]bool, map[string]bool, error) {
 	default:
 		return nil, nil, fmt.Errorf("unknown comparison suite")
 	}
+	if run.Backend.Trace != "" {
+		if run.Backend.Trace != "qwen4exp.v1" || run.Suite != "short" && run.Suite != "prefill" {
+			return nil, nil, fmt.Errorf("unknown trace protocol or diagnostic suite")
+		}
+		add("diagnostic-trace-only")
+	}
 	if run.Suite == "short" || run.Suite == "all" {
 		add("off-replay-seed-42", "off-replay-seed-1234", "off-replay-seed-2026", "off-replay-seed-7", "off-replay-seed-99", "off-replay-temperature-zero", "effort-low", "effort-medium", "effort-xhigh", "omitted-effort", "nested-tool-stream-false", "nested-tool-stream-true")
 	}
@@ -599,7 +623,7 @@ func caseCoverage(run summary) (map[string]bool, map[string]bool, error) {
 }
 
 func minimumRequestIDs(name string) int {
-	if strings.HasPrefix(name, "coding-selftest/") || strings.HasSuffix(name, "-slots") || name == "conditioning-near-pool" || name == "history-idle-resident" || name == "history-idle-after-second" {
+	if name == "diagnostic-trace-only" || strings.HasPrefix(name, "coding-selftest/") || strings.HasSuffix(name, "-slots") || name == "conditioning-near-pool" || name == "history-idle-resident" || name == "history-idle-after-second" {
 		return 0
 	}
 	if strings.HasPrefix(name, "nested-tool-stream-") || strings.HasPrefix(name, "cancel-stream-") {

@@ -299,6 +299,84 @@ func TestCallRejectsProtocolAndPolicyDrift(t *testing.T) {
 	}
 }
 
+func TestCallRejectsZeroWorkForGeneratedContent(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		for _, content := range []struct {
+			name, fields, finish string
+		}{
+			{"answer", `"content":"ok"`, "stop"},
+			{"reasoning-content", `"content":null,"reasoning_content":"full thought"`, "stop"},
+			{"reasoning", `"content":null,"reasoning":"full thought"`, "stop"},
+			{"tool", `"content":null,"tool_calls":[{"id":"t","type":"function","function":{"name":"read","arguments":"{}"}}]`, "tool_calls"},
+		} {
+			for _, zero := range []string{"input", "generation", "all"} {
+				t.Run(fmt.Sprintf("stream-%t/%s/zero-%s", stream, content.name, zero), func(t *testing.T) {
+					f, client := newFake(t)
+					message := `{"role":"assistant",` + content.fields + `}`
+					if stream {
+						// The streaming index is transport-only; the parser removes it
+						// when assembling the assistant's tool-call history.
+						message = strings.ReplaceAll(message, `"id":"t"`, `"index":0,"id":"t"`)
+						f.response = event(`{"id":"c","choices":[{"index":0,"delta":`+message+`,"finish_reason":"`+content.finish+`"}]}`) + event("[DONE]")
+					} else {
+						f.response = `{"id":"c","choices":[{"index":0,"message":` + message + `,"finish_reason":"` + content.finish + `"}]}`
+					}
+					f.mutate = func(report *gateway.RequestReport) {
+						r := report.Record
+						r.Completion.FinishReasons[0].FinishReason = content.finish
+						if zero == "input" || zero == "all" {
+							r.Tokens.Input = pointer(int64(0))
+							r.BackendTimings.PromptTokens = pointer(int64(0))
+							r.BackendTimings.PromptMilliseconds = pointer(0.0)
+						}
+						if zero == "generation" || zero == "all" {
+							r.Tokens.Output = pointer(int64(0))
+							r.BackendTimings.GeneratedTokens = pointer(int64(0))
+							r.BackendTimings.GeneratedMilliseconds = pointer(0.0)
+						}
+					}
+					answer, err := client.Call(context.Background(), "zero-work", map[string]any{"stream": stream})
+					var classified *Error
+					if !errors.As(err, &classified) || classified.Kind != Protocol || !strings.Contains(classified.Error(), "nonempty assistant generation lacks positive input/generated tokens") {
+						t.Fatalf("answer=%+v error=%v", answer, err)
+					}
+					if answer.Text == "" && answer.Reasoning == "" && len(answer.Tools) == 0 {
+						t.Fatal("test did not establish generated assistant content")
+					}
+					if _, err := os.Stat(filepath.Join(client.output, "zero-work.report.json")); err != nil {
+						t.Fatal("lost rejected report:", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestCallAcceptsFullyCachedPositiveInputWithoutPromptWork(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream-%t", stream), func(t *testing.T) {
+			f, client := newFake(t)
+			if stream {
+				f.response = event(`{"id":"c","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`) + event("[DONE]")
+			}
+			f.mutate = func(report *gateway.RequestReport) {
+				r := report.Record
+				r.Tokens.Cached = pointer(*r.Tokens.Input)
+				r.BackendTimings.PromptTokens = pointer(int64(0))
+				r.BackendTimings.PromptMilliseconds = pointer(0.0)
+			}
+			answer, err := client.Call(context.Background(), "cached", map[string]any{"stream": stream})
+			if err != nil {
+				t.Fatal(err)
+			}
+			metrics, err := Metrics(answer)
+			if err != nil || metrics.Input != 100 || metrics.Cached != 100 || metrics.Prompt != 0 || metrics.PromptMS != 0 || metrics.Generated != 8 {
+				t.Fatalf("metrics=%+v error=%v", metrics, err)
+			}
+		})
+	}
+}
+
 func TestEvidenceOrphanCollisionBeforeInference(t *testing.T) {
 	f, client := newFake(t)
 	if err := atomicfile.Write(filepath.Join(client.output, "orphan.response.json"), []byte("old"), 0600, atomicfile.Create); err != nil {
@@ -339,6 +417,22 @@ func (b *canceledBody) Read(p []byte) (int, error) {
 }
 func (b *canceledBody) Close() error { return nil }
 
+func hasErrorKind(err error, kind string) bool {
+	if typed, ok := err.(*Error); ok && typed.Kind == kind {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if hasErrorKind(child, kind) {
+				return true
+			}
+		}
+	} else if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return hasErrorKind(wrapped.Unwrap(), kind)
+	}
+	return false
+}
+
 func TestCancellationKeepsPartialReplyAndCanceledReport(t *testing.T) {
 	f, client := newFake(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -370,6 +464,9 @@ func TestCancellationKeepsPartialReplyAndCanceledReport(t *testing.T) {
 	}
 	if !answer.CancellationVerified {
 		t.Fatalf("valid canceled SSE did not verify: %v", err)
+	}
+	if hasErrorKind(err, Protocol) || hasErrorKind(err, Policy) {
+		t.Fatalf("expected cancellation truncation retained hard failure classification: %v", err)
 	}
 	for _, name := range []string{"canceled.response.sse", "canceled.report.json"} {
 		if _, err := os.Stat(filepath.Join(client.output, name)); err != nil {
@@ -488,6 +585,19 @@ func TestCancellationValidationCannotHideOtherFailures(t *testing.T) {
 			if answer.CancellationVerified {
 				t.Fatalf("untrusted canceled response verified despite %s: %v", test.name, err)
 			}
+			kind := Protocol
+			switch test.name {
+			case "wrong-mode", "wrong-source", "wrong-default", "wrong-reasoning-source":
+				kind = Policy
+			case "response-save", "report-save", "wrong-instance":
+				kind = Infrastructure
+			}
+			if !hasErrorKind(err, kind) {
+				t.Fatalf("cancellation hid independent %s failure: %v", kind, err)
+			}
+			if test.collision != "" && !strings.Contains(err.Error(), "negative"+test.collision) {
+				t.Fatalf("cancellation lost the actual evidence-save failure: %v", err)
+			}
 		})
 	}
 }
@@ -552,6 +662,9 @@ func TestPartialJSONCancellationCanVerifyWithoutCompletionMetrics(t *testing.T) 
 	answer, err := client.Call(ctx, "partial-json", map[string]any{"reasoning_effort": "none"})
 	if !errors.Is(err, context.Canceled) || !answer.CancellationVerified {
 		t.Fatalf("answer=%+v error=%v", answer, err)
+	}
+	if hasErrorKind(err, Protocol) || hasErrorKind(err, Policy) {
+		t.Fatalf("partial JSON cancellation became a hard protocol failure: %v", err)
 	}
 }
 

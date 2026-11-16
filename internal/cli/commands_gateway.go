@@ -144,8 +144,12 @@ func (app *App) runGateway(args []string) (result error) {
 		routerPath = filepath.Join((storage.Layout{Root: dataRoot}).Application("llama-cpp"), "models.ini")
 	}
 	gatewayLog := gateway.NewAtomicLogWriter(app.Stderr)
+	instanceID, err := gateway.NewInstanceID()
+	if err != nil {
+		return err
+	}
 	lifecycle, err := gateway.NewContainerLifecycle(gateway.LifecycleOptions{
-		Registry: registry, DataRoot: dataRoot, Profile: profile,
+		InstanceID: instanceID, Registry: registry, DataRoot: dataRoot, Profile: profile,
 		RenderNodes: selectedNodes, LlamaBackend: *backend, LlamaModelsMax: *modelsMax, LlamaSlots: *slots,
 		RouterPreset: routerPath, SourceRevision: app.projectRevision(),
 		VolumeSuffix: app.podman().SELinuxVolumeSuffix(app.Context), Unconfined: *unconfined,
@@ -202,6 +206,7 @@ func (app *App) runGateway(args []string) (result error) {
 	}()
 	_, statisticsErr := stats.Snapshot(contextWithoutCancel(), 1)
 	handler, err := gateway.NewServer(registry, scheduler, gatewayLog, gateway.ServerOptions{
+		InstanceID: instanceID,
 		LlamaSlots: *slots,
 		Resources:  func() hostdoctor.ResourceSnapshot { return hostdoctor.ReadResources(selectedNodes) },
 		APIKey:     apiKey,

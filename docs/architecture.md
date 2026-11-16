@@ -311,6 +311,17 @@ validation and binding are all-or-nothing. Reclamation requires the exact
 backend name and every gateway ownership label; direct, benchmark and foreign
 collisions fail.
 
+The serving process generates one opaque instance nonce and passes it to its
+container lifecycle and HTTP server. Backend containers carry that nonce in
+their gateway-instance label; status and request reports expose the same
+process identity. Acceptance binds the inspected container to that identity
+before sending requests and rechecks it at completion. Matching model
+inventories or container names alone do not establish which image answered.
+Ordinary cleanup requires the current process's label. Explicit startup
+reclamation recognizes a canonical stale instance but never guesses ownership
+from a missing label. This is local correlation, not authentication against a
+malicious process running as the same user.
+
 The scheduler, proxy, cancellation and failed-cleanup policy belong to
 `internal/gateway/`. Backend slots, child eviction, KV allocation and
 model-load policy are separate concepts. Catalog review selects tuples; the

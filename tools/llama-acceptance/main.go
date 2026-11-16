@@ -28,7 +28,7 @@ var errIncomplete = errors.New("acceptance is not PASS; inspect the saved case r
 func help(out io.Writer) {
 	fmt.Fprint(out, `llama.cpp maintainer acceptance
 
-Usage: llama-acceptance <preflight|check|compare|prepare-grader|prepare-native|prepare-control|self-test> [options]
+Usage: llama-acceptance <preflight|check|compare|prepare-grader|prepare-native|prepare-control|prepare-trace|self-test> [options]
 
   preflight       Validate tracked fixtures and readonly gateway/backend evidence.
   check           Run explicit production-gateway cases; never start/stop a backend.
@@ -36,6 +36,7 @@ Usage: llama-acceptance <preflight|check|compare|prepare-grader|prepare-native|p
   prepare-grader  Write the pinned CPU grading build recipe, without building it.
   prepare-native  Write a matching-source native-probe build recipe, without building it.
   prepare-control Write an isolated source-level negative-control build recipe.
+  prepare-trace   Write a source-matched diagnostic trace recipe, without building it.
   self-test       Grade trusted solutions and planted defects, without inference.
 
 Use each operation with --help. A fresh output directory below checkout build/
@@ -47,6 +48,7 @@ source-update sequence, native gates, long-context cases and comparison rules.
 }
 
 type runOptions struct {
+	trace                                       bool
 	control                                     string
 	endpoint, model, output, keyFile, suite     string
 	containerID, imageID, dataRoot, graderImage string
@@ -68,6 +70,7 @@ func parseRun(args []string, stderr io.Writer) (runOptions, bool, error) {
 	set.StringVar(&opts.graderImage, "grader-image", "", "locally built immutable CPU grading image ID (coding/all)")
 	set.Float64Var(&opts.prefillTolerance, "prefill-regression-percent", -1, "predeclared prefill tolerance from baseline variability; required for prefill/all")
 	set.StringVar(&opts.control, "control", "", "diagnostic image only: mmq-sum (short) or qsa-host-span (prefill)")
+	set.BoolVar(&opts.trace, "trace", false, "explicit diagnostic trace image (short/prefill); never normal acceptance")
 	if err := set.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return opts, true, nil
@@ -98,6 +101,9 @@ func parseRun(args []string, stderr io.Writer) (runOptions, bool, error) {
 	}
 	if opts.control != "" && !(opts.control == "mmq-sum" && opts.suite == "short" || opts.control == "qsa-host-span" && opts.suite == "prefill") {
 		return opts, false, fmt.Errorf("diagnostic controls require mmq-sum with short or qsa-host-span with prefill; they cannot qualify a normal upgrade")
+	}
+	if opts.trace && (opts.suite != "short" && opts.suite != "prefill" || opts.control == "mmq-sum") {
+		return opts, false, fmt.Errorf("trace diagnostics require short or prefill, optionally qsa-host-span with prefill")
 	}
 	return opts, false, nil
 }
@@ -137,6 +143,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runPrepareNative(ctx, args[1:], stdout, stderr)
 	case "prepare-control":
 		return runPrepareControl(ctx, args[1:], stdout, stderr)
+	case "prepare-trace":
+		return runPrepareTrace(ctx, args[1:], stdout, stderr)
 	case "prepare-grader":
 		set := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		set.SetOutput(stderr)
