@@ -9,6 +9,7 @@ import (
 	"paracetamol/internal/buildplan"
 	"paracetamol/internal/config"
 	"paracetamol/internal/controlerr"
+	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
 	"paracetamol/internal/runtime"
@@ -103,6 +104,11 @@ func (app *App) commandCleanup(args []string) error {
 		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Muted("Data not present:"), dataRoot)
 		return nil
 	}
+	control, err := gateway.AcquireLocalOperation(app.Environment, "cleanup "+scope)
+	if err != nil {
+		return err
+	}
+	defer control.Close()
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -129,6 +135,13 @@ func (app *App) commandCleanup(args []string) error {
 }
 
 func (app *App) cleanupContainers(application string, yes, nonInteractive bool) error {
+	if application == "all" || application == "llama-cpp" {
+		control, err := gateway.AcquireLocalOperation(app.Environment, "cleanup containers")
+		if err != nil {
+			return err
+		}
+		defer control.Close()
+	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -213,6 +226,13 @@ func (app *App) managedContainers(application string) ([]string, error) {
 func (app *App) cleanupImages(application, exact string, yes, nonInteractive bool) error {
 	if exact != "" && application != "all" {
 		return controlerr.Usage("--image-tag cannot be combined with an application scope")
+	}
+	if application == "all" || application == "llama-cpp" {
+		control, err := gateway.AcquireLocalOperation(app.Environment, "cleanup images")
+		if err != nil {
+			return err
+		}
+		defer control.Close()
 	}
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err

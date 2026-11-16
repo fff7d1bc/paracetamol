@@ -538,7 +538,7 @@ func (app *App) runComfyUI(args []string) error {
 	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("comfyui"); err != nil {
 		return err
 	}
-	return app.startManaged(application, imageValue, command, *detach)
+	return app.startManaged(application, imageValue, command, *detach, nil)
 }
 
 func (app *App) runLlama(mode string, args []string) error {
@@ -756,15 +756,23 @@ func (app *App) runLlama(mode string, args []string) error {
 		fmt.Fprintf(app.Stdout, "%s\n  %s\n", terminal.Heading("Resolved command:"), terminal.Command(shellJoin(command)))
 		return nil
 	}
-	if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
+	control, err := gateway.AcquireLocalOperation(app.Environment, "direct llama.cpp run")
+	if err != nil {
 		return err
 	}
-	if routerMode {
-		if _, err := runtime.WriteRouter(dataRoot, routerContents); err != nil {
+	defer control.Close()
+	return app.startManaged(application, options.Image, command, detach, func() error {
+		// Preflight must finish before publishing shared llama.cpp state. The
+		// operation lease excludes gateway startup through attached-run cleanup.
+		if err := (storage.Layout{Root: dataRoot}).PrepareRuntime("llama-cpp"); err != nil {
 			return err
 		}
-	}
-	return app.startManaged(application, options.Image, command, detach)
+		if routerMode {
+			_, err := runtime.WriteRouter(dataRoot, routerContents)
+			return err
+		}
+		return nil
+	})
 }
 
 func (app *App) commandShell(args []string) error {
@@ -907,7 +915,7 @@ func (app *App) commandStop(args []string) error {
 	return nil
 }
 
-func (app *App) startManaged(application config.Application, image string, command []string, detach bool) error {
+func (app *App) startManaged(application config.Application, image string, command []string, detach bool, prepare func() error) error {
 	if err := app.podman().RequireRootless(app.Context); err != nil {
 		return err
 	}
@@ -935,6 +943,11 @@ func (app *App) startManaged(application config.Application, image string, comma
 	}
 	if exists {
 		return controlerr.New("container name is already occupied: %s", application.ContainerName)
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return err
+		}
 	}
 	if application.Port != 0 {
 		terminal := app.terminal(app.Stdout)

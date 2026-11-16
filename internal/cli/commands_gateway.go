@@ -195,9 +195,9 @@ func (app *App) runGateway(args []string) (result error) {
 	if err != nil {
 		return err
 	}
-	// The local control lock owns the sole statistics writer. Closing after
-	// HTTP draining preserves final requests without making storage failures
-	// failures of an otherwise successfully stopped inference service.
+	// Local ownership excludes competing statistics writers. Drain HTTP before
+	// closing statistics to preserve final requests. Accounting errors must not
+	// turn a successful inference shutdown into a failure.
 	stats := gateway.NewStatistics(gateway.StatisticsOptions{
 		Enabled: *statistics, RetentionDays: *statisticsRetention, Log: gatewayLog,
 		Path: filepath.Join((storage.Layout{Root: dataRoot}).Application("gateway"), "statistics", "usage.sqlite"),

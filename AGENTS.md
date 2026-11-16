@@ -107,7 +107,10 @@ them:
   backend containers only on ephemeral loopback ports, and removes only an
   exact current-instance container bearing all gateway ownership labels.
   Startup never reclaims another process's backend or infers staleness from
-  its instance label.
+  its instance label. Gateway startup, direct llama.cpp launches and cleanup
+  affecting gateway resources share a retained local ownership reservation,
+  including while the gateway has no loaded backend. Data deletion must not
+  remove or bypass that reservation.
 - Downloads use full Hugging Face revisions or exact Civitai model-version
   IDs, plus exact byte sizes and SHA-256 hashes. Applications must not
   silently fetch unpinned model content.

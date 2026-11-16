@@ -423,7 +423,12 @@ prompt. Scripts must make both intent and noninteractive execution explicit:
 The same `--yes` and `--non-interactive` flags apply to `containers`, `images`,
 `build-cache`, `caches`, `downloads`, and `data`. Without `--yes`, a non-TTY
 invocation fails before mutation. Persistent-data cleanup also refuses to
-proceed while any managed container remains.
+proceed while any managed container remains. Stop the gateway first, even if
+it has no loaded backend. Data, cache and download cleanup, plus container or
+image cleanup covering llama.cpp, refuse to run while the gateway owns its
+local reservation. They retain that reservation across confirmation and
+removal so a gateway cannot start halfway through cleanup. Build-cache and
+ComfyUI-only container or image cleanup do not require this reservation.
 
 Completed installs remove their owned staging. A complete file that fails
 SHA-256 verification is preserved with an `.invalid-*` suffix while the

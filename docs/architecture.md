@@ -308,12 +308,24 @@ No backend is eagerly loaded. One allocation is resident, using a constrained
 llama.cpp router on an ephemeral loopback port. Public requests use gateway
 listeners; managed local clients retain IPv4 loopback. Complete listener
 validation and binding are all-or-nothing. Before backend checks, listener
-binding or persistent preparation, startup acquires the private HOME-anchored
-control lock and retains it through backend shutdown. Different ports, data
-roots and `XDG_RUNTIME_DIR` values do not create independent gateways within
-the same account HOME. This is not a cross-HOME or hostile same-user boundary.
+binding or persistent preparation, startup binds a Linux abstract Unix control
+socket and retains it through backend shutdown. Its bounded name derives from
+the product namespace, current UID and cleaned absolute HOME, not the length
+of a filesystem path. Different ports, data roots and `XDG_RUNTIME_DIR` values
+do not create independent gateways within the same account HOME. The kernel
+owns the reservation, so data cleanup cannot unlink it and process exit leaves
+no stale socket or lock file. Both ends verify the peer UID before exchanging
+control messages. This is not a cross-HOME or hostile same-user boundary.
 Availability checks never remove containers; existing backend, direct,
 benchmark and foreign collisions fail.
+
+Direct llama.cpp launches and cleanup affecting gateway resources acquire the
+same reservation across their checks and mutations. An idle gateway therefore
+blocks them even without a container. Direct router publication also waits for
+image and container preflight, so a rejected launch cannot change a running
+service's generated configuration. Detached launches release the reservation
+after startup, with subsequent ownership checks relying on the container.
+Read-only dry runs do not reserve resources.
 
 The serving process generates one opaque instance nonce and passes it to its
 container lifecycle and HTTP server. Backend containers carry that nonce in
@@ -324,9 +336,8 @@ inventories or container names alone do not establish which image answered.
 Ordinary cleanup requires the current process's label. A canonical nonce does
 not establish that its owner has exited, so startup and allocation never
 reclaim another process's backend. Operators must verify orphan ownership and
-remove that exact container explicitly. A dead control socket can be replaced
-only after acquiring its lock. This is local correlation, not authentication
-against a malicious process running as the same user.
+remove that exact container explicitly. This is local correlation, not
+authentication against a malicious process running as the same user.
 
 The scheduler, proxy, cancellation and failed-cleanup policy belong to
 `internal/gateway/`. Backend slots, child eviction, KV allocation and

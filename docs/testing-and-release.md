@@ -105,6 +105,12 @@ the source boundary: profile validation, resumable downloader confinement,
 and ComfyUI Manager patch fail-closed behavior. `make test` runs it after the
 Go suite.
 
+Gateway ownership checks need no Podman service or GPU. Temporary abstract
+Unix sockets and fake subprocesses exercise duplicate startup, direct router
+publication, cleanup during an unloaded gateway, long HOME paths, graceful
+stop and crash release. Keep these checks at the shared ownership boundary
+when changing startup, cleanup or control transport.
+
 `.github/workflows/checks.yml` runs the Go 1.26 checks, static build, the
 container-owned Python and shell checks, catalog validation, and representative
 CLI dry-runs without Podman.

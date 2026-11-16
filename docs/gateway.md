@@ -197,17 +197,25 @@ There is no daemon or detach mode. The foreground process owns listener and
 backend cleanup. Ctrl-C, `stop gateway`, and `stop all` stop accepting work on
 every address, drain active HTTP requests, remove its exact private backend
 container, print a successful stop, and exit cleanly. The stop commands use a
-private same-user Unix socket, never the published HTTP API. Its location is
-always `$HOME/.local/share/paracetamol/run/gateway.sock`; `HOME` must be an
-absolute path. The adjacent private lock reserves gateway ownership before
+same-user Linux abstract Unix socket, never the published HTTP API. It has no
+filesystem path or lock file. Its bounded name depends on the product, current
+UID and cleaned absolute `HOME`, which must be an absolute path. Long home
+directory names are supported. Both ends check the peer UID before exchanging
+control messages. Binding this socket reserves gateway ownership before
 backend checks or persistent writes and remains held through shutdown. One
 gateway may run within the same account HOME, regardless of its public port,
 data directory or `XDG_RUNTIME_DIR`; changing HOME is not a supported way to
 coordinate gateways sharing a Podman namespace. Stop commands use that same
-HOME even when invoked from another runtime directory. Stop an already-running
-older build before upgrading, using its original checkout or Ctrl-C: builds
-using the former XDG runtime socket cannot be controlled through the new path.
-Builds predating local control still need Ctrl-C or SIGTERM. Non-loopback
+HOME even when invoked from another runtime directory. Direct llama.cpp
+launches and cleanup affecting gateway resources also hold this reservation
+while checking and changing those resources. Stop the gateway before running
+them, even when its backend is unloaded. Stop commands do not mistake a
+temporary launch or cleanup reservation for a running gateway.
+
+Stop an already-running older build before upgrading, using its original
+checkout or Ctrl-C. Builds using filesystem control sockets do not share the
+new reservation and cannot be stopped by the new control protocol. Builds
+predating local control still need Ctrl-C or SIGTERM. Non-loopback
 publication is visibly warned about using the effective bound addresses. Without a configured
 key it is an unauthenticated trusted-network publication. With a key, the
 warning still identifies unencrypted HTTP.
@@ -566,13 +574,15 @@ threat model would require independently protecting the backend transport.
 
 Before opening the public listener, startup verifies rootless Podman, every
 selected image, device policy, the receipt-backed content snapshot, and
-container collisions. It first reserves the HOME-anchored control lock, before
+container collisions. It first binds the local ownership socket, before
 backend checks or generated router writes. Container availability checks are
 read-only and refuse any existing backend, including one bearing a canonical
 gateway-instance label; that label alone cannot prove staleness. Ordinary
 shutdown requires the current process's exact instance label. Direct,
 benchmark, foreign, or ambiguously labelled containers are preserved and make
-the operation fail. Direct application launch applies the reciprocal check.
+the operation fail. Direct llama.cpp launch applies the reciprocal check
+before publishing generated router configuration and retains its reservation
+through launch. A dry run makes no reservation or persistent writes.
 
 ## API and status
 
