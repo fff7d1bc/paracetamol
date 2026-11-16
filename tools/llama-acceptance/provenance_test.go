@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"paracetamol/internal/gateway"
@@ -64,9 +65,14 @@ func TestExposedGPUDevicesRootlessBindMountFallback(t *testing.T) {
     {"destination":"/dev/dri/renderD130","source":"/dev/dri/renderD130","type":"bind"}
   ],
   "linux": {"devices": [
-    {"path":"/dev/null","major":1},
-    {"path":"/dev/kfd","major":235},
-    {"path":"/dev/dri/renderD130","major":226}
+    {"path":"/dev/null","type":"c","major":1,"minor":3},
+    {"path":"/dev/zero","type":"c","major":1,"minor":5},
+    {"path":"/dev/full","type":"c","major":1,"minor":7},
+    {"path":"/dev/random","type":"c","major":1,"minor":8},
+    {"path":"/dev/urandom","type":"c","major":1,"minor":9},
+    {"path":"/dev/tty","type":"c","major":5,"minor":0},
+    {"path":"/dev/kfd","type":"c","major":235,"minor":0},
+    {"path":"/dev/dri/renderD130","type":"c","major":226,"minor":130}
   ]}
 }`
 	container := inspectedContainer{OCIConfigPath: writeDeviceConfig(t, raw)}
@@ -80,23 +86,60 @@ func TestExposedGPUDevicesRootlessBindMountFallback(t *testing.T) {
 	}
 }
 
-func TestExposedGPUDevicesUsesExplicitHostConfigWithoutFallback(t *testing.T) {
-	// PathOnHost, not PathInContainer or an inferred render-node number, owns
-	// this observation when the Docker-compatible inspect field is populated.
+func TestExposedGPUDevicesCorrelatesAllRepresentations(t *testing.T) {
+	// A rootless --device may be reported in all four places. Equivalent
+	// representations describe one exposure, not four independent devices.
 	var container inspectedContainer
-	if err := json.Unmarshal([]byte(`{"OCIConfigPath":"/missing/not-read.json","HostConfig":{"Devices":[{"PathOnHost":"/dev/kfd","PathInContainer":"/ignored/kfd"},{"PathOnHost":"/dev/dri/renderD131","PathInContainer":"/ignored/renderD128"}]}}`), &container); err != nil {
+	if err := json.Unmarshal([]byte(`{"HostConfig":{"Devices":[{"PathOnHost":"/dev/kfd","PathInContainer":"/dev/kfd"},{"PathOnHost":"/dev/dri/renderD131","PathInContainer":"/dev/dri/renderD131"}]},"Mounts":[{"Source":"/dev/kfd","Destination":"/dev/kfd","Type":"bind"},{"Source":"/dev/dri/renderD131","Destination":"/dev/dri/renderD131","Type":"bind"}]}`), &container); err != nil {
 		t.Fatal(err)
 	}
+	container.OCIConfigPath = writeDeviceConfig(t, `{"mounts":[{"source":"/dev/kfd","destination":"/dev/kfd","type":"bind"},{"source":"/dev/dri/renderD131","destination":"/dev/dri/renderD131","type":"bind"}],"linux":{"devices":[{"path":"/dev/kfd","type":"c","major":235,"minor":0},{"path":"/dev/dri/renderD131","type":"c","major":226,"minor":131}]}}`)
 	devices, err := exposedGPUDevices(container)
 	if err != nil || !reflect.DeepEqual(devices, []string{"/dev/kfd", "/dev/dri/renderD131"}) {
 		t.Fatalf("devices=%#v, error=%v", devices, err)
 	}
 }
 
+func TestExposedGPUDevicesReconcilesInspectWithEffectiveOCI(t *testing.T) {
+	normal := `{"mounts":[{"source":"/dev/kfd","destination":"/dev/kfd","type":"bind"},{"source":"/dev/dri/renderD130","destination":"/dev/dri/renderD130","type":"bind"}]}`
+	for name, inspected := range map[string]string{
+		"host alias":             `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/dri/renderD130","PathInContainer":"/extra-render"}]}}`,
+		"host missing target":    `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/dri/renderD130"}]}}`,
+		"host unobserved device": `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/dri/renderD129","PathInContainer":"/dev/dri/renderD129"}]}}`,
+		"host duplicate":         `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/kfd","PathInContainer":"/dev/kfd"},{"PathOnHost":"/dev/kfd","PathInContainer":"/dev/kfd"}]}}`,
+		"host tree":              `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/dri","PathInContainer":"/dev/dri"}]}}`,
+		"inspected alias":        `{"Mounts":[{"Source":"/dev/dri/renderD129","Destination":"/extra-render","Type":"bind"}]}`,
+		"inspected tree alias":   `{"Mounts":[{"Source":"/dev/dri","Destination":"/extra-gpus","Type":"bind"}]}`,
+		"inspected duplicate":    `{"Mounts":[{"Source":"/dev/kfd","Destination":"/dev/kfd","Type":"bind"},{"Source":"/dev/kfd","Destination":"/dev/kfd","Type":"bind"}]}`,
+		"inspected unobserved":   `{"Mounts":[{"Source":"/dev/dri/renderD129","Destination":"/dev/dri/renderD129","Type":"bind"}]}`,
+		"inspected wrong source": `{"Mounts":[{"Source":"/elsewhere","Destination":"/dev/dri/renderD130","Type":"bind"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var container inspectedContainer
+			if err := json.Unmarshal([]byte(inspected), &container); err != nil {
+				t.Fatal(err)
+			}
+			container.OCIConfigPath = writeDeviceConfig(t, normal)
+			if _, err := exposedGPUDevices(container); err == nil {
+				t.Fatal("inconsistent or ambiguous inspected exposure accepted")
+			}
+		})
+	}
+	// A populated HostConfig must not bypass an effective OCI-only exposure.
+	var container inspectedContainer
+	if err := json.Unmarshal([]byte(`{"HostConfig":{"Devices":[{"PathOnHost":"/dev/kfd","PathInContainer":"/dev/kfd"},{"PathOnHost":"/dev/dri/renderD130","PathInContainer":"/dev/dri/renderD130"}]}}`), &container); err != nil {
+		t.Fatal(err)
+	}
+	container.OCIConfigPath = writeDeviceConfig(t, strings.TrimSuffix(normal, `]}`)+`,{"source":"/dev/dri/renderD129","destination":"/extra-render","type":"bind"}]}`)
+	if _, err := exposedGPUDevices(container); err == nil {
+		t.Fatal("HostConfig concealed an additional aliased effective GPU")
+	}
+}
+
 func TestExposedGPUDevicesLinuxDeviceFallbackAndMountDeduplication(t *testing.T) {
 	for name, raw := range map[string]string{
-		"linux-only": `{"linux":{"devices":[{"path":"/dev/null","major":1},{"path":"/dev/kfd","major":235},{"path":"/dev/dri/renderD130","major":226}]}}`,
-		"mixed":      `{"mounts":[{"destination":"/dev/kfd","source":"/dev/kfd","type":"bind"}],"linux":{"devices":[{"path":"/dev/kfd","major":235},{"path":"/dev/dri/renderD130","major":226}]}}`,
+		"linux-only": `{"linux":{"devices":[{"path":"/dev/null","type":"c","major":1,"minor":3},{"path":"/dev/kfd","type":"c","major":235,"minor":0},{"path":"/dev/dri/renderD130","type":"c","major":226,"minor":130}]}}`,
+		"mixed":      `{"mounts":[{"destination":"/dev/kfd","source":"/dev/kfd","type":"bind"}],"linux":{"devices":[{"path":"/dev/kfd","type":"c","major":235,"minor":0},{"path":"/dev/dri/renderD130","type":"c","major":226,"minor":130}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			devices, err := exposedGPUDevices(inspectedContainer{OCIConfigPath: writeDeviceConfig(t, raw)})
@@ -113,6 +156,13 @@ func TestExposedGPUDevicesRejectsUnsafeOrAmbiguousMounts(t *testing.T) {
 		"whole tree elsewhere":      `[{"destination":"/host-devices","source":"/dev","type":"bind"}]`,
 		"whole tree trailing slash": `[{"destination":"/host-devices","source":"/dev/","type":"bind"}]`,
 		"whole tree dot component":  `[{"destination":"/host-devices","source":"/dev/.","type":"bind"}]`,
+		"whole host tree":           `[{"destination":"/host","source":"/","type":"bind"}]`,
+		"GPU tree alias":            `[{"destination":"/extra-gpus","source":"/dev/dri","type":"bind"}]`,
+		"GPU subtree alias":         `[{"destination":"/extra-gpus","source":"/dev/dri/by-path","type":"bind"}]`,
+		"extra render alias":        `[{"destination":"/extra-render","source":"/dev/dri/renderD129","type":"bind"}]`,
+		"kfd alias":                 `[{"destination":"/extra-kfd","source":"/dev/kfd","type":"bind"}]`,
+		"GPU tree destination":      `[{"destination":"/dev/dri","source":"/other","type":"bind"}]`,
+		"render dot component":      `[{"destination":"/dev/dri/renderD130","source":"/dev/dri/../dri/renderD130","type":"bind"}]`,
 		"wrong kfd source":          `[{"destination":"/dev/kfd","source":"/other/kfd","type":"bind"}]`,
 		"wrong render source":       `[{"destination":"/dev/dri/renderD130","source":"/dev/dri/renderD131","type":"bind"}]`,
 		"missing source":            `[{"destination":"/dev/kfd","type":"bind"}]`,
@@ -130,18 +180,62 @@ func TestExposedGPUDevicesRejectsUnsafeOrAmbiguousMounts(t *testing.T) {
 	}
 }
 
+func TestExposedGPUDevicesRejectsAmbiguousOCIDevices(t *testing.T) {
+	for name, devices := range map[string]string{
+		"render alias":        `[{"path":"/extra-render","type":"c","major":226,"minor":129}]`,
+		"kfd alias":           `[{"path":"/dev/kfd","type":"c","major":235,"minor":0},{"path":"/extra-kfd","type":"c","major":235,"minor":0}]`,
+		"unknown KFD major":   `[{"path":"/extra-kfd","type":"c","major":242,"minor":0}]`,
+		"duplicate":           `[{"path":"/dev/dri/renderD130","type":"c","major":226,"minor":130},{"path":"/dev/dri/renderD130","type":"c","major":226,"minor":130}]`,
+		"tree":                `[{"path":"/dev/dri","type":"c","major":226,"minor":130}]`,
+		"card node":           `[{"path":"/dev/dri/card0","type":"c","major":226,"minor":0}]`,
+		"wrong render major":  `[{"path":"/dev/dri/renderD130","type":"c","major":235,"minor":130}]`,
+		"wrong render minor":  `[{"path":"/dev/dri/renderD130","type":"c","major":226,"minor":129}]`,
+		"wrong render type":   `[{"path":"/dev/dri/renderD130","type":"b","major":226,"minor":130}]`,
+		"wrong kfd major":     `[{"path":"/dev/kfd","type":"c","major":226,"minor":0}]`,
+		"wrong kfd minor":     `[{"path":"/dev/kfd","type":"c","major":235,"minor":1}]`,
+		"missing type":        `[{"path":"/dev/kfd","major":235,"minor":0}]`,
+		"missing minor":       `[{"path":"/dev/kfd","type":"c","major":235}]`,
+		"default GPU alias":   `[{"path":"/dev/null","type":"c","major":226,"minor":130}]`,
+		"default KFD alias":   `[{"path":"/dev/null","type":"c","major":242,"minor":0}]`,
+		"default wrong minor": `[{"path":"/dev/null","type":"c","major":1,"minor":5}]`,
+		"default wrong type":  `[{"path":"/dev/null","type":"b","major":1,"minor":3}]`,
+		"default duplicate":   `[{"path":"/dev/null","type":"c","major":1,"minor":3},{"path":"/dev/null","type":"c","major":1,"minor":3}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Rootless binds need not provide a Linux /dev/kfd device record
+			// from which to learn its dynamic major number.
+			if _, err := exposedGPUDevices(inspectedContainer{OCIConfigPath: writeDeviceConfig(t, `{"mounts":[{"source":"/dev/kfd","destination":"/dev/kfd","type":"bind"}],"linux":{"devices":`+devices+`}}`)}); err == nil {
+				t.Fatal("ambiguous effective OCI device accepted")
+			}
+		})
+	}
+}
+
 func TestExposedGPUDevicesRejectsUnavailableOrInvalidOCIConfig(t *testing.T) {
+	fifo := filepath.Join(t.TempDir(), "config.fifo")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for name, path := range map[string]string{
 		"absent path":   "",
 		"relative path": "config.json",
 		"missing file":  filepath.Join(t.TempDir(), "missing.json"),
 		"directory":     t.TempDir(),
+		"FIFO":          fifo,
 		"invalid json":  writeDeviceConfig(t, `{"mounts":`),
+		"trailing json": writeDeviceConfig(t, `{"mounts":[]} {"mounts":[]}`),
 		"oversized":     writeDeviceConfig(t, strings.Repeat(" ", 4*1024*1024+1)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := exposedGPUDevices(inspectedContainer{OCIConfigPath: path}); err == nil {
-				t.Fatal("unavailable or invalid effective OCI configuration accepted")
+			for _, requested := range []string{`{}`, `{"HostConfig":{"Devices":[{"PathOnHost":"/dev/kfd","PathInContainer":"/dev/kfd"},{"PathOnHost":"/dev/dri/renderD130","PathInContainer":"/dev/dri/renderD130"}]}}`} {
+				var container inspectedContainer
+				if err := json.Unmarshal([]byte(requested), &container); err != nil {
+					t.Fatal(err)
+				}
+				container.OCIConfigPath = path
+				if _, err := exposedGPUDevices(container); err == nil {
+					t.Fatal("unavailable or invalid effective OCI configuration accepted")
+				}
 			}
 		})
 	}

@@ -286,6 +286,16 @@ and effective arguments are observable. Wait for the gateway to be idle before
 preflight. Use `podman ps --no-trunc` and exact container/image inspection to
 identify the already-running gateway-owned backend. The checker revalidates
 ownership, immutable image identity, model mounts, native policy and template.
+It also requires the selected container's inspected `OCIConfigPath` to name a
+readable, bounded regular file on this host. Preflight reconciles requested
+devices and inspected mounts with effective OCI mounts/devices; unavailable
+OCI metadata, GPU-tree mounts, aliases, duplicates or inconsistent records
+block acceptance even when `HostConfig.Devices` lists the expected pair.
+Equivalent rootless bind-mount/device representations count only once. This
+non-TTY backend accepts only the standard null/zero/full/random/urandom/tty
+OCI device records besides KFD and render devices, with exact character-device
+identities; unknown device records cannot be assumed unrelated to the GPU.
+This check neither grants device access nor changes the ordinary gateway runtime.
 
 The current fixture policy requires ROCm, a 262144-token shared pool, four
 slots, F16 K/V and batch/microbatch 2048. The speculative arm requires managed

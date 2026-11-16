@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"paracetamol/internal/catalog"
@@ -70,11 +71,11 @@ type inspectedContainer struct {
 		CapDrop        []string
 		CapAdd         []string
 		SecurityOpt    []string
-		Devices        []struct{ PathOnHost string }
+		Devices        []struct{ PathOnHost, PathInContainer string }
 	}
 	Mounts []struct {
-		Source, Destination string
-		RW                  bool
+		Source, Destination, Type string
+		RW                        bool
 	}
 	NetworkSettings struct {
 		Ports map[string][]struct{ HostIP, HostPort string }
@@ -356,21 +357,15 @@ func containerBytes(ctx context.Context, id, path string, limit int64) ([]byte, 
 	return raw, nil
 }
 
-// Rootless Podman can implement --device as OCI bind mounts and leave the
-// Docker-compatible HostConfig.Devices empty. Inspect effective device mounts
-// rather than trusting the requested profile environment or guessing devices.
+// Rootless --device can appear as a bind mount, an OCI device, or both. The
+// requested HostConfig alone cannot rule out additional effective exposures.
+// Correlate representations, but never collapse duplicates within one of them.
 func exposedGPUDevices(c inspectedContainer) ([]string, error) {
-	var devices []string
-	if len(c.HostConfig.Devices) != 0 {
-		for _, device := range c.HostConfig.Devices {
-			devices = append(devices, device.PathOnHost)
-		}
-		return devices, nil
-	}
 	if !filepath.IsAbs(c.OCIConfigPath) {
 		return nil, fmt.Errorf("effective OCI device configuration unavailable")
 	}
-	file, err := os.Open(c.OCIConfigPath)
+	// Do not let an unexpected FIFO block before the regular-file check.
+	file, err := os.OpenFile(c.OCIConfigPath, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -383,36 +378,113 @@ func exposedGPUDevices(c inspectedContainer) ([]string, error) {
 		Mounts []struct{ Destination, Source, Type string }
 		Linux  struct {
 			Devices []struct {
-				Path  string
-				Major int64
+				Path, Type string
+				Major      int64
+				Minor      *int64
 			}
 		}
 	}
-	if err := json.NewDecoder(io.LimitReader(file, 4*1024*1024)).Decode(&config); err != nil {
-		return nil, err
+	raw, err := io.ReadAll(io.LimitReader(file, 4*1024*1024+1))
+	if err != nil || len(raw) > 4*1024*1024 {
+		return nil, fmt.Errorf("cannot read bounded effective OCI configuration")
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil, fmt.Errorf("invalid effective OCI configuration: %w", err)
+	}
+	var devices []string
+	effective := map[string]bool{}
+	add := func(path string) {
+		if !effective[path] {
+			devices = append(devices, path)
+			effective[path] = true
+		}
+	}
+	mounts := map[string]bool{}
+	for _, mount := range config.Mounts {
+		gpu, err := gpuMount(mount.Source, mount.Destination, mount.Type, mounts)
+		if err != nil {
+			return nil, err
+		}
+		if gpu {
+			add(mount.Destination)
+		}
 	}
 	seen := map[string]bool{}
-	for _, mount := range config.Mounts {
-		if mount.Type == "bind" && filepath.Clean(mount.Source) == "/dev" {
-			return nil, fmt.Errorf("backend must not expose the complete host device tree")
-		}
-		if mount.Destination == "/dev/kfd" || strings.HasPrefix(mount.Destination, "/dev/dri") {
-			if mount.Type != "bind" || mount.Source != mount.Destination || seen[mount.Destination] {
-				return nil, fmt.Errorf("unexpected or ambiguous effective GPU mount")
-			}
-			seen[mount.Destination] = true
-			devices = append(devices, mount.Destination)
-		}
+	// This is the non-TTY managed backend, not a generic OCI device policy.
+	// KFD's major is dynamic: ignoring unknown character devices could conceal
+	// an aliased KFD node when rootless /dev/kfd is represented only as a bind.
+	standard := map[string][2]int64{
+		"/dev/null": {1, 3}, "/dev/zero": {1, 5}, "/dev/full": {1, 7},
+		"/dev/random": {1, 8}, "/dev/urandom": {1, 9}, "/dev/tty": {5, 0},
 	}
 	for _, device := range config.Linux.Devices {
-		if device.Major == 226 || device.Path == "/dev/kfd" || strings.HasPrefix(device.Path, "/dev/dri") {
-			if !seen[device.Path] {
-				seen[device.Path] = true
-				devices = append(devices, device.Path)
+		if seen[device.Path] || device.Type != "c" || device.Minor == nil {
+			return nil, fmt.Errorf("unexpected or ambiguous effective OCI device")
+		}
+		seen[device.Path] = true
+		if exactGPUDevice(device.Path) {
+			if device.Path == "/dev/kfd" {
+				if device.Major <= 0 || device.Major == 1 || device.Major == 5 || device.Major == 226 || *device.Minor != 0 {
+					return nil, fmt.Errorf("effective KFD device identity differs from its path")
+				}
+			} else {
+				minor, _ := strconv.ParseInt(strings.TrimPrefix(device.Path, "/dev/dri/renderD"), 10, 64)
+				if device.Major != 226 || *device.Minor != minor {
+					return nil, fmt.Errorf("effective render device identity differs from its path")
+				}
 			}
+			add(device.Path)
+		} else if identity, ok := standard[device.Path]; !ok || device.Major != identity[0] || *device.Minor != identity[1] {
+			return nil, fmt.Errorf("backend exposes an unexpected effective OCI device")
+		}
+	}
+	// Inspection may omit the Docker-compatible list for rootless devices, but
+	// any records it does report must agree with the effective OCI inventory.
+	seen = map[string]bool{}
+	for _, device := range c.HostConfig.Devices {
+		if !exactGPUDevice(device.PathOnHost) || device.PathOnHost != device.PathInContainer || seen[device.PathOnHost] || !effective[device.PathOnHost] {
+			return nil, fmt.Errorf("requested GPU devices disagree with effective OCI configuration")
+		}
+		seen[device.PathOnHost] = true
+	}
+	seen = map[string]bool{}
+	for _, mount := range c.Mounts {
+		gpu, err := gpuMount(mount.Source, mount.Destination, mount.Type, seen)
+		if err != nil {
+			return nil, err
+		}
+		if gpu && !mounts[mount.Destination] {
+			return nil, fmt.Errorf("inspected GPU mounts disagree with effective OCI configuration")
 		}
 	}
 	return devices, nil
+}
+
+func gpuDevicePath(path string) bool {
+	clean := filepath.Clean(path)
+	return clean == "/dev/kfd" || strings.HasPrefix(clean, "/dev/kfd/") || clean == "/dev/dri" || strings.HasPrefix(clean, "/dev/dri/")
+}
+
+func exactGPUDevice(path string) bool {
+	if path == "/dev/kfd" {
+		return true
+	}
+	minor, err := strconv.ParseUint(strings.TrimPrefix(path, "/dev/dri/renderD"), 10, 63)
+	return strings.HasPrefix(path, "/dev/dri/renderD") && err == nil && minor >= 128 && path == "/dev/dri/renderD"+strconv.FormatUint(minor, 10)
+}
+
+func gpuMount(source, destination, kind string, seen map[string]bool) (bool, error) {
+	if kind == "bind" && (filepath.Clean(source) == "/" || filepath.Clean(source) == "/dev" || filepath.Clean(destination) == "/dev") {
+		return false, fmt.Errorf("backend must not expose or replace the complete device tree")
+	}
+	if !gpuDevicePath(source) && !gpuDevicePath(destination) {
+		return false, nil
+	}
+	if kind != "bind" || !exactGPUDevice(source) || source != destination || seen[destination] {
+		return false, fmt.Errorf("unexpected or ambiguous effective GPU mount")
+	}
+	seen[destination] = true
+	return true, nil
 }
 
 func emptyCaps(raw json.RawMessage) bool {
