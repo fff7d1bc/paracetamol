@@ -6,6 +6,8 @@
 !containers/content_tools/
 !containers/content_tools/download.py
 !containers/content_tools/requirements.txt
+!containers/python_base/
+!containers/python_base/requirements.txt
 !applications/
 !applications/comfyui/
 !applications/comfyui/constraints.txt

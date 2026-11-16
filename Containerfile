@@ -1,6 +1,6 @@
 # docker.io/library/ubuntu:resolute-20261105.1 (26.04), multi-architecture index resolved 2026-11-13.
 ARG ROCM_RUNTIME_IMAGE=localhost/paracetamol:runtime-ubuntu26.04-rocm10.1-r6
-ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.14-r9
+ARG ROCM_BASE_IMAGE=localhost/paracetamol:base-ubuntu26.04-rocm10.1-torch2.14-r10
 ARG UBUNTU_IMAGE=docker.io/library/ubuntu@sha256:66b8084a0d45bd4877992bd38e04b51bfa99bd57293364cb6391fb674771846e
 ARG ROCM_PACKAGE_INDEX=https://stable.repo.amd.com/rocm/whl-next/
 ARG ROCM_VERSION=10.1.0
@@ -103,13 +103,18 @@ RUN apt-get update && \
     git config --system init.defaultBranch main && \
     rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --upgrade pip setuptools wheel
+COPY containers/python_base/requirements.txt /opt/python-bootstrap-requirements.txt
+RUN python -m pip install \
+        --requirement /opt/python-bootstrap-requirements.txt && \
+    python -m pip check
 
 RUN python -m pip install \
+        --constraint /opt/python-bootstrap-requirements.txt \
         --index-url "${ROCM_PACKAGE_INDEX}" \
         "torch[device-gfx1150,device-gfx1151,device-gfx1200,device-gfx1201]==${TORCH_VERSION}+rocm${ROCM_VERSION}" \
         "torchvision[device-gfx1150,device-gfx1151,device-gfx1200,device-gfx1201]==${TORCHVISION_VERSION}+rocm${ROCM_VERSION}" \
-        "torchaudio==${TORCHAUDIO_VERSION}+rocm${ROCM_VERSION}"
+        "torchaudio==${TORCHAUDIO_VERSION}+rocm${ROCM_VERSION}" && \
+    python -m pip check
 
 COPY containers/content_tools/download.py \
     /opt/paracetamol/container_download.py
@@ -135,6 +140,7 @@ RUN git init ComfyUI && \
 
 COPY applications/comfyui/constraints.txt /opt/comfyui-constraints.txt
 RUN python -m pip install \
+        --constraint /opt/python-bootstrap-requirements.txt \
         --constraint /opt/comfyui-constraints.txt \
         --requirement /opt/ComfyUI/requirements.txt \
         --requirement /opt/ComfyUI/manager_requirements.txt && \
@@ -148,6 +154,7 @@ RUN python /opt/paracetamol/patch_comfyui_manager.py && \
 
 ARG COMFYUI_GGUF_COMMIT=6ea2651e7df66d7585f6ffee804b20e92fb38b8a
 RUN python -m pip install \
+        --constraint /opt/python-bootstrap-requirements.txt \
         "gguf==0.19.0" \
         "protobuf==7.35.1" && \
     mkdir -p /opt/paracetamol/custom_nodes && \

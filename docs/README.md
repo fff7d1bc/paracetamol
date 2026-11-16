@@ -79,6 +79,7 @@ same change when behavior, commands, counts or defaults change.
 | --- | --- |
 | Base images, ROCm/PyTorch, application commits and patch order | `Containerfile`, `applications/<application>/` |
 | Complete content-tools dependency pins | `containers/content_tools/requirements.txt` |
+| Shared Python packaging-tool pins and constraints | `containers/python_base/requirements.txt` |
 | Product identity and build namespace | `internal/identity/`, `Makefile` |
 | Application registry, image tags, capabilities, ports and build DAG | `internal/application/`, `internal/buildplan/` |
 | Host configuration and precedence | `internal/config/` |

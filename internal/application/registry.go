@@ -62,7 +62,7 @@ var specs = []Spec{
 	{
 		ID: string(ComfyUI), DisplayName: "ComfyUI",
 		Summary:       "image and video generation with curated workflows",
-		Image:         identity.Image("comfyui-ubuntu26.04-rocm10.1-0.28.0-r15"),
+		Image:         identity.Image("comfyui-ubuntu26.04-rocm10.1-0.28.0-r16"),
 		ContainerName: identity.Container("comfyui"), Build: BuildComfyUI, Port: 8188,
 		RuntimeFamily: platform.RuntimeROCm, Modes: []string{"server"}, Shell: true, Logs: true, MultiGPU: true, PyTorchBase: true,
 		AfterBuild:   []Action{{Arguments: []string{"content", "install", "comfyui"}, Description: "choose a reviewed ComfyUI recipe"}},
@@ -84,7 +84,7 @@ var specs = []Spec{
 
 var units = []BuildUnit{
 	{ID: BuildRuntime, DisplayName: "minimal ROCm runtime", Target: "rocm-runtime", Image: identity.Image("runtime-ubuntu26.04-rocm10.1-r6")},
-	{ID: BuildPyTorchBase, DisplayName: "ROCm/PyTorch base", Target: "rocm-base", Image: identity.Image("base-ubuntu26.04-rocm10.1-torch2.14-r9"), Prerequisites: []BuildID{BuildRuntime}},
+	{ID: BuildPyTorchBase, DisplayName: "ROCm/PyTorch base", Target: "rocm-base", Image: identity.Image("base-ubuntu26.04-rocm10.1-torch2.14-r10"), Prerequisites: []BuildID{BuildRuntime}},
 	{ID: BuildContentTools, DisplayName: "content tools", Target: "content-tools", Image: identity.Image("content-ubuntu26.04-huggingface2.4-r4")},
 	{ID: BuildComfyUI, DisplayName: "ComfyUI", Target: "comfyui", Image: specs[0].Image, Prerequisites: []BuildID{BuildPyTorchBase}, Application: string(ComfyUI)},
 	{ID: BuildLlamaCPP, DisplayName: "llama.cpp", Target: "llama-cpp", Image: specs[1].Image, Prerequisites: []BuildID{BuildRuntime}, Application: string(LlamaCPP)},

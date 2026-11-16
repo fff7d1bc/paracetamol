@@ -22,6 +22,7 @@ rg -n 'BuildUnit|Spec{' internal/application/registry.go
 rg -n 'source_version|source_revision' catalog/catalog.json
 cat go.mod
 sort -u containers/content_tools/requirements.txt \
+  containers/python_base/requirements.txt \
   applications/comfyui/constraints.txt
 ```
 
@@ -36,12 +37,20 @@ The main pin classes are:
 | rgthree-comfy | ComfyUI stage | full commit |
 | llama.cpp native build | llama stages | full commit and exact build dependencies |
 | Content download tools | `containers/content_tools/requirements.txt` | full exact dependency set |
+| Python packaging tools | `containers/python_base/requirements.txt` | exact shared-base requirements and dependent-build constraints |
 | Comfy dependencies | `applications/comfyui/constraints.txt` | transitive constraints |
 | Models and workflows | `catalog/` | full commits plus content hashes |
 | Host SQLite driver and transitive Go modules | `go.mod`, `go.sum` | exact module versions and checksums |
 
-AMD ROCm runtime packages belong to the lower tagged runtime; PyTorch, `pip`,
-and `wheel` policy belong to the higher shared base.
+AMD ROCm runtime packages belong to the lower tagged runtime. PyTorch and the
+`pip`, `setuptools`, `wheel` and `packaging` policies belong to the higher
+shared base. Its bootstrap requirements are also constraints on subsequent
+PyTorch and ComfyUI installations, so those steps cannot silently replace the
+reviewed packaging tools. Keep overlapping ComfyUI constraints equal to these
+pins. Update the PyTorch-base and dependent ComfyUI image identities together
+when changing this file, then cold-build both affected targets and inspect
+installed tool versions as well as running `pip check`. This does not require
+changing the independent native runtime or llama.cpp pins.
 
 ## Standard upgrade loop
 
