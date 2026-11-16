@@ -223,13 +223,19 @@ removal. Container checks alone cannot protect offline mirror moves or
 existing-file verification. A busy cleanup fails without prompting or deleting
 anything. Exclusion follows the directory inode, including installer aliases,
 rather than a pathname or launcher environment; cleanup still refuses selected
-symlink paths. Different real roots remain independent. The descriptor is
+symlink paths. Locks for different real roots are independent. The descriptor is
 close-on-exec and released on every return or process exit; no persistent lock
 file is created. Read-only planning, dry runs, and rejected install plans do
 not create the root or acquire the lock. Cleanup of an absent root also creates
 no state. Caller-owned `BeforeMutation` metadata publication still precedes
 installer root preparation and lock acquisition, so a failed publication leaves
 an absent data root absent.
+
+The installer's separate `requireNoDownloaders` guard rejects any managed
+downloader container, regardless of its data root. This conservatively protects
+against children left behind by an interrupted launcher. A container belonging
+to another live installation must be allowed to finish, not treated as stale
+or removed merely to bypass this guard.
 
 If an artifact filename appears in a curated workflow, update the reviewed
 JSON resource and its model provenance together. Installation copies that

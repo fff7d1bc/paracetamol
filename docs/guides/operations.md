@@ -448,7 +448,9 @@ protects offline mirror moves and existing-file verification even when no
 downloader container exists. If installation or another cleanup is using that
 directory, cleanup fails without prompting or deleting anything; retry after
 it finishes. Installation cannot start mutating the same directory while you
-review a cleanup plan. Different real data directories remain independent.
+review a cleanup plan. The directory lock is scoped to one real data root.
+The gateway reservation and managed-container checks described above still
+apply across data directories.
 This reservation creates no lock file and is released on failure, cancellation
 or process exit. Cleanup of an absent root creates no state. Build-cache
 cleanup remains separate from this persistent-data reservation.

@@ -167,7 +167,10 @@ verification, or final moves. The lock is released on
 normal completion, failure, Ctrl-C, and process exit; resumable staging remains
 in place. The lock belongs to the actual data directory, so directory aliases
 and different home, runtime, or temporary-directory settings do not bypass it.
-Different data directories can be installed independently.
+Locks for different data directories are independent. The separate downloader
+guard still blocks installation while any managed downloader container remains,
+even for another data directory. Wait for active downloads to finish. Remove a
+leftover container only after confirming it is stale.
 
 Installation begins only after exact size and SHA-256 verification.
 Paracetamol records a durable receipt after a successful hash. A missing or stale
