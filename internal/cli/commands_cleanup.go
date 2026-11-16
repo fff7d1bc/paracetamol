@@ -14,12 +14,6 @@ import (
 	"paracetamol/internal/podman"
 )
 
-type cleanupTarget struct {
-	kind string
-	path string
-	size int64
-}
-
 func (app *App) commandCleanup(args []string) error {
 	writeHelp := func() {
 		app.writeGroupHelp(usage("cleanup", "SCOPE", "[OPTIONS]"),
@@ -92,7 +86,7 @@ func (app *App) commandCleanup(args []string) error {
 		if err != nil {
 			return err
 		}
-		return app.cleanupPaths(scope, []string{cache}, *yes, *nonInteractive, false)
+		return app.cleanupPaths(scope, []string{cache}, *yes, *nonInteractive)
 	}
 	dataRoot, err := app.cleanupDataRoot(dataFlag)
 	if err != nil {
@@ -119,7 +113,7 @@ func (app *App) commandCleanup(args []string) error {
 		return controlerr.New("managed containers are still present: %s; clean up containers first", strings.Join(containers, ", "))
 	}
 	if scope == "data" {
-		return app.cleanupPaths(scope, []string{dataRoot}, *yes, *nonInteractive, true)
+		return app.cleanupPaths(scope, []string{dataRoot}, *yes, *nonInteractive)
 	}
 	var paths []string
 	if scope == "downloads" {
@@ -130,7 +124,7 @@ func (app *App) commandCleanup(args []string) error {
 			paths = append(paths, filepath.Join(base, "cache"), filepath.Join(base, "home", ".cache"), filepath.Join(base, "home", ".miopen"), filepath.Join(base, "home", ".triton"))
 		}
 	}
-	return app.cleanupPaths(scope, paths, *yes, *nonInteractive, false)
+	return app.cleanupPaths(scope, paths, *yes, *nonInteractive)
 }
 
 func (app *App) cleanupContainers(application string, yes, nonInteractive bool) error {
@@ -276,10 +270,10 @@ func (app *App) cleanupImages(application, exact string, yes, nonInteractive boo
 	return nil
 }
 
-func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, removeDataRoot bool) error {
-	var targets []cleanupTarget
+func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive bool) error {
+	var targets []*cleanupDirectory
 	for _, path := range paths {
-		info, err := os.Lstat(path)
+		target, err := planCleanupDirectory(path)
 		if os.IsNotExist(err) {
 			fmt.Fprintf(app.Stdout, "%s %s\n", app.terminal(app.Stdout).Muted("Not present:"), path)
 			continue
@@ -287,14 +281,8 @@ func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, 
 		if err != nil {
 			return err
 		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return controlerr.New("cleanup target is not a real directory: %s", path)
-		}
-		size, err := directorySize(path)
-		if err != nil {
-			return err
-		}
-		targets = append(targets, cleanupTarget{kind: scope, path: path, size: size})
+		defer target.close()
+		targets = append(targets, target)
 	}
 	if len(targets) == 0 {
 		return nil
@@ -302,18 +290,20 @@ func (app *App) cleanupPaths(scope string, paths []string, yes, nonInteractive, 
 	terminal := app.terminal(app.Stdout)
 	fmt.Fprintln(app.Stdout, terminal.Heading("Cleanup plan:"))
 	for _, target := range targets {
-		fmt.Fprintf(app.Stdout, "  %s %s (%s)\n", terminal.Label(target.kind+":"), target.path, humanSize(target.size))
+		fmt.Fprintf(app.Stdout, "  %s %s (%s)\n", terminal.Label(scope+":"), target.path, humanSize(target.size))
 	}
 	if err := app.confirmCleanup(scope, yes, nonInteractive); err != nil {
 		return err
 	}
+	// Approval covers the complete captured plan, not whatever later occupies
+	// its paths. Reject a changed later target before removing any earlier one.
 	for _, target := range targets {
-		if !removeDataRoot {
-			if err := rejectSymlinkComponents(target.path); err != nil {
-				return err
-			}
+		if err := target.validate(); err != nil {
+			return err
 		}
-		if err := os.RemoveAll(target.path); err != nil {
+	}
+	for _, target := range targets {
+		if err := target.remove(); err != nil {
 			return fmt.Errorf("remove %s: %w", target.path, err)
 		}
 		fmt.Fprintf(app.Stdout, "%s %s (%s)\n", terminal.Success("Removed:"), target.path, humanSize(target.size))
@@ -356,24 +346,6 @@ func (app *App) confirmCleanup(scope string, yes, nonInteractive bool) error {
 		return controlerr.New("%s cleanup declined", scope)
 	}
 	return nil
-}
-
-func directorySize(root string) (int64, error) {
-	var total int64
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() {
-			total += info.Size()
-		}
-		return nil
-	})
-	return total, err
 }
 
 func rejectSymlinkComponents(path string) error {

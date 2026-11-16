@@ -231,6 +231,14 @@ cleanup. Downloader cleanup runs after every outcome, including cancellation,
 while failed staging remains resumable. Never add general Podman or system
 pruning.
 
+Directory cleanup captures open target and parent handles before approval,
+then revalidates every planned identity before the first deletion. Recursive
+removal uses the captured target handle, not its absolute pathname. The final
+empty directory removal uses the captured parent after another identity check
+and a directory-only syscall that cannot unlink a replacement file or symlink.
+Changes detected during removal can leave a partially completed cleanup, but
+must not redirect recursive deletion into a replacement tree.
+
 ## Persistent data and publication
 
 The default root is `${XDG_DATA_HOME:-$HOME/.local/share}/paracetamol`.

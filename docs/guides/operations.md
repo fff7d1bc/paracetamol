@@ -420,6 +420,11 @@ automatic cleanup path.
 
 Every cleanup scope resolves and validates its exact non-empty plan, prints
 the resources it will remove, and asks once for confirmation on a terminal.
+Directory plans keep open handles to the selected directories and their parents.
+Cleanup revalidates the complete plan after confirmation and refuses changed
+paths before deleting anything. Recursive removal stays inside the captured
+directories, even if an ancestor is renamed during removal. If a directory
+changes, review and run a new plan instead of retrying the old approval.
 An already-empty scope reports the absent resources and exits without a
 prompt. Scripts must make both intent and noninteractive execution explicit:
 
