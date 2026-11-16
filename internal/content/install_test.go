@@ -115,6 +115,106 @@ func TestInstallPlanValidateRejectsCollisions(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsOverlappingArtifactDestinationsBeforeMutation(t *testing.T) {
+	for _, shape := range []struct{ name, first, second, want string }{
+		{"exact", "fixture/model.gguf", "fixture/model.gguf", "share destination"},
+		{"parent-first", "fixture/model.gguf", "fixture/model.gguf/nested/child.gguf", "overlapping destinations"},
+		{"child-first", "fixture/model.gguf/nested/child.gguf", "fixture/model.gguf", "overlapping destinations"},
+	} {
+		for _, sameBytes := range []bool{false, true} {
+			for _, staged := range []bool{false, true} {
+				for _, dryRun := range []bool{false, true} {
+					t.Run(fmt.Sprintf("%s/same-bytes=%t/staged=%t/dry=%t", shape.name, sameBytes, staged, dryRun), func(t *testing.T) {
+						base := t.TempDir()
+						root := filepath.Join(base, "data")
+						payloads := [][]byte{[]byte("first"), []byte("other")}
+						if sameBytes {
+							payloads[1] = payloads[0]
+						}
+						var artifacts []catalog.Artifact
+						var staging []string
+						for index, payload := range payloads {
+							artifact := testArtifact(payload)
+							artifact.ID = fmt.Sprintf("model-%d", index)
+							artifact.Destination = []string{shape.first, shape.second}[index]
+							artifacts = append(artifacts, artifact)
+							if staged {
+								file := filepath.Join(root, "staging", "llama-cpp", artifact.ID, "model.gguf")
+								if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+									t.Fatal(err)
+								}
+								if err := os.WriteFile(file, payload, 0o600); err != nil {
+									t.Fatal(err)
+								}
+								staging = append(staging, file)
+							}
+						}
+						if _, err := Plan(root, artifacts); err == nil || !strings.Contains(err.Error(), shape.want) {
+							t.Fatalf("Plan = %v", err)
+						}
+						runner := &mirrorPreflightRunner{}
+						callbacks := 0
+						err := Install(InstallOptions{
+							DataRoot: root, Artifacts: artifacts, DryRun: dryRun, Runner: runner,
+							Environment:    map[string]string{"XDG_RUNTIME_DIR": filepath.Join(base, "runtime")},
+							BeforeMutation: func() error { callbacks++; return nil },
+						})
+						if err == nil || !strings.Contains(err.Error(), shape.want) {
+							t.Fatalf("Install = %v", err)
+						}
+						if runner.calls != 0 || callbacks != 0 {
+							t.Fatalf("rejected plan crossed mutation boundary: process=%d callback=%d", runner.calls, callbacks)
+						}
+						if !staged {
+							if _, err := os.Lstat(root); !os.IsNotExist(err) {
+								t.Fatalf("rejected plan created data root: %v", err)
+							}
+						} else {
+							for index, file := range staging {
+								if got, err := os.ReadFile(file); err != nil || !bytes.Equal(got, payloads[index]) {
+									t.Fatalf("rejected plan changed staging %s: %q, %v", file, got, err)
+								}
+							}
+							if entries, err := os.ReadDir(root); err != nil || len(entries) != 1 || entries[0].Name() != "staging" {
+								t.Fatalf("rejected plan changed data root: %v, %v", entries, err)
+							}
+						}
+						if _, err := os.Lstat(filepath.Join(base, "runtime")); !os.IsNotExist(err) {
+							t.Fatalf("rejected plan created runtime directory: %v", err)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestPlanAllowsSameDestinationInDifferentTargets(t *testing.T) {
+	for _, destinations := range [][]string{
+		{"imported/fixture.json", "imported/fixture.json", "imported/fixture.json"},
+		{"imported/fixture.json", "imported/fixture.json/nested/child.json", "imported"},
+	} {
+		t.Run(strings.Join(destinations, ","), func(t *testing.T) {
+			var artifacts []catalog.Artifact
+			for index, target := range []string{"models", "llama-models", "workflows"} {
+				artifact := testArtifact([]byte("fixture"))
+				artifact.ID, artifact.Target, artifact.Destination = target, target, destinations[index]
+				artifacts = append(artifacts, artifact)
+			}
+			plan, err := Plan(filepath.Join(t.TempDir(), "data"), artifacts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := plan.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Statuses) != len(artifacts) {
+				t.Fatalf("planned %d independent destinations", len(plan.Statuses))
+			}
+		})
+	}
+}
+
 func TestInstallBeforeMutationRequiresValidApprovedLivePlan(t *testing.T) {
 	for _, name := range []string{"invalid-plan", "collision", "license", "dry-run", "cancelled"} {
 		t.Run(name, func(t *testing.T) {

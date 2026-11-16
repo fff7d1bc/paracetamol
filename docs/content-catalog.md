@@ -479,6 +479,13 @@ bundle in each supplied pack is selected. Files compose additively, without
 overriding built-in or earlier IDs, but each bundle must reference artifacts
 declared in its own pack, not built-in or cross-pack artifacts.
 
+The complete merge also rejects two artifacts with the same target and
+destination, or one artifact's file destination used as another's directory,
+whether built-in, in one pack or in different supplied packs.
+Identical hashes do not exempt a collision. Different targets have independent
+destination namespaces. Catalog loading, pack merging and direct installer
+planning share this destination-ownership check before installation mutates data.
+
 ### Supported schema
 
 Schema 2 accepts only `schema_version`, `artifacts` and `bundles`, with

@@ -885,8 +885,32 @@ func loadLlamaPreset(id string, value json.RawMessage) (LlamaPreset, error) {
 	}, nil
 }
 
-func (catalog Catalog) validateRelationships() error {
+// ValidateArtifactDestinations rejects ambiguous ownership of a managed path,
+// including file/directory overlap, even when artifacts pin identical bytes.
+// Each target is a separate root.
+func ValidateArtifactDestinations(artifacts []Artifact) error {
 	destinations := make(map[string]string)
+	for _, artifact := range artifacts {
+		key := artifact.Target + "\x00" + artifact.Destination
+		if previous, duplicate := destinations[key]; duplicate {
+			return fmt.Errorf("artifacts %s and %s share destination %s in target %s", previous, artifact.ID, artifact.Destination, artifact.Target)
+		}
+		destinations[key] = artifact.ID
+	}
+	// Index every file first so an ancestor collision is rejected regardless of
+	// input order or lexically intervening siblings such as a, a-b and a/b.
+	for _, artifact := range artifacts {
+		for parent := path.Dir(artifact.Destination); parent != "." && parent != "/"; parent = path.Dir(parent) {
+			if previous, collision := destinations[artifact.Target+"\x00"+parent]; collision {
+				return fmt.Errorf("artifacts %s and %s have overlapping destinations %s and %s in target %s", previous, artifact.ID, parent, artifact.Destination, artifact.Target)
+			}
+		}
+	}
+	return nil
+}
+
+func (catalog Catalog) validateRelationships() error {
+	artifacts := make([]Artifact, 0, len(catalog.Artifacts))
 	blobs := make(map[string]int64)
 	for id, artifact := range catalog.Artifacts {
 		for _, agreement := range artifact.Agreements {
@@ -894,15 +918,14 @@ func (catalog Catalog) validateRelationships() error {
 				return fmt.Errorf("artifact %s references unknown agreement %s", id, agreement)
 			}
 		}
-		key := artifact.Target + "\x00" + artifact.Destination
-		if previous, duplicate := destinations[key]; duplicate {
-			return fmt.Errorf("artifacts %s and %s share destination %s", previous, id, artifact.Destination)
-		}
-		destinations[key] = id
+		artifacts = append(artifacts, artifact)
 		if previous, duplicate := blobs[artifact.SHA256]; duplicate && previous != artifact.Size {
 			return fmt.Errorf("SHA-256 %s has inconsistent sizes", artifact.SHA256)
 		}
 		blobs[artifact.SHA256] = artifact.Size
+	}
+	if err := ValidateArtifactDestinations(artifacts); err != nil {
+		return err
 	}
 	for id, bundle := range catalog.Bundles {
 		for _, artifact := range bundle.Artifacts {

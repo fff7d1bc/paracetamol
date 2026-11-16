@@ -84,6 +84,11 @@ func UniqueArtifacts(managed catalog.Catalog, bundles []catalog.Bundle) []catalo
 }
 
 func Plan(dataRoot string, artifacts []catalog.Artifact) (InstallPlan, error) {
+	// Direct callers need the same ownership rule as catalog and pack loading;
+	// two missing files must not become a partially installed collision.
+	if err := catalog.ValidateArtifactDestinations(artifacts); err != nil {
+		return InstallPlan{}, err
+	}
 	store, err := verification.Load(dataRoot)
 	if err != nil {
 		return InstallPlan{}, err

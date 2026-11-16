@@ -309,12 +309,15 @@ HF_TOKEN=... ./paracetamol content install \
   --from-file local-content/models.json
 ```
 
-`--from-file` is repeatable. Without a positional target, every bundle from
-the supplied packs is selected. Packs temporarily extend the catalog and may
-reference built-in definitions or definitions in another supplied pack.
-Existing identifiers and destinations cannot be overridden. They use the same
-revision, hash, path, license, staging, and verification checks as built-in
-content. Tokens do not belong in JSON.
+`--from-file` is repeatable and cannot accompany a positional target. Every
+bundle from the supplied packs is selected. Packs temporarily extend the
+catalog, but each bundle may reference only artifacts defined in its own pack.
+Existing identifiers cannot be overridden. Within each target, artifact
+destinations must be unique across the built-in catalog and all supplied
+packs, even for identical bytes. One artifact's destination cannot be a parent
+directory of another artifact's destination. Packs use the same revision,
+hash, path, license, staging, and verification checks as built-in content.
+Tokens do not belong in JSON.
 
 See [Local content packs](../content-catalog.md#local-content-packs) for
 the schema and maintainer detail.

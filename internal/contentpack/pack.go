@@ -161,6 +161,13 @@ func Load(base catalog.Catalog, files []string) (catalog.Catalog, []string, erro
 			selected = append(selected, id)
 		}
 	}
+	artifacts := make([]catalog.Artifact, 0, len(result.Artifacts))
+	for _, artifact := range result.Artifacts {
+		artifacts = append(artifacts, artifact)
+	}
+	if err := catalog.ValidateArtifactDestinations(artifacts); err != nil {
+		return catalog.Catalog{}, nil, fmt.Errorf("content pack merge: %w", err)
+	}
 	return result, selected, nil
 }
 
