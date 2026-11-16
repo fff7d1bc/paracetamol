@@ -12,6 +12,7 @@ import (
 	"paracetamol/internal/gateway"
 	"paracetamol/internal/identity"
 	"paracetamol/internal/podman"
+	"paracetamol/internal/storage"
 )
 
 func (app *App) commandCleanup(args []string) error {
@@ -97,6 +98,14 @@ func (app *App) commandCleanup(args []string) error {
 		fmt.Fprintf(app.Stdout, "%s %s\n", terminal.Muted("Data not present:"), dataRoot)
 		return nil
 	}
+	// Offline mirror moves and existing-file verification have no downloader
+	// container. Reserve their data inode before planning or asking approval,
+	// and keep it until every captured cleanup target has been removed.
+	lock, err := storage.AcquireMutationLock(dataRoot)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	control, err := gateway.AcquireLocalOperation(app.Environment, "cleanup "+scope)
 	if err != nil {
 		return err

@@ -1,72 +1,18 @@
 package content
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"paracetamol/internal/catalog"
 	"paracetamol/internal/process"
+	"paracetamol/internal/storage"
 	"paracetamol/internal/verification"
 )
-
-func TestInstallLockUsesDirectoryIdentity(t *testing.T) {
-	base := t.TempDir()
-	root := filepath.Join(base, "data")
-	other := filepath.Join(base, "other")
-	for _, path := range []string{root, other} {
-		if err := os.Mkdir(path, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	alias := filepath.Join(base, "alias")
-	if err := os.Symlink(root, alias); err != nil {
-		t.Fatal(err)
-	}
-	parentAlias := filepath.Join(base, "parent-alias")
-	if err := os.Symlink(base, parentAlias); err != nil {
-		t.Fatal(err)
-	}
-	lock, err := acquireInstallLock(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer releaseInstallLock(lock)
-	if err := Install(InstallOptions{DataRoot: root, DryRun: true, Runner: &mirrorPreflightRunner{}}); err != nil {
-		t.Fatalf("dry run tried to acquire a held install lock: %v", err)
-	}
-	for _, path := range []string{root, alias, filepath.Join(parentAlias, "data")} {
-		contender, err := acquireInstallLock(path)
-		if contender != nil {
-			releaseInstallLock(contender)
-		}
-		if err == nil || !strings.Contains(err.Error(), "another content installation is active") {
-			t.Fatalf("same-directory lock through %s = %v", path, err)
-		}
-	}
-	independent, err := acquireInstallLock(other)
-	if err != nil {
-		t.Fatalf("different data directory blocked: %v", err)
-	}
-	releaseInstallLock(independent)
-	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, lock.Fd(), syscall.F_GETFD, 0)
-	if errno != 0 || flags&syscall.FD_CLOEXEC == 0 {
-		t.Fatalf("lock descriptor is not close-on-exec: flags=%d, error=%v", flags, errno)
-	}
-	if entries, err := os.ReadDir(root); err != nil || len(entries) != 0 {
-		t.Fatalf("locking created persistent files: %v, %v", entries, err)
-	}
-}
 
 type installLockPauseWriter struct {
 	entered chan struct{}
@@ -157,7 +103,7 @@ func TestInstallLockPreventsLostReceiptsAcrossEnvironments(t *testing.T) {
 			runner := &installLockCountingRunner{}
 			options := InstallOptions{DataRoot: root, Artifacts: artifacts[1:], Environment: secondEnvironment, Runner: runner}
 			err := Install(options)
-			if err == nil || !strings.Contains(err.Error(), "another content installation is active") {
+			if !errors.Is(err, storage.ErrMutationBusy) {
 				t.Fatalf("competing installer = %v", err)
 			}
 			if runner.calls != 0 {
@@ -216,77 +162,11 @@ func TestInstallLockReleasedAfterFailureAndCancellation(t *testing.T) {
 			if err == nil || scenario == "cancelled" && !errors.Is(err, context.Canceled) {
 				t.Fatalf("Install = %v", err)
 			}
-			lock, err := acquireInstallLock(root)
+			lock, err := storage.AcquireMutationLock(root)
 			if err != nil {
 				t.Fatalf("completed installer retained lock: %v", err)
 			}
-			releaseInstallLock(lock)
-		})
-	}
-}
-
-func TestInstallLockProcessHelper(t *testing.T) {
-	root := os.Getenv("PARACETAMOL_INSTALL_LOCK_TEST_ROOT")
-	if root == "" {
-		return
-	}
-	lock, err := acquireInstallLock(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Intentionally omit releaseInstallLock: process exit must release it.
-	fmt.Println("locked")
-	_, _ = io.Copy(io.Discard, os.Stdin)
-	runtime.KeepAlive(lock)
-	os.Exit(0)
-}
-
-func TestInstallLockReleasedOnProcessExit(t *testing.T) {
-	for _, scenario := range []string{"normal", "killed"} {
-		t.Run(scenario, func(t *testing.T) {
-			root := t.TempDir()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestInstallLockProcessHelper$")
-			command.Env = append(os.Environ(), "PARACETAMOL_INSTALL_LOCK_TEST_ROOT="+root)
-			stdin, err := command.StdinPipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			stdout, err := command.StdoutPipe()
-			if err != nil {
-				t.Fatal(err)
-			}
-			command.Stderr = os.Stderr
-			if err := command.Start(); err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
-			if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || line != "locked\n" {
-				t.Fatalf("child lock startup: %q, %v", line, err)
-			}
-			lock, err := acquireInstallLock(root)
-			if lock != nil {
-				releaseInstallLock(lock)
-			}
-			if err == nil || !strings.Contains(err.Error(), "another content installation is active") {
-				t.Fatalf("child-held lock did not exclude parent: %v", err)
-			}
-			if scenario == "killed" {
-				if err := command.Process.Kill(); err != nil {
-					t.Fatal(err)
-				}
-			} else if err := stdin.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if err := command.Wait(); scenario == "normal" && err != nil {
-				t.Fatal(err)
-			}
-			lock, err = acquireInstallLock(root)
-			if err != nil {
-				t.Fatalf("exited process retained lock: %v", err)
-			}
-			releaseInstallLock(lock)
+			lock.Close()
 		})
 	}
 }

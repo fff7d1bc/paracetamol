@@ -160,9 +160,10 @@ Interrupted archive transfers restart on retry. Complete staged ZIPs are
 reused, while completed archives that fail member validation stay available
 for inspection rather than being downloaded again automatically.
 
-One content installation may mutate a given data directory at a time. A second
-installer fails immediately with a clear message instead of sharing staging,
-verification, or final moves with the active command. The lock is released on
+Content installation and data, download or runtime-cache cleanup share one
+lock per data directory. A competing command fails immediately with a clear
+message instead of deleting or sharing an active installation's staging,
+verification, or final moves. The lock is released on
 normal completion, failure, Ctrl-C, and process exit; resumable staging remains
 in place. The lock belongs to the actual data directory, so directory aliases
 and different home, runtime, or temporary-directory settings do not bypass it.

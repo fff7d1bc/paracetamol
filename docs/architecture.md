@@ -284,6 +284,14 @@ symlinks. Mirror and data roots cannot overlap, and candidates are reused only
 after size/hash verification. Explicit move mode can remove files from the
 old library. Interruption does not restore them.
 
+Installer-owned data mutation and destructive data, download and runtime-cache
+cleanup share a nonblocking directory-inode lock owned by `internal/storage/`.
+Cleanup holds it across planning, confirmation and removal, including when an
+offline install has no downloader container. This protects moved mirror files
+while they are staged or verified. Directory aliases share the same lock,
+and process exit releases it without a persistent lock file. The gateway's
+lifecycle reservation is separate and remains required for cleanup.
+
 `internal/atomicfile/` has two publication policies. Final results, archives
 and immutable resources are create-once. Exact owned checkpoints, reports,
 router files or explicitly forced workflows may replace only a singly linked

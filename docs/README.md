@@ -87,7 +87,7 @@ same change when behavior, commands, counts or defaults change.
 | Public commands, parsing, orchestration and terminal UX | `internal/cli/`, `internal/ui/` |
 | Repository resources and PATH delegation | `internal/project/`, `paracetamol`, `bin/paracetamol` |
 | Subprocess and constrained Podman runtime | `internal/process/`, `internal/podman/`, `internal/runtime/` |
-| Host storage partitions and atomic publication | `internal/storage/`, `internal/atomicfile/` |
+| Host storage partitions, mutation exclusion and atomic publication | `internal/storage/`, `internal/atomicfile/` |
 | Receipt-aware text inventory and verification | `internal/modelinventory/`, `internal/verification/` |
 | Frozen gateway inventory, scheduler, proxy, reports and statistics | `internal/gateway/`, `internal/textmodel/` |
 | Portable native Maki examples, without client execution or state ownership | `internal/clientconfig/` |

@@ -42,7 +42,7 @@ type InstallOptions struct {
 	Runner         process.Runner
 	Output         io.Writer
 	// BeforeMutation publishes caller-owned metadata after validation and
-	// approval, before preparing the data root or taking its install lock.
+	// approval, before preparing the data root or taking its mutation lock.
 	// Dry runs and rejected plans never call it. Published metadata survives
 	// later install failures so a caller can preserve a resumable import pack.
 	BeforeMutation func() error
@@ -160,11 +160,11 @@ func Install(options InstallOptions) error {
 	if err := os.MkdirAll(options.DataRoot, 0o755); err != nil {
 		return fmt.Errorf("prepare data directory: %w", err)
 	}
-	lock, err := acquireInstallLock(options.DataRoot)
+	lock, err := storage.AcquireMutationLock(options.DataRoot)
 	if err != nil {
 		return err
 	}
-	defer releaseInstallLock(lock)
+	defer lock.Close()
 	client := podman.Client{Runner: options.Runner}
 	// A killed launcher releases flock without necessarily stopping its child
 	// container. Check before touching staging, even for offline-only reuse.
@@ -954,35 +954,6 @@ func singleRegular(info os.FileInfo) bool {
 func withinPath(candidate, root string) bool {
 	relative, err := filepath.Rel(root, candidate)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func acquireInstallLock(dataRoot string) (*os.File, error) {
-	// Lock the directory inode, not a pathname-derived file in a runtime or
-	// temporary directory. Aliases and different launcher environments must
-	// serialize the same staging tree and verification receipt read/modify/write.
-	// A directory descriptor also leaves no lock file that can be unlinked to
-	// bypass a live lock; O_CLOEXEC keeps child processes from retaining it.
-	descriptor, err := syscall.Open(dataRoot, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, fmt.Errorf("open content installation directory: %w", err)
-	}
-	file := os.NewFile(uintptr(descriptor), dataRoot)
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		file.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, controlerr.New("another content installation is active for %s", dataRoot)
-		}
-		return nil, fmt.Errorf("lock content installation directory: %w", err)
-	}
-	return file, nil
-}
-
-func releaseInstallLock(file *os.File) {
-	if file == nil {
-		return
-	}
-	_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-	_ = file.Close()
 }
 
 func fileIdentity(info os.FileInfo) string {
