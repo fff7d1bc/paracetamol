@@ -357,6 +357,9 @@ func (server *Server) chat(writer http.ResponseWriter, request *http.Request) {
 	proxy.Director = func(outgoing *http.Request) {
 		originalDirector(outgoing)
 		outgoing.Header.Del(SessionIDHeader)
+		// Native replay sessions keep generating after HTTP disconnect and
+		// require /v1/stream lifecycle routes that the gateway does not expose.
+		outgoing.Header.Del("X-Conversation-ID")
 		// Public gateway credentials are never backend credentials.
 		outgoing.Header.Del("Authorization")
 		outgoing.Header.Del("Proxy-Authorization")

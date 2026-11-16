@@ -381,7 +381,12 @@ HTTP errors and non-streaming JSON responses retain their original behavior.
 
 The body limit is 16 MiB and the waiting queue holds at most 64 requests.
 Client cancellation removes a queued request or propagates to the upstream
-request. A proxy transport failure marks the allocation failed so it is
+request. Native llama.cpp replay sessions are not supported: the gateway
+strips `X-Conversation-ID` case-insensitively and does not expose the native
+`/v1/stream` replay or cancellation routes. This keeps requests tied to their
+HTTP connection rather than enabling generation that survives a disconnect.
+Gateway session-correlation headers do not enable native replay sessions.
+A proxy transport failure marks the allocation failed so it is
 drained and recycled rather than silently reused.
 If upstream data is truncated after response headers have been sent, the
 gateway records the failure and aborts the downstream response too. Clients
